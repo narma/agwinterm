@@ -79,7 +79,12 @@ public sealed class SessionState
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? SplitHidden { get; set; }
 }
-public sealed class WorkspaceState { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public bool Expanded { get; set; } = true; public List<SessionState> Sessions { get; set; } = new(); }
+public sealed class WorkspaceState
+{
+    public string Id { get; set; } = ""; public string Name { get; set; } = ""; public bool Expanded { get; set; } = true; public List<SessionState> Sessions { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DefaultDir { get; set; }
+}
 public sealed class AppState
 {
     public List<WorkspaceState> Workspaces { get; set; } = new();

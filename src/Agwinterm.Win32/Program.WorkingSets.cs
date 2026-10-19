@@ -60,6 +60,8 @@ internal partial class Program : IWorkingSetHost
         if (command == "workspace.new")
         {
             var ws = CreateWorkspace(Guid.NewGuid().ToString(), S("name")); ws.Expanded = !B("collapsed");
+            string? defaultDir = S(WorkspaceDefaultDirs.Key) ?? S("default-dir");
+            ws.DefaultDir = defaultDir is null ? null : WorkspaceDefaultDirs.NormalizeSet(defaultDir);
             SaveState(); RequestRedraw(); EmitEvent("tree"); return (object)ws.Id;
         }
         if (command == "workspace.flag")

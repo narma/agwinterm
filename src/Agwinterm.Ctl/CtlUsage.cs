@@ -164,7 +164,8 @@ public static class CtlUsage
           agwintermctl recent list                         (app-wide durable closed session/workspace history)
           agwintermctl recent open ENTRY-ID [--window ID]   (open in a live library window; partial workspace outcomes are explicit)
           agwintermctl recent clear [ENTRY-ID]              (history only; does not change live sessions or restore checkpoints)
-          agwintermctl workspace new [--name NAME] [--collapsed]
+          agwintermctl workspace new [--name NAME] [--collapsed] [--default-dir DIR]
+          agwintermctl workspace default-dir set <path>|clear [--target WS]
           agwintermctl workspace flag on|off|toggle [--target WORKSPACE]
           agwintermctl workspace focus on|off|toggle|clear [--target WORKSPACE]
           agwintermctl workspace filter on|off|toggle        (retain focused membership)

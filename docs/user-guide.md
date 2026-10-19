@@ -182,3 +182,11 @@ bar when nothing else bound it), **Ctrl+Shift+D** (dashboard), **Ctrl+`** (quick
 - `show-menu-bar = false` hides the title-bar menu bar (File ▸ Edit agwinterm.conf… opens the file).
 - Themes: the bundled set ships with the app; drop extra ghostty-format `*.conf` files in
   `%LOCALAPPDATA%\agwinterm\themes\`.
+
+### Default directory for a workspace
+
+Right-click a workspace and choose **Set Default Directory…** to choose the folder for
+its new sessions, or **Clear Default Directory** to return to profile/global settings.
+An explicit session directory takes priority. The setting survives restart and reopening
+a closed workspace. If the folder disappears, new sessions fall back to profile/global
+settings. See [the control API](control-api.md#workspace-default-session-directory) for scripting.

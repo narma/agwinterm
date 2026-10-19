@@ -9,7 +9,7 @@ public sealed record ClosedSession(string? CustomName, string? ProfileName, stri
     string EntryId);
 public sealed record ClosedWorkspace(string Name, IReadOnlyList<ClosedSession> Sessions, long Seq,
     string WorkspaceId, string SourceWindowId, string EntryId, bool Expanded = true,
-    string? DestinationWindowId = null, string? DestinationWorkspaceId = null);
+    string? DestinationWindowId = null, string? DestinationWorkspaceId = null, string? DefaultDir = null);
 
 /// <summary>UI-thread-owned history. Its file is independent of live restore checkpoints.</summary>
 public sealed class RecentHistory
@@ -56,7 +56,7 @@ public sealed class RecentHistory
     {
         if (h.Sessions is null || h.Workspaces is null || h.Sessions.Count > 25 || h.Workspaces.Count > 25 ||
             h.Sessions.Any(s => !Valid(s)) || h.Workspaces.Any(w => w is null || !Guid.TryParse(w.EntryId, out _) ||
-                !ValidId(w.WorkspaceId) || !ValidId(w.SourceWindowId) || !Text(w.Name) || w.Seq < 0 || w.Seq == long.MaxValue ||
+                !ValidId(w.WorkspaceId) || !ValidId(w.SourceWindowId) || !Text(w.Name) || !Text(w.DefaultDir) || w.Seq < 0 || w.Seq == long.MaxValue ||
                 w.Sessions is null || w.Sessions.Count > 1024 || w.Sessions.Any(s => !Valid(s)) ||
                 (w.DestinationWindowId is null) != (w.DestinationWorkspaceId is null) ||
                 w.DestinationWindowId is not null && (!ValidId(w.DestinationWindowId) || !ValidId(w.DestinationWorkspaceId))))

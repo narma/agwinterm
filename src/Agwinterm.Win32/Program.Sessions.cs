@@ -435,6 +435,42 @@ internal partial class Program
         catch (Exception ex) { ShowToast("elevated launch failed: " + ex.Message); }
     }
 
+    /// <summary>Resolve spawn cwd: explicit, then workspace default when the path exists, then profile directory and global new-session-dir mode.</summary>
+    private string? ResolveNewSessionCwd(Workspace ws, string? explicitCwd, string? profileName)
+    {
+        if (!string.IsNullOrEmpty(explicitCwd)) return explicitCwd;
+        if (!string.IsNullOrWhiteSpace(ws.DefaultDir) && Directory.Exists(ws.DefaultDir)) return ws.DefaultDir;
+        var profile = ResolveProfile(profileName);
+        bool wsl = WslIntegration.IsWsl(profile?.Command);
+        if (WslIntegration.ProfileDirectory(profile) is { Length: > 0 } profileDir) return profileDir;
+        string? want = _config.NewSessionDirMode switch
+        {
+            "current" => _active is not null ? CurrentDirOf(_active) : null,
+            "custom" => _config.NewSessionDir,
+            _ /*home*/ => wsl ? "~" : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        };
+        if (!string.IsNullOrWhiteSpace(want) && (wsl || Directory.Exists(want))) return want;
+        return null;
+    }
+
+    /// <summary>Set or clear <see cref="Workspace.DefaultDir"/>. <paramref name="path"/> null/empty clears; otherwise path must exist (normalized full path).</summary>
+    private bool TrySetWorkspaceDefaultDir(Workspace ws, string? path, out string? refuse)
+    {
+        refuse = null;
+        if (string.IsNullOrEmpty(path))
+        {
+            ws.DefaultDir = null;
+            return true;
+        }
+        if (WorkspaceDefaultDirs.ValidateSet(path) is { } err)
+        {
+            refuse = err;
+            return false;
+        }
+        ws.DefaultDir = WorkspaceDefaultDirs.NormalizeSet(path);
+        return true;
+    }
+
     /// <summary>Create a session with its first pane. <paramref name="paneId"/> is pane 0's id; null = the
     /// session id, which is what every caller but restore passes (a <c>session new</c> mints pane 0 =
     /// session id). Restore passes the SAVED pane-0 id, because after a <c>session swap</c> the pane that
@@ -454,20 +490,8 @@ internal partial class Program
             return _active ?? ws.Sessions.FirstOrDefault() ?? CreateSession(id, name, cwd, ws, makeActive, fontSize, command, interactive, extraEnv, null);
         }
         float fs = fontSize is > 0 ? fontSize.Value : (float)_config.FontSize;
-        // Explicit/restored cwd wins, then the profile directory, then home | current | custom.
         profileName ??= ResolveProfile(null)?.Name;
-        bool wsl = WslIntegration.IsWsl(ResolveProfile(profileName)?.Command);
-        if (string.IsNullOrEmpty(cwd)) cwd = WslIntegration.ProfileDirectory(ResolveProfile(profileName));
-        if (string.IsNullOrEmpty(cwd))
-        {
-            string? want = _config.NewSessionDirMode switch
-            {
-                "current" => _active is not null ? CurrentDirOf(_active) : null,
-                "custom" => _config.NewSessionDir,
-                _ /*home*/ => wsl ? "~" : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            };
-            if (!string.IsNullOrWhiteSpace(want) && (wsl || Directory.Exists(want))) cwd = want;
-        }
+        cwd = ResolveNewSessionCwd(ws, cwd, profileName);
         int ordinal;
         lock (_workspaces) ordinal = ws.Sessions.Count + 1;
         var ses = new Ses { Id = id, Name = name ?? $"session {ordinal}", CustomName = name, Ws = ws, ProfileName = profileName, Elevated = IsElevated() && !deElevate };
