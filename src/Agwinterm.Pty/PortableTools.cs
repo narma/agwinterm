@@ -11,13 +11,14 @@ internal static class PortableTools
         ["agwintermctl.exe", "agwinterm-hook.exe", "agwinterm-hook-linux-x64", "agwinterm-hook-linux-arm64"];
     private static readonly Lazy<string> Location = new(Resolve);
     internal static string DirectoryPath => Location.Value;
+    internal static string CacheRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "agwinterm", "portable-tools");
 
     private static string Resolve()
     {
         using var payload = Payload();
         if (payload is null) return AppContext.BaseDirectory.TrimEnd('\\', '/');
-        return Extract(payload, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "agwinterm", "portable-tools"));
+        return Extract(payload, CacheRoot);
     }
 
     internal static void ExtractEmbedded(string root)

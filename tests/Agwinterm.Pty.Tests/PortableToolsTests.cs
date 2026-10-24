@@ -6,6 +6,24 @@ namespace Agwinterm.Pty.Tests;
 
 public class PortableToolsTests
 {
+    [Fact]
+    public void InstallingUpdatedPortableReplacesOldPathEntriesAndUninstallRemovesAllVersions()
+    {
+        string root = @"C:\Users\test\AppData\Local\agwinterm\portable-tools";
+        string old = Path.Combine(root, new string('a', 64));
+        string current = Path.Combine(root, new string('b', 64));
+        string unrelated = Path.Combine(root + "-other", new string('c', 64));
+        string nested = Path.Combine(old, "user-tools");
+        string[] parts = [@"C:\first", old.ToUpperInvariant() + "\\", unrelated, nested, current, @"C:\last"];
+        string[] expected = [@"C:\first", current, unrelated, nested, @"C:\last"];
+        Assert.Equal(expected, CliInstaller.UpdatedPath(parts, current, root, remove: false));
+        Assert.Equal(expected, CliInstaller.UpdatedPath(expected, current, root, remove: false));
+        Assert.Equal(new[] { @"C:\first", unrelated, nested, @"C:\last" },
+            CliInstaller.UpdatedPath(parts, current, root, remove: true));
+        Assert.Equal(parts.Append(@"D:\installed"),
+            CliInstaller.UpdatedPath(parts, @"D:\installed", root, remove: false));
+    }
+
     private static readonly string[] Names =
         ["agwintermctl.exe", "agwinterm-hook.exe", "agwinterm-hook-linux-x64", "agwinterm-hook-linux-arm64"];
 
