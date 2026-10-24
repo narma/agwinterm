@@ -1,8 +1,15 @@
-param([string]$Distro = 'Ubuntu', [switch]$NativeHooks, [string]$LinuxUser = '', [switch]$NoPython)
+param([string]$Distro = 'Ubuntu', [switch]$NativeHooks, [string]$LinuxUser = '', [switch]$NoPython, [switch]$Portable)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+if ($Portable) {
+    $exe = (Get-ChildItem (Join-Path $repo 'installer/Output/agwinterm-portable-*-win-x64.exe') |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+    if (-not $exe) { throw 'Build the portable executable first' }
+    $ctl = Join-Path $repo 'installer/stage-portable/tools/agwintermctl.exe'
+    $NativeHooks = $true
+}
 $id = 'agwinterm-wsl-test-' + [Guid]::NewGuid().ToString('N')
 $state = Join-Path $env:LOCALAPPDATA $id
 $linuxHome = '/tmp/' + $id
@@ -21,10 +28,14 @@ function Check([bool]$Condition, [string]$Message) {
 }
 try {
     # The installer normally places the CLI next to the app; a solution build keeps separate outputs.
-    Get-ChildItem -LiteralPath (Split-Path $ctl) -Filter 'agwintermctl.*' | Copy-Item -Destination (Split-Path $exe)
-    if ($NativeHooks) {
+    if (-not $Portable) {
+        Get-ChildItem -LiteralPath (Split-Path $ctl) -Filter 'agwintermctl.*' | Copy-Item -Destination (Split-Path $exe)
+    }
+    if ($NativeHooks -and -not $Portable) {
         Copy-Item -LiteralPath (Join-Path $repo 'native/target/release/agwinterm-hook.exe') -Destination (Split-Path $exe) -Force
-        Copy-Item -LiteralPath (Join-Path $repo 'artifacts/wsl-hook/agwinterm-hook-linux-x64') -Destination (Split-Path $exe) -Force
+        foreach ($arch in @('x64', 'arm64')) {
+            Copy-Item -LiteralPath (Join-Path $repo "artifacts/wsl-hook/agwinterm-hook-linux-$arch") -Destination (Split-Path $exe) -Force
+        }
     }
     New-Item -ItemType Directory -Path $state | Out-Null
     & wsl @selectors --exec mkdir -p $linuxHome

@@ -19,20 +19,7 @@ permissions:
 
 jobs:
   wsl-hook:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build static Linux hook
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          cargo test --locked --manifest-path native/Cargo.toml -p agwinterm-hook
-          RUSTFLAGS='-C linker=rust-lld' cargo build --locked --release --manifest-path native/Cargo.toml -p agwinterm-hook --target x86_64-unknown-linux-musl
-          mkdir -p artifacts/wsl-hook
-          cp native/target/x86_64-unknown-linux-musl/release/agwinterm-hook artifacts/wsl-hook/agwinterm-hook-linux-x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wsl-hook
-          path: artifacts/wsl-hook/agwinterm-hook-linux-x64
+    uses: ./.github/workflows/wsl-hook.yml
 
   installer:
     needs: wsl-hook
@@ -42,7 +29,8 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: wsl-hook
+          pattern: wsl-hook-*
+          merge-multiple: true
           path: artifacts/wsl-hook
 
       - name: Setup .NET

@@ -10,7 +10,10 @@ namespace Agwinterm.Pty;
 public static class CliInstaller
 {
     /// <summary>The directory holding agwintermctl.exe (it sits next to Agwinterm.Win32.exe / the ctl exe).</summary>
-    public static string CliDir() => AppContext.BaseDirectory.TrimEnd('\\', '/');
+    public static string CliDir() => PortableTools.DirectoryPath;
+
+    /// <summary>Extract the portable toolset without opening the terminal or modifying PATH.</summary>
+    public static void ExtractPortableTools(string root) => PortableTools.ExtractEmbedded(root);
 
     private static string[] UserPathParts()
     {

@@ -182,19 +182,12 @@ public static class WslIntegration
 
     private static string RunBundled(ShellProfile profile, string[] args, string? input = null, int timeoutMs = 30000)
     {
-        string helper = Path.Combine(CliInstaller.CliDir(), "agwinterm-hook-linux-x64");
-        if (!File.Exists(helper)) throw new FileNotFoundException("The native WSL helper is missing. Reinstall the application or build tools/build-wsl-hook.ps1 and place agwinterm-hook-linux-x64 next to the app.", helper);
-        return RunCore(profile, new[] { "/bin/sh", "-c", InstallBootstrap, "agwinterm-helper", helper }.Concat(args).ToArray(), input, timeoutMs);
+        return RunCore(profile, new[] { "/bin/sh", "-c", InstallBootstrap, "agwinterm-helper", CliInstaller.CliDir() }.Concat(args).ToArray(), input, timeoutMs);
     }
 
     // Only bootstrap/copy/exec here; the native installer owns JSON and filesystem updates.
     // Copy to Linux storage so a Windows volume mounted noexec still works. No recursive cleanup.
-    internal const string InstallBootstrap = "set -eu; umask 077; "
-        + "[ \"$(uname -m)\" = x86_64 ] || { echo 'Native WSL integration currently requires x86_64' >&2; exit 1; }; "
-        + "source=$(wslpath -u \"$1\"); shift; temp=$(mktemp -d /tmp/agwinterm-native.XXXXXXXX); "
-        + "trap 'rm -f \"$temp/helper\"; rmdir \"$temp\"' EXIT; "
-        + "trap 'exit 1' HUP INT TERM; "
-        + "cp \"$source\" \"$temp/helper\"; chmod 700 \"$temp/helper\"; \"$temp/helper\" \"$@\"";
+    internal static string InstallBootstrap => Resource("bootstrap.sh");
 
     public static IReadOnlyDictionary<int, AgentResume.ProcRow> Ancestry(ShellProfile profile, int pid, string pane)
         => NativeAncestry(profile, pid, pane);

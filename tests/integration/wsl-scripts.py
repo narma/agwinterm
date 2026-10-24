@@ -1,6 +1,7 @@
 """Run in WSL: python3 tests/integration/wsl-scripts.py. Uses only a disposable HOME."""
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import shlex
@@ -24,13 +25,23 @@ class WslScripts(unittest.TestCase):
         self.bridge = self.cli.with_name('agwinterm-hook.exe')
         self.bridge.write_bytes(b'test bridge')
         self.helper = self.home / 'native installer'
-        shutil.copyfile(SCRIPTS.parents[2] / 'artifacts/wsl-hook/agwinterm-hook-linux-x64', self.helper)
+        arch = {'x86_64': 'x64', 'aarch64': 'arm64', 'arm64': 'arm64'}[platform.machine()]
+        shutil.copyfile(SCRIPTS.parents[2] / f'artifacts/wsl-hook/agwinterm-hook-linux-{arch}', self.helper)
         self.helper.chmod(0o700)
         self.environment = patch.dict(os.environ, {'HOME': str(self.home), 'CODEX_HOME': str(self.home / '.codex'),
             'XDG_CONFIG_HOME': str(self.home / '.config'), 'ZDOTDIR': str(self.home), 'AGWINTERM_ENABLED': '1',
             'CLAUDE_CONFIG_DIR': str(self.home / '.claude')})
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        if os.environ.get('AGWINTERM_TEST_POSIX_PATHS') == '1':
+            # Explicit Linux CI mode: paths already refer to POSIX fixture files.
+            # Real WSL runs continue to use the actual wslpath in both directions.
+            tools = self.home / 'path shim'
+            tools.mkdir()
+            shim = tools / 'wslpath'
+            shim.write_text('#!/bin/sh\n[ "$#" = 2 ] || exit 1\ncase "$1" in -u|-w) printf "%s\\n" "$2";; *) exit 1;; esac\n')
+            shim.chmod(0o700)
+            os.environ['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
 
     def install(self, kind, action='install'):
         def windows(path):
@@ -189,6 +200,36 @@ class WslScripts(unittest.TestCase):
             for kind in ('cli','hooks','skill','shell'):
                 self.install(kind)
         self.assertTrue((self.home/'.local/share/agwinterm/agwinterm-hook').exists())
+
+    def test_bootstrap_selects_guest_architecture_preserves_arguments_and_stdin(self):
+        tools = self.home / 'bootstrap tools'
+        tools.mkdir()
+        for name, script in {
+            'uname': 'printf "%s\\n" "$TEST_MACHINE"',
+            'wslpath': 'printf "%s\\n" "$2"',
+        }.items():
+            path = tools / name
+            path.write_text('#!/bin/sh\n' + script + '\n')
+            path.chmod(0o700)
+        for arch in ('x64', 'arm64'):
+            # Deliberately not executable: bootstrap must copy and chmod for noexec mounts.
+            (tools / f'agwinterm-hook-linux-{arch}').write_text(
+                f'#!/bin/sh\nprintf "%s\\n" {arch} "$1"; cat\n')
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        for machine, expected in [('x86_64', 'x64'), ('aarch64', 'arm64'), ('arm64', 'arm64')]:
+            result = subprocess.run(['sh', str(SCRIPTS / 'bootstrap.sh'), str(tools), "arg ' $value"],
+                                    env=dict(env, TEST_MACHINE=machine), input='payload', text=True, capture_output=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(f"{expected}\narg ' $value\npayload", result.stdout)
+        result = subprocess.run(['sh', str(SCRIPTS / 'bootstrap.sh'), str(tools)],
+                                env=dict(env, TEST_MACHINE='riscv64'), capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('Unsupported WSL architecture: riscv64', result.stderr)
+        (tools / 'agwinterm-hook-linux-arm64').unlink()
+        result = subprocess.run(['sh', str(SCRIPTS / 'bootstrap.sh'), str(tools)],
+                                env=dict(env, TEST_MACHINE='aarch64'), capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('helper is missing:', result.stderr)
 
 
 if __name__ == '__main__':

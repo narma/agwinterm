@@ -66,7 +66,7 @@ choco install agwinterm
 Direct download, from the [releases page](https://github.com/yeroo/agwinterm/releases):
 
 - **`agwinterm-setup-<version>.exe`** — per-user installer (Start-menu shortcut and uninstaller).
-- **`agwinterm-portable-<version>-win-x64.exe`** — a single self-contained exe, no installation; settings still live under `%LOCALAPPDATA%\agwinterm`.
+- **`agwinterm-portable-<version>-win-x64.exe`** — a single self-contained exe, no installation; settings still live under `%LOCALAPPDATA%\agwinterm`. The CLI and WSL helpers for Linux x64/ARM64 are embedded and extracted on first use to `%LOCALAPPDATA%\agwinterm\portable-tools`.
 
 **winget and Chocolatey get checkpoint releases only** — versions whose patch number is a multiple of 9 (0.17.9, 0.17.18, 0.17.27...). Both are human-moderated, and this project releases faster than those queues drain. Everything in between ships as a GitHub release, and both the in-app updater and Scoop pick those up immediately, so **the fastest way to stay current is the installer or Scoop**.
 
