@@ -800,7 +800,14 @@ public sealed class ControlServer : IDisposable
         int pid = args.TryGetProperty("pid", out var pv) && pv.ValueKind == JsonValueKind.Number && pv.TryGetInt32(out var p) ? p : 0;
         if (pid <= 0)
             return Err("session.bind resume: pid (the hook's process id) is required, it is how the pane's own agent is told from a nested one. Nothing bound.");
-        return host.SessionBindResume(target, agent, id!, GetString(args, "cwd"), pid) ? Ok("binding") : Err("session not found");
+        WslHookReport? report = null;
+        if (args.TryGetProperty("wsl", out var native))
+        {
+            try { report = native.Deserialize<WslHookReport>(); }
+            catch (JsonException) { return Err("Invalid native WSL hook report. Nothing bound."); }
+            if (report is null) return Err("Invalid native WSL hook report. Nothing bound.");
+        }
+        return host.SessionBindResume(target, agent, id!, GetString(args, "cwd"), pid, report) ? Ok("binding") : Err("session not found or hook report refused");
     }
 
     /// <summary>

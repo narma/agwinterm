@@ -129,7 +129,7 @@ public static class WslIntegration
     public static string Run(ShellProfile profile, string script, params string[] args)
         => RunCore(profile, script, null, args);
 
-    private static string RunCore(ShellProfile profile, string script, string? input, string[]? args = null, int timeoutMs = 30000)
+    private static string RunCore(ShellProfile profile, string script, string? input, string[]? args = null, int timeoutMs = 30000, string[]? nativeCommand = null)
     {
         var psi = new ProcessStartInfo(profile.Command) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
@@ -140,7 +140,7 @@ public static class WslIntegration
             ExportEnvironment(environment);
             foreach (var pair in environment) psi.Environment[pair.Key] = pair.Value;
         }
-        var helper = Selectors(profile.Args).Concat(new[] { "--exec", "python3", "-c", script }).Concat(args ?? []).ToArray();
+        var helper = Selectors(profile.Args).Concat(new[] { "--exec" }).Concat(nativeCommand ?? ["python3", "-c", script]).Concat(args ?? []).ToArray();
         foreach (string arg in LaunchArgs(helper, null, profile.Env)) psi.ArgumentList.Add(arg);
         using var process = Process.Start(psi) ?? throw new IOException("Could not start WSL");
         var stdout = process.StandardOutput.ReadToEndAsync();
@@ -153,7 +153,7 @@ public static class WslIntegration
         if (!process.WaitForExit(timeoutMs)) { process.Kill(entireProcessTree: true); throw new TimeoutException("WSL helper timed out"); }
         string output = stdout.GetAwaiter().GetResult();
         string error = stderr.GetAwaiter().GetResult();
-        if (process.ExitCode != 0) throw new IOException("WSL (python3 and Windows interop required): " + error.Trim());
+        if (process.ExitCode != 0) throw new IOException((nativeCommand is null ? "WSL (python3 and Windows interop required): " : "WSL native helper: ") + error.Trim());
         write.GetAwaiter().GetResult();
         return output.TrimEnd('\r', '\n');
     }
@@ -169,12 +169,23 @@ public static class WslIntegration
         };
         return RunCore(profile, Resource("install.py"), JsonSerializer.Serialize(new[] { kind, remove ? "remove" : "install",
             Path.Combine(CliInstaller.CliDir(), "agwintermctl.exe"), AgentSkill.SkillMarkdown,
-            Resource("hook.py"), Resource("shell.sh") }));
+            Resource("hook.py"), Resource("shell.sh"),
+            Path.Combine(CliInstaller.CliDir(), "agwinterm-hook.exe"),
+            Path.Combine(CliInstaller.CliDir(), "agwinterm-hook-linux-x64") }));
     }
 
     public static IReadOnlyDictionary<int, AgentResume.ProcRow> Ancestry(ShellProfile profile, int pid, string pane)
     {
         string json = Run(profile, Resource("ancestry.py"), pid.ToString(), pane);
+        return JsonSerializer.Deserialize<List<AgentResume.ProcRow>>(json)!.ToDictionary(p => p.Pid);
+    }
+
+    public static IReadOnlyDictionary<int, AgentResume.ProcRow> NativeAncestry(ShellProfile profile, int pid, string pane)
+    {
+        // UNC access uses the distribution's default user. A profile with -u may need its own
+        // credentials to read procfs; execute the installed native helper under those selectors.
+        string json = RunCore(profile, "", null, [pid.ToString(), pane], timeoutMs: 5000,
+            nativeCommand: ["/bin/sh", "-c", "exec \"$HOME/.local/share/agwinterm/agwinterm-hook\" --ancestry \"$@\"", "agwinterm-ancestry"]);
         return JsonSerializer.Deserialize<List<AgentResume.ProcRow>>(json)!.ToDictionary(p => p.Pid);
     }
 

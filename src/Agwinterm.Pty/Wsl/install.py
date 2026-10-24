@@ -2,10 +2,13 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 
-kind, action, windows_cli, skill, hook, shell = json.load(sys.stdin)
+payload = json.load(sys.stdin)
+kind, action, windows_cli, skill, hook, shell = payload[:6]
 home = Path.home()
 data = home / '.local/share/agwinterm'
 bin_dir = home / '.local/bin'
@@ -104,7 +107,26 @@ elif kind == 'shell':
         block(rc, 'shell', source)
 elif kind == 'hooks':
     cli_install()
-    write(data / 'hook.py', hook, True)
+    native = False
+    if len(payload) == 8 and os.uname().machine == 'x86_64':
+        bridge, linux = [Path(subprocess.check_output(['wslpath', '-u', p], text=True).rstrip('\n')) for p in payload[6:]]
+        if bridge.is_file() and linux.is_file():
+            data.mkdir(parents=True, exist_ok=True)
+            # Replace the inode: an existing hook may still be executing during an update.
+            fd, temporary = tempfile.mkstemp(prefix='.hook-', dir=data)
+            os.close(fd)
+            try:
+                shutil.copyfile(linux, temporary)
+                os.chmod(temporary, 0o700)
+                os.replace(temporary, data / 'agwinterm-hook')
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+            write(data / 'agwinterm-hook.windows-bridge', str(bridge) + '\n')
+            native = True
+    if not native:
+        write(data / 'hook.py', hook, True)
+    print('Hook runtime: ' + ('native Rust' if native else 'Python (native binaries unavailable for this distribution)'))
     common = [('UserPromptSubmit', 'active'), ('PostToolUse', 'active'), ('Stop', 'stop'), ('PermissionRequest', 'blocked'), ('SessionStart', 'bind')]
     for agent, path in (
         ('claude', claude_dir / 'settings.json'),
@@ -121,10 +143,18 @@ elif kind == 'hooks':
                 raise ValueError('Expected hooks object')
             events = common + ([('Notification', 'blocked')] if agent == 'claude' else [])
             for event, state in events:
-                command = 'python3 ' + shlex.quote(str(data / 'hook.py')) + ' ' + agent + ' ' + state
+                previous = 'python3 ' + shlex.quote(str(data / 'hook.py')) + ' ' + agent + ' ' + state
+                native_command = shlex.quote(str(data / 'agwinterm-hook')) + ' ' + agent + ' ' + state
+                command = native_command if native else previous
                 entries = hooks.setdefault(event, [])
                 if not isinstance(entries, list):
                     raise ValueError('Expected hook array')
+                # Migrate only our exact generated commands, preserving other hooks and options.
+                for entry in entries:
+                    if isinstance(entry, dict) and isinstance(entry.get('hooks'), list):
+                        for installed in entry['hooks']:
+                            if isinstance(installed, dict) and installed.get('command') in (previous, native_command):
+                                installed['command'] = command
                 if any(command == h.get('command') for e in entries if isinstance(e, dict) for h in e.get('hooks', []) if isinstance(h, dict)):
                     continue
                 entry = {'hooks': [{'type': 'command', 'command': command}]}

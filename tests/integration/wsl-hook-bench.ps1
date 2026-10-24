@@ -44,7 +44,7 @@ try {
  & wsl -d Ubuntu --exec bash -c 'exec -a codex python3 "$@"' bench "$linuxRepo/tests/integration/wsl-hook-bench.py" $linuxHome "$linuxRepo/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe" $session $id "$linuxRepo/artifacts/wsl-hook-research/results.json"
  if($LASTEXITCODE -ne 0){throw 'Benchmark failed'}
  $saved=Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object {Get-Content -LiteralPath $_.FullName -Raw}
- if(-not ($saved -join '').Contains('codex resume research-rust-session')){throw 'Native binding not persisted'}
+ if(-not ($saved -join '').Contains('codex resume research-linux-session')){throw 'Linux native binding not persisted'}
  Write-Host 'PASS native binding persisted'
 } finally {
  if($process -and -not $process.HasExited){Stop-Process -Id $process.Id -Force;$process.WaitForExit()}

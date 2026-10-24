@@ -1,15 +1,21 @@
-//! Experimental Windows hook receiver. Not installed automatically.
+//! Native WSL hook and Windows pipe receiver. Not installed automatically.
 //! JSON stays on stdin; Linux routing/context is passed explicitly by the wrapper.
 use serde_json::{Value, json};
 use std::{
     env,
-    fs::OpenOptions,
-    io::{self, BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read},
     time::Duration,
 };
 
 const MAX_EVENT: u64 = 4 * 1024 * 1024;
 
+#[cfg(windows)]
+use std::io::Write;
+
+#[cfg(target_os = "linux")]
+mod linux;
+
+#[cfg(any(windows, test))]
 fn transcript_path(distro: &str, path: &str) -> Result<String, String> {
     if distro.is_empty()
         || distro.contains(['/', '\\'])
@@ -69,9 +75,28 @@ fn request(
     )
 }
 
+#[cfg(windows)]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     // agent state target pipe Linux-PID Linux-cwd [WSL distribution]
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--relay") {
+        let pipe = args.get(1).ok_or("missing pipe")?;
+        let mut input = Vec::new();
+        io::stdin().take(MAX_EVENT + 1).read_to_end(&mut input)?;
+        if input.len() as u64 > MAX_EVENT {
+            return Err("request too large".into());
+        }
+        let envelope: Value = serde_json::from_slice(&input)?;
+        if envelope["version"] != 1
+            || !matches!(
+                envelope["request"]["cmd"].as_str(),
+                Some("session.bind" | "session.status")
+            )
+        {
+            return Err("unsupported hook protocol".into());
+        }
+        return exchange(pipe, &envelope["request"]);
+    }
     if args.len() < 6 {
         return Err("expected agent state target pipe linux-pid linux-cwd [distribution]".into());
     }
@@ -116,10 +141,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         args[4].parse()?,
         &args[5],
     )?;
-    let mut pipe = OpenOptions::new()
+    exchange(&args[3], &message)
+}
+
+#[cfg(windows)]
+fn exchange(name: &str, message: &Value) -> Result<(), Box<dyn std::error::Error>> {
+    if name.is_empty() || name.contains(['/', '\\']) {
+        return Err("invalid pipe name".into());
+    }
+    let mut pipe = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(format!(r"\\.\pipe\{}", args[3]))?;
+        .open(format!(r"\\.\pipe\{}", name))?;
     serde_json::to_writer(&mut pipe, &message)?;
     pipe.write_all(b"\n")?;
     pipe.flush()?;
@@ -137,14 +170,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn main() {
     // A hard process deadline also bounds a blocked stdin/pipe write/read. Windows
     // closes all process handles on exit. Missing pipes fail immediately.
-    std::thread::spawn(|| {
-        std::thread::sleep(Duration::from_secs(2));
-        std::process::exit(0);
+    let relay = env::args().nth(1).as_deref() == Some("--relay");
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(if cfg!(windows) { 2 } else { 3 }));
+        std::process::exit(if relay { 1 } else { 0 });
     });
-    if let Err(error) = run()
-        && env::var_os("AGWINTERM_HOOK_DEBUG").is_some()
-    {
-        eprintln!("agwinterm-hook: {error}");
+    #[cfg(windows)]
+    let result = run();
+    #[cfg(target_os = "linux")]
+    let result = linux::run();
+    if let Err(error) = result {
+        if env::var_os("AGWINTERM_HOOK_DEBUG").is_some() {
+            eprintln!("agwinterm-hook: {error}");
+        }
+        if relay {
+            std::process::exit(1);
+        }
     }
 }
 

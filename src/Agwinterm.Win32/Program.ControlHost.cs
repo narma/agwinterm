@@ -1263,7 +1263,7 @@ internal partial class Program
     // because the hook exits as soon as it is answered. The command lines (a CIM query, ~1 s) are read
     // after it, off the pipe thread: the agent and the shell outlive the hook. The outcome, bound or
     // ignored with the reason, is a `bind` event.
-    public bool SessionBindResume(string? target, string agent, string sessionId, string? cwd, int hookPid)
+    public bool SessionBindResume(string? target, string agent, string sessionId, string? cwd, int hookPid, WslHookReport? report = null)
     {
         if (string.IsNullOrEmpty(target)) return false;
         var hit = FindPaneById(target!);
@@ -1276,7 +1276,16 @@ internal partial class Program
             // Linux PIDs never enter the Windows process lookup. Read while the hook is alive.
             try
             {
-                var procs = WslIntegration.Ancestry(profile, hookPid, pane.Id);
+                IReadOnlyDictionary<int, AgentResume.ProcRow> procs;
+                if (report is null) procs = WslIntegration.Ancestry(profile, hookPid, pane.Id);
+                else
+                {
+                    try { procs = report.Verify(profile, hookPid, pane.Id); }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                    {
+                        procs = WslIntegration.NativeAncestry(profile, hookPid, pane.Id);
+                    }
+                }
                 string? command = AgentResume.FindAgentCommandLine(procs, hookPid, 0, agent, out string? why);
                 if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
                 string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
@@ -1287,6 +1296,7 @@ internal partial class Program
             }
             catch (Exception ex) { EmitEvent("bind", pane.Id, "ignored: " + ex.Message); return false; }
         }
+        if (report is not null) return false; // Linux observations cannot bind Windows panes.
         var chain = SnapshotAncestry(hookPid);
         int? shellPid = pane.S.ChildProcessId;
         var shell = Agwinterm.Pty.AgentResume.ClassifyShell(ResolveProfile(hit.Value.ses?.ProfileName)?.Command ?? "powershell.exe");

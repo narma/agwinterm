@@ -48,6 +48,12 @@ $coreDll = Join-Path $root "native\target\release\agwinterm_core.dll"
 $ptyExe  = Join-Path $root "native\target\release\agwinterm-ptyhost.exe"
 Copy-Item $coreDll $stage -Force
 Copy-Item $ptyExe  $stage -Force
+$linuxHook = Join-Path $root 'artifacts/wsl-hook/agwinterm-hook-linux-x64'
+if (-not (Test-Path -LiteralPath $linuxHook)) {
+  & (Join-Path $root 'tools/build-wsl-hook.ps1')
+}
+Copy-Item (Join-Path $root 'native/target/release/agwinterm-hook.exe') $stage -Force
+Copy-Item $linuxHook $stage -Force
 # The app loads the Meslo Nerd Font by name from its exe dir. It used to live in lite/assets and
 # moved to assets/fonts/ when lite left this repository — it is the MAIN app's font too, and a
 # shared file has no business living inside a component that was about to be deleted.
@@ -55,7 +61,7 @@ Copy-Item (Join-Path $root "assets\fonts\MesloLGLDZNerdFont-Regular.ttf") $stage
 Copy-Item (Join-Path $root "assets\fonts\FONT-LICENSE.txt") $stage -Force
 
 # sanity: required payload present
-foreach ($f in @("Agwinterm.Win32.exe","agwintermctl.exe","agwinterm_core.dll","agwinterm-ptyhost.exe","conpty.dll","x64\OpenConsole.exe","MesloLGLDZNerdFont-Regular.ttf","assets\agwinterm.ico")) {
+foreach ($f in @("Agwinterm.Win32.exe","agwintermctl.exe","agwinterm_core.dll","agwinterm-ptyhost.exe","agwinterm-hook.exe","agwinterm-hook-linux-x64","conpty.dll","x64\OpenConsole.exe","MesloLGLDZNerdFont-Regular.ttf","assets\agwinterm.ico")) {
   if (-not (Test-Path (Join-Path $stage $f))) { throw "stage missing $f" }
 }
 if (-not (Get-ChildItem (Join-Path $stage "themes") -Filter *.conf -ErrorAction SilentlyContinue)) { throw "stage missing themes\*.conf" }

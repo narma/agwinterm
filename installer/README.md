@@ -26,6 +26,7 @@ installer\build-lite.ps1   # lite setup only — skips the .NET publish, handy w
 Prereqs:
 - .NET SDK with the `net10.0-windows` target (the repo pins .NET 10).
 - Rust + MSVC C++ build tools (for the Rust core/host and the lite client).
+- The static Linux hook at `artifacts/wsl-hook/agwinterm-hook-linux-x64`. Release CI builds it on Linux. Local builds can run `tools/build-wsl-hook.ps1` using Rust in WSL with the `x86_64-unknown-linux-musl` target installed; `build.ps1` invokes that helper if the artifact is absent. The installer ships both this binary and `agwinterm-hook.exe`.
 - [Inno Setup 6](https://jrsoftware.org/isinfo.php) — `ISCC.exe` on PATH, the default install location,
   or the per-user winget location (`winget install JRSoftware.InnoSetup`).
 

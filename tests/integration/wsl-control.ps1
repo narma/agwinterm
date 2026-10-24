@@ -1,4 +1,4 @@
-param([string]$Distro = 'Ubuntu')
+param([string]$Distro = 'Ubuntu', [switch]$NativeHooks, [string]$LinuxUser = '')
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
@@ -6,6 +6,8 @@ $ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermc
 $id = 'agwinterm-wsl-test-' + [Guid]::NewGuid().ToString('N')
 $state = Join-Path $env:LOCALAPPDATA $id
 $linuxHome = '/tmp/' + $id
+$selectors = @('-d', $Distro)
+if ($LinuxUser) { $selectors += @('-u', $LinuxUser) }
 $process = $null
 function Ctl([string[]]$Arguments) {
     $raw = (& $ctl @Arguments --pipe $id --json) -join "`n"
@@ -20,10 +22,14 @@ function Check([bool]$Condition, [string]$Message) {
 try {
     # The installer normally places the CLI next to the app; a solution build keeps separate outputs.
     Get-ChildItem -LiteralPath (Split-Path $ctl) -Filter 'agwintermctl.*' | Copy-Item -Destination (Split-Path $exe)
+    if ($NativeHooks) {
+        Copy-Item -LiteralPath (Join-Path $repo 'native/target/release/agwinterm-hook.exe') -Destination (Split-Path $exe) -Force
+        Copy-Item -LiteralPath (Join-Path $repo 'artifacts/wsl-hook/agwinterm-hook-linux-x64') -Destination (Split-Path $exe) -Force
+    }
     New-Item -ItemType Directory -Path $state | Out-Null
-    & wsl -d $Distro --exec mkdir -p $linuxHome
+    & wsl @selectors --exec mkdir -p $linuxHome
     if ($LASTEXITCODE -ne 0) { throw 'Could not create disposable Linux HOME' }
-    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = @('-d', $Distro, '--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" } }) } |
+    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = $selectors + @('--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" } }) } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'profiles.json') -Encoding utf8
     'new-session-dir = current' | Set-Content -LiteralPath (Join-Path $state 'agwinterm.conf')
     $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id, '--no-restore', '--default-session-host', 'inprocess') -WindowStyle Hidden -PassThru
@@ -41,6 +47,7 @@ try {
         $result = Ctl @('install', $kind, '--target', $session)
         Check ($result -match 'WSL' -and $result -notmatch 'refused') "WSL $kind installer uses Linux HOME"
         if ($kind -eq 'hooks') { Check ($result.Contains("$linuxHome/.claude/settings.json")) 'Hook destinations remain inside test HOME' }
+        if ($kind -eq 'hooks' -and $NativeHooks) { Check ($result.Contains('Hook runtime: native Rust')) 'Installer selects the native Linux runtime' }
     }
     $null = Ctl @('session', 'type', ('source "$HOME/.bashrc"; printf "ENV=%s/%s\n" "$AGWINTERM_ENABLED" "$AGWINTERM_PIPE"; agwintermctl ping' + [char]13), '--target', $session)
     Start-Sleep -Seconds 2
@@ -103,7 +110,7 @@ finally {
     $expected = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $id))
     if ($state -eq $expected -and $id -match '^agwinterm-wsl-test-[a-f0-9]{32}$') {
         if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force }
-        & wsl -d $Distro --exec python3 -c 'import shutil,sys; p=sys.argv[1]; assert p.startswith("/tmp/agwinterm-wsl-test-") and "/" not in p[5:]; shutil.rmtree(p)' $linuxHome
+        & wsl @selectors --exec python3 -c 'import shutil,sys; p=sys.argv[1]; assert p.startswith("/tmp/agwinterm-wsl-test-") and "/" not in p[5:]; shutil.rmtree(p)' $linuxHome
     }
 }
 
