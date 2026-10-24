@@ -52,8 +52,97 @@ fn ancestry(pid: u32, pane: &str) -> Result<Value, Box<dyn std::error::Error>> {
     Err("ancestry exceeds 64 processes".into())
 }
 
+fn foreground() -> Result<Value, Box<dyn std::error::Error>> {
+    let mut input = Vec::new();
+    io::stdin().take(MAX_EVENT + 1).read_to_end(&mut input)?;
+    if input.len() as u64 > MAX_EVENT {
+        return Err("foreground request too large".into());
+    }
+    let request: Value = serde_json::from_slice(&input)?;
+    let panes: Vec<String> = serde_json::from_value(request["panes"].clone())?;
+    let mut denied: Vec<String> = serde_json::from_value(request["denied"].clone())?;
+    denied.extend(
+        [
+            "sh", "bash", "zsh", "fish", "dash", "nu", "env", "login", "init", "systemd",
+        ]
+        .map(str::to_owned),
+    );
+    let mut result = serde_json::Map::new();
+    for entry in fs::read_dir("/proc")? {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|s| s.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        // Processes can exit or become inaccessible while we inspect them; skip those rows.
+        let inspect = || -> Result<Option<(String, String)>, Box<dyn std::error::Error>> {
+            let root = entry.path();
+            let stat = fs::read_to_string(root.join("stat"))?;
+            let fields: Vec<_> = stat[stat.rfind(')').ok_or("invalid stat")? + 1..]
+                .split_whitespace()
+                .collect();
+            if fields.get(4).ok_or("missing terminal")?.parse::<i64>()? == 0
+                || fields
+                    .get(5)
+                    .ok_or("missing foreground group")?
+                    .parse::<i64>()?
+                    != i64::from(pid)
+            {
+                return Ok(None);
+            }
+            let environment = fs::read(root.join("environ"))?;
+            let Some(pane) = panes.iter().find(|pane| {
+                let identity = format!("AGWINTERM_SESSION_ID={pane}");
+                environment
+                    .split(|b| *b == 0)
+                    .any(|s| s == identity.as_bytes())
+            }) else {
+                return Ok(None);
+            };
+            let command = fs::read(root.join("cmdline"))?;
+            let argv: Vec<_> = std::str::from_utf8(&command)?
+                .split('\0')
+                .filter(|s| !s.is_empty())
+                .collect();
+            let Some(first) = argv.first() else {
+                return Ok(None);
+            };
+            let name = Path::new(first)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if denied.iter().any(|s| s == name) {
+                return Ok(None);
+            }
+            Ok(Some((
+                pane.clone(),
+                argv.iter()
+                    .map(|s| crate::install::quote(s))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )))
+        };
+        if let Ok(Some((pane, command))) = inspect() {
+            result.insert(pane, json!(command));
+        }
+    }
+    Ok(Value::Object(result))
+}
+
 pub(super) fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.first().is_some_and(|s| s == "--install") {
+        return crate::install::run();
+    }
+    if args.first().is_some_and(|s| s == "--foreground") {
+        println!("{}", foreground()?);
+        return Ok(());
+    }
     if args.first().is_some_and(|s| s == "--ancestry") {
         let pid = args.get(1).ok_or("missing PID")?.parse()?;
         let pane = args.get(2).ok_or("missing pane")?;

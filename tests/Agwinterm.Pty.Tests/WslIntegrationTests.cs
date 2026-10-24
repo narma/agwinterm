@@ -95,11 +95,10 @@ public class WslIntegrationTests
         Assert.StartsWith("nested:", reason);
     }
 
-    [Theory]
-    [InlineData("install.py")]
-    [InlineData("hook.py")]
-    [InlineData("ancestry.py")]
-    [InlineData("foreground.py")]
-    [InlineData("shell.sh")]
-    public void InstallerResourcesAreShipped(string resource) => Assert.NotEmpty(WslIntegration.Resource(resource));
+    [Fact]
+    public void ShellResourceIsShippedWithoutPythonFallbacks()
+    {
+        Assert.NotEmpty(WslIntegration.Resource("shell.sh"));
+        Assert.DoesNotContain(typeof(WslIntegration).Assembly.GetManifestResourceNames(), name => name.StartsWith("Agwinterm.Pty.Wsl.") && name.EndsWith(".py"));
+    }
 }

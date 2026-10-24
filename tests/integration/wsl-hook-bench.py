@@ -8,7 +8,7 @@ wrapper.parent.mkdir(parents=True, exist_ok=True)
 wrapper.write_text('#!/bin/sh\nexec '+__import__('shlex').quote(cli)+' "$@"\n')
 wrapper.chmod(0o700)
 hook = root / 'hook.py'
-shutil.copyfile(repo / 'src/Agwinterm.Pty/Wsl/hook.py', hook)
+shutil.copyfile(repo / 'tests/integration/fixtures/wsl-hook-python.py', hook)
 os.environ.update(HOME=home, AGWINTERM_SESSION_ID=target, AGWINTERM_PIPE=pipe)
 os.environ['AGWINTERM_HOOK_EXE']=str(repo / 'native/target/release/agwinterm-hook.exe')
 native=['/bin/sh',str(repo / 'native/agwinterm-hook/hook.sh'),'codex']

@@ -1,10 +1,9 @@
 """Run in WSL: python3 tests/integration/wsl-scripts.py. Uses only a disposable HOME."""
-import contextlib
-import io
 import json
 import os
 from pathlib import Path
-import runpy
+import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -15,52 +14,52 @@ SCRIPTS = Path(__file__).resolve().parents[2] / 'src/Agwinterm.Pty/Wsl'
 
 class WslScripts(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='agwinterm-wsl-')
+        self.temp = tempfile.TemporaryDirectory(prefix="agwinterm-wsl space' тест-")
         self.addCleanup(self.temp.cleanup)
         self.home = Path(self.temp.name)
         self.cli = self.home / 'Windows CLI with spaces' / 'agwintermctl.exe'
         self.cli.parent.mkdir()
         self.cli.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
         self.cli.chmod(0o700)
+        self.bridge = self.cli.with_name('agwinterm-hook.exe')
+        self.bridge.write_bytes(b'test bridge')
+        self.helper = self.home / 'native installer'
+        shutil.copyfile(SCRIPTS.parents[2] / 'artifacts/wsl-hook/agwinterm-hook-linux-x64', self.helper)
+        self.helper.chmod(0o700)
         self.environment = patch.dict(os.environ, {'HOME': str(self.home), 'CODEX_HOME': str(self.home / '.codex'),
             'XDG_CONFIG_HOME': str(self.home / '.config'), 'ZDOTDIR': str(self.home), 'AGWINTERM_ENABLED': '1',
             'CLAUDE_CONFIG_DIR': str(self.home / '.claude')})
         self.environment.start()
         self.addCleanup(self.environment.stop)
 
-    def install(self, kind, action='install', native=False):
-        payload = [kind, action, r'C:\Windows CLI with spaces\agwintermctl.exe', 'test skill',
-                   (SCRIPTS / 'hook.py').read_text(), (SCRIPTS / 'shell.sh').read_text()]
-        if native:
-            payload += ['bridge', 'linux']
-        paths = {'bridge': str(self.cli.with_name('agwinterm-hook.exe')), 'linux': str(self.cli.with_name('agwinterm-hook-linux-x64'))}
-        with patch('sys.stdin', io.StringIO(json.dumps(payload))), patch('subprocess.check_output', side_effect=lambda args, **kwargs: paths.get(args[-1], str(self.cli))), contextlib.redirect_stdout(io.StringIO()) as output:
-            runpy.run_path(str(SCRIPTS / 'install.py'), run_name='__main__')
-        return output.getvalue()
+    def install(self, kind, action='install'):
+        def windows(path):
+            return subprocess.check_output(['wslpath','-w',str(path)],text=True).rstrip('\n')
+        payload = dict(version=1, kind=kind, action=action, windowsCli=windows(self.cli), windowsBridge=windows(self.bridge),
+                       skill='test skill',shell=(SCRIPTS/'shell.sh').read_text())
+        return subprocess.check_output([str(self.helper),'--install'],input=json.dumps(payload),text=True)
 
-    def test_native_upgrade_and_fallback_preserve_user_hooks(self):
+    def test_native_upgrade_preserves_user_hooks_and_refuses_missing_bridge(self):
         self.install('hooks')
         path = self.home / '.codex/hooks.json'
         settings = json.loads(path.read_text())
         settings['hooks']['Stop'][0]['hooks'].append({'command': 'echo mine'})
+        settings['hooks']['Stop'][0]['hooks'][0]['command'] = 'python3 ' + shlex.quote(str(self.home/'.local/share/agwinterm/hook.py')) + ' codex stop'
         path.write_text(json.dumps(settings))
-        self.cli.with_name('agwinterm-hook.exe').write_bytes(b'bridge')
-        binary = self.cli.with_name('agwinterm-hook-linux-x64')
-        binary.write_bytes(b'native')
-        self.assertIn('native Rust', self.install('hooks', native=True))
+        self.assertIn('native Rust', self.install('hooks'))
         first = path.read_text()
         self.assertNotIn('python3', first)
         self.assertIn('echo mine', first)
         self.assertEqual(1, len(json.loads(first)['hooks']['Stop']))
-        self.install('hooks', native=True)
+        self.install('hooks')
         self.assertEqual(first, path.read_text())
         installed = self.home / '.local/share/agwinterm/agwinterm-hook'
-        self.assertEqual(b'native', installed.read_bytes())
+        self.assertEqual(self.helper.read_bytes(), installed.read_bytes())
         self.assertEqual(0o700, installed.stat().st_mode & 0o777)
-        binary.unlink()
-        self.assertIn('Python', self.install('hooks', native=True))
-        self.assertIn('python3', path.read_text())
-        self.assertIn('echo mine', path.read_text())
+        self.bridge.unlink()
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.install('hooks')
+        self.assertEqual(first,path.read_text())
 
     def test_repeat_install_preserves_hooks_and_profile_and_cli_quotes(self):
         settings = self.home / '.claude/settings.json'
@@ -89,6 +88,22 @@ class WslScripts(unittest.TestCase):
         path.write_text('{invalid')
         self.assertIn('refused', self.install('hooks'))
         self.assertEqual('{invalid', path.read_text())
+
+    def test_incomplete_profile_block_is_not_overwritten(self):
+        path=self.home/'.profile'
+        original='export MINE=1\n# >>> agwinterm cli >>>\nbroken'
+        path.write_text(original)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.install('cli')
+        self.assertEqual(original,path.read_text())
+
+    def test_cli_remove_refuses_unrelated_executable(self):
+        path=self.home/'.local/bin/agwintermctl'
+        path.parent.mkdir(parents=True)
+        path.write_text('unrelated executable')
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.install('cli','remove')
+        self.assertEqual('unrelated executable',path.read_text())
 
     def test_devin_jsonc_is_backed_up_and_preserves_string_contents(self):
         path = self.home / '.config/devin/config.json'
@@ -120,8 +135,31 @@ class WslScripts(unittest.TestCase):
         self.assertTrue((self.home / 'custom codex/skills/agwinterm/SKILL.md').exists())
 
     def test_ancestry_rejects_pid_from_another_pane(self):
-        result = subprocess.run(['python3', str(SCRIPTS / 'ancestry.py'), str(os.getpid()), 'not-this-pane'], capture_output=True)
+        result = subprocess.run([str(self.helper),'--ancestry',str(os.getpid()),'not-this-pane'],capture_output=True)
         self.assertNotEqual(0, result.returncode)
+
+    def test_config_symlink_is_preserved_and_backup_contains_original(self):
+        target=self.home/'dotfiles/settings.json'
+        target.parent.mkdir()
+        original='{"custom":true}'
+        target.write_text(original)
+        link=self.home/'.claude/settings.json'
+        link.parent.mkdir()
+        link.symlink_to(target)
+        self.install('hooks')
+        self.assertTrue(link.is_symlink())
+        self.assertTrue(json.loads(target.read_text())['custom'])
+        self.assertEqual(original,link.with_name('settings.json.agwinterm.bak').read_text())
+
+    def test_install_without_python_on_path(self):
+        restricted=self.home/'restricted'
+        restricted.mkdir()
+        for tool in ('wslpath','sh'):
+            (restricted/tool).symlink_to(shutil.which(tool))
+        with patch.dict(os.environ,{'PATH':str(restricted)}):
+            for kind in ('cli','hooks','skill','shell'):
+                self.install(kind)
+        self.assertTrue((self.home/'.local/share/agwinterm/agwinterm-hook').exists())
 
 
 if __name__ == '__main__':

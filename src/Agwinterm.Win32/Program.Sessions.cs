@@ -269,11 +269,14 @@ internal partial class Program
         string? pcwd = string.IsNullOrEmpty(cwd) ? prof?.Cwd : cwd;
         // Per-profile env vars (WT parity). AGWINTERM_* set by CreatePane win, so profile env can't
         // clobber our identity vars; a custom-command's $AGW_* extraEnv still overrides last.
-        if (prof?.Env is { Count: > 0 } penv)
+        // WSL profile variables belong to Linux. In particular its PATH must not replace
+        // the Windows PATH used to locate wsl.exe and its interop dependencies.
+        if (!WslIntegration.IsWsl(cmd) && prof?.Env is { Count: > 0 } penv)
             foreach (var kv in penv) if (!kv.Key.StartsWith("AGWINTERM", StringComparison.OrdinalIgnoreCase)) env[kv.Key] = kv.Value;
         string exe = Path.GetFileName(cmd).ToLowerInvariant();
         if (WslIntegration.IsWsl(cmd))
         {
+            if (prof?.Env?.TryGetValue("WSLENV", out string? wslenv) == true) env["WSLENV"] = wslenv;
             WslIntegration.ExportEnvironment(env);
             pargs = WslIntegration.LaunchArgs(pargs, pcwd, prof?.Env);
             pcwd = null; // Linux cwd belongs to wsl --cd, never CreateProcessW.

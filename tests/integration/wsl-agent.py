@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 
 data = Path.home() / '.local/share/agwinterm'
-hook = [str(data / 'agwinterm-hook')] if (data / 'agwinterm-hook').exists() else ['python3', str(data / 'hook.py')]
+hook = [str(data / 'agwinterm-hook')]
 event = json.dumps({'session_id': 'wsl-test-conversation', 'cwd': os.getcwd()})
 for state in ('bind', 'active', 'stop'):
     subprocess.run(hook + ['codex', state], input=event, text=True, check=True)

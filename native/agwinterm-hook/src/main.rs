@@ -13,6 +13,8 @@ const MAX_EVENT: u64 = 4 * 1024 * 1024;
 use std::io::Write;
 
 #[cfg(target_os = "linux")]
+mod install;
+#[cfg(target_os = "linux")]
 mod linux;
 
 #[cfg(any(windows, test))]
@@ -170,20 +172,28 @@ fn exchange(name: &str, message: &Value) -> Result<(), Box<dyn std::error::Error
 fn main() {
     // A hard process deadline also bounds a blocked stdin/pipe write/read. Windows
     // closes all process handles on exit. Missing pipes fail immediately.
-    let relay = env::args().nth(1).as_deref() == Some("--relay");
+    let operation = env::args().nth(1).unwrap_or_default();
+    let administrative = operation.starts_with("--");
+    let deadline = if operation == "--install" {
+        25
+    } else if cfg!(windows) {
+        2
+    } else {
+        3
+    };
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(if cfg!(windows) { 2 } else { 3 }));
-        std::process::exit(if relay { 1 } else { 0 });
+        std::thread::sleep(Duration::from_secs(deadline));
+        std::process::exit(if administrative { 1 } else { 0 });
     });
     #[cfg(windows)]
     let result = run();
     #[cfg(target_os = "linux")]
     let result = linux::run();
     if let Err(error) = result {
-        if env::var_os("AGWINTERM_HOOK_DEBUG").is_some() {
+        if administrative || env::var_os("AGWINTERM_HOOK_DEBUG").is_some() {
             eprintln!("agwinterm-hook: {error}");
         }
-        if relay {
+        if administrative {
             std::process::exit(1);
         }
     }

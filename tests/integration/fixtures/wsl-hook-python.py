@@ -1,3 +1,4 @@
+"""Historical Python hook retained only as a benchmark baseline; never installed or shipped."""
 import json
 import os
 from pathlib import Path

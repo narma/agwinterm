@@ -1,4 +1,4 @@
-param([string]$Distro = 'Ubuntu', [switch]$NativeHooks, [string]$LinuxUser = '')
+param([string]$Distro = 'Ubuntu', [switch]$NativeHooks, [string]$LinuxUser = '', [switch]$NoPython)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
@@ -29,7 +29,13 @@ try {
     New-Item -ItemType Directory -Path $state | Out-Null
     & wsl @selectors --exec mkdir -p $linuxHome
     if ($LASTEXITCODE -ne 0) { throw 'Could not create disposable Linux HOME' }
-    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = $selectors + @('--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" } }) } |
+    $profileEnv = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" }
+    if ($NoPython) {
+        & wsl @selectors --exec sh -c 'mkdir -p "$1/tools"; for tool in wslpath uname mktemp cp chmod rm rmdir mkdir sh bash sleep env; do ln -s "$(command -v "$tool")" "$1/tools/$tool"; done' setup $linuxHome
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot create Python-free PATH' }
+        $profileEnv.PATH = "$linuxHome/tools"
+    }
+    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = $selectors + @('--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = $profileEnv }) } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'profiles.json') -Encoding utf8
     'new-session-dir = current' | Set-Content -LiteralPath (Join-Path $state 'agwinterm.conf')
     $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id, '--no-restore', '--default-session-host', 'inprocess') -WindowStyle Hidden -PassThru
@@ -39,10 +45,16 @@ try {
     }
     $tree = Ctl @('tree')
     $session = $tree.workspaces[0].sessions[0].id
-    $null = Ctl @('session', 'type', ('printf "TEST_HOME=%s\n" "$HOME"' + [char]13), '--target', $session)
+    try { $null = Ctl @('session', 'type', ('printf "TEST_HOME=%s\n" "$HOME"' + [char]13), '--target', $session) }
+    catch { throw ("Initial shell failed: " + (Ctl @('session', 'text', '--target', $session))) }
     Start-Sleep -Seconds 1
     $initial = Ctl @('session', 'text', '--target', $session)
     Check (($initial -replace '\s', '').Contains("TEST_HOME=$linuxHome")) 'Linux HOME is isolated before any installer runs'
+    if ($NoPython) {
+        $null = Ctl @('session', 'type', ('if command -v python3; then printf "PYTHON_%s\n" PRESENT; else printf "PYTHON_%s\n" ABSENT; fi' + [char]13), '--target', $session)
+        Start-Sleep -Seconds 1
+        Check ((Ctl @('session', 'text', '--target', $session)).Contains('PYTHON_ABSENT')) 'Python is absent from the integration PATH'
+    }
     foreach ($kind in @('cli', 'shell', 'hooks', 'skill')) {
         $result = Ctl @('install', $kind, '--target', $session)
         Check ($result -match 'WSL' -and $result -notmatch 'refused') "WSL $kind installer uses Linux HOME"
@@ -65,7 +77,8 @@ try {
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
     Check (($saved -join '').Contains("$linuxHome/path with spaces")) 'Persistence retains Linux cwd'
     $fixture = (& wsl -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'wsl-agent.py')).Trim()
-    $agentCommand = "bash -c 'exec -a codex python3 `"$fixture`" --dangerously-bypass-approvals-and-sandbox'"
+    # Python is only the test's fake agent, explicitly outside the integration PATH.
+    $agentCommand = "bash -c 'exec -a codex /usr/bin/python3 `"$fixture`" --dangerously-bypass-approvals-and-sandbox'"
     $null = Ctl @('session', 'type', ($agentCommand + [char]13), '--target', $copy)
     Start-Sleep -Seconds 3
     $screen = Ctl @('session', 'text', '--target', $copy)
