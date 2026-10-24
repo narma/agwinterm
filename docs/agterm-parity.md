@@ -34,6 +34,26 @@ and `session context` commands. This follows the control-API approach instead of
 tracking to the sidebar. The agent chooses the label; it need not match its own generated chat title.
 See [WSL setup](wsl.md#agent-conversation-titles).
 
+The current branch also addresses upstream [#353](https://github.com/yeroo/agwinterm/issues/353):
+unnamed sessions display the focused pane's cwd basename, and `tree` reports `customName` plus
+`paneCwds` keyed by pane ID. Explicit names remain pinned; automatic labels follow live cwd when
+shell integration reports it, otherwise the launch directory. Root and empty-path behavior is tested.
+
+Related upstream issues checked on 2026-10-24:
+
+- [#354](https://github.com/yeroo/agwinterm/issues/354), closed: splits inherit live cwd. Already
+  implemented with `PaneCwd`; the WSL test now covers it alongside independent pane directories.
+- [#287](https://github.com/yeroo/agwinterm/issues/287), closed: pane-targeted rename names the
+  owning session. The existing reply/target contract is retained.
+- [#316](https://github.com/yeroo/agwinterm/issues/316), closed: SessionStart binding and agent resume.
+  Naming guidance extends this hook without replacing its binding responsibility.
+- [#313](https://github.com/yeroo/agwinterm/issues/313), closed: OSC 9;9 cwd notifications;
+  [#326](https://github.com/yeroo/agwinterm/issues/326), closed: scaled inline rename controls;
+  [#294](https://github.com/yeroo/agwinterm/issues/294), closed: state saves blocking the UI.
+  These are related background issues, outside this change.
+- [#364](https://github.com/yeroo/agwinterm/issues/364), open: per-workspace default directory.
+  This changes where sessions launch and is separate from displaying their actual directory.
+
 Validation covers SessionStart guidance, silent status hooks, native hook installation, status/resume
 binding and shell integration. The existing rename/context tests cover their persisted API behavior.
 

@@ -522,6 +522,12 @@ public sealed class ControlServer : IDisposable
                   // "this agent is working" from "its hook died an hour ago" gains nothing from an
                   // absent field, and would have to guess which of the two absence meant.
                   .Append(",\"statusChangedAt\":").Append(n.StatusChangedAt.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                // Legacy host adapters do not distinguish explicit and generated names. Omit
+                // the field there rather than claiming their labels are safe to overwrite.
+                if (n.PaneCwds is not null || n.CustomName is not null)
+                    sb.Append(",\"customName\":").Append(JsonSerializer.Serialize(n.CustomName));
+                if (n.PaneCwds is { } cwds)
+                    sb.Append(",\"paneCwds\":").Append(JsonSerializer.Serialize(cwds));
                 if (n.Overlay) sb.Append(",\"overlay\":true");
                 if (n.Hud is { } hud) sb.Append(",\"hud\":").Append(JsonSerializer.Serialize(hud, SessionHuds.JsonOptions));
                 if (n.ForegroundShells is { } shells)

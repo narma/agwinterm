@@ -268,6 +268,16 @@ never reaches, so the restart that most needed the command was the restart guara
 
 ## `session context` and `session rename`
 
+Without an explicit name, session labels use the focused pane's current directory basename,
+falling back to its launch directory. `/` and Windows drive roots remain recognizable; an unknown
+directory shows `~`. OSC program titles do not replace the sidebar label. Shell integration enables
+updates after `cd`; otherwise the launch directory remains the source. Explicit names stay pinned.
+
+`tree` includes `customName` (null for automatic labels) and `paneCwds`, an object mapping each
+normal pane ID to its live/launch directory (null if unknown), including single-pane sessions.
+Split panes retain independent entries. Directories are data, not unique identifiers; target by ID.
+Legacy host adapters may omit these fields; missing `customName` does not mean an automatic label.
+
 The Claude/Codex SessionStart hook asks the agent to set a short task name with `session rename`
 and a one-line purpose with `session context`. These use the existing persisted fields, independent
 of OSC program titles. The agent should preserve existing custom names and update labels only when

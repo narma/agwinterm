@@ -14,7 +14,9 @@ namespace Agwinterm.Pty;
 /// by the tree only while the session is split (P4); <see cref="PaneOverlays"/> is the open PANE
 /// overlay slots as <see cref="OverlayPanes"/>' words in pane order (empty = none; the tree omits the
 /// key), independent of <see cref="Overlay"/>, the session-wide slot (P5). New optional fields go
-/// at the END: both hosts and <see cref="SingleSessionHost"/> construct this positionally.</summary>
+/// at the END: both hosts and <see cref="SingleSessionHost"/> construct this positionally.
+/// CustomName distinguishes an explicit label from a cwd-derived name. PaneCwds maps pane IDs
+/// to live/launch directories (null when unknown), including a single pane.</summary>
 public sealed record SessionSnapshot(string Id, string Name, bool Active, AgentStatus Status,
     bool Overlay = false, int Notifications = 0, bool Flagged = false, bool Background = false,
     int FocusedPane = 0, int PaneCount = 1, bool StatusBlink = false, int OverlaySize = 0,
@@ -22,7 +24,8 @@ public sealed record SessionSnapshot(string Id, string Name, bool Active, AgentS
     IReadOnlyList<string>? RestoreCommands = null, long StatusChangedAt = 0,
     string? Context = null, IReadOnlyList<string>? CapturedCommands = null,
     string? Axis = null, IReadOnlyList<string>? PaneOverlays = null, HudSpec? Hud = null,
-    IReadOnlyList<string?>? ForegroundShells = null);
+    IReadOnlyList<string?>? ForegroundShells = null,
+    string? CustomName = null, IReadOnlyDictionary<string, string?>? PaneCwds = null);
 
 /// <summary>A workspace (with its sessions) for the control-API tree.</summary>
 public sealed record WorkspaceSnapshot(string Id, string Name, bool Active, IReadOnlyList<SessionSnapshot> Sessions, bool Collapsed = false);

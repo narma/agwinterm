@@ -215,7 +215,9 @@ internal partial class Program
                         // construction. Empty = the server omits the key.
                         PaneOverlays: s.Panes.Select((p, i) => (p, i)).Where(t => t.p.Overlay.Term is not null)
                                              .Select(t => OverlayPanes.Word(t.i)).ToList(), Hud: s.Hud,
-                        ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList());
+                        ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList(),
+                        CustomName: s.CustomName,
+                        PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf));
                 }).ToList()
             , Collapsed: !w.Expanded)).ToList();
     }

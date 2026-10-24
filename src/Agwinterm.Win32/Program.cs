@@ -380,7 +380,13 @@ internal partial class Program : ISessionHost, IWindowHost
         private static int _nextUiaIdentity;
         public readonly int UiaIdentity = Interlocked.Increment(ref _nextUiaIdentity);
         public required string Id;
-        public required string Name;
+        private string _initialName = "~";
+        public required string Name
+        {
+            get => Panes.Count == 0 ? CustomName ?? _initialName
+                : SessionNames.DisplayName(CustomName, CwdOf(ActivePane));
+            set => _initialName = value;
+        }
         public required Workspace Ws;
         public readonly List<Pane> Panes = new();
         public int Active;         // index of the focused pane

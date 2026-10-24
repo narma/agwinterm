@@ -35,6 +35,19 @@ namespace Agwinterm.Pty;
 /// </summary>
 public static class SessionNames
 {
+    /// <summary>Sidebar/API label: explicit name, otherwise the directory basename. Handles
+    /// Windows and Linux paths independently of the host OS; roots must remain recognizable.</summary>
+    public static string DisplayName(string? customName, string? cwd)
+    {
+        if (!string.IsNullOrWhiteSpace(customName)) return customName.Trim();
+        if (string.IsNullOrWhiteSpace(cwd)) return "~";
+        string path = cwd.TrimEnd('/', '\\');
+        if (path.Length == 0) return cwd.StartsWith('/') ? "/" : "\\";
+        if (path.Length == 2 && char.IsLetter(path[0]) && path[1] == ':') return path + "\\";
+        int separator = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
+        return path[(separator + 1)..];
+    }
+
     /// <summary>The reply's key for the name, and <c>tree</c>'s key for the same value.</summary>
     public const string Key = "name";
 

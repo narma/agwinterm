@@ -60,10 +60,14 @@ public static class AgentSkill
         active/completed.
 
         ## Manage sessions & workspaces
+        Automatic names use the focused pane's cwd basename. `tree` reports `customName` (null for
+        automatic labels) and `paneCwds` (pane ID to directory, null when unknown, also for one pane).
+        Directory paths may repeat; use pane IDs as targets.
         On the first substantive request, name the task with `session rename` (3-7 words in the user's
         language) and set a one-line purpose with `session context` (at most 200 characters).
-        Inspect `tree --json` first. Rename only a default `session N` label or a name you previously set
-        in this conversation; preserve other names and externally changed names. Update when the purpose
+        Inspect `tree --json` first. Rename only when `customName` is null or is a name you previously set
+        in this conversation; preserve other names and externally changed names. Older hosts without this field
+        allow only default `session N` labels or your own previous name. Update when the purpose
         changes, not on every tool call. Keep secrets out of labels. Nested agents must not rename their
         parent's session. These labels are independent of the agent's built-in conversation title.
         In WSL the CLI uses Windows interop. If the sandbox blocks it (e.g. UtilBindVsockAnyPort),

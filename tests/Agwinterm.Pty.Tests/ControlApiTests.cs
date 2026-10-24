@@ -44,6 +44,21 @@ public class ControlApiTests
     // ---- tree read-back ----
 
     [Fact]
+    public void TreeReportsExplicitNameAndDirectoriesByPaneId()
+    {
+        var (server, host) = New();
+        var session = host.ActiveSess!;
+        Assert.False(Sessions0(server).TryGetProperty("customName", out _)); // legacy adapter: unknown
+        session.PaneCwds = new() { [session.Id] = "/project one", ["other-pane"] = null };
+        var before = Sessions0(server);
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("customName").ValueKind);
+        Assert.Equal("/project one", before.GetProperty("paneCwds").GetProperty(session.Id).GetString());
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("paneCwds").GetProperty("other-pane").ValueKind);
+        session.CustomName = "Explicit task";
+        Assert.Equal("Explicit task", Sessions0(server).GetProperty("customName").GetString());
+    }
+
+    [Fact]
     public void Tree_ReportsWorkspacesAndSessions()
     {
         var (server, _) = New();

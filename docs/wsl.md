@@ -22,7 +22,8 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 The Claude/Codex SessionStart hook returns a short instruction through `additionalContext`:
 on the first substantive request, inspect `tree`, set a 3-7-word task name with `session rename`,
 and set a one-line purpose with `session context`. The bundled skill carries the same guidance.
-Agents update labels when the purpose changes and preserve existing custom names or external renames.
+Agents inspect `tree.customName`: null means an automatic directory label that they may replace.
+They update labels when the purpose changes and preserve existing custom names or external renames.
 The names are chosen by the agent and may differ from its built-in chat title. They use the existing
 persisted name/context fields; no sidebar OSC-title tracking or agent-transcript parsing is involved.
 Only SessionStart adds guidance; status hooks stay silent and do not force extra turns on Stop.
