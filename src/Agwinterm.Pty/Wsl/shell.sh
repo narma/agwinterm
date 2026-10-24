@@ -22,7 +22,7 @@ if [ "${AGWINTERM_ENABLED:-}" = 1 ] && [ -z "${__agw_si:-}" ]; then
         if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == 'declare -a '* ]]; then
             PROMPT_COMMAND+=(__agw_prompt)
         else
-            PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__agw_prompt"
+            PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}__agw_prompt"
         fi
     fi
 fi

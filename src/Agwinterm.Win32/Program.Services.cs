@@ -1943,9 +1943,9 @@ internal partial class Program
                             string lead = StripExe(cmd.TrimStart('"').Split(' ', 2)[0]);
                             if (deny.Contains(lead)) continue;
                             var pane = ses.Panes[i];
-                            // Prefix the call operator: a captured command line starts with a quoted exe
-                            // path, which pwsh would otherwise parse as a bare string literal.
-                            string run = "& " + cmd;
+                            // Windows captures need PowerShell's call operator for quoted exe paths.
+                            // Linux captures are already shell commands; a leading & is invalid in Bash.
+                            string run = WslIntegration.IsWsl(ResolveProfile(ses.ProfileName)?.Command) ? cmd : "& " + cmd;
                             _ = Task.Run(async () =>
                             {
                                 await Task.Delay(2500); // let the shell/profile settle; pwsh buffers stdin until ready

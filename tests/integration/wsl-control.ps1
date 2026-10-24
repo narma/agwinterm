@@ -93,28 +93,37 @@ try {
     $overlayText = Ctl @('session', 'overlay', 'text', '--target', $copy)
     Check ($overlayText.text -match 'OVERLAY_LINUX') 'Overlay commands run in Linux'
     $null = Ctl @('session', 'overlay', 'close', '--target', $copy)
+    $null = Ctl @('session', 'bind', 'none', '--target', $copy)
+    $null = Ctl @('config', 'set', 'restore-commands', 'true')
     $null = Ctl @('session', 'type', ('sleep 15' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1
     $capture = Ctl @('restore', 'capture', '--target', $copy)
     Check (($capture | ConvertTo-Json -Depth 10).Contains('sleep 15')) 'Foreground capture reads Linux processes'
-    $null = Ctl @('session', 'write', ([string][char]3), '--target', $copy)
-    $null = Ctl @('session', 'bind', 'none', '--target', $copy)
-    $null = Ctl @('config', 'set', 'restore-commands', 'false')
+    Check $capture.replayOnRestore 'Captured commands are enabled for restart'
     Start-Sleep -Seconds 1
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
     Check (-not ($saved -join '').Contains('wsl-test-conversation')) 'Test agent binding is cleared before restart'
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit()
-    $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id) -WindowStyle Hidden -PassThru
+    $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id, '--default-session-host', 'inprocess') -WindowStyle Hidden -PassThru
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Milliseconds 300
         try { $null = Ctl @('ping'); break } catch { if ($i -eq 29) { throw } }
     }
-    Start-Sleep -Seconds 1
+    # A fresh capture proves a Linux child is running in the restored pane, rather than
+    # merely finding the old command in persisted scrollback. In-process shells cannot be adopted.
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        $capture = Ctl @('restore', 'capture', '--target', $copy)
+        if (($capture | ConvertTo-Json -Depth 10).Contains('sleep 15')) { break }
+    }
+    Check (($capture | ConvertTo-Json -Depth 10).Contains('sleep 15')) 'App restart replays the captured Linux command'
+    # Let the restored child finish; a raw Ctrl+C through ConPTY is not reliable.
+    Start-Sleep -Seconds 16
     $null = Ctl @('session', 'type', ('printf "RESTORED_%s=%s\n" "CWD" "$PWD"' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1
     $screen = Ctl @('session', 'text', '--target', $copy)
-    Check (($screen -replace '\s', '').Contains("RESTORED_CWD=$linuxHome/pathwithspaces")) 'App restart restores the distribution and Linux directory'
+    Check (($screen -replace '\s', '').Contains("RESTORED_CWD=$linuxHome/pathwithspaces")) "App restart restores the distribution and Linux directory ($screen)"
     Write-Host 'WSL control integration passed.'
 }
 finally {

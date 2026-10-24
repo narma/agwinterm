@@ -145,6 +145,19 @@ class WslScripts(unittest.TestCase):
         self.assertIn('echo existing', result)
         self.assertEqual(1, result.count('__agw_prompt'))
 
+    def test_bash_string_prompt_preserves_existing_command_and_reports_cwd(self):
+        for existing in ('', ':;', 'printf existing', 'printf existing;', 'printf existing # comment'):
+            with self.subTest(prompt=existing):
+                script = 'PROMPT_COMMAND=$1; . "$2"; . "$2"; eval "$PROMPT_COMMAND"'
+                result = subprocess.run(['bash', '-c', script, 'test', existing, str(SCRIPTS / 'shell.sh')],
+                                        cwd=self.home, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(b'', result.stderr)
+                self.assertEqual(1, result.stdout.count(b'\x1b]7;file://localhost/'))
+                self.assertTrue(result.stdout.endswith(b'\x07'))
+                if existing.startswith('printf'):
+                    self.assertTrue(result.stdout.startswith(b'existing\x1b]7;'))
+
     def test_skills_respect_codex_home(self):
         with patch.dict(os.environ, {'CODEX_HOME': str(self.home / 'custom codex')}):
             self.install('skill')
