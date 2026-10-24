@@ -317,6 +317,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public required string Id;
         public required ISession S;
         public string? StartCwd;   // dir the shell was launched in (fallback cwd when OSC 7 is absent)
+        public volatile string? AutomaticName; // last coherent label; used while terminal output holds SyncRoot
         public string? AgentResume; // resumable agent bound to this pane (e.g. "claude") — relaunched on restart
         // Bumped by every bind request; a SessionStart binding resolved in the background lands only if
         // no later bind arrived meanwhile, so startup-then-/clear cannot leave the older id bound (#316).
@@ -383,9 +384,14 @@ internal partial class Program : ISessionHost, IWindowHost
         private string _initialName = "~";
         public required string Name
         {
-            get => Panes.Count == 0 ? CustomName ?? _initialName
-                : SessionNames.DisplayName(CustomName, CwdOf(ActivePane), ProgramTitle(ActivePane));
+            get => ReadName(allowStale: false);
             set => _initialName = value;
+        }
+        public string SidebarName => ReadName(allowStale: true);
+        private string ReadName(bool allowStale)
+        {
+            if (!string.IsNullOrWhiteSpace(CustomName)) return CustomName.Trim();
+            return Panes.Count == 0 ? _initialName : AutomaticSessionName(ActivePane, allowStale);
         }
         public required Workspace Ws;
         public readonly List<Pane> Panes = new();

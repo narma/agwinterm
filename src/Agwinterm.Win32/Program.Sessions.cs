@@ -78,6 +78,7 @@ internal partial class Program
         // Under the session lock: with the Rust core this setter now crosses into native code and
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
+        if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
         var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize,
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
@@ -469,7 +470,6 @@ internal partial class Program
         }
         int ordinal;
         lock (_workspaces) ordinal = ws.Sessions.Count + 1;
-        if (name is null && handoff is { Title.Length: > 0 } ht) name = ht.Title;   // label handoff sessions with the app's title
         var ses = new Ses { Id = id, Name = name ?? $"session {ordinal}", CustomName = name, Ws = ws, ProfileName = profileName, Elevated = IsElevated() && !deElevate };
         // At most one pane carries the session id (control-API back-compat: a fresh session's pane 0 IS
         // the session id, so a session id addresses a pane). A swap may put that pane on either side,

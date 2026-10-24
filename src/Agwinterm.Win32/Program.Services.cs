@@ -219,6 +219,29 @@ internal partial class Program
     private static string SafeCwd(Pane p) { lock (p.S.SyncRoot) return p.S.Emulator.Cwd; }
     private static string ProgramTitle(Pane p) { lock (p.S.SyncRoot) return p.S.Emulator.Title; }
 
+    // A handoff's startup title is program state, never a user-pinned CustomName.
+    // Seed before the reader starts so later OSC titles (including clear) replace it normally.
+    private static void SeedHandoffTitle(ISession session, string? title)
+    {
+        if (SessionNames.PreferredTitle(null, title) is not { } initial) return;
+        lock (session.SyncRoot)
+            session.Emulator.Feed(System.Text.Encoding.UTF8.GetBytes("\x1b]2;" + initial + "\x07"));
+    }
+
+    private static string AutomaticSessionName(Pane pane, bool allowStale)
+    {
+        // A background output flood must not hold up the sidebar. Keep the last good
+        // label for this pane until a later paint can take a coherent title/cwd snapshot.
+        if (allowStale && !Monitor.TryEnter(pane.S.SyncRoot))
+            return pane.AutomaticName ?? SessionNames.DisplayName(null, pane.StartCwd);
+        if (!allowStale) Monitor.Enter(pane.S.SyncRoot); // API/persistence callers require a fresh value
+        string title, cwd;
+        try { title = pane.S.Emulator.Title; cwd = pane.S.Emulator.Cwd; }
+        finally { Monitor.Exit(pane.S.SyncRoot); }
+        return pane.AutomaticName = SessionNames.DisplayName(null,
+            string.IsNullOrWhiteSpace(cwd) ? pane.StartCwd : PrettyCwd(cwd), title);
+    }
+
     /// <summary>An existing directory for a session's "current" dir: live OSC-7 cwd if valid, else its launch dir.</summary>
     private static string? CurrentDirOf(Ses s)
     {
@@ -241,6 +264,7 @@ internal partial class Program
     /// <summary>Title-bar display name (agterm precedence): custom name → program OSC title → cwd basename → app name.</summary>
     private static string SessionDisplayName(Ses s)
     {
+        if (!string.IsNullOrWhiteSpace(s.CustomName)) return s.CustomName.Trim();
         if (SessionNames.PreferredTitle(s.CustomName, ProgramTitle(s.ActivePane)) is { } title) return title;
         // Single-row title = the full current path (agterm-style "just the path"), home collapsed to ~.
         string cwd = PrettyCwd(TitleCwd(s)).TrimEnd('\\', '/');

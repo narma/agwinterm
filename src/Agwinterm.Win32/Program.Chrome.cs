@@ -197,8 +197,9 @@ internal partial class Program
             if (badgeText is not null) nameRight = MathF.Min(nameRight, badgeX - 5f);
             float nameAvail = MathF.Max(0f, nameRight - nameX);
             // Clip + ellipsis-trim so a long name (or an enlarged sidebar font) never spills over the dot.
-            rt.DrawText(s.Name, _sidebarFont, new Rect(nameX, y, nameAvail, rowH), brush, DrawTextOptions.Clip);
-            RecordSidebarName(s, s.Name, nameX, y, nameAvail, rowH);
+            string name = s.SidebarName; // one nonblocking snapshot for drawing, accessibility and context placement
+            rt.DrawText(name, _sidebarFont, new Rect(nameX, y, nameAvail, rowH), brush, DrawTextOptions.Clip);
+            RecordSidebarName(s, name, nameX, y, nameAvail, rowH);
             // session.context (P3): a dimmer, smaller suffix after the name in the SAME row, clipped to
             // the name rect. The name keeps its full width and the context takes what is left; it is
             // never a second line and never changes rowH — DrawSidebar computes ONE rowH per paint and
@@ -206,7 +207,7 @@ internal partial class Program
             // The palette's Secondary line is where the long form lives.
             if (s.Context is string ctx && ctx.Length > 0)
             {
-                float nameW = MathF.Min(MeasureText(s.Name, _sidebarFont), nameAvail);
+                float nameW = MathF.Min(MeasureText(name, _sidebarFont), nameAvail);
                 float ctxX = nameX + nameW + 6f, ctxW = nameAvail - nameW - 6f;
                 if (ctxW >= 16f)
                 {
