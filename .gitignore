@@ -7,6 +7,7 @@ installer/stage/
 installer/stage-lite/
 installer/stage-portable/
 installer/Output/
+installer/install-local.log
 
 # ralphex progress logs
 .ralphex/progress/
