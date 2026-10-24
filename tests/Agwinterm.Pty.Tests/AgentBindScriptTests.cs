@@ -89,7 +89,7 @@ public class AgentBindScriptTests : IDisposable
             using var guidance = JsonDocument.Parse(stdout);
             var output = guidance.RootElement.GetProperty("hookSpecificOutput");
             Assert.Equal("SessionStart", output.GetProperty("hookEventName").GetString());
-            Assert.Equal(AgentHooks.NamingInstructions, output.GetProperty("additionalContext").GetString());
+            Assert.Equal(AgentHooks.ContextInstructions, output.GetProperty("additionalContext").GetString());
         }
         else Assert.Equal("", stdout);
         var (line, alive) = received.Result;

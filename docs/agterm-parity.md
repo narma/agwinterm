@@ -20,43 +20,6 @@ named as such rather than left to look like a backlog nobody is working on.
 
 ## Closed
 
-### Focused audit — 2026-10-24
-
-The release-by-release table below still uses the 0.26 baseline; it is not a claim of parity with
-current agterm. A check against [current documentation](https://agterm.com/docs) found newer
-HTML/URL overlays with a page bridge, remote zmx sessions and Pi/OpenCode hook installers that
-Agwinterm does not implement. Local hosted-process adoption exists in Agwinterm (`ServerSession.TryAdopt`);
-the older statement below that singles out lite should not be read as excluding it.
-
-Session naming: agterm documents a cwd-basename default and pinned manual names. Agwinterm's
-sidebar also follows the program's OSC title, using the same priority as the title bar. The
-Claude/Codex SessionStart hook asks only for a task description through `session context`.
-Explicit names stay pinned until `session rename --clear`; agents must not rename without being asked.
-See [WSL setup](wsl.md#agent-conversation-titles).
-
-The current branch also addresses upstream [#353](https://github.com/yeroo/agwinterm/issues/353):
-sessions without a custom/program title display the focused pane's cwd basename, and `tree` reports `customName` plus
-`paneCwds` keyed by pane ID. Explicit names remain pinned; automatic labels follow live cwd when
-shell integration reports it, otherwise the launch directory. Root and empty-path behavior is tested.
-
-Related upstream issues checked on 2026-10-24:
-
-- [#354](https://github.com/yeroo/agwinterm/issues/354), closed: splits inherit live cwd. Already
-  implemented with `PaneCwd`; the WSL test now covers it alongside independent pane directories.
-- [#287](https://github.com/yeroo/agwinterm/issues/287), closed: pane-targeted rename names the
-  owning session. The existing reply/target contract is retained.
-- [#316](https://github.com/yeroo/agwinterm/issues/316), closed: SessionStart binding and agent resume.
-  Naming guidance extends this hook without replacing its binding responsibility.
-- [#313](https://github.com/yeroo/agwinterm/issues/313), closed: OSC 9;9 cwd notifications;
-  [#326](https://github.com/yeroo/agwinterm/issues/326), closed: scaled inline rename controls;
-  [#294](https://github.com/yeroo/agwinterm/issues/294), closed: state saves blocking the UI.
-  These are related background issues, outside this change.
-- [#364](https://github.com/yeroo/agwinterm/issues/364), open: per-workspace default directory.
-  This changes where sessions launch and is separate from displaying their actual directory.
-
-Validation covers SessionStart guidance, silent status hooks, native hook installation, status/resume
-binding and shell integration. The existing rename/context tests cover their persisted API behavior.
-
 | Item | agterm | Closed by |
 | --- | --- | --- |
 | `session.text --lines N` reaching scrollback | 0.25.0 | agwinterm #213 |

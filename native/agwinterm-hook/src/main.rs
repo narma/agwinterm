@@ -9,13 +9,13 @@ use std::{
 
 const MAX_EVENT: u64 = 4 * 1024 * 1024;
 
-fn naming_guidance(agent: &str, state: &str) -> Option<Value> {
+fn context_guidance(agent: &str, state: &str) -> Option<Value> {
     if state != "bind" || !matches!(agent, "claude" | "codex") {
         return None;
     }
     Some(json!({"hookSpecificOutput": {
         "hookEventName": "SessionStart",
-        "additionalContext": include_str!("../../../src/Agwinterm.Pty/Wsl/session-naming.txt").trim()
+        "additionalContext": include_str!("../../../src/Agwinterm.Pty/Wsl/session-context.txt").trim()
     }}))
 }
 
@@ -154,7 +154,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &args[5],
     )?;
     exchange(&args[3], &message)?;
-    if let Some(guidance) = naming_guidance(&args[0], &args[1]) {
+    if let Some(guidance) = context_guidance(&args[0], &args[1]) {
         println!("{guidance}");
     }
     Ok(())
@@ -217,18 +217,18 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
-    fn naming_guidance_is_only_for_supported_session_start_hooks() {
+    fn context_guidance_is_only_for_supported_session_start_hooks() {
         for agent in ["claude", "codex"] {
-            let guidance = naming_guidance(agent, "bind").unwrap();
+            let guidance = context_guidance(agent, "bind").unwrap();
             assert_eq!(guidance["hookSpecificOutput"]["hookEventName"], "SessionStart");
             let context = guidance["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
             assert!(context.contains("Do not call session rename"));
             assert!(context.contains("session context"));
             for state in ["active", "blocked", "stop", "completed"] {
-                assert!(naming_guidance(agent, state).is_none());
+                assert!(context_guidance(agent, state).is_none());
             }
         }
-        assert!(naming_guidance("devin", "bind").is_none());
+        assert!(context_guidance("devin", "bind").is_none());
     }
     #[test]
     fn stop_and_unicode() {

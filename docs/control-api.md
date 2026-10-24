@@ -300,7 +300,6 @@ survive each other (renaming does not clear the context).
 `session rename --clear` removes the pinned name and resumes following the program title/directory.
 Its reply is `{session, name}` with the automatic name now in effect; `tree.customName` becomes null.
 The API spelling is `session.rename` with `args: {"clear": true}`. A name together with clear is refused.
-Existing names are not migrated or cleared automatically, because user and agent names share a field.
 
 ## `session split` and `session swap`
 

@@ -17,23 +17,16 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 
 ## Commands, paths and restore
 
-### Agent conversation titles
+### Agent titles and context
 
 The Claude/Codex SessionStart hook returns a short instruction through `additionalContext`:
 on the first substantive request, inspect `tree` and set a one-line purpose with `session context`.
-The bundled skill carries the same guidance. Agents do not rename or clear names unless asked.
-The sidebar automatically follows the focused pane's OSC program title (as the title bar does),
-falling back to the directory basename. Explicit names override both; `session rename --clear`
-restores automatic naming. No agent-transcript parsing is involved. Context is updated when the
-purpose changes, preserving user-provided or externally changed context.
-Only SessionStart adds guidance; status hooks stay silent and do not force extra turns on Stop.
-An already running agent receives the instruction on its next SessionStart (for example, resume).
+The bundled skill carries the same guidance. Agents do not rename or clear names unless asked;
+automatic titles and pinned names are described in [the control API](control-api.md#session-context-and-session-rename).
+Already running agents receive the instruction on their next SessionStart (for example, resume).
 
-Installed hooks and trusted hooks are separate in Codex: open `/hooks` and review the five Agwinterm
-handlers (SessionStart, UserPromptSubmit, PostToolUse, PermissionRequest and Stop).
-The installed Codex set uses the events in `~/.codex/hooks.json`;
-untrusted definitions are skipped. Automatic titles do not require these hooks; setting context
-depends on the agent following the instruction and being able to call the CLI.
+Approve installed Codex hooks in `/hooks`. Automatic titles do not require hooks; setting context
+requires the agent to follow the instruction and have access to the CLI.
 In WSL, a Codex sandbox may block Windows interop (`UtilBindVsockAnyPort`). The guidance
 asks the agent to retry through normal tool approval when available, respecting any denial.
 
@@ -41,8 +34,6 @@ Codex's shared daemon can retain another terminal's environment (or no Agwinterm
 The bash/zsh integration therefore adds `--no-daemon` to ordinary `codex` launches inside Agwinterm.
 It preserves existing user aliases/functions; if you have one, add `--no-daemon` there yourself.
 Launches outside Agwinterm are unchanged, and captured resume commands retain this flag.
-This was verified with Codex CLI 0.164.0: the shared-daemon run produced no terminal events,
-whereas the local run produced `bind`, `active`, `blocked`, `active`, `completed` from real hooks.
 
 Scratch panes, overlays and custom commands started from a WSL session use its distribution. Overlay and detached commands use `/bin/sh -lc`; interactive custom-command sessions run the command in the user's shell and leave a login shell open afterwards.
 
