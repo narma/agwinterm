@@ -105,7 +105,8 @@ fn backup(path: &Path, original: &str) -> Result<()> {
 fn block(path: &Path, name: &str, text: &str) -> Result<()> {
     let begin = format!("# >>> agwinterm {name} >>>");
     let end = format!("# <<< agwinterm {name} <<<");
-    let mut old = read_optional(path)?.unwrap_or_default();
+    let original = read_optional(path)?.unwrap_or_default();
+    let mut old = original.clone();
     if let Some(start) = old.find(&begin) {
         let finish = old[start..]
             .find(&end)
@@ -127,7 +128,7 @@ fn block(path: &Path, name: &str, text: &str) -> Result<()> {
             format!("{begin}\n{text}\n{end}\n")
         }
     );
-    if new != old {
+    if new != original {
         write(path, new.as_bytes(), false)?;
     }
     Ok(())

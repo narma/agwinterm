@@ -453,10 +453,10 @@ internal partial class Program
             return _active ?? ws.Sessions.FirstOrDefault() ?? CreateSession(id, name, cwd, ws, makeActive, fontSize, command, interactive, extraEnv, null);
         }
         float fs = fontSize is > 0 ? fontSize.Value : (float)_config.FontSize;
-        // No explicit cwd → resolve by the new-session-directory mode (home | current | custom).
+        // Explicit/restored cwd wins, then the profile directory, then home | current | custom.
         profileName ??= ResolveProfile(null)?.Name;
         bool wsl = WslIntegration.IsWsl(ResolveProfile(profileName)?.Command);
-        if (string.IsNullOrEmpty(cwd)) cwd = ResolveProfile(profileName)?.Cwd;
+        if (string.IsNullOrEmpty(cwd)) cwd = WslIntegration.ProfileDirectory(ResolveProfile(profileName));
         if (string.IsNullOrEmpty(cwd))
         {
             string? want = _config.NewSessionDirMode switch

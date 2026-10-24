@@ -27,6 +27,44 @@ public class WslIntegrationTests
         => Assert.Equal(new[] { "--distribution", "My Ubuntu", "-u", "alice" },
             WslIntegration.Selectors(["--distribution", "My Ubuntu", "-u", "alice", "--cd", "/work", "-e", "bash", "-c", "-d other"]));
 
+    [Theory]
+    [InlineData("--cd", "/work space")]
+    [InlineData("--cd=/work space", null)]
+    public void ProfileDirectoryTakesPrecedenceOverHomeFallback(string option, string? value)
+    {
+        string[] args = value is null ? ["-d", "Ubuntu", option] : ["-d", "Ubuntu", option, value];
+        var profile = new ShellProfile { Command = "wsl.exe", Args = args };
+        string cwd = WslIntegration.ProfileDirectory(profile) ?? "~";
+        Assert.Equal("/work space", cwd);
+        Assert.Equal(new[] { "--cd", "/work space", "-d", "Ubuntu" }, WslIntegration.LaunchArgs(args, cwd));
+        Assert.Equal(new[] { "--cd", "/restored", "-d", "Ubuntu" }, WslIntegration.LaunchArgs(args, "/restored"));
+        profile.Cwd = "/configured";
+        Assert.Equal("/configured", WslIntegration.ProfileDirectory(profile));
+    }
+
+    [Theory]
+    [InlineData("--exec")]
+    [InlineData("-e")]
+    [InlineData("--")]
+    [InlineData("bash")]
+    public void CommandArgumentsCannotSetProfileDirectory(string command)
+    {
+        var profile = new ShellProfile { Command = "wsl.exe", Args = ["-d", "Ubuntu", command, "--cd", "/command-only"] };
+        Assert.Null(WslIntegration.ProfileDirectory(profile));
+    }
+
+    [Fact]
+    public void ProfileDirectoryIgnoresOtherOptionValuesAndWindowsArguments()
+    {
+        var profile = new ShellProfile { Command = "wsl.exe", Args = ["-d", "--cd=/distro-name", "-u", "--cd=/user-name"] };
+        Assert.Null(WslIntegration.ProfileDirectory(profile));
+        profile.Command = "powershell.exe";
+        profile.Args = ["--cd", "/not-wsl"];
+        Assert.Null(WslIntegration.ProfileDirectory(profile));
+        profile.Cwd = @"C:\work";
+        Assert.Equal(@"C:\work", WslIntegration.ProfileDirectory(profile));
+    }
+
     [Fact]
     public void LinuxHomeOverrideIsAppliedAfterWslInitializesItsEnvironment()
     {

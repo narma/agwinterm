@@ -89,6 +89,22 @@ class WslScripts(unittest.TestCase):
         self.assertIn('refused', self.install('hooks'))
         self.assertEqual('{invalid', path.read_text())
 
+    def test_cli_remove_restores_all_startup_files(self):
+        original = 'export MY_SETTING=preserved\n'
+        profiles = [self.home / name for name in ('.profile', '.bashrc', '.zshrc')]
+        for path in profiles:
+            path.write_text(original)
+        self.install('cli')
+        for path in profiles:
+            self.assertIn('# >>> agwinterm cli >>>', path.read_text())
+        self.install('cli', 'remove')
+        self.assertFalse((self.home / '.local/bin/agwintermctl').exists())
+        for path in profiles:
+            self.assertEqual(original, path.read_text())
+        self.install('cli', 'remove')
+        for path in profiles:
+            self.assertEqual(original, path.read_text())
+
     def test_incomplete_profile_block_is_not_overwritten(self):
         path=self.home/'.profile'
         original='export MINE=1\n# >>> agwinterm cli >>>\nbroken'

@@ -24,6 +24,22 @@ public static class WslIntegration
         return args.Count;
     }
 
+    /// <summary>Configured directory before applying the new-session directory fallback.</summary>
+    public static string? ProfileDirectory(ShellProfile? profile)
+    {
+        if (!string.IsNullOrEmpty(profile?.Cwd)) return profile.Cwd;
+        if (!IsWsl(profile?.Command) || profile?.Args is not { } args) return null;
+        string? directory = null;
+        int end = CommandIndex(args);
+        for (int i = 0; i < end; i++)
+        {
+            if (args[i] == "--cd" && i + 1 < end) directory = args[++i];
+            else if (args[i].StartsWith("--cd=", StringComparison.Ordinal)) directory = args[i][5..];
+            else if (args[i] is "-d" or "--distribution" or "-u" or "--user" or "--shell-type") i++;
+        }
+        return directory;
+    }
+
     // Keep only distribution/user selectors when running a helper, never the profile's command.
     public static string[] Selectors(string[]? args)
     {
