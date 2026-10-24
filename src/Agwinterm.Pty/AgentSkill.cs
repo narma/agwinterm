@@ -60,16 +60,15 @@ public static class AgentSkill
         active/completed.
 
         ## Manage sessions & workspaces
-        Automatic names use the focused pane's cwd basename. `tree` reports `customName` (null for
-        automatic labels) and `paneCwds` (pane ID to directory, null when unknown, also for one pane).
-        Directory paths may repeat; use pane IDs as targets.
-        On the first substantive request, name the task with `session rename` (3-7 words in the user's
-        language) and set a one-line purpose with `session context` (at most 200 characters).
-        Inspect `tree --json` first. Rename only when `customName` is null or is a name you previously set
-        in this conversation; preserve other names and externally changed names. Older hosts without this field
-        allow only default `session N` labels or your own previous name. Update when the purpose
-        changes, not on every tool call. Keep secrets out of labels. Nested agents must not rename their
-        parent's session. These labels are independent of the agent's built-in conversation title.
+        Automatic names follow the focused pane's OSC program title, then its cwd basename.
+        `tree` reports `customName` (null for automatic labels) and `paneCwds` (pane ID to directory).
+        Directory paths may repeat; use pane IDs as targets. Do not rename or clear names unless
+        the user asks: explicit names pin the label and stop it from following the program title.
+        On the first substantive request, inspect `tree --json` and set a one-line purpose with
+        `session context` (at most 200 characters, in the user's language). Update only when the
+        purpose changes; preserve user-provided or externally changed context. Omit secrets.
+        Nested agents must not change their parent's labels. To unpin a name at the user's request,
+        use `agwintermctl session rename --clear [--target ID]`.
         In WSL the CLI uses Windows interop. If the sandbox blocks it (e.g. UtilBindVsockAnyPort),
         retry through normal tool approval when available; never bypass a denial or disable the sandbox.
 

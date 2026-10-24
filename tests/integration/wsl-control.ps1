@@ -108,6 +108,21 @@ try {
     $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
     Check ($row.name -eq 'WSL explicit task' -and $row.customName -eq 'WSL explicit task') 'Explicit name is reported separately from directory'
     Check ($row.paneCwds.$copy -eq '/tmp') 'Explicit name stays pinned after cd'
+    $null = Ctl @('session', 'type', ('printf "\033]2;Claude task one\007"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'WSL explicit task') 'Pinned name overrides program OSC title'
+    $reset = Ctl @('session', 'rename', '--clear', '--target', $copy)
+    Check ($reset.name -eq 'Claude task one') 'Clear returns current automatic program title'
+    $null = Ctl @('session', 'type', ('printf "\033]2;Claude task two\007"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'Claude task two' -and $null -eq $row.customName) 'Unpinned name follows subsequent OSC title changes'
+    $null = Ctl @('session', 'type', ('printf "\033]2;\007"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'tmp') 'Empty program title falls back to directory'
+    $null = Ctl @('session', 'rename', 'WSL explicit task', '--target', $copy)
     $null = Ctl @('session', 'type', ('cd "$HOME/path with spaces"' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }

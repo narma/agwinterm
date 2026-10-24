@@ -29,13 +29,13 @@ Agwinterm does not implement. Local hosted-process adoption exists in Agwinterm 
 the older statement below that singles out lite should not be read as excluding it.
 
 Session naming: agterm documents a cwd-basename default and pinned manual names. Agwinterm's
-Claude/Codex SessionStart hook now asks the agent to name the task with the existing `session rename`
-and `session context` commands. This follows the control-API approach instead of adding OSC-title
-tracking to the sidebar. The agent chooses the label; it need not match its own generated chat title.
+sidebar also follows the program's OSC title, using the same priority as the title bar. The
+Claude/Codex SessionStart hook asks only for a task description through `session context`.
+Explicit names stay pinned until `session rename --clear`; agents must not rename without being asked.
 See [WSL setup](wsl.md#agent-conversation-titles).
 
 The current branch also addresses upstream [#353](https://github.com/yeroo/agwinterm/issues/353):
-unnamed sessions display the focused pane's cwd basename, and `tree` reports `customName` plus
+sessions without a custom/program title display the focused pane's cwd basename, and `tree` reports `customName` plus
 `paneCwds` keyed by pane ID. Explicit names remain pinned; automatic labels follow live cwd when
 shell integration reports it, otherwise the launch directory. Root and empty-path behavior is tested.
 

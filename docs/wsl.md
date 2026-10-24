@@ -20,20 +20,20 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 ### Agent conversation titles
 
 The Claude/Codex SessionStart hook returns a short instruction through `additionalContext`:
-on the first substantive request, inspect `tree`, set a 3-7-word task name with `session rename`,
-and set a one-line purpose with `session context`. The bundled skill carries the same guidance.
-Agents inspect `tree.customName`: null means an automatic directory label that they may replace.
-They update labels when the purpose changes and preserve existing custom names or external renames.
-The names are chosen by the agent and may differ from its built-in chat title. They use the existing
-persisted name/context fields; no sidebar OSC-title tracking or agent-transcript parsing is involved.
+on the first substantive request, inspect `tree` and set a one-line purpose with `session context`.
+The bundled skill carries the same guidance. Agents do not rename or clear names unless asked.
+The sidebar automatically follows the focused pane's OSC program title (as the title bar does),
+falling back to the directory basename. Explicit names override both; `session rename --clear`
+restores automatic naming. No agent-transcript parsing is involved. Context is updated when the
+purpose changes, preserving user-provided or externally changed context.
 Only SessionStart adds guidance; status hooks stay silent and do not force extra turns on Stop.
 An already running agent receives the instruction on its next SessionStart (for example, resume).
 
 Installed hooks and trusted hooks are separate in Codex: open `/hooks` and review the five Agwinterm
 handlers (SessionStart, UserPromptSubmit, PostToolUse, PermissionRequest and Stop).
 The installed Codex set uses the events in `~/.codex/hooks.json`;
-untrusted definitions are skipped. Renaming depends on the agent following the instruction and being
-able to call the CLI; it is not a deterministic terminal-side rename.
+untrusted definitions are skipped. Automatic titles do not require these hooks; setting context
+depends on the agent following the instruction and being able to call the CLI.
 In WSL, a Codex sandbox may block Windows interop (`UtilBindVsockAnyPort`). The guidance
 asks the agent to retry through normal tool approval when available, respecting any denial.
 

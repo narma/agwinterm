@@ -384,7 +384,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public required string Name
         {
             get => Panes.Count == 0 ? CustomName ?? _initialName
-                : SessionNames.DisplayName(CustomName, CwdOf(ActivePane));
+                : SessionNames.DisplayName(CustomName, CwdOf(ActivePane), ProgramTitle(ActivePane));
             set => _initialName = value;
         }
         public required Workspace Ws;

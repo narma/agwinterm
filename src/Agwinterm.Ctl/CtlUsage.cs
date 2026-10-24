@@ -31,6 +31,7 @@ public static class CtlUsage
           agwintermctl session select <target>
           agwintermctl session close [target]
           agwintermctl session rename <new-name...> [--target ID]
+          agwintermctl session rename --clear [--target ID]  (follow program title/directory again)
               (names a SESSION; a pane id - including $AGWINTERM_SESSION_ID, which IS a pane id - names
               the session that pane belongs to. Replies {session,name}: the session it landed on and the
               name in effect. Blank is refused; so is a target that belongs to no session)

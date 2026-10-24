@@ -217,6 +217,7 @@ internal partial class Program
 
     private static string SafeCwd(Ses s) { lock (s.S.SyncRoot) return s.S.Emulator.Cwd; }
     private static string SafeCwd(Pane p) { lock (p.S.SyncRoot) return p.S.Emulator.Cwd; }
+    private static string ProgramTitle(Pane p) { lock (p.S.SyncRoot) return p.S.Emulator.Title; }
 
     /// <summary>An existing directory for a session's "current" dir: live OSC-7 cwd if valid, else its launch dir.</summary>
     private static string? CurrentDirOf(Ses s)
@@ -240,14 +241,7 @@ internal partial class Program
     /// <summary>Title-bar display name (agterm precedence): custom name → program OSC title → cwd basename → app name.</summary>
     private static string SessionDisplayName(Ses s)
     {
-        if (!string.IsNullOrWhiteSpace(s.CustomName)) return s.CustomName!;
-        // A program's OSC title (e.g. "claude") — but ignore the shell's default console title,
-        // which on Windows is the bare exe path (…\powershell.exe) or an absolute path (noise).
-        string osc = s.ActivePane.S.Emulator.Title;
-        bool oscMeaningful = !string.IsNullOrWhiteSpace(osc)
-            && !osc.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            && !(osc.Length >= 2 && osc[1] == ':' && osc.Contains('\\')); // not a bare C:\… path
-        if (oscMeaningful) return osc;
+        if (SessionNames.PreferredTitle(s.CustomName, ProgramTitle(s.ActivePane)) is { } title) return title;
         // Single-row title = the full current path (agterm-style "just the path"), home collapsed to ~.
         string cwd = PrettyCwd(TitleCwd(s)).TrimEnd('\\', '/');
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\', '/');

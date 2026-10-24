@@ -465,6 +465,15 @@ internal sealed class FakeSessionHost : ISessionHost
     // the name landed on and the name read BACK off it. The blank check is the fake's tripwire, as
     // SessionContext's Validate is — ControlServer refuses a blank name before the host is reached,
     // so a test that drives the host directly with one must blow up, not see it stored.
+    public string SessionNameAuto(string? target)
+    {
+        var s = FindSes(target);
+        if (s is null) return ISessionHost.RefusePrefix + SessionNames.NoSession;
+        s.CustomName = null;
+        s.Name = SessionNames.DisplayName(null, s.PaneCwds?.GetValueOrDefault(s.PaneIds[s.FocusedPane]));
+        return SessionNames.Reply(s.Id, s.Name);
+    }
+
     public string SessionRename(string? target, string name)
     {
         var s = FindSes(target);

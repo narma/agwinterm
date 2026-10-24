@@ -35,11 +35,23 @@ namespace Agwinterm.Pty;
 /// </summary>
 public static class SessionNames
 {
-    /// <summary>Sidebar/API label: explicit name, otherwise the directory basename. Handles
-    /// Windows and Linux paths independently of the host OS; roots must remain recognizable.</summary>
-    public static string DisplayName(string? customName, string? cwd)
+    /// <summary>Shared title-bar/sidebar priority; ignore ordinary executable/path shell titles.</summary>
+    public static string? PreferredTitle(string? customName, string? programTitle)
     {
         if (!string.IsNullOrWhiteSpace(customName)) return customName.Trim();
+        if (string.IsNullOrWhiteSpace(programTitle)) return null;
+        string title = programTitle.Trim();
+        if (title.Any(char.IsControl) || title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            || title.StartsWith('/') || title.StartsWith('\\')
+            || title.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+            || (title.Length >= 2 && title[1] == ':')) return null;
+        return title;
+    }
+
+    /// <summary>Sidebar/API fallback handles Windows and Linux paths independently of host OS.</summary>
+    public static string DisplayName(string? customName, string? cwd, string? programTitle = null)
+    {
+        if (PreferredTitle(customName, programTitle) is { } title) return title;
         if (string.IsNullOrWhiteSpace(cwd)) return "~";
         string path = cwd.TrimEnd('/', '\\');
         if (path.Length == 0) return cwd.StartsWith('/') ? "/" : "\\";
@@ -52,7 +64,7 @@ public static class SessionNames
     public const string Key = "name";
 
     /// <summary>The blank refusal. A rename with no text is not a request to clear the name (there
-    /// is no clear: a session with no custom name shows its cwd/OSC title, which is a different
+    /// clear requires an explicit flag: a session with no custom name shows its cwd/OSC title, which is a different
     /// thing from a session named ""), so it is refused rather than ranked — the wording
     /// <see cref="SessionContexts.Blank"/> uses for the same condition one verb over.</summary>
     public const string Blank =

@@ -12,7 +12,7 @@ for state in ('bind', 'active', 'stop'):
     if state == 'bind':
         guidance = json.loads(result.stdout)['hookSpecificOutput']
         assert guidance['hookEventName'] == 'SessionStart'
-        assert 'session rename' in guidance['additionalContext']
+        assert 'Do not call session rename' in guidance['additionalContext']
         assert 'session context' in guidance['additionalContext']
     else:
         assert not result.stdout, 'Status hooks must not inject repeated instructions'

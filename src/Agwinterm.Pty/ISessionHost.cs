@@ -187,6 +187,8 @@ public interface ISessionHost
     /// outcome, never a constant true).</para>
     /// </summary>
     string SessionRename(string? target, string name);
+    /// <summary>Clear the pinned name and return the session's current automatic label.</summary>
+    string SessionNameAuto(string? target) => RefusePrefix + "automatic session names are not supported by this host";
 
     /// <summary>
     /// <c>session.context</c>: set (or, with <paramref name="context"/> null, clear) a session's

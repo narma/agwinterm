@@ -222,7 +222,7 @@ mod tests {
             let guidance = naming_guidance(agent, "bind").unwrap();
             assert_eq!(guidance["hookSpecificOutput"]["hookEventName"], "SessionStart");
             let context = guidance["hookSpecificOutput"]["additionalContext"].as_str().unwrap();
-            assert!(context.contains("session rename"));
+            assert!(context.contains("Do not call session rename"));
             assert!(context.contains("session context"));
             for state in ["active", "blocked", "stop", "completed"] {
                 assert!(naming_guidance(agent, state).is_none());

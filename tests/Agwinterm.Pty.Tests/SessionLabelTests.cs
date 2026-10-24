@@ -5,6 +5,18 @@ namespace Agwinterm.Pty.Tests;
 public class SessionLabelTests
 {
     [Theory]
+    [InlineData(null, "Fix login bug", "Fix login bug")]
+    [InlineData("Pinned", "New task", "Pinned")]
+    [InlineData(null, "", "project")]
+    [InlineData(null, "C:\\Windows\\pwsh.exe", "project")]
+    [InlineData(null, "PWSH.EXE", "project")]
+    [InlineData(null, "/bin/zsh", "project")]
+    [InlineData(null, "file:///home/me", "project")]
+    [InlineData(null, "bad\nlabel", "project")]
+    public void ProgramTitleIsSharedAndManualNameWins(string? custom, string title, string expected)
+        => Assert.Equal(expected, SessionNames.DisplayName(custom, "/work/project", title));
+
+    [Theory]
     [InlineData(null, null, "~")]
     [InlineData(null, "", "~")]
     [InlineData(null, "/", "/")]

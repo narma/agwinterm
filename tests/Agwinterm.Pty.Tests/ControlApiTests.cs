@@ -44,6 +44,24 @@ public class ControlApiTests
     // ---- tree read-back ----
 
     [Fact]
+    public void RenameClearUnpinsWithoutClearingContextAndRejectsMixedSources()
+    {
+        var (server, host) = New();
+        var s = host.ActiveSess!;
+        s.PaneCwds = new() { [s.Id] = "/work/project" };
+        s.Context = "Keep description";
+        Dispatch(server, "session.rename", new { name = "Pinned" });
+        Assert.False(Ok(Dispatch(server, "session.rename", new { name = "Other", clear = true })));
+        Assert.False(Ok(Dispatch(server, "session.rename", new { clear = "true" })));
+        Assert.Equal("Pinned", s.CustomName);
+        var result = Dispatch(server, "session.rename", new { clear = true }).GetProperty("result");
+        Assert.Equal("project", result.GetProperty("name").GetString());
+        Assert.Null(s.CustomName);
+        Assert.Equal("Keep description", s.Context);
+        Assert.False(Ok(Dispatch(server, "session.rename", new { clear = true }, "missing")));
+    }
+
+    [Fact]
     public void TreeReportsExplicitNameAndDirectoriesByPaneId()
     {
         var (server, host) = New();

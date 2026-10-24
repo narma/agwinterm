@@ -268,20 +268,20 @@ never reaches, so the restart that most needed the command was the restart guara
 
 ## `session context` and `session rename`
 
-Without an explicit name, session labels use the focused pane's current directory basename,
-falling back to its launch directory. `/` and Windows drive roots remain recognizable; an unknown
-directory shows `~`. OSC program titles do not replace the sidebar label. Shell integration enables
-updates after `cd`; otherwise the launch directory remains the source. Explicit names stay pinned.
+Session labels use an explicit name first, then the focused pane's OSC program title, then its
+current/launch directory basename. The title bar uses the same explicit-name/program-title rule
+and retains its full-path directory fallback. Bare executable/path titles and control characters
+are ignored. `/` and Windows drive roots remain recognizable; an unknown directory shows `~`.
+Shell integration enables cwd updates after `cd`. Explicit names stay pinned.
 
 `tree` includes `customName` (null for automatic labels) and `paneCwds`, an object mapping each
 normal pane ID to its live/launch directory (null if unknown), including single-pane sessions.
 Split panes retain independent entries. Directories are data, not unique identifiers; target by ID.
 Legacy host adapters may omit these fields; missing `customName` does not mean an automatic label.
 
-The Claude/Codex SessionStart hook asks the agent to set a short task name with `session rename`
-and a one-line purpose with `session context`. These use the existing persisted fields, independent
-of OSC program titles. The agent should preserve existing custom names and update labels only when
-the task's purpose changes. Use session/pane ids for stable targets.
+The Claude/Codex SessionStart hook asks the agent to set only a one-line purpose with `session context`.
+It must not rename or unpin the session without a user request: pinning would stop automatic OSC
+title updates. Context changes only when the purpose changes; user-provided context is preserved.
 
 `session context "<text>"` sets one line of **what a session is for**, shown dimmed after the name in
 the title bar and the sidebar row and on the session palette's second line, where a name has to stay
@@ -297,6 +297,10 @@ session node, so an agent that sets it when it starts a task leaves a note every
 
 `session rename <name>` is its neighbour: the short custom name, same target resolution, and the two
 survive each other (renaming does not clear the context).
+`session rename --clear` removes the pinned name and resumes following the program title/directory.
+Its reply is `{session, name}` with the automatic name now in effect; `tree.customName` becomes null.
+The API spelling is `session.rename` with `args: {"clear": true}`. A name together with clear is refused.
+Existing names are not migrated or cleared automatically, because user and agent names share a field.
 
 ## `session split` and `session swap`
 
