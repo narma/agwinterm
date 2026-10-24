@@ -211,10 +211,6 @@ public sealed class ControlServer : IDisposable
             switch (cmd)
             {
                 case "ping": return Ok("agwinterm " + AppVersion());
-                case "install.hooks": return Ok(AgentHooks.Install());
-                case "install.skill": return Ok(AgentSkill.Install());
-                case "install.shell": return Ok(ShellIntegrationInstaller.Install());
-                case "install.cli": return Ok(GetBool(args, "remove") ? CliInstaller.Uninstall() : CliInstaller.Install());
                 case "omp.list": return Ok(string.Join("\n", OmpThemes.List().Select(t => t.Name)));
                 // ---- Wave F1b: window management (target = the window selector) ----
                 case "window.new": return _windows is null ? Err("multi-window unavailable") : Ok(_windows.WindowNew(GetString(args, "name") ?? target));
@@ -234,6 +230,9 @@ public sealed class ControlServer : IDisposable
                 return Err("window not found: " + windowSel);
 
             host = host.AuxiliaryTarget(target) ?? host;
+
+            if (cmd is "install.hooks" or "install.skill" or "install.shell" or "install.cli")
+                return Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
 
             if (host.IsQuickSurface && cmd is not ("quick" or "window.state" or "tree"
                 or "session.write" or "session.type" or "session.text" or "session.copy" or "session.status"

@@ -695,7 +695,22 @@ internal partial class Program
 
     public string ProfilesList() => InvokeOnUi(() => string.Join("\n", _profileCfg.Profiles.Select(p =>
         $"{(p.Name.Equals(_profileCfg.Default, StringComparison.OrdinalIgnoreCase) ? "*" : " ")} {p.Name}\t{p.Command}{(p.Args is { Length: > 0 } a ? " " + string.Join(" ", a) : "")}")));
-    public string ProfilesReload() => InvokeOnUi(() => { _profileCfg = Agwinterm.Pty.ShellProfiles.Load(AppDir); RequestRedraw(); return $"{_profileCfg.Profiles.Count} profiles loaded"; });
+    public string ProfilesReload()
+    {
+        var profiles = ShellProfiles.Reload(AppDir); // WSL discovery stays off the UI thread.
+        return InvokeOnUiQueued(() => { _profileCfg = profiles; RequestRedraw(); return $"{_profileCfg.Profiles.Count} profiles loaded"; });
+    }
+
+    public ShellProfile? IntegrationProfile(string? target) => InvokeOnUiQueued(() => IntegrationProfileOnUi(target));
+
+    private ShellProfile? IntegrationProfileOnUi(string? target)
+    {
+        var ses = FindSesForTarget(target);
+        if (ses is null && !string.IsNullOrEmpty(target) && target != "active")
+            throw new ArgumentException("session not found");
+        var profile = ResolveProfile(ses?.ProfileName);
+        return profile is null ? null : new ShellProfile { Name = profile.Name, Command = profile.Command, Args = profile.Args?.ToArray(), Env = profile.Env is null ? null : new(profile.Env) };
+    }
 
     public string RestoreClear()
     {
@@ -1255,6 +1270,23 @@ internal partial class Program
         if (hit is null) return false;
         var pane = hit.Value.pane;
         int seq = Interlocked.Increment(ref pane.BindSeq);
+        var profile = IntegrationProfile(target);
+        if (profile is not null && WslIntegration.IsWsl(profile.Command))
+        {
+            // Linux PIDs never enter the Windows process lookup. Read while the hook is alive.
+            try
+            {
+                var procs = WslIntegration.Ancestry(profile, hookPid, pane.Id);
+                string? command = AgentResume.FindAgentCommandLine(procs, hookPid, 0, agent, out string? why);
+                if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
+                string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
+                    AgentResume.ResumeFlags(agent, command));
+                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq) { pane.AgentResume = relaunch; SaveState(); } });
+                EmitEvent("bind", pane.Id, "bound: " + relaunch);
+                return true;
+            }
+            catch (Exception ex) { EmitEvent("bind", pane.Id, "ignored: " + ex.Message); return false; }
+        }
         var chain = SnapshotAncestry(hookPid);
         int? shellPid = pane.S.ChildProcessId;
         var shell = Agwinterm.Pty.AgentResume.ClassifyShell(ResolveProfile(hit.Value.ses?.ProfileName)?.Command ?? "powershell.exe");
@@ -1380,7 +1412,7 @@ internal partial class Program
             snap.Add((hit.Value.pane, hit.Value.ses, hit.Value.pane.S.ChildProcessId ?? 0));
         }
 
-        if (!TryCaptureForegroundCommands(snap.Select(x => x.pid).Where(pid => pid > 0), timeoutMs: 15000, out var byPid))
+        if (!TryCapturePaneCommands(snap, 15000, out var byPid))
             return RestoreCaptureResult.Refuse(RestoreCaptureReply.QueryFailed);
 
         var (result, json, stamp, landedCount) = InvokeOnUiQueued(() =>

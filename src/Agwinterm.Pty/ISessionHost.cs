@@ -130,6 +130,8 @@ public interface ISessionHost
 
     /// <summary>List the configured shell profiles (name, command, default marker).</summary>
     string ProfilesList();
+    /// <summary>Snapshot the target's integration environment on the UI thread. Unknown targets fail.</summary>
+    ShellProfile? IntegrationProfile(string? target) => null;
     /// <summary>Reload profiles.json from disk.</summary>
     string ProfilesReload();
 

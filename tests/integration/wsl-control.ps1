@@ -1,0 +1,109 @@
+param([string]$Distro = 'Ubuntu')
+$ErrorActionPreference = 'Stop'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
+$ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$id = 'agwinterm-wsl-test-' + [Guid]::NewGuid().ToString('N')
+$state = Join-Path $env:LOCALAPPDATA $id
+$linuxHome = '/tmp/' + $id
+$process = $null
+function Ctl([string[]]$Arguments) {
+    $raw = (& $ctl @Arguments --pipe $id --json) -join "`n"
+    try { $reply = $raw | ConvertFrom-Json } catch { throw "CLI $Arguments returned: $raw" }
+    if (-not $reply.ok) { throw ($reply | ConvertTo-Json -Compress) }
+    return $reply.result
+}
+function Check([bool]$Condition, [string]$Message) {
+    if (-not $Condition) { throw $Message }
+    Write-Host "PASS $Message"
+}
+try {
+    # The installer normally places the CLI next to the app; a solution build keeps separate outputs.
+    Get-ChildItem -LiteralPath (Split-Path $ctl) -Filter 'agwintermctl.*' | Copy-Item -Destination (Split-Path $exe)
+    New-Item -ItemType Directory -Path $state | Out-Null
+    & wsl -d $Distro --exec mkdir -p $linuxHome
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create disposable Linux HOME' }
+    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = @('-d', $Distro, '--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" } }) } |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'profiles.json') -Encoding utf8
+    'new-session-dir = current' | Set-Content -LiteralPath (Join-Path $state 'agwinterm.conf')
+    $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id, '--no-restore', '--default-session-host', 'inprocess') -WindowStyle Hidden -PassThru
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 300
+        try { $null = Ctl @('ping'); break } catch { if ($i -eq 29) { throw } }
+    }
+    $tree = Ctl @('tree')
+    $session = $tree.workspaces[0].sessions[0].id
+    $null = Ctl @('session', 'type', ('printf "TEST_HOME=%s\n" "$HOME"' + [char]13), '--target', $session)
+    Start-Sleep -Seconds 1
+    $initial = Ctl @('session', 'text', '--target', $session)
+    Check (($initial -replace '\s', '').Contains("TEST_HOME=$linuxHome")) 'Linux HOME is isolated before any installer runs'
+    foreach ($kind in @('cli', 'shell', 'hooks', 'skill')) {
+        $result = Ctl @('install', $kind, '--target', $session)
+        Check ($result -match 'WSL' -and $result -notmatch 'refused') "WSL $kind installer uses Linux HOME"
+        if ($kind -eq 'hooks') { Check ($result.Contains("$linuxHome/.claude/settings.json")) 'Hook destinations remain inside test HOME' }
+    }
+    $null = Ctl @('session', 'type', ('source "$HOME/.bashrc"; printf "ENV=%s/%s\n" "$AGWINTERM_ENABLED" "$AGWINTERM_PIPE"; agwintermctl ping' + [char]13), '--target', $session)
+    Start-Sleep -Seconds 2
+    $screen = Ctl @('session', 'text', '--target', $session)
+    Check (($screen -replace '\s', '') -match "ENV=1/$id") 'Identity crosses WSLENV'
+    Check ($screen -match 'agwinterm \d') 'Linux CLI reaches the private Windows control pipe'
+    $null = Ctl @('session', 'type', ('mkdir -p "$HOME/path with spaces"; cd "$HOME/path with spaces"' + [char]13), '--target', $session)
+    Start-Sleep -Seconds 1
+    $copy = Ctl @('session', 'duplicate', '--target', $session)
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session', 'type', ('printf "PWD=%s\n" "$PWD"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $screen = Ctl @('session', 'text', '--target', $copy)
+    Check (($screen -replace '\s', '').Contains("PWD=$linuxHome/pathwithspaces")) "Duplicate opens the Linux cwd ($screen)"
+    $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+    Check (($saved -join '').Contains("$linuxHome/path with spaces")) 'Persistence retains Linux cwd'
+    $fixture = (& wsl -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'wsl-agent.py')).Trim()
+    $agentCommand = "bash -c 'exec -a codex python3 `"$fixture`" --dangerously-bypass-approvals-and-sandbox'"
+    $null = Ctl @('session', 'type', ($agentCommand + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 3
+    $screen = Ctl @('session', 'text', '--target', $copy)
+    Check ($screen.Contains('WSL_HOOKS_FINISHED')) 'Linux agent hooks finish successfully'
+    $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+    Check (($saved -join '').Contains('codex resume wsl-test-conversation --dangerously-bypass-approvals-and-sandbox')) 'Linux ancestry binds the session ID and permission flags'
+    $tree = Ctl @('tree')
+    $copiedSession = $tree.workspaces.sessions | Where-Object id -eq $copy
+    Check ($copiedSession.status -eq 'completed') 'Linux Stop hook updates pane status'
+    $overlay = Ctl @('session', 'overlay', 'open', '--command', 'printf "OVERLAY_%s\n" "LINUX"; sleep 2', '--wait', '--target', $copy)
+    Start-Sleep -Seconds 1
+    $overlayText = Ctl @('session', 'overlay', 'text', '--target', $copy)
+    Check ($overlayText.text -match 'OVERLAY_LINUX') 'Overlay commands run in Linux'
+    $null = Ctl @('session', 'overlay', 'close', '--target', $copy)
+    $null = Ctl @('session', 'type', ('sleep 15' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $capture = Ctl @('restore', 'capture', '--target', $copy)
+    Check (($capture | ConvertTo-Json -Depth 10).Contains('sleep 15')) 'Foreground capture reads Linux processes'
+    $null = Ctl @('session', 'write', ([string][char]3), '--target', $copy)
+    $null = Ctl @('session', 'bind', 'none', '--target', $copy)
+    $null = Ctl @('config', 'set', 'restore-commands', 'false')
+    Start-Sleep -Seconds 1
+    $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+    Check (-not ($saved -join '').Contains('wsl-test-conversation')) 'Test agent binding is cleared before restart'
+    Stop-Process -Id $process.Id -Force
+    $process.WaitForExit()
+    $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id) -WindowStyle Hidden -PassThru
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Milliseconds 300
+        try { $null = Ctl @('ping'); break } catch { if ($i -eq 29) { throw } }
+    }
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session', 'type', ('printf "RESTORED_%s=%s\n" "CWD" "$PWD"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $screen = Ctl @('session', 'text', '--target', $copy)
+    Check (($screen -replace '\s', '').Contains("RESTORED_CWD=$linuxHome/pathwithspaces")) 'App restart restores the distribution and Linux directory'
+    Write-Host 'WSL control integration passed.'
+}
+finally {
+    if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    # Generated paths are confined to test namespaces; never accept a user-supplied deletion path.
+    $expected = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $id))
+    if ($state -eq $expected -and $id -match '^agwinterm-wsl-test-[a-f0-9]{32}$') {
+        if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force }
+        & wsl -d $Distro --exec python3 -c 'import shutil,sys; p=sys.argv[1]; assert p.startswith("/tmp/agwinterm-wsl-test-") and "/" not in p[5:]; shutil.rmtree(p)' $linuxHome
+    }
+}
+

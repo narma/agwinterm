@@ -78,6 +78,8 @@ gh attestation verify <file> --repo yeroo/agwinterm
 
 The installer is deliberately minimal. The integrations are **opt-in from inside the app**, from the command palette (`Ctrl+Shift+P`) or Settings, and safe to rerun: *Install Command-Line Tool (PATH)*, *Install Agent Status Hooks*, *Install Agent Skill* and *Install Shell Integration* (the same four are `agwintermctl install cli|hooks|skill|shell`), and default-terminal registration in *Settings → General*.
 
+For WSL, select the distribution's session before installing: integrations use its Linux user and home directory. WSL sessions support the control CLI, agent hooks and resume, bash/zsh working-directory tracking, Linux command overlays, and path conversion for Explorer and file drops. See [WSL setup](docs/wsl.md).
+
 On an older or low-RAM machine, take **[agliteterm](https://github.com/yeroo/agliteterm)** instead: half the download, no .NET at all, and the same shared control-API subset. The two install independently and can live side by side.
 
 ## Scripting agwinterm
