@@ -83,9 +83,15 @@ public class AgentBindScriptTests : IDisposable
         string stdout = process.StandardOutput.ReadToEnd();
         Assert.True(process.WaitForExit(30_000), "the hook script did not exit");
         Assert.Equal(0, process.ExitCode);
-        Assert.Equal("", stdout);   // an agent reads a hook's stdout: it must stay silent
-
-        if (!received.Wait(TimeSpan.FromSeconds(1))) return null;
+        if (!received.Wait(TimeSpan.FromSeconds(1))) { Assert.Equal("", stdout); return null; }
+        if (agent is "claude" or "codex")
+        {
+            using var guidance = JsonDocument.Parse(stdout);
+            var output = guidance.RootElement.GetProperty("hookSpecificOutput");
+            Assert.Equal("SessionStart", output.GetProperty("hookEventName").GetString());
+            Assert.Equal(AgentHooks.NamingInstructions, output.GetProperty("additionalContext").GetString());
+        }
+        else Assert.Equal("", stdout);
         var (line, alive) = received.Result;
         using var doc = JsonDocument.Parse(line!);
         return new Report(doc.RootElement.Clone(), alive, process.Id);

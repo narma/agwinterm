@@ -268,10 +268,10 @@ never reaches, so the restart that most needed the command was the restart guara
 
 ## `session context` and `session rename`
 
-Without an explicit name, the sidebar, session pickers and `tree.name` follow the focused pane's
-OSC 0/2 title (including an agent's short conversation title). Rename pins a custom name over
-program updates. Empty/default Windows console titles fall back to the original session label.
-Automatic titles are transient and do not overwrite saved names. Use session/pane ids for stable targets.
+The Claude/Codex SessionStart hook asks the agent to set a short task name with `session rename`
+and a one-line purpose with `session context`. These use the existing persisted fields, independent
+of OSC program titles. The agent should preserve existing custom names and update labels only when
+the task's purpose changes. Use session/pane ids for stable targets.
 
 `session context "<text>"` sets one line of **what a session is for**, shown dimmed after the name in
 the title bar and the sidebar row and on the session palette's second line, where a name has to stay

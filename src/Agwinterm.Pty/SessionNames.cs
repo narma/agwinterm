@@ -35,17 +35,6 @@ namespace Agwinterm.Pty;
 /// </summary>
 public static class SessionNames
 {
-    /// <summary>Ignore the default Windows console title; keep program-supplied task titles.</summary>
-    public static string? ProgramTitle(string? title) =>
-        string.IsNullOrWhiteSpace(title)
-        || title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-        || (title.Length >= 2 && title[1] == ':' && title.Contains('\\'))
-            ? null : title;
-
-    /// <summary>A manual name wins; otherwise follow the focused pane's OSC 0/2 title.</summary>
-    public static string Display(string? customName, string? title, string fallback) =>
-        !string.IsNullOrWhiteSpace(customName) ? customName : ProgramTitle(title) ?? fallback;
-
     /// <summary>The reply's key for the name, and <c>tree</c>'s key for the same value.</summary>
     public const string Key = "name";
 

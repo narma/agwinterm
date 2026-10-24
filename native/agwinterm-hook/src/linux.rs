@@ -212,6 +212,9 @@ pub(super) fn run() -> Result<(), Box<dyn std::error::Error>> {
     if !child.wait()?.success() {
         return Err("Windows hook bridge failed".into());
     }
+    if let Some(guidance) = naming_guidance(agent, state) {
+        println!("{guidance}");
+    }
     Ok(())
 }
 

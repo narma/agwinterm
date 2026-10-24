@@ -60,6 +60,15 @@ public static class AgentSkill
         active/completed.
 
         ## Manage sessions & workspaces
+        On the first substantive request, name the task with `session rename` (3-7 words in the user's
+        language) and set a one-line purpose with `session context` (at most 200 characters).
+        Inspect `tree --json` first. Rename only a default `session N` label or a name you previously set
+        in this conversation; preserve other names and externally changed names. Update when the purpose
+        changes, not on every tool call. Keep secrets out of labels. Nested agents must not rename their
+        parent's session. These labels are independent of the agent's built-in conversation title.
+        In WSL the CLI uses Windows interop. If the sandbox blocks it (e.g. UtilBindVsockAnyPort),
+        retry through normal tool approval when available; never bypass a denial or disable the sandbox.
+
         - `agwintermctl tree --json`                              — list workspaces+sessions (id, name, active, status,
           `statusChangedAt` = epoch SECONDS of the last status write on the pane whose status the node is
           showing — its liveness clock. Every status write to that pane restamps it, including a re-assert of
@@ -99,8 +108,6 @@ public static class AgentSkill
           Profiles live in `%LOCALAPPDATA%\agwinterm\profiles.json` (auto-seeded from detected shells; edit to add your own — name/command/args/cwd/icon/env); `agwintermctl profiles reload` re-reads it.
         - `agwintermctl session select <id>` / `session close <id>`
         - `agwintermctl session rename <new-name> [--target ID]` — set a session's custom name (sidebar + title bar).
-          Without an explicit name, the sidebar and `tree` follow the focused pane's OSC 0/2 task title.
-          Rename pins a name over subsequent program titles. Use stable ids when scripting automatic names.
           It names a SESSION, and a PANE id names the session that pane belongs to — worth knowing, because
           `AGWINTERM_SESSION_ID` is your PANE's id and is what the CLI sends when you pass no `--target`: from
           inside a split pane, a bare `session rename` names the session BOTH panes are in, not your half (a pane

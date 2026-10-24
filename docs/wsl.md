@@ -19,18 +19,22 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 
 ### Agent conversation titles
 
-Unnamed sessions follow the focused pane's OSC 0/2 title in the sidebar, palettes and `tree`.
-Claude Code supplies its short task title through this channel. For Codex, use
-`terminal_title = ["thread"]` in the `[tui]` section of `~/.codex/config.toml` to show the
-conversation name instead of its default project/spinner title. Restart Codex after changing it.
-A name explicitly supplied on creation or through Rename takes precedence. Program titles are
-transient: they do not replace the saved fallback name, and clearing the title restores that fallback.
-Splits follow the focused primary/split pane; scratch and overlay titles do not rename their owner.
+The Claude/Codex SessionStart hook returns a short instruction through `additionalContext`:
+on the first substantive request, inspect `tree`, set a 3-7-word task name with `session rename`,
+and set a one-line purpose with `session context`. The bundled skill carries the same guidance.
+Agents update labels when the purpose changes and preserve existing custom names or external renames.
+The names are chosen by the agent and may differ from its built-in chat title. They use the existing
+persisted name/context fields; no sidebar OSC-title tracking or agent-transcript parsing is involved.
+Only SessionStart adds guidance; status hooks stay silent and do not force extra turns on Stop.
+An already running agent receives the instruction on its next SessionStart (for example, resume).
 
 Installed hooks and trusted hooks are separate in Codex: open `/hooks` and review the five Agwinterm
 handlers (SessionStart, UserPromptSubmit, PostToolUse, PermissionRequest and Stop).
 The installed Codex set uses the events in `~/.codex/hooks.json`;
-untrusted definitions are skipped. Title updates themselves do not require status hooks.
+untrusted definitions are skipped. Renaming depends on the agent following the instruction and being
+able to call the CLI; it is not a deterministic terminal-side rename.
+In WSL, a Codex sandbox may block Windows interop (`UtilBindVsockAnyPort`). The guidance
+asks the agent to retry through normal tool approval when available, respecting any denial.
 
 Codex's shared daemon can retain another terminal's environment (or no Agwinterm identity at all).
 The bash/zsh integration therefore adds `--no-daemon` to ordinary `codex` launches inside Agwinterm.

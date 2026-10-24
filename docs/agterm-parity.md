@@ -28,14 +28,14 @@ HTML/URL overlays with a page bridge, remote zmx sessions and Pi/OpenCode hook i
 Agwinterm does not implement. Local hosted-process adoption exists in Agwinterm (`ServerSession.TryAdopt`);
 the older statement below that singles out lite should not be read as excluding it.
 
-Session naming: agterm documents a cwd-basename default and pinned manual names. Agwinterm now
-also shows the focused pane's OSC 0/2 title in the sidebar, pickers and `tree`, so an agent's short
-task description replaces `session N`. Explicit names win. The fallback name is persisted separately
-from the live program title. Codex needs `[tui] terminal_title = ["thread"]` to emit its conversation
-name; its default is project/spinner. See [WSL setup](wsl.md#agent-conversation-titles).
+Session naming: agterm documents a cwd-basename default and pinned manual names. Agwinterm's
+Claude/Codex SessionStart hook now asks the agent to name the task with the existing `session rename`
+and `session context` commands. This follows the control-API approach instead of adding OSC-title
+tracking to the sidebar. The agent chooses the label; it need not match its own generated chat title.
+See [WSL setup](wsl.md#agent-conversation-titles).
 
-Validation: unit tests plus the isolated WSL suite cover background title changes, OSC 0/2, clearing
-the title, manual-name precedence, native hook installation, status/resume binding and shell integration.
+Validation covers SessionStart guidance, silent status hooks, native hook installation, status/resume
+binding and shell integration. The existing rename/context tests cover their persisted API behavior.
 
 | Item | agterm | Closed by |
 | --- | --- | --- |

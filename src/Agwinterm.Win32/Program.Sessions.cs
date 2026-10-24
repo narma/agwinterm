@@ -94,19 +94,15 @@ internal partial class Program
         // used to repaint the (unchanged!) foreground at the full frame cap, starving typing on slow
         // machines. The emulator still consumes everything; switching to the pane shows current
         // content, and the sidebar title catches up on the next paint (cursor blink at the latest).
-        string lastTitle = session.Emulator.Title;
         session.OutputReceived += () =>
         {
-            string title = session.Emulator.Title;
-            bool titleChanged = title != lastTitle;
-            lastTitle = title;
             long gen = session.Emulator.ScrollGeneration;
             if (gen != pane.LastScrollGen) { pane.LastScrollGen = gen; pane.ScrollOffset = 0; }
             // Synchronized output (DECSET ?2026): while the app is mid-frame, defer painting so a
             // partial redraw never reaches the screen — the closing 2026l chunk clears the mode and
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
             // blink interval, so a crash that leaves ?2026 open can't freeze the pane for long.
-            if (titleChanged || (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput)) RequestRedraw();
+            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput) RequestRedraw();
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
         AgentStatus lastStatus = session.Status;
@@ -474,7 +470,7 @@ internal partial class Program
         int ordinal;
         lock (_workspaces) ordinal = ws.Sessions.Count + 1;
         if (name is null && handoff is { Title.Length: > 0 } ht) name = ht.Title;   // label handoff sessions with the app's title
-        var ses = new Ses { Id = id, Name = name ?? $"session {ordinal}", CustomName = name, Ws = ws, ProfileName = profileName, Elevated = IsElevated() && !deElevate };
+        var ses = new Ses { Id = id, Name = name ?? $"session {ordinal}", Ws = ws, ProfileName = profileName, Elevated = IsElevated() && !deElevate };
         // At most one pane carries the session id (control-API back-compat: a fresh session's pane 0 IS
         // the session id, so a session id addresses a pane). A swap may put that pane on either side,
         // closing it by any path leaves none (the id then resolves to the focused pane, like a name —
@@ -1607,7 +1603,7 @@ internal partial class Program
         string display = !string.IsNullOrEmpty(ses.CustomName) ? ses.CustomName!
             : (!string.IsNullOrEmpty(cwd) ? Path.GetFileName(cwd.TrimEnd('\\', '/')) : ses.Name);
         if (string.IsNullOrEmpty(display)) display = ses.Name;
-        return new ClosedSession(ses.CustomName, ses.ProfileName, cwd, ses.Ws.Id, ses.Ws.Name, ses.Flagged, display, ses.StoredName, ses.Id, ++_closeSeq, ses.Context);
+        return new ClosedSession(ses.CustomName, ses.ProfileName, cwd, ses.Ws.Id, ses.Ws.Name, ses.Flagged, display, ses.Name, ses.Id, ++_closeSeq, ses.Context);
     }
 
     /// <summary>Remember a session's identity so it can be reopened after it's closed.</summary>
