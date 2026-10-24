@@ -61,6 +61,26 @@ try {
     Start-Sleep -Seconds 1
     $initial = Ctl @('session', 'text', '--target', $session)
     Check (($initial -replace '\s', '').Contains("TEST_HOME=$linuxHome")) 'Linux HOME is isolated before any installer runs'
+    # Task titles must reach the sidebar/tree even while the owning session is in the background.
+    $other = Ctl @('session', 'new', '--cwd', $linuxHome)
+    function Wait-SessionName([string]$Expected) {
+        for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $item = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+            if ($item.name -eq $Expected) { return $true }
+            Start-Sleep -Milliseconds 100
+        }
+        return $false
+    }
+    $null = Ctl @('session', 'type', ('printf "\033]2;Fix login redirect\007"' + [char]13), '--target', $session)
+    Check (Wait-SessionName 'Fix login redirect') 'Background OSC 2 task title replaces the default session label'
+    $null = Ctl @('session', 'type', ('printf "\033]0;Review authentication\007"' + [char]13), '--target', $session)
+    Check (Wait-SessionName 'Review authentication') 'OSC 0 updates the same session label'
+    $null = Ctl @('session', 'type', ('printf "\033]2;\007"' + [char]13), '--target', $session)
+    Check (Wait-SessionName 'session 1') 'Clearing the program title restores the fallback label'
+    $null = Ctl @('session', 'rename', 'Pinned task', '--target', $session)
+    $null = Ctl @('session', 'type', ('printf "\033]2;Another task\007"' + [char]13), '--target', $session)
+    Check (Wait-SessionName 'Pinned task') 'A manual name takes precedence over program titles'
+    $null = Ctl @('session', 'close', '--target', $other)
     if ($NoPython) {
         $null = Ctl @('session', 'type', ('if command -v python3; then printf "PYTHON_%s\n" PRESENT; else printf "PYTHON_%s\n" ABSENT; fi' + [char]13), '--target', $session)
         Start-Sleep -Seconds 1

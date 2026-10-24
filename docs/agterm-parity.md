@@ -20,6 +20,23 @@ named as such rather than left to look like a backlog nobody is working on.
 
 ## Closed
 
+### Focused audit — 2026-10-24
+
+The release-by-release table below still uses the 0.26 baseline; it is not a claim of parity with
+current agterm. A check against [current documentation](https://agterm.com/docs) found newer
+HTML/URL overlays with a page bridge, remote zmx sessions and Pi/OpenCode hook installers that
+Agwinterm does not implement. Local hosted-process adoption exists in Agwinterm (`ServerSession.TryAdopt`);
+the older statement below that singles out lite should not be read as excluding it.
+
+Session naming: agterm documents a cwd-basename default and pinned manual names. Agwinterm now
+also shows the focused pane's OSC 0/2 title in the sidebar, pickers and `tree`, so an agent's short
+task description replaces `session N`. Explicit names win. The fallback name is persisted separately
+from the live program title. Codex needs `[tui] terminal_title = ["thread"]` to emit its conversation
+name; its default is project/spinner. See [WSL setup](wsl.md#agent-conversation-titles).
+
+Validation: unit tests plus the isolated WSL suite cover background title changes, OSC 0/2, clearing
+the title, manual-name precedence, native hook installation, status/resume binding and shell integration.
+
 | Item | agterm | Closed by |
 | --- | --- | --- |
 | `session.text --lines N` reaching scrollback | 0.25.0 | agwinterm #213 |

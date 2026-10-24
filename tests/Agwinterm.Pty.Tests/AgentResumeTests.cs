@@ -203,6 +203,7 @@ public class AgentResumeTests
     [Theory]
     [InlineData(" resume 01a0 --dangerously-bypass-approvals-and-sandbox -m gpt-5", "--dangerously-bypass-approvals-and-sandbox")]
     [InlineData(" -s workspace-write -a on-request", "-s workspace-write -a on-request")]
+    [InlineData(" --no-daemon -s read-only --no-daemon", "--no-daemon -s read-only")]
     [InlineData(" --sandbox=read-only --profile work -c model=\"o3\"", "--sandbox read-only --profile work")]
     [InlineData(" -p", "")]   // a valued flag with nothing after it
     public void CodexKeepsItsSandboxAndApprovalMode(string args, string expected)

@@ -17,6 +17,28 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 
 ## Commands, paths and restore
 
+### Agent conversation titles
+
+Unnamed sessions follow the focused pane's OSC 0/2 title in the sidebar, palettes and `tree`.
+Claude Code supplies its short task title through this channel. For Codex, use
+`terminal_title = ["thread"]` in the `[tui]` section of `~/.codex/config.toml` to show the
+conversation name instead of its default project/spinner title. Restart Codex after changing it.
+A name explicitly supplied on creation or through Rename takes precedence. Program titles are
+transient: they do not replace the saved fallback name, and clearing the title restores that fallback.
+Splits follow the focused primary/split pane; scratch and overlay titles do not rename their owner.
+
+Installed hooks and trusted hooks are separate in Codex: open `/hooks` and review the five Agwinterm
+handlers (SessionStart, UserPromptSubmit, PostToolUse, PermissionRequest and Stop).
+The installed Codex set uses the events in `~/.codex/hooks.json`;
+untrusted definitions are skipped. Title updates themselves do not require status hooks.
+
+Codex's shared daemon can retain another terminal's environment (or no Agwinterm identity at all).
+The bash/zsh integration therefore adds `--no-daemon` to ordinary `codex` launches inside Agwinterm.
+It preserves existing user aliases/functions; if you have one, add `--no-daemon` there yourself.
+Launches outside Agwinterm are unchanged, and captured resume commands retain this flag.
+This was verified with Codex CLI 0.164.0: the shared-daemon run produced no terminal events,
+whereas the local run produced `bind`, `active`, `blocked`, `active`, `completed` from real hooks.
+
 Scratch panes, overlays and custom commands started from a WSL session use its distribution. Overlay and detached commands use `/bin/sh -lc`; interactive custom-command sessions run the command in the user's shell and leave a login shell open afterwards.
 
 File drops convert Windows paths with the selected distribution's `wslpath` and quote them for a POSIX shell before pasting. Reveal in Explorer and Linux `file://` links convert in the opposite direction. File arguments passed directly to the Windows CLI (for example `image show`) still need `wslpath -w`; the wrapper does not guess which arguments are paths.

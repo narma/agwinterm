@@ -268,6 +268,11 @@ never reaches, so the restart that most needed the command was the restart guara
 
 ## `session context` and `session rename`
 
+Without an explicit name, the sidebar, session pickers and `tree.name` follow the focused pane's
+OSC 0/2 title (including an agent's short conversation title). Rename pins a custom name over
+program updates. Empty/default Windows console titles fall back to the original session label.
+Automatic titles are transient and do not overwrite saved names. Use session/pane ids for stable targets.
+
 `session context "<text>"` sets one line of **what a session is for**, shown dimmed after the name in
 the title bar and the sidebar row and on the session palette's second line, where a name has to stay
 short. It survives a restart and an undo-close, and `tree --json` carries it as `context` on the

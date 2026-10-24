@@ -123,7 +123,7 @@ public static class AgentResume
     {
         var bare = agent switch
         {
-            "codex" => new[] { "--dangerously-bypass-approvals-and-sandbox" },
+            "codex" => new[] { "--dangerously-bypass-approvals-and-sandbox", "--no-daemon" },
             "devin" => new[] { "--sandbox" },
             _ => new[] { "--dangerously-skip-permissions" },
         };

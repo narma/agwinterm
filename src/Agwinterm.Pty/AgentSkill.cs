@@ -99,6 +99,8 @@ public static class AgentSkill
           Profiles live in `%LOCALAPPDATA%\agwinterm\profiles.json` (auto-seeded from detected shells; edit to add your own — name/command/args/cwd/icon/env); `agwintermctl profiles reload` re-reads it.
         - `agwintermctl session select <id>` / `session close <id>`
         - `agwintermctl session rename <new-name> [--target ID]` — set a session's custom name (sidebar + title bar).
+          Without an explicit name, the sidebar and `tree` follow the focused pane's OSC 0/2 task title.
+          Rename pins a name over subsequent program titles. Use stable ids when scripting automatic names.
           It names a SESSION, and a PANE id names the session that pane belongs to — worth knowing, because
           `AGWINTERM_SESSION_ID` is your PANE's id and is what the CLI sends when you pass no `--target`: from
           inside a split pane, a bare `session rename` names the session BOTH panes are in, not your half (a pane

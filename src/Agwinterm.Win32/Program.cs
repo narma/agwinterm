@@ -380,7 +380,19 @@ internal partial class Program : ISessionHost, IWindowHost
         private static int _nextUiaIdentity;
         public readonly int UiaIdentity = Interlocked.Increment(ref _nextUiaIdentity);
         public required string Id;
-        public required string Name;
+        public required string Name
+        {
+            get
+            {
+                if (Panes.Count == 0) return CustomName ?? StoredName;
+                var session = ActivePane.S;
+                lock (session.SyncRoot)
+                    return SessionNames.Display(CustomName, session.Emulator.Title, StoredName);
+            }
+            set => StoredName = value;
+        }
+        // Persist the fallback, never a transient program title from the previous shell.
+        public string StoredName = "";
         public required Workspace Ws;
         public readonly List<Pane> Panes = new();
         public int Active;         // index of the focused pane
@@ -392,7 +404,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public string Axis = SplitAxes.Vertical;
         public bool Flagged;       // durable working-set flag (survives moves; persisted; drives flagged sidebar mode)
         public bool Elevated;      // shell runs at High integrity (admin) — shown with a ⚡; false for de-elevated sessions
-        public string? CustomName; // user-renamed title (null = show the cwd/OSC title in the title bar, agterm-style)
+        public string? CustomName; // explicit name; null follows the active pane's OSC title
         public string? Context;    // session.context: one line of "what is this pane for", set over the API (P3); drawn dimmed beside the name; persisted; null = none. Per session, not per pane — SessionContexts holds the rules.
         public string? ProfileName; // shell profile this session launched with (null = default; persisted)
         public Pane? Scratch;      // per-session scratch terminal (lazy; kept alive when hidden; not restored)

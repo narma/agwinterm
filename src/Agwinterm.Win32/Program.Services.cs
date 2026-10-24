@@ -243,11 +243,8 @@ internal partial class Program
         if (!string.IsNullOrWhiteSpace(s.CustomName)) return s.CustomName!;
         // A program's OSC title (e.g. "claude") — but ignore the shell's default console title,
         // which on Windows is the bare exe path (…\powershell.exe) or an absolute path (noise).
-        string osc = s.ActivePane.S.Emulator.Title;
-        bool oscMeaningful = !string.IsNullOrWhiteSpace(osc)
-            && !osc.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            && !(osc.Length >= 2 && osc[1] == ':' && osc.Contains('\\')); // not a bare C:\… path
-        if (oscMeaningful) return osc;
+        lock (s.S.SyncRoot)
+            if (SessionNames.ProgramTitle(s.S.Emulator.Title) is { } osc) return osc;
         // Single-row title = the full current path (agterm-style "just the path"), home collapsed to ~.
         string cwd = PrettyCwd(TitleCwd(s)).TrimEnd('\\', '/');
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\', '/');
@@ -1662,7 +1659,7 @@ internal partial class Program
                     var ss = new SessionState
                     {
                         Id = s.Id,
-                        Name = s.Name,
+                        Name = s.StoredName,
                         CustomName = s.CustomName,
                         Context = s.Context,   // P3: null = no key written (RestoreState explains why)
                         Profile = s.ProfileName,

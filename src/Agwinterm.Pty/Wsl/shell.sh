@@ -1,6 +1,22 @@
 # Sourced by bash/zsh, after the user's prompt setup.
 if [ "${AGWINTERM_ENABLED:-}" = 1 ] && [ -z "${__agw_si:-}" ]; then
     __agw_si=1
+    # The shared Codex daemon retains its first launcher's environment, so its
+    # hooks cannot reliably address this pane. Keep terminal launches local.
+    # Preserve user aliases/functions; those can opt in with --no-daemon themselves.
+    if ! alias codex >/dev/null 2>&1; then
+    case "$(command -v codex 2>/dev/null)" in
+        /*)
+            function codex {
+                if [ "${AGWINTERM_ENABLED:-}" = 1 ]; then
+                    command codex --no-daemon "$@"
+                else
+                    command codex "$@"
+                fi
+            }
+            ;;
+    esac
+    fi
     __agw_prompt() {
         # Percent-encode bytes so spaces, %, Unicode and control characters cannot corrupt OSC 7.
         local remaining="$PWD" out='' c
