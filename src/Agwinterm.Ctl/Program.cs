@@ -199,6 +199,13 @@ switch (area)
                 target = rest.Count > 0 ? rest[0] : (Opt("target") ?? "active");
                 break;
             case "rename": // session rename <new-name...> [--target ID]
+                if (options.ContainsKey("clear"))
+                {
+                    if (rest.Count > 0 || options.ContainsKey("name") || valued.Contains("clear"))
+                    { Console.Error.WriteLine("session rename: use a name or --clear, not both"); return 2; }
+                    cargs["clear"] = true;
+                    break;
+                }
                 if (rest.Count == 0 && Opt("name") is null) { Console.Error.WriteLine("session rename needs a name"); return 2; }
                 cargs["name"] = rest.Count > 0 ? string.Join(' ', rest) : Opt("name")!;
                 break;

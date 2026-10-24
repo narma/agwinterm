@@ -31,11 +31,13 @@ public static class AgentHooks
     public static string DevinConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "devin", "config.json");
     public static string AgentBindPath => Path.Combine(LocalAppData, "agwinterm", "agwinterm-agent-bind.ps1");
 
+    internal static readonly string ContextInstructions = WslIntegration.Resource("session-context.txt").Trim();
+
     /// <summary>SessionStart handler for every agent: argv[0] is the agent, the event JSON (session_id,
     /// cwd; Devin sends no cwd, DEVIN_PROJECT_DIR stands in) arrives on stdin. It reports the id, the cwd and its own PID with <c>session.bind</c>; agwinterm
     /// walks the process tree from that PID to confirm the hook belongs to the pane's own agent, reads
     /// the agent's mode flags off its command line and composes the relaunch for the pane's shell.</summary>
-    public const string AgentBindScript =
+    public static readonly string AgentBindScript =
         """
         param([string]$Agent)
         # agwinterm SessionStart hook: bind the pane to the live session so a restart resumes it. No-op outside agwinterm.
@@ -71,9 +73,15 @@ public static class AgentHooks
           # answers, so the hook must still be alive when it does.
           $null = (New-Object System.IO.StreamReader($c)).ReadLineAsync().Wait(3000)
           $c.Dispose()
+          if ($Agent -in @('claude', 'codex')) {
+            $guidance = @'
+        __AGWINTERM_SESSION_CONTEXT__
+        '@
+            @{ hookSpecificOutput = @{ hookEventName = 'SessionStart'; additionalContext = $guidance } } | ConvertTo-Json -Depth 4 -Compress
+          }
         } catch { }
         exit 0
-        """;
+        """.Replace("__AGWINTERM_SESSION_CONTEXT__", ContextInstructions);
 
     /// <summary>Codex `notify` program: receives the event JSON as argv[0], maps it to a session status.
     /// Superseded by <see cref="CodexHookScript"/>; still written so a config.toml `notify` line from an

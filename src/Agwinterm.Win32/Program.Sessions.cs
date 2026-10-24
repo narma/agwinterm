@@ -78,6 +78,7 @@ internal partial class Program
         // Under the session lock: with the Rust core this setter now crosses into native code and
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
+        if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
         var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize,
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
@@ -469,8 +470,7 @@ internal partial class Program
         }
         int ordinal;
         lock (_workspaces) ordinal = ws.Sessions.Count + 1;
-        if (name is null && handoff is { Title.Length: > 0 } ht) name = ht.Title;   // label handoff sessions with the app's title
-        var ses = new Ses { Id = id, Name = name ?? $"session {ordinal}", Ws = ws, ProfileName = profileName, Elevated = IsElevated() && !deElevate };
+        var ses = new Ses { Id = id, Name = name ?? $"session {ordinal}", CustomName = name, Ws = ws, ProfileName = profileName, Elevated = IsElevated() && !deElevate };
         // At most one pane carries the session id (control-API back-compat: a fresh session's pane 0 IS
         // the session id, so a session id addresses a pane). A swap may put that pane on either side,
         // closing it by any path leaves none (the id then resolves to the focused pane, like a name —
@@ -776,7 +776,7 @@ internal partial class Program
 
     /// <summary>A real filesystem cwd for one pane (OSC 7 if reported, else its launch dir) — where a
     /// pane overlay runs: the shell under it is the one the caller is looking at (P5).</summary>
-    private string? CwdOf(Pane pane)
+    private static string? CwdOf(Pane pane)
     {
         string raw = SafeCwd(pane);
         return string.IsNullOrWhiteSpace(raw) ? pane.StartCwd : PrettyCwd(raw);

@@ -17,6 +17,24 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 
 ## Commands, paths and restore
 
+### Agent titles and context
+
+The Claude/Codex SessionStart hook returns a short instruction through `additionalContext`:
+on the first substantive request, inspect `tree` and set a one-line purpose with `session context`.
+The bundled skill carries the same guidance. Agents do not rename or clear names unless asked;
+automatic titles and pinned names are described in [the control API](control-api.md#session-context-and-session-rename).
+Already running agents receive the instruction on their next SessionStart (for example, resume).
+
+Approve installed Codex hooks in `/hooks`. Automatic titles do not require hooks; setting context
+requires the agent to follow the instruction and have access to the CLI.
+In WSL, a Codex sandbox may block Windows interop (`UtilBindVsockAnyPort`). The guidance
+asks the agent to retry through normal tool approval when available, respecting any denial.
+
+Codex's shared daemon can retain another terminal's environment (or no Agwinterm identity at all).
+The bash/zsh integration therefore adds `--no-daemon` to ordinary `codex` launches inside Agwinterm.
+It preserves existing user aliases/functions; if you have one, add `--no-daemon` there yourself.
+Launches outside Agwinterm are unchanged, and captured resume commands retain this flag.
+
 Scratch panes, overlays and custom commands started from a WSL session use its distribution. Overlay and detached commands use `/bin/sh -lc`; interactive custom-command sessions run the command in the user's shell and leave a login shell open afterwards.
 
 File drops convert Windows paths with the selected distribution's `wslpath` and quote them for a POSIX shell before pasting. Reveal in Explorer and Linux `file://` links convert in the opposite direction. File arguments passed directly to the Windows CLI (for example `image show`) still need `wslpath -w`; the wrapper does not guess which arguments are paths.

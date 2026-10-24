@@ -169,6 +169,31 @@ class WslScripts(unittest.TestCase):
                 if existing.startswith('printf'):
                     self.assertTrue(result.stdout.startswith(b'existing\x1b]7;'))
 
+    def test_codex_keeps_pane_environment_without_overriding_user_commands(self):
+        tools = self.home / 'bin'
+        tools.mkdir()
+        executable = tools / 'codex'
+        executable.write_text('#!/bin/sh\nprintf "<%s>\\n" "$@"\n')
+        executable.chmod(0o700)
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        for shell in ('bash', 'zsh'):
+            if not shutil.which(shell):
+                continue
+            cases = [
+                ('. "$1"; . "$1"; codex resume "a b"', '<--no-daemon>\n<resume>\n<a b>\n'),
+                ('AGWINTERM_ENABLED=0; . "$1"; codex resume', '<resume>\n'),
+                ('. "$1"; AGWINTERM_ENABLED=0; codex resume', '<resume>\n'),
+                ('function codex { printf custom; }; . "$1"; codex', 'custom'),
+                ("if [ -n \"${BASH_VERSION:-}\" ]; then shopt -s expand_aliases; fi; "
+                 "alias codex='printf custom'; . \"$1\"; eval codex", 'custom'),
+            ]
+            for script, expected in cases:
+                with self.subTest(shell=shell, script=script):
+                    result = subprocess.run([shell, '-c', script, 'test', str(SCRIPTS / 'shell.sh')],
+                                            env=env, capture_output=True, text=True)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    self.assertEqual(expected, result.stdout)
+
     def test_skills_respect_codex_home(self):
         with patch.dict(os.environ, {'CODEX_HOME': str(self.home / 'custom codex')}):
             self.install('skill')

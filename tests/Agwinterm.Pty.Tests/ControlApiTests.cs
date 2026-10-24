@@ -44,6 +44,39 @@ public class ControlApiTests
     // ---- tree read-back ----
 
     [Fact]
+    public void RenameClearUnpinsWithoutClearingContextAndRejectsMixedSources()
+    {
+        var (server, host) = New();
+        var s = host.ActiveSess!;
+        s.PaneCwds = new() { [s.Id] = "/work/project" };
+        s.Context = "Keep description";
+        Dispatch(server, "session.rename", new { name = "Pinned" });
+        Assert.False(Ok(Dispatch(server, "session.rename", new { name = "Other", clear = true })));
+        Assert.False(Ok(Dispatch(server, "session.rename", new { clear = "true" })));
+        Assert.Equal("Pinned", s.CustomName);
+        var result = Dispatch(server, "session.rename", new { clear = true }).GetProperty("result");
+        Assert.Equal("project", result.GetProperty("name").GetString());
+        Assert.Null(s.CustomName);
+        Assert.Equal("Keep description", s.Context);
+        Assert.False(Ok(Dispatch(server, "session.rename", new { clear = true }, "missing")));
+    }
+
+    [Fact]
+    public void TreeReportsExplicitNameAndDirectoriesByPaneId()
+    {
+        var (server, host) = New();
+        var session = host.ActiveSess!;
+        Assert.False(Sessions0(server).TryGetProperty("customName", out _)); // legacy adapter: unknown
+        session.PaneCwds = new() { [session.Id] = "/project one", ["other-pane"] = null };
+        var before = Sessions0(server);
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("customName").ValueKind);
+        Assert.Equal("/project one", before.GetProperty("paneCwds").GetProperty(session.Id).GetString());
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("paneCwds").GetProperty("other-pane").ValueKind);
+        session.CustomName = "Explicit task";
+        Assert.Equal("Explicit task", Sessions0(server).GetProperty("customName").GetString());
+    }
+
+    [Fact]
     public void Tree_ReportsWorkspacesAndSessions()
     {
         var (server, _) = New();

@@ -56,6 +56,9 @@ try {
     }
     $tree = Ctl @('tree')
     $session = $tree.workspaces[0].sessions[0].id
+    Check ($tree.workspaces[0].sessions[0].name -eq $id) 'Default session label uses launch directory basename'
+    Check ($null -eq $tree.workspaces[0].sessions[0].customName) 'Automatic directory label is not a custom name'
+    Check ($tree.workspaces[0].sessions[0].paneCwds.$session -eq $linuxHome) 'Tree exposes launch cwd by pane ID'
     try { $null = Ctl @('session', 'type', ('printf "TEST_HOME=%s\n" "$HOME"' + [char]13), '--target', $session) }
     catch { throw ("Initial shell failed: " + (Ctl @('session', 'text', '--target', $session))) }
     Start-Sleep -Seconds 1
@@ -79,12 +82,49 @@ try {
     Check ($screen -match 'agwinterm \d') 'Linux CLI reaches the private Windows control pipe'
     $null = Ctl @('session', 'type', ('mkdir -p "$HOME/path with spaces"; cd "$HOME/path with spaces"' + [char]13), '--target', $session)
     Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    Check ($row.name -eq 'path with spaces') 'Automatic label follows live OSC cwd'
+    Check ($row.paneCwds.$session -eq "$linuxHome/path with spaces") 'Tree exposes live Linux cwd'
+    $null = Ctl @('session', 'split', 'on', '--target', $session)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    $split = $row.paneIds | Where-Object { $_ -ne $session }
+    Check ($row.paneCwds.$split -eq "$linuxHome/path with spaces") 'Split inherits live cwd (#354)'
+    $null = Ctl @('session', 'type', ('source "$HOME/.bashrc"; cd /tmp' + [char]13), '--target', $split)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    Check ($row.name -eq 'tmp') 'Label follows focused split pane'
+    Check ($row.paneCwds.$split -eq '/tmp' -and $row.paneCwds.$session -eq "$linuxHome/path with spaces") 'Tree distinguishes split pane directories'
+    $null = Ctl @('session', 'split', 'off', '--target', $session)
     $copy = Ctl @('session', 'duplicate', '--target', $session)
     Start-Sleep -Seconds 1
     $null = Ctl @('session', 'type', ('printf "PWD=%s\n" "$PWD"' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1
     $screen = Ctl @('session', 'text', '--target', $copy)
     Check (($screen -replace '\s', '').Contains("PWD=$linuxHome/pathwithspaces")) "Duplicate opens the Linux cwd ($screen)"
+    $null = Ctl @('session', 'rename', 'WSL explicit task', '--target', $copy)
+    $null = Ctl @('session', 'type', ('source "$HOME/.bashrc"; cd /tmp' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'WSL explicit task' -and $row.customName -eq 'WSL explicit task') 'Explicit name is reported separately from directory'
+    Check ($row.paneCwds.$copy -eq '/tmp') 'Explicit name stays pinned after cd'
+    $null = Ctl @('session', 'type', ('printf "\033]2;Claude task one\007"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'WSL explicit task') 'Pinned name overrides program OSC title'
+    $reset = Ctl @('session', 'rename', '--clear', '--target', $copy)
+    Check ($reset.name -eq 'Claude task one') 'Clear returns current automatic program title'
+    $null = Ctl @('session', 'type', ('printf "\033]2;Claude task two\007"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'Claude task two' -and $null -eq $row.customName) 'Unpinned name follows subsequent OSC title changes'
+    $null = Ctl @('session', 'type', ('printf "\033]2;\007"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
+    $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy
+    Check ($row.name -eq 'tmp') 'Empty program title falls back to directory'
+    $null = Ctl @('session', 'rename', 'WSL explicit task', '--target', $copy)
+    $null = Ctl @('session', 'type', ('cd "$HOME/path with spaces"' + [char]13), '--target', $copy)
+    Start-Sleep -Seconds 1
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
     Check (($saved -join '').Contains("$linuxHome/path with spaces")) 'Persistence retains Linux cwd'
     $fixture = (& wsl -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'wsl-agent.py')).Trim()
@@ -135,6 +175,11 @@ try {
     Start-Sleep -Seconds 1
     $screen = Ctl @('session', 'text', '--target', $copy)
     Check (($screen -replace '\s', '').Contains("RESTORED_CWD=$linuxHome/pathwithspaces")) "App restart restores the distribution and Linux directory ($screen)"
+    $rows = (Ctl @('tree')).workspaces.sessions
+    $row = $rows | Where-Object id -eq $copy
+    Check ($row.name -eq 'WSL explicit task' -and $row.customName -eq 'WSL explicit task') 'Explicit name survives restart'
+    $row = $rows | Where-Object id -eq $session
+    Check ($row.name -eq 'path with spaces' -and $null -eq $row.customName) 'Automatic name stays automatic after restart'
     Write-Host 'WSL control integration passed.'
 }
 finally {

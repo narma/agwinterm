@@ -215,7 +215,9 @@ internal partial class Program
                         // construction. Empty = the server omits the key.
                         PaneOverlays: s.Panes.Select((p, i) => (p, i)).Where(t => t.p.Overlay.Term is not null)
                                              .Select(t => OverlayPanes.Word(t.i)).ToList(), Hud: s.Hud,
-                        ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList());
+                        ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList(),
+                        CustomName: s.CustomName,
+                        PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf));
                 }).ToList()
             , Collapsed: !w.Expanded)).ToList();
     }
@@ -461,15 +463,19 @@ internal partial class Program
     // Dispatch turns into ok:false with nothing applied (#228 item 5). The server has already refused
     // a blank name. The rename does not touch Context — the name and the context are two fields, and
     // rename edits one of them.
-    public string SessionRename(string? target, string name)
+    public string SessionNameAuto(string? target) => SetSessionName(target, null);
+
+    public string SessionRename(string? target, string name) => SetSessionName(target, name);
+
+    private string SetSessionName(string? target, string? name)
     {
         return InvokeOnUiQueued(() =>
         {
             var ses = FindSesForTarget(target);
             if (ses is null) return ISessionHost.RefusePrefix + SessionNames.NoSession;
-            ses.Name = name; ses.CustomName = name;   // CustomName drives the title bar
+            ses.CustomName = name;
             RequestRedraw(); SaveState();
-            return SessionNames.Reply(ses.Id, ses.CustomName);
+            return SessionNames.Reply(ses.Id, ses.Name);
         });
     }
 

@@ -13,6 +13,8 @@ internal sealed class FakeSessionHost : ISessionHost
     internal sealed class Sess
     {
         public string Id = "", Name = "";
+        public string? CustomName;
+        public Dictionary<string, string?>? PaneCwds;
         /// <summary>Status and its age, aggregated from the panes in the app's single pass
         /// (<see cref="StatusAggregate.WinnerAndChangedAt"/>) — so the tree's status and its age
         /// always describe the same reading of the same pane. <see cref="Status"/> alone is for
@@ -323,7 +325,8 @@ internal sealed class FakeSessionHost : ISessionHost
                 Context: s.Context,
                 CapturedCommands: s.PaneIds.Select(id => s.Captured.TryGetValue(id, out var c) ? c : "").ToList(),   // the slot, "" = none, parallel to PaneIds
                 Axis: s.Axis,
-                PaneOverlays: s.PaneOverlayWords(), Hud: s.Hud, ForegroundShells: s.ForegroundShells);
+                PaneOverlays: s.PaneOverlayWords(), Hud: s.Hud, ForegroundShells: s.ForegroundShells,
+                CustomName: s.CustomName, PaneCwds: s.PaneCwds);
         }).ToList(), Collapsed: w.Collapsed)).ToList();
 
     public WindowStateSnapshot WindowState() =>
@@ -462,12 +465,22 @@ internal sealed class FakeSessionHost : ISessionHost
     // the name landed on and the name read BACK off it. The blank check is the fake's tripwire, as
     // SessionContext's Validate is — ControlServer refuses a blank name before the host is reached,
     // so a test that drives the host directly with one must blow up, not see it stored.
+    public string SessionNameAuto(string? target)
+    {
+        var s = FindSes(target);
+        if (s is null) return ISessionHost.RefusePrefix + SessionNames.NoSession;
+        s.CustomName = null;
+        s.Name = SessionNames.DisplayName(null, s.PaneCwds?.GetValueOrDefault(s.PaneIds[s.FocusedPane]));
+        return SessionNames.Reply(s.Id, s.Name);
+    }
+
     public string SessionRename(string? target, string name)
     {
         var s = FindSes(target);
         if (s is null) return ISessionHost.RefusePrefix + SessionNames.NoSession;
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("the server should have refused this: " + SessionNames.Blank, nameof(name));
         s.Name = name;
+        s.CustomName = name;
         return SessionNames.Reply(s.Id, s.Name);
     }
     public string SessionHud(string? target, string action, HudSpec? spec)

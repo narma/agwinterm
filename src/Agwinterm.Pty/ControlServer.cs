@@ -522,6 +522,12 @@ public sealed class ControlServer : IDisposable
                   // "this agent is working" from "its hook died an hour ago" gains nothing from an
                   // absent field, and would have to guess which of the two absence meant.
                   .Append(",\"statusChangedAt\":").Append(n.StatusChangedAt.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                // Legacy host adapters do not distinguish explicit and generated names. Omit
+                // the field there rather than claiming their labels are safe to overwrite.
+                if (n.PaneCwds is not null || n.CustomName is not null)
+                    sb.Append(",\"customName\":").Append(JsonSerializer.Serialize(n.CustomName));
+                if (n.PaneCwds is { } cwds)
+                    sb.Append(",\"paneCwds\":").Append(JsonSerializer.Serialize(cwds));
                 if (n.Overlay) sb.Append(",\"overlay\":true");
                 if (n.Hud is { } hud) sb.Append(",\"hud\":").Append(JsonSerializer.Serialize(hud, SessionHuds.JsonOptions));
                 if (n.ForegroundShells is { } shells)
@@ -748,6 +754,15 @@ public sealed class ControlServer : IDisposable
     /// </summary>
     private static string HandleSessionRename(ISessionHost host, string? target, JsonElement args)
     {
+        if (args.TryGetProperty("clear", out var clear) && clear.ValueKind != JsonValueKind.True && clear.ValueKind != JsonValueKind.False)
+            return Err("session rename: clear must be a boolean; nothing changed");
+        if (GetBool(args, "clear"))
+        {
+            if (args.TryGetProperty(SessionNames.Key, out _)) return Err("session rename: use a name or clear, not both; nothing changed");
+            string automatic = host.SessionNameAuto(target);
+            return automatic.StartsWith(ISessionHost.RefusePrefix, StringComparison.Ordinal)
+                ? Err(automatic[ISessionHost.RefusePrefix.Length..]) : OkRaw(automatic);
+        }
         string name = (GetString(args, SessionNames.Key) ?? "").Trim();
         if (name.Length == 0) return Err(SessionNames.Blank);
         string reply = host.SessionRename(target, name);
