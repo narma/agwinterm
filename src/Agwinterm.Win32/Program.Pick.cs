@@ -8,6 +8,7 @@ internal partial class Program : IPickHost
 {
     private static readonly PickRegistry Picks = new();
     private NativePicker? _nativePick;
+    private bool NativeDialogOpen => _nativePick is not null || _nativeAsk is not null;
 
     public string OpenPick(PickSpec spec, string? window, bool follow)
     {
@@ -40,7 +41,7 @@ internal partial class Program : IPickHost
     private string OpenPickCore(PickSpec spec, bool follow, Func<bool> wanted)
     {
         if (!wanted()) throw new InvalidOperationException("picker open was withdrawn");
-        if (_nativePick is not null) throw new InvalidOperationException("pick already pending");
+        if (NativeDialogOpen) throw new InvalidOperationException("a native dialog already owns this window");
         if (_setOpen || _editing is not null || _menuHwnd != IntPtr.Zero || _dashboardOpen || _dragging || GetCapture() != IntPtr.Zero)
             throw new InvalidOperationException("another modal UI operation owns this window");
         var request = Picks.Open(Id, spec) ?? throw new InvalidOperationException("pick already pending");
@@ -99,12 +100,14 @@ internal partial class Program : IPickHost
 
     private void CloseWindowPicker()
     {
+        CloseWindowQuestion();
         Picks.CloseWindow(Id);
         var ui = _nativePick; _nativePick = null; ui?.Dispose();
     }
 
     private bool PickerMessage(uint msg, IntPtr w, IntPtr l)
     {
+        if (QuestionMessage(msg, w, l)) return true;
         if (_nativePick is not { } picker) return false;
         switch (PickInputPolicy.Route(msg))
         {

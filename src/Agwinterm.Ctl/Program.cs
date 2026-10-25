@@ -18,6 +18,8 @@ if (Agwinterm.Ctl.CtlUsage.IsHelpRequest(args)) { Console.WriteLine(Agwinterm.Ct
 
 if (args.Length > 0 && args[0].Equals("pick", StringComparison.OrdinalIgnoreCase))
     return Agwinterm.Ctl.PickCli.Run(args);
+if (args.Length > 0 && args[0].Equals("ask", StringComparison.OrdinalIgnoreCase))
+    return Agwinterm.Ctl.AskCli.Run(args);
 
 if (args.Length == 0)
 {

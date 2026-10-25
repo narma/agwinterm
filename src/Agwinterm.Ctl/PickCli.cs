@@ -22,7 +22,7 @@ public static class PickCli
             string key = word[2..];
             if (key is "allow-custom" or "follow" or "no-block" or "json")
             { if (!flags.Add(key)) throw new ArgumentException("duplicate picker option: " + word); continue; }
-            if (key is not ("prompt" or "query" or "window" or "pipe" or "socket" or "input-format")) throw new ArgumentException("unknown picker option: " + word);
+            if (key is not ("prompt" or "query" or "selected-id" or "window" or "pipe" or "socket" or "input-format")) throw new ArgumentException("unknown picker option: " + word);
             if (++i >= argv.Length || argv[i].StartsWith("--", StringComparison.Ordinal) || !values.TryAdd(key, argv[i]))
                 throw new ArgumentException("missing or duplicate picker option: " + word);
         }
@@ -31,7 +31,7 @@ public static class PickCli
         if ((verb == "open" && positionals.Count > 1) || (verb != "open" && positionals.Count != 2))
             throw new ArgumentException("pick result/cancel require one exact id; open reads items from stdin");
         if (values.TryGetValue("window", out var window) && window.Length == 0) throw new ArgumentException("empty window selector");
-        if (verb != "open" && (flags.Any(f => f != "json") || values.ContainsKey("prompt") || values.ContainsKey("query") || values.ContainsKey("input-format")))
+        if (verb != "open" && (flags.Any(f => f != "json") || values.ContainsKey("prompt") || values.ContainsKey("query") || values.ContainsKey("selected-id") || values.ContainsKey("input-format")))
             throw new ArgumentException("open-only picker option on result/cancel");
         if (values.ContainsKey("pipe") && values.ContainsKey("socket")) throw new ArgumentException("choose --pipe or --socket");
         if (values.GetValueOrDefault("input-format", "auto") is not ("auto" or "lines" or "json")) throw new ArgumentException("input-format must be auto, lines or json");
@@ -88,10 +88,10 @@ public static class PickCli
                 var outcome = Outcome(result); output(outcome.GetRawText()); return ExitCode(outcome);
             }
             object[] items;
-            try { items = ParseItems(input, options.Values.GetValueOrDefault("input-format", "auto")).Select(i => (object)new { id = i.Id, label = i.Label, subtitle = i.Subtitle }).ToArray(); }
+            try { items = ParseItems(input, options.Values.GetValueOrDefault("input-format", "auto")).Select(i => (object)new { id = i.Id, label = i.Label, subtitle = i.Subtitle, status = i.Status, color = i.Color, shape = i.Shape }).ToArray(); }
             catch (Exception ex) { error(ex.Message); return 2; }
             var arguments = new { items, prompt = options.Values.GetValueOrDefault("prompt"), query = options.Values.GetValueOrDefault("query"),
-                allowCustom = options.Flags.Contains("allow-custom"), follow = options.Flags.Contains("follow") };
+                selectedId = options.Values.GetValueOrDefault("selected-id"), allowCustom = options.Flags.Contains("allow-custom"), follow = options.Flags.Contains("follow") };
             // Same validation as the server before connecting, including line-input duplicate IDs.
             using (var check = JsonDocument.Parse(JsonSerializer.Serialize(arguments)))
             {
@@ -171,7 +171,7 @@ public static class PickCli
         finally { Console.CancelKeyPress -= handler; }
     }
 
-    private static JsonElement Send(string pipeName, string request)
+    internal static JsonElement Send(string pipeName, string request)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);

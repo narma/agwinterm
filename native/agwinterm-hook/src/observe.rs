@@ -77,14 +77,20 @@ pub(super) fn run(args: Vec<String>) -> Result<i32, Box<dyn std::error::Error>> 
     let (cli, argv) = args
         .split_first()
         .ok_or("--ctl requires a Windows CLI path")?;
-    let Some(watch) = mode(argv) else {
+    let ask = crate::ask_bridge::handles(argv);
+    let observe_mode = mode(argv);
+    if observe_mode.is_none() && !ask {
         return Err(Command::new(cli).args(argv).exec().into());
-    };
+    }
     let json = argv.iter().any(|s| s.eq_ignore_ascii_case("--json"));
     // signal() is provided by both supported Linux C ABIs; the handler only stores an atomic bool.
     if unsafe { signal(2, interrupt as *const () as usize) } == usize::MAX {
         return Err(io::Error::last_os_error().into());
     }
+    if ask {
+        return crate::ask_bridge::run(cli, argv, &INTERRUPTED);
+    }
+    let watch = observe_mode.expect("observation mode checked");
     let mut child = Command::new(cli)
         .args(argv)
         .stdin(Stdio::null())

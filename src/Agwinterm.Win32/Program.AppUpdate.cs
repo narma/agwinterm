@@ -110,6 +110,6 @@ internal partial class Program
         _updateQuitting = true;
         List<Program> wins;
         lock (_windowIndex) wins = _byId.Values.ToList();
-        foreach (var w in wins) w.Post(() => DestroyWindow(w._hwnd));
+        foreach (var w in wins) w.Post(w.CloseLibraryWindow);
     }
 }

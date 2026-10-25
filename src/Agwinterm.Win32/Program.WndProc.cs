@@ -685,6 +685,10 @@ internal partial class Program
                 { ClearUnread(_active); RequestRedraw(); }
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
+            case WM_CLOSE:
+                CloseWindowQuestion();
+                return DefWindowProcW(hwnd, msg, wParam, lParam);
+
             case WM_DESTROY:
                 _uia.Dispose();
                 CloseWindowPicker();

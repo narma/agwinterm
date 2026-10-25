@@ -28,6 +28,8 @@ mod install;
 mod linux;
 #[cfg(target_os = "linux")]
 mod observe;
+#[cfg(target_os = "linux")]
+mod ask_bridge;
 
 #[cfg(any(windows, test))]
 fn transcript_path(distro: &str, path: &str) -> Result<String, String> {

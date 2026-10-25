@@ -201,6 +201,29 @@ public sealed partial class ControlServer : IDisposable
             JsonElement args = root.TryGetProperty("args", out var a) ? a : default;
             // --window <id|prefix|active>: content verbs act on the resolved window (default = frontmost).
             string? windowSel = root.TryGetProperty("window", out var wv) && wv.ValueKind == JsonValueKind.String ? wv.GetString() : null;
+            if (cmd is "ask.open" or "ask.result" or "ask.cancel")
+            {
+                if ((root.TryGetProperty("window", out var aw) && aw.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) || windowSel == "")
+                    return Err("ask requires a nonempty window selector");
+                if ((_windows as IAskHost ?? _host as IAskHost) is not { } asks) return Err("native questions unavailable");
+                if (cmd == "ask.open")
+                {
+                    if (root.TryGetProperty("target", out var at) && at.ValueKind != JsonValueKind.Null) return Err("ask.open does not accept a session target");
+                    AskSpec.Properties(args, "form", "follow");
+                    if (!args.TryGetProperty("form", out var form)) return Err("ask.open requires form");
+                    bool follow = false;
+                    if (args.TryGetProperty("follow", out var af))
+                    {
+                        if (af.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return Err("ask follow must be boolean");
+                        follow = af.GetBoolean();
+                    }
+                    return OkRaw(JsonSerializer.Serialize(new { id = asks.OpenAsk(AskSpec.Parse(form), windowSel, follow) }));
+                }
+                if (string.IsNullOrEmpty(target)) return Err("ask.result/cancel require an exact ask id");
+                if (args.ValueKind != JsonValueKind.Undefined) AskSpec.Properties(args);
+                if (cmd == "ask.result") return OkRaw(JsonSerializer.Serialize(new { ask = asks.ReadAsk(target, windowSel).Wire() }));
+                asks.CancelAsk(target, windowSel); return Ok("cancelled");
+            }
             if (cmd is "pick.open" or "pick.result" or "pick.cancel")
             {
                 if ((root.TryGetProperty("window", out var pw) && pw.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) || windowSel == "")

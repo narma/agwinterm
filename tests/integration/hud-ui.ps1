@@ -1,7 +1,7 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('Hud','Quick','Navigation','Picker','Accessibility','Command','Menu')][string]$Suite='Hud')
+      [ValidateSet('Hud','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu')][string]$Suite='Hud')
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -55,6 +55,7 @@ public sealed class HudOwnedJob {
     [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h,out RECT r);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint f);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
     [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint t,ref GUI info);
@@ -186,6 +187,8 @@ public sealed class HudOwnedJob {
     function Node([string]$id=$session){@((Rpc 'tree').workspaces|ForEach-Object sessions)|Where-Object id -eq $id|Select-Object -First 1}
     function Shot([string]$name){
         Start-Sleep -Milliseconds 160
+        $oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
+        try {
         $r=[HudOwnedJob+RECT]::new();[void][HudOwnedJob]::GetClientRect($hwnd,[ref]$r)
         $bitmap=[Drawing.Bitmap]::new($r.right,$r.bottom)
         $graphics=[Drawing.Graphics]::FromImage($bitmap)
@@ -200,6 +203,7 @@ public sealed class HudOwnedJob {
                 return ,([HudOwnedJob]::Bounds($pixels,$bitmap.Width,0x125a9f))
             }finally{$bitmap.UnlockBits($bits)}
         }finally{$graphics.Dispose();$bitmap.Dispose()}
+        }finally{[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
     }
     if($Suite-eq 'Accessibility') {
         function NavWait([scriptblock]$condition){for($i=0;$i-lt 60;$i++){if(& $condition){return $true};Start-Sleep -Milliseconds 100};return $false}
@@ -217,6 +221,7 @@ public sealed class HudOwnedJob {
         Check 'shared command acceptance completed' ($commandChecks-ge 30)
     }
     elseif($Suite-eq 'Picker') { . "$PSScriptRoot/picker-ui-cases.ps1" }
+    elseif($Suite-eq 'Ask') { . "$PSScriptRoot/ask-ui-cases.ps1" }
     elseif($Suite-eq 'Menu') { . "$PSScriptRoot/menu-bar-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {

@@ -28,6 +28,14 @@ public static class CtlUsage
           agwintermctl ping
           agwintermctl version [--json]                  (the CLI that ran + the app serving the pipe)
           agwintermctl tree [--json]
+          agwintermctl pick [open] [--selected-id ID] [--prompt TEXT] [--query TEXT] [--allow-custom] [--input-format auto|lines|json] [--window ID] [--follow] [--no-block]
+            UTF-8 items on stdin; JSON items accept status, color #RRGGBB, shape dot|square|diamond.
+          agwintermctl pick result|cancel ID [--window ID] [--json]
+          agwintermctl ask [open] [--window ID] [--follow] [--no-block] [--json]
+            UTF-8 JSON form on stdin: title/prompt, fields (text|multiline|single|multi), buttons.
+          agwintermctl ask result|cancel ID [--window ID] [--json]
+            Exact-ID JSON outcomes: answered 0, cancelled 2, pending/failure 1, usage 2, Ctrl+C 130.
+            Both dialog families accept --pipe or --socket and preserve terminal input while pending.
           agwintermctl events [--since INT64] [--limit 0..1000] [--kind status,overlay] [--run ID] [--window ID] [--json]
             cursor is safe page progress; head is journal head. Save run/window/cursor; gap means history was lost.
           agwintermctl events --watch [--since INT64 --run ID --window EXACT_ID] [--kind status,overlay] [--json]

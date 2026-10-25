@@ -3,10 +3,10 @@ using System.Text.Json;
 
 namespace Agwinterm.Core;
 
-public sealed record PickItem(string Id, string Label, string? Subtitle = null);
+public sealed record PickItem(string Id, string Label, string? Subtitle = null, string? Status = null, string? Color = null, string? Shape = null);
 
 /// <summary>Validated caller data only; none of these strings is a command.</summary>
-public sealed record PickSpec(IReadOnlyList<PickItem> Items, string? Prompt, string? Query, bool AllowCustom)
+public sealed record PickSpec(IReadOnlyList<PickItem> Items, string? Prompt, string? Query, bool AllowCustom, string? SelectedId = null)
 {
     public const int MaxItems = 1000, MaxFieldLength = 4096, MaxBytes = 1024 * 1024;
 
@@ -30,14 +30,21 @@ public sealed record PickSpec(IReadOnlyList<PickItem> Items, string? Prompt, str
             if (!ids.Add(id)) throw new ArgumentException("pick item ids must be unique");
             if (label.Length == 0 || !DisplayText(label) || (subtitle is not null && !DisplayText(subtitle)))
                 throw new ArgumentException("pick labels must be nonempty; display text must not contain controls");
-            items.Add(new(id, label, subtitle));
+            string? status = Text(item, "status"), color = Text(item, "color"), shape = Text(item, "shape");
+            if (status is not null && !DisplayText(status)) throw new ArgumentException("invalid pick status");
+            if (color is not null && (color.Length != 7 || color[0] != '#' || !color.Skip(1).All(Uri.IsHexDigit)))
+                throw new ArgumentException("pick color must be #RRGGBB");
+            if (shape is not null and not ("dot" or "square" or "diamond")) throw new ArgumentException("invalid pick shape");
+            items.Add(new(id, label, subtitle, status, color, shape));
         }
         if (items.Count == 0 && !custom) throw new ArgumentException("pick.open requires items or allowCustom");
         string? prompt = Text(args, "prompt"), query = Text(args, "query");
         if ((prompt is not null && !DisplayText(prompt)) || (query is not null && !DisplayText(query)))
             throw new ArgumentException("pick prompt/query must not contain controls");
         PickSelection.ValidateWork(query ?? "", items);
-        return new(items.AsReadOnly(), prompt, query, custom);
+        string? selected = Text(args, "selectedId");
+        if (selected is not null && !ids.Contains(selected)) throw new ArgumentException("selectedId must exactly match an item id");
+        return new(items.AsReadOnly(), prompt, query, custom, selected);
     }
 
     public static bool Boolean(JsonElement args, string name)
@@ -94,7 +101,14 @@ public sealed class PickSelection
     public int Selected { get; private set; }
     public bool Custom => Spec.AllowCustom && Query.Trim().Length > 0 && Matches.Count == 0;
     public int Count => Matches.Count + (Custom ? 1 : 0);
-    public PickSelection(PickSpec spec) { Spec = spec; SetQuery(spec.Query ?? ""); }
+    public PickSelection(PickSpec spec) { Spec = spec; SetQuery(spec.Query ?? ""); SelectInitial(); }
+
+    public void SelectInitial()
+    {
+        if (Spec.SelectedId is not { } id) return;
+        for (int i = 0; i < Matches.Count; i++)
+            if (Spec.Items[Matches[i]].Id == id) { Selected = i; return; }
+    }
 
     public void SetQuery(string query)
     {
