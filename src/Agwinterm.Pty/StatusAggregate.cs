@@ -45,8 +45,9 @@ public static class StatusAggregate
         long at = 0;
         foreach (var p in panes)
         {
-            var status = p.Status;
-            long stamp = p.StatusChangedAt;
+            var snapshot = p.StatusSignal?.Snapshot;
+            var status = snapshot?.Status ?? p.Status;
+            long stamp = snapshot?.ChangedAt ?? p.StatusChangedAt;
             int sev = Severity(status);
             if (sev > win) { win = sev; best = status; at = stamp; }
             else if (sev == win && stamp > at) at = stamp;

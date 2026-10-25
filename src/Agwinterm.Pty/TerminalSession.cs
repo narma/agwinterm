@@ -32,22 +32,23 @@ public sealed class TerminalSession : ISession
     public event Action<byte[]>? RawOutput;
 
     /// <summary>Push-based agent status (set via the control API), and a change notification.</summary>
-    public AgentStatus Status { get; private set; } = AgentStatus.Idle;
+    public StatusSignal StatusSignal { get; } = new();
+    public AgentStatus Status => StatusSignal.Snapshot.Status;
     public event Action? StatusChanged;
 
     /// <summary>Epoch seconds of the last status WRITE. Seeded at construction so a session whose
     /// status was never set still reports its own age instead of 0.</summary>
-    public long StatusChangedAt { get; private set; } = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    public long StatusChangedAt => StatusSignal.Snapshot.ChangedAt;
 
     /// <summary>Test seam: back-date the status stamp, so a re-assert's re-stamp is observable
     /// without sleeping out a whole epoch second on every run.</summary>
-    internal void BackdateStatus(long epochSeconds) => StatusChangedAt = epochSeconds;
+    internal void BackdateStatus(long epochSeconds) => StatusSignal.Backdate(epochSeconds);
 
     /// <summary>Pulse the status dot (and title-bar bell) while this status is live (agterm's blinking attention).</summary>
-    public bool Blink { get; private set; }
+    public bool Blink => StatusSignal.Snapshot.Blink;
 
     /// <summary>Clear the status back to idle when the session is next selected (agterm's auto-reset-on-select).</summary>
-    public bool AutoReset { get; private set; }
+    public bool AutoReset => StatusSignal.Snapshot.AutoReset;
 
     /// <summary>Raised (background thread) when a status change requests an audible cue. The argument is the
     /// requested sound spec (a system-sound name or a .wav path); null means "use the default alert sound".</summary>
@@ -57,20 +58,7 @@ public sealed class TerminalSession : ISession
     public void SetStatus(AgentStatus status, bool blink = false, bool autoReset = false,
         bool sound = false, string? soundName = null)
     {
-        // Blink / auto-reset only make sense for a live (non-idle) status.
-        bool newBlink = blink && status != AgentStatus.Idle;
-        bool newAuto = autoReset && status != AgentStatus.Idle;
-        bool changed = Status != status || Blink != newBlink || AutoReset != newAuto;
-        Status = status;
-        Blink = newBlink;
-        AutoReset = newAuto;
-        // Stamped on EVERY write, including a no-op re-assert of the same status. This looks like a
-        // bug and is not: the question callers ask of this timestamp is "is that agent's hook still
-        // alive", and a hook re-asserting `active` every 30s is precisely the liveness signal. Were
-        // repeats collapsed, a healthy long-running agent would report the age of its FIRST write
-        // and be indistinguishable from one whose hook died. StatusChanged still fires on change
-        // only — the repaint it drives has no reason to run for a no-op.
-        StatusChangedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        bool changed = StatusSignal.Set(status, blink, autoReset);
         if (sound && status != AgentStatus.Idle)
             try { SoundRequested?.Invoke(soundName); } catch { /* playback is best-effort */ }
         if (changed) StatusChanged?.Invoke();

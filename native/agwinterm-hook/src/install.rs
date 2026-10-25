@@ -335,9 +335,11 @@ pub(super) fn run() -> Result<()> {
         None
     };
     if let Some(cli) = cli {
+        let helper = data.join("agwinterm-hook");
+        write(&helper, &fs::read(env::current_exe()?)?, true)?;
         write(
             &bin.join("agwintermctl"),
-            format!("#!/bin/sh\nexec {} \"$@\"\n", quote(&cli.to_string_lossy())).as_bytes(),
+            format!("#!/bin/sh\nexec {} --ctl {} \"$@\"\n", quote(&helper.to_string_lossy()), quote(&cli.to_string_lossy())).as_bytes(),
             true,
         )?;
         for rc in [home.join(".profile"), home.join(".bashrc"), zsh.clone()] {

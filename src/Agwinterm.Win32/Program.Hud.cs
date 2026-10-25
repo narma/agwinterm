@@ -32,16 +32,19 @@ internal partial class Program
             if (ses.Overlay.Term is not null) return ISessionHost.RefusePrefix + "hud: a program overlay occupies the slot";
             if (action == "update" && ses.Hud is null) return ISessionHost.RefusePrefix + "hud: no HUD to update";
             if (spec is null) return ISessionHost.RefusePrefix + "hud: missing message specification";
+            var previous = ses.Hud;
             lock (_workspaces) ses.Hud = action == "update" ? spec with { BackgroundColor = ses.Hud!.BackgroundColor } : spec;
+            if (previous != ses.Hud) SurfaceEvent("hud", previous is null ? "opened" : "updated", ses);
             RefreshHudTimer(); RequestRedraw();
         }
         return SessionHuds.Reply(ses.Id, ses.Hud);
     });
 
-    private void ClearHud(Ses ses)
+    private void ClearHud(Ses ses, string reason = "closed")
     {
         if (ses.Hud is null) return;
         lock (_workspaces) ses.Hud = null;
+        SurfaceEvent("hud", "closed", ses, reason: reason);
         RefreshHudTimer(); RequestRedraw();
     }
 

@@ -12,7 +12,7 @@ namespace Agwinterm.Pty;
 /// JSON requests {"cmd":..,"target"?:..,"args"?:{..}} and replies {"ok":bool,"result"|"error":..}.
 /// Commands route to a session resolved from `target` (id / unique-prefix / "active" / null).
 /// </summary>
-public sealed class ControlServer : IDisposable
+public sealed partial class ControlServer : IDisposable
 {
     private readonly ISessionHost _host;
     private readonly IWindowHost? _windows;   // multi-window: resolves --window + serves window.* verbs (null = single-window)
@@ -138,22 +138,50 @@ public sealed class ControlServer : IDisposable
     {
         using (pipe)
         {
+            using var clientCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
             using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
+            Task<string?>? nextRead = null;
             try
             {
+                nextRead = reader.ReadLineAsync(clientCancellation.Token).AsTask();
                 string? line;
-                while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
+                while ((line = await nextRead.ConfigureAwait(false)) != null)
                 {
-                    if (line.Length == 0) continue;
+                    if (line.Length == 0) { nextRead = reader.ReadLineAsync(clientCancellation.Token).AsTask(); continue; }
+                    using var observationCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    var reply = DispatchAsync(line, observationCancellation.Token);
+                    // Exactly one reader, retained across replies. EOF releases a pending observer;
+                    // an early next request is protocol misuse rather than a second observer.
+                    nextRead = reader.ReadLineAsync(clientCancellation.Token).AsTask();
+                    if (!reply.IsCompleted)
+                    {
+                        await Task.WhenAny((Task)reply, nextRead).ConfigureAwait(false);
+                        if (!reply.IsCompleted && nextRead.IsCompleted)
+                        {
+                            await observationCancellation.CancelAsync().ConfigureAwait(false);
+                            try { await reply.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                            if (await nextRead.ConfigureAwait(false) is not null)
+                                await writer.WriteLineAsync(new ObservationException("protocol-error", "one pending observation per connection").ToJson()).ConfigureAwait(false);
+                            break;
+                        }
+                    }
                     // No ct on the reply write — same #118 hazard as PtyHostServer's ack: a
                     // cancelled WriteLineAsync abandons its overlapped write and the dispose
                     // races the in-flight completion (native AV in the IOCP poller).
-                    await writer.WriteLineAsync(Dispatch(line).AsMemory(), CancellationToken.None).ConfigureAwait(false);
+                    await writer.WriteLineAsync((await reply.ConfigureAwait(false)).AsMemory(), CancellationToken.None).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException) { }
             catch (IOException) { }
+            finally
+            {
+                await clientCancellation.CancelAsync().ConfigureAwait(false);
+                if (nextRead is not null)
+                    try { await nextRead.ConfigureAwait(false); }
+                    catch (OperationCanceledException) { }
+                    catch (IOException) { }
+            }
         }
     }
 
@@ -258,7 +286,7 @@ public sealed class ControlServer : IDisposable
                 or "session.metrics" or "surface.cursor" or "font" or "selection.all" or "selection.clear"
                 or "selection.copy" or "selection.finalize" or "session.paste" or "session.readonly"
                 or "config.get" or "config.list" or "config.set" or "session.search" or "command.run"
-                or "image.show" or "image.sixel" or "image.clear" or "image.frame" or "image.frameshm"))
+                or "image.show" or "image.sixel" or "image.clear" or "image.frame" or "image.frameshm" or "events"))
                 return Err("quick terminal has no workspace/session tree; target a library window for this command");
 
             switch (cmd)
@@ -438,7 +466,13 @@ public sealed class ControlServer : IDisposable
                 // .result arrived as a STRING of JSON and a caller had to parse it a second time —
                 // while tree and window.list, built the same way, return objects. The conformance
                 // contract caught it as a divergence from agliteterm, which had it right.
-                case "events": return OkRaw(host.Events(GetInt(args, "since", 0), GetInt(args, "limit", 0)));
+                case "events":
+                {
+                    var query = EventQuery.Parse(args);
+                    if (host.Observation is null && (query.Run is not null || query.Kinds is not null || query.Tail || query.WaitMs != 0))
+                        throw new ObservationException("unsupported", "host does not support event observation");
+                    return OkRaw(host.Observation?.Read(query).ToJson() ?? host.Events(query.Since, query.Limit));
+                }
                 case "claude.adopt":
                     return Ok(host.AdoptClaude());
                 case "claude.yolo":
@@ -510,6 +544,7 @@ public sealed class ControlServer : IDisposable
                 _ => Err($"unknown command '{cmd}'"),
             };
         }
+        catch (ObservationException ex) { return ex.ToJson(); }
         catch (JsonException ex) { return Err("invalid json: " + ex.Message); }
         catch (Exception ex) { return Err(ex.Message); }
     }

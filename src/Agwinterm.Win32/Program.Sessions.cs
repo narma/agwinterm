@@ -82,6 +82,7 @@ internal partial class Program
         var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize,
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
+        Observation.ObservePane(pane.Id, session.StatusSignal!);
         // New output snaps this pane back to the live bottom when the buffer ACTUALLY scrolled (a line
         // pushed into history) — not on every repaint. TUIs like Claude Code redraw in place without
         // scrolling, so a mouse selection survives those frames. #copy-selection
@@ -112,7 +113,6 @@ internal partial class Program
             var now = session.Status;
             if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked) PlayBlockedSound();
             lastStatus = now;
-            EmitEvent("status", pane.Id, now.ToString().ToLowerInvariant());   // control-API event log (#273)
             RequestRedraw();
         };
         // An explicit --sound on session.status: play its spec (null => default alert).
@@ -482,6 +482,7 @@ internal partial class Program
 
         lock (_workspaces) { ws.Sessions.Add(ses); ws.Expanded = true; }
 
+        ObserveLayout(ses);
         if (makeActive || _active is null) SetActive(ses);
         else RequestRedraw();
         SaveState();
@@ -495,6 +496,7 @@ internal partial class Program
         if (!OwnsSession(ses)) throw new InvalidOperationException("session no longer exists");
         var p = CreatePane(paneId, ses.Ws, cwd, fontSize, profileName: ses.ProfileName);
         lock (_workspaces) ses.Panes.Add(p);
+        ObserveLayout(ses);
         return p;
     }
 
@@ -609,6 +611,8 @@ internal partial class Program
         _workspaceTarget = null;
         // Navigating to a session outside the multi-selection drops the selection (single-select again).
         if (!_selectedIds.Contains(ses.Id)) _selectedIds.Clear();
+        var previousSession = _active;
+        if (_coverKind == 1) ScratchVisibility(_cover, "hidden");
         _active = ses;
         ClearUnread(ses);   // visiting a session clears its notification badge (agterm's "cleared when seen")
         // Auto-reset-on-select: a status marked auto-reset clears to idle once the user looks at the session.
@@ -623,6 +627,12 @@ internal partial class Program
         _session = ActiveSurface()?.S;                          // a quick cover (if any) keeps input; else the new pane
         RegridSession(ses);
         if (_cover is not null) RegridCover();
+        if (!ReferenceEquals(previousSession, ses))
+        {
+            var fields = new Dictionary<string, object?> { ["action"] = "selected", ["sessionId"] = ses.Id };
+            if (previousSession is not null) fields["previousSessionId"] = previousSession.Id;
+            Observation.Publish("selection", fields);
+        }
         TouchMru(ses);   // move to front of the recency stack (suppressed mid-walk so previews don't reorder)
         RequestRedraw();
         SaveState();
@@ -769,7 +779,11 @@ internal partial class Program
         return false;
     }
 
-    private void SyncSession() => _session = ActiveSurface()?.S;
+    private void SyncSession()
+    {
+        _session = ActiveSurface()?.S;
+        if (_active is { } active) ObserveLayout(active);
+    }
 
     /// <summary>A real filesystem cwd for a session — its ACTIVE pane's (OSC 7 if reported, else the pane's launch dir).</summary>
     private string? CwdOf(Ses ses) => CwdOf(ses.ActivePane);
@@ -782,11 +796,20 @@ internal partial class Program
         return string.IsNullOrWhiteSpace(raw) ? pane.StartCwd : PrettyCwd(raw);
     }
 
-    private void ShowCover(Pane p, int kind) { _cover = p; _coverKind = kind; SyncSession(); RegridCover(); RequestRedraw(); }
+    private void ShowCover(Pane p, int kind)
+    {
+        bool changed = !ReferenceEquals(_cover, p) || _coverKind != kind;
+        if (changed && _coverKind == 1) ScratchVisibility(_cover, "hidden");
+        _cover = p; _coverKind = kind;
+        SyncSession(); RegridCover();
+        if (changed && kind == 1) ScratchVisibility(p, "shown");
+        RequestRedraw();
+    }
 
     private void HideCover()
     {
         if (_isQuickWindow) { DismissQuick(); return; }
+        if (_coverKind == 1) ScratchVisibility(_cover, "hidden");
         _cover = null; _coverKind = 0; SyncSession();
         if (_active is not null) RegridSession(_active);
         RequestRedraw();
@@ -836,6 +859,8 @@ internal partial class Program
         if (ses.Scratch is null)
         {
             ses.Scratch = CreatePane(ses.Id + ":scratch:" + Guid.NewGuid().ToString("N")[..6], ses.Ws, CwdOf(ses), ses.FontSize, profileName: ses.ProfileName);
+            Observation.SetOwner(ses.Scratch.Id, ses.Id);
+            SurfaceEvent("scratch", "opened", ses, ses.Scratch);
             ses.Scratch.FontZoomed = ses.ActivePane.FontZoomed;
         }
         ShowCover(ses.Scratch, 1);
@@ -885,7 +910,7 @@ internal partial class Program
         string id;
         if (pane is null)
         {
-            CloseOverlayOf(ses);                    // one session-wide overlay per session; replace any existing one
+            CloseOverlayOf(ses, "replaced");        // one session-wide overlay per session; replace any existing one
             slot = ses.Overlay;
             id = ses.Id + ":overlay:" + Guid.NewGuid().ToString("N")[..6];
         }
@@ -899,6 +924,7 @@ internal partial class Program
         }
         var owner = pane ?? ses.ActivePane;
         var term = CreatePane(id, ses.Ws, launchCwd ?? CwdOf(owner), owner.FontSize, command, shellWrap: true, extraEnv: extraEnv, profileName: ses.ProfileName);
+        Observation.SetOwner(term.Id, ses.Id);
         term.FontZoomed = owner.FontZoomed;
         term.OverlayDone = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         // The slot's LAST exit is reset by every open, and the new term becomes the slot's overlay in
@@ -927,21 +953,23 @@ internal partial class Program
             if (ReferenceEquals(ses, _active)) SyncSession();
         }
         RequestRedraw();
+        SurfaceEvent("overlay", "opened", ses, term, pane);
         WatchOverlayExit(ses, pane, term);
         return id;
     }
 
     /// <summary>Clear the session-wide HUD/program-overlay slot. A program's cover is hidden and its PTY disposed.
     /// The pane slots are <see cref="ClosePaneOverlay"/>'s.</summary>
-    private void CloseOverlayOf(Ses ses)
+    private void CloseOverlayOf(Ses ses, string reason = "closed")
     {
-        ClearHud(ses);
+        ClearHud(ses, reason);
         var slot = ses.Overlay;
         var term = slot.Term;
         if (term is null) return;
         if (_coverKind == 3 && ReferenceEquals(_cover, term)) { _cover = null; _coverKind = 0; _ovlOwner = null; SyncSession(); if (_active is not null) RegridSession(_active); }
         lock (_overlayExitLock) slot.Term = null;   // the exit's guard reads this under the same lock
         slot.Exited = false; slot.SizePercent = 0; slot.Wait = false;
+        SurfaceEvent("overlay", "closed", ses, term, reason: reason);
         ReleaseAndDispose(term);
         RequestRedraw();
     }
@@ -955,13 +983,14 @@ internal partial class Program
     /// the pane itself — <see cref="ClosePane"/> (split close / split off / the shell exiting),
     /// <see cref="CloseSessionInternal"/>; WM_DESTROY disposes the term directly. A no-op on an empty
     /// slot.</summary>
-    private void ClosePaneOverlay(Ses ses, Pane pane)
+    private void ClosePaneOverlay(Ses ses, Pane pane, string reason = "closed")
     {
         var slot = pane.Overlay;
         var term = slot.Term;
         if (term is null) return;
         lock (_overlayExitLock) slot.Term = null;   // the exit's guard reads this under the same lock
         slot.Exited = false; slot.Wait = false;
+        SurfaceEvent("overlay", "closed", ses, term, pane, reason);
         ReleaseAndDispose(term);
         if (ReferenceEquals(ses, _active)) SyncSession();
         RequestRedraw();
@@ -971,8 +1000,9 @@ internal partial class Program
     /// exited, release a <c>--block</c> caller with "closed" rather than parking it — Dispose ends the
     /// pty without raising Exited (ServerSession suppresses the event on its own teardown), so nothing
     /// else would. A no-op after an exit.</summary>
-    private static void ReleaseAndDispose(Pane term)
+    private void ReleaseAndDispose(Pane term)
     {
+        Observation.RemovePane(term.Id);
         term.OverlayDone?.TrySetResult("closed");
         try { term.S.Dispose(); } catch { }
     }
@@ -1010,6 +1040,7 @@ internal partial class Program
             Post(() =>
             {
                 if (!ReferenceEquals(slot.Term, term)) return;   // already replaced/closed
+                SurfaceEvent("overlay", "exited", ses, term, pane, exitCode: code);
                 if (slot.Wait) { slot.Exited = true; slot.ExitCode = code; RequestRedraw(); }
                 else if (pane is null) CloseOverlayOf(ses);
                 else ClosePaneOverlay(ses, pane);
@@ -1534,7 +1565,9 @@ internal partial class Program
         ses.Active = Math.Clamp(idx, 0, ses.Panes.Count - 1);
         // The pane's overlay dies with the pane (P5: split close, split off, the shell exiting — every
         // path ends here); the survivor keeps its own, regridded to the new box below.
-        ClosePaneOverlay(ses, pane);
+        ClosePaneOverlay(ses, pane, "owner-removed");
+        Observation.RemovePane(pane.Id);
+        ObserveLayout(ses);
         try { pane.S.Dispose(); } catch { }
         // Only the active session's focused pane is the window's focused surface. Pointing `_session`
         // at a pane of some other session would leave the window focused on a surface not on screen.
@@ -1553,6 +1586,7 @@ internal partial class Program
         if (_isQuickWindow && ReferenceEquals(p, _quick))
         {
             DismissQuick(); _quick = null; _cover = null; _coverKind = 0; _session = null;
+            Observation.RemovePane(p.Id);
             p.S.Dispose(); return;
         }
         Ses? ses;
@@ -1768,10 +1802,13 @@ internal partial class Program
         {
             _dragging = false; _sbPress = false; _dragItem = null; _pressItem = null; ReleaseCapture();
         }
-        foreach (var p in ses.Panes) { ClosePaneOverlay(ses, p); try { p.S.Dispose(); } catch { } }   // each pane's overlay (P5) dies with its pane
+        _retiredObservationSessions.GetOrCreateValue(ses);
+        Observation.RemoveSession(ses.Id);
+        _observedLayouts.Remove(ses.Id);
+        foreach (var p in ses.Panes) { ClosePaneOverlay(ses, p, "owner-removed"); Observation.RemovePane(p.Id); try { p.S.Dispose(); } catch { } }   // each pane's overlay (P5) dies with its pane
         // Dismiss + dispose this session's scratch cover if it belongs here.
-        if (ses.Scratch is not null) { if (_coverKind == 1 && ReferenceEquals(_cover, ses.Scratch)) HideCover(); try { ses.Scratch.S.Dispose(); } catch { } ses.Scratch = null; }
-        CloseOverlayOf(ses); // dismiss + dispose this session's session-wide overlay (a no-op on an empty slot)
+        if (ses.Scratch is not null) { if (_coverKind == 1 && ReferenceEquals(_cover, ses.Scratch)) HideCover(); SurfaceEvent("scratch", "closed", ses, ses.Scratch); Observation.RemovePane(ses.Scratch.Id); try { ses.Scratch.S.Dispose(); } catch { } ses.Scratch = null; }
+        CloseOverlayOf(ses, "owner-removed"); // dismiss + dispose this session's session-wide overlay (a no-op on an empty slot)
         _mru.Remove(ses.Id);
         EmitEvent("session", ses.Id, "closed");
         EvictWatermark(ses.BgPath); SweepBackground(ses.Id); // drop the session's watermark file + texture
@@ -2194,6 +2231,7 @@ internal partial class Program
                 throw new TimeoutException($"the window did not run the request within {UiQueuedTimeout.TotalSeconds:0}s; it may still run later, and this reply cannot say whether it did");
         }
         catch (OperationCanceledException) { throw new InvalidOperationException("the window closed before the request ran; nothing was applied"); }
+        catch (AggregateException ae) when (ae.InnerException is ObservationException observation) { throw observation; }
         catch (AggregateException ae) when (ae.InnerException is not null) { throw new InvalidOperationException("UI-thread action failed: " + ae.InnerException.Message, ae.InnerException); }
         return tcs.Task.Result;
     }

@@ -151,30 +151,25 @@ public sealed class ServerSession : ISession
     // ---- Agent status: a UI-process concept (set via the control API), tracked locally exactly
     // like TerminalSession — the host knows nothing about it. Kept duplicated (25 lines) rather
     // than shared so the two implementations stay independently obvious.
-    public AgentStatus Status { get; private set; } = AgentStatus.Idle;
-    public bool Blink { get; private set; }
-    public bool AutoReset { get; private set; }
+    public StatusSignal StatusSignal { get; } = new();
+    public AgentStatus Status => StatusSignal.Snapshot.Status;
+    public bool Blink => StatusSignal.Snapshot.Blink;
+    public bool AutoReset => StatusSignal.Snapshot.AutoReset;
     public event Action? StatusChanged;
     public event Action<string?>? SoundRequested;
 
     /// <summary>Epoch seconds of the last status WRITE (see TerminalSession for why every write,
     /// not every change). Seeded at construction.</summary>
-    public long StatusChangedAt { get; private set; } = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    public long StatusChangedAt => StatusSignal.Snapshot.ChangedAt;
 
     /// <summary>Test seam: back-date the status stamp, so a re-assert's re-stamp is observable
     /// without sleeping out a whole epoch second on every run.</summary>
-    internal void BackdateStatus(long epochSeconds) => StatusChangedAt = epochSeconds;
+    internal void BackdateStatus(long epochSeconds) => StatusSignal.Backdate(epochSeconds);
 
     public void SetStatus(AgentStatus status, bool blink = false, bool autoReset = false,
         bool sound = false, string? soundName = null)
     {
-        bool newBlink = blink && status != AgentStatus.Idle;
-        bool newAuto = autoReset && status != AgentStatus.Idle;
-        bool changed = Status != status || Blink != newBlink || AutoReset != newAuto;
-        Status = status;
-        Blink = newBlink;
-        AutoReset = newAuto;
-        StatusChangedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();   // every write, not every change
+        bool changed = StatusSignal.Set(status, blink, autoReset);
         if (sound && status != AgentStatus.Idle)
             try { SoundRequested?.Invoke(soundName); } catch { }
         if (changed) StatusChanged?.Invoke();

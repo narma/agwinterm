@@ -10,6 +10,10 @@ namespace Agwinterm.Pty.Tests;
 internal sealed class FakeSessionHost : ISessionHost
 {
     public bool IsQuickSurface { get; set; }
+    public ControlObservation? Observation { get; set; }
+    public Task<StatusWaitResult> WaitStatusAsync(string? target, StatusWaitQuery query, CancellationToken cancellationToken)
+        => (Observation ?? throw new ObservationException("unsupported", "observation unavailable"))
+            .WaitAsync(query.Scope, target ?? "active", query.Statuses, query.TimeoutMs, cancellationToken);
     internal sealed class Sess
     {
         public string Id = "", Name = "";

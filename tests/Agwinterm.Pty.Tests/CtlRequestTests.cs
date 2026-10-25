@@ -226,7 +226,7 @@ public class CtlRequestTests : IDisposable
 
     internal static (int ExitCode, string StdOut, string StdErr) RunCtl(params string[] args) => RunCtlWithCaller(null, args);
 
-    private static (int ExitCode, string StdOut, string StdErr) RunCtlWithCaller(string? caller, params string[] args)
+    internal static (int ExitCode, string StdOut, string StdErr) RunCtlWithCaller(string? caller, params string[] args)
     {
         string exe = Path.Combine(AppContext.BaseDirectory, "agwintermctl.exe");
         Assert.True(File.Exists(exe), $"agwintermctl apphost was not copied to {AppContext.BaseDirectory}");

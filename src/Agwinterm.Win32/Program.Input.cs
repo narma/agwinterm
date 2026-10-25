@@ -542,6 +542,7 @@ internal partial class Program
         float newFirstRatio = (newFirst / avail) * sum;
         _active.Panes[_divLeft + 1].Ratio = pairRatio - newFirstRatio;
         _active.Panes[_divLeft].Ratio = newFirstRatio;
+        ObserveLayout(_active);
         RegridSession(_active);
         RequestRedraw();
     }

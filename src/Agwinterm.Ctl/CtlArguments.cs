@@ -7,13 +7,14 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ping"] = "", ["version"] = "", ["tree"] = "window",
-        ["events"] = "window since limit",
+        ["events"] = "window since limit kind run watch",
+        ["session wait"] = "window target scope wait-timeout",
         ["install hooks"] = "window target", ["install skill"] = "window target",
         ["install shell"] = "window target", ["install cli"] = "window target remove",
         ["omp list"] = "", ["omp set"] = "window persist",
@@ -94,7 +95,7 @@ public static class CtlArguments
             if (key == "json") json = true;
             if (key == "timeout" && !CtlRequest.TryResolveTimeout(value, false, out _, out error)) return false;
             if ((Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
-                !(key == "seq" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
+                !(key is "seq" or "since" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
                     int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
             { error = $"--{key} needs a whole number. Nothing sent."; return false; }
             if (key == "split-ratio" && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double n) || !double.IsFinite(n)))

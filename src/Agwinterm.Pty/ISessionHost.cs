@@ -586,6 +586,10 @@ public interface ISessionHost
     /// <summary>Poll the event log for events after <paramref name="since"/> (0 = all buffered), up to
     /// <paramref name="limit"/> (0 = no cap). Returns JSON {cursor, events:[{seq,type,session?,info?}]}. (agterm #273)</summary>
     string Events(long since, int limit);
+    /// <summary>Window-owned C1 observation state; null for hosts without observation support.</summary>
+    ControlObservation? Observation => null;
+    Task<StatusWaitResult> WaitStatusAsync(string? target, StatusWaitQuery query, CancellationToken cancellationToken)
+        => throw new ObservationException("unsupported", "host does not support status waiting");
 
     /// <summary>One-time migration: bind every pane that has an existing Claude transcript for its cwd to
     /// resume that conversation on restart (for sessions started before the launcher wrapper). Returns a summary.</summary>

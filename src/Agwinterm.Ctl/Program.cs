@@ -52,9 +52,14 @@ switch (area)
     case "version": cmd = "version"; break;   // handled locally, below: needs the resolved pipe name
     case "tree": cmd = "tree"; break;
     case "events": // agwintermctl events [--since CURSOR] [--limit N] — poll status/notification/session/tree events
+        if (positionals.Count != 1) { Console.Error.WriteLine("events accepts no positional arguments"); return 2; }
         cmd = "events";
-        if (Opt("since") is { } sinceV && int.TryParse(sinceV, out var sinceN)) cargs["since"] = sinceN;
+        if (Opt("since") is { } sinceV && long.TryParse(sinceV, out var sinceN)) cargs["since"] = sinceN;
         if (Opt("limit") is { } limV && int.TryParse(limV, out var limN)) cargs["limit"] = limN;
+        if (Opt("run") is { } run) cargs["run"] = run;
+        if (Opt("kind") is { } kinds) cargs["kinds"] = kinds.Split(',');
+        try { EventQuery.Parse(JsonSerializer.SerializeToElement(cargs)); }
+        catch (ObservationException ex) { Console.Error.WriteLine(ex.Message + ". Nothing sent."); return 2; }
         target = null;
         break;
     case "install" when sub == "hooks": cmd = "install.hooks"; target = DefaultTarget(); break;
@@ -112,6 +117,18 @@ switch (area)
         target = DefaultTarget();
         switch (sub)
         {
+            case "wait":
+                if (rest.Count != 1) { Console.Error.WriteLine("session wait needs STATUS[,STATUS...]"); return 2; }
+                cargs["statuses"] = rest[0].ToLowerInvariant().Split(',');
+                cargs["scope"] = Opt("scope") ?? "session";
+                int waitSeconds = 30;
+                if (Opt("wait-timeout") is { } seconds && (!int.TryParse(seconds, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out waitSeconds) || waitSeconds > 86400))
+                { Console.Error.WriteLine("--wait-timeout must be 0..86400 seconds"); return 2; }
+                cargs["timeout-ms"] = waitSeconds * 1000;
+                try { StatusWaitQuery.Parse(JsonSerializer.SerializeToElement(cargs)); }
+                catch (ObservationException ex) { Console.Error.WriteLine(ex.Message + ". Nothing sent."); return 2; }
+                break;
             case "hud":
             {
                 string action = rest.Count > 0 && rest[0] is "open" or "update" or "close" ? rest[0] : "open";
@@ -673,6 +690,9 @@ if (cmd == "version")
 
 // The reply is bounded (#315): a blocking overlay open answers when its overlay closes, so it alone
 // waits without a limit unless --timeout says otherwise.
+if (cmd == "session.wait" || (cmd == "events" && options.ContainsKey("watch")))
+    return Agwinterm.Ctl.ObservationCli.Run(pipeName, req, cargs, options, jsonOut);
+
 if (!Agwinterm.Ctl.CtlRequest.TryResolveTimeout(Opt("timeout"), waitsByDesign: cmd == "session.overlay" && cargs.ContainsKey("block"),
         out var replyTimeout, out var timeoutError))
 {
