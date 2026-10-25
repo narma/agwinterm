@@ -51,3 +51,7 @@ command behavior remains the same. These rules apply to `session new`; overlays,
 shell profiles, custom commands and restore replay retain their separate contracts.
 In Lite, an exact empty argv (a bare `powershell.exe` direct session) stays exact across
 duplicate, Reopen Closed and a cold restore since agliteterm 0.19.3 (agliteterm #79).
+
+## Recently closed work
+
+[Recent history](recent-work.md) exposes menu reopening through `recent list/open/clear`, preserves splits and restore pins, and retains failed workspace members for retry.

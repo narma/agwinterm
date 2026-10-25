@@ -273,6 +273,38 @@ public sealed partial class ControlServer : IDisposable
                 }
             }
 
+            if (cmd.StartsWith("recent.", StringComparison.Ordinal))
+            {
+                var seenRecentFields = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var field in root.EnumerateObject())
+                {
+                    if (!seenRecentFields.Add(field.Name) || field.Name is not ("cmd" or "args" or "target" or "window"))
+                        return Err("unknown or duplicate recent request field");
+                    if (field.Name == "window" && field.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                        return Err("destination window must be a string");
+                }
+                if ((_windows as IRecentHost ?? _host as IRecentHost) is not { } recent) return Err("recent history unavailable");
+                if (cmd is not ("recent.list" or "recent.open" or "recent.clear")) return Err("unknown recent operation");
+                if (root.TryGetProperty("target", out var recentTarget) && recentTarget.ValueKind != JsonValueKind.Null)
+                    return Err("recent does not accept a session target");
+                if (cmd != "recent.open" && windowSel is not null) return Err("only recent open accepts a destination window");
+                if (windowSel is not null && string.IsNullOrWhiteSpace(windowSel)) return Err("empty destination window");
+                string? entryId = null;
+                if (args.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+                {
+                    if (args.ValueKind != JsonValueKind.Object) return Err("recent args must be an object");
+                    foreach (var property in args.EnumerateObject())
+                    {
+                        if (property.Name != "id" || cmd == "recent.list" || entryId is not null || property.Value.ValueKind != JsonValueKind.String ||
+                            !Guid.TryParse(property.Value.GetString(), out _)) return Err("invalid or duplicate recent argument");
+                        entryId = property.Value.GetString();
+                    }
+                }
+                if (cmd == "recent.open" && entryId is null) return Err("recent open requires an exact entry ID");
+                return OkRaw(JsonSerializer.Serialize(cmd == "recent.list" ? recent.RecentList() :
+                    cmd == "recent.clear" ? recent.RecentClear(entryId) : recent.RecentOpen(entryId!, windowSel)));
+            }
+
             // App-level, window-agnostic verbs first.
             switch (cmd)
             {

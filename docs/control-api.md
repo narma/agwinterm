@@ -560,3 +560,7 @@ native DIP font size, stable pane anchoring and bounded Markdown. CLI `--file` r
 strict UTF-8 before transport. Tree/replies expose effective style and client-pixel
 geometry; lifecycle events report expiry and anchor identity. See
 [passive session HUD](session-hud.md) for precise limits, defaults and compatibility.
+
+## Recently closed work (C5)
+
+See [recent work](recent-work.md) for `recent.list`, `recent.open` and `recent.clear`, exact entry IDs, destination rules, partial outcomes and bounded persistence. These app-wide operations are independent of live restore checkpoints.

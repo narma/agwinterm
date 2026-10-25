@@ -1635,52 +1635,6 @@ internal partial class Program
         return true;
     }
 
-    /// <summary>A recently-closed session's restorable identity (IDE "reopen closed" / browser Ctrl+Shift+T).
-    /// SessionId is the original id, reused on reopen so control-API/agent references stay stable.
-    /// Context is the session.context text (P3) — it rides here so `session reopen` brings it back.</summary>
-    private sealed record ClosedSession(string? CustomName, string? ProfileName, string Cwd,
-        string WorkspaceId, string WorkspaceName, bool Flagged, string Display, string Name,
-        string SessionId = "", long Seq = 0, string? Context = null);
-    /// <summary>A recently-closed workspace (its name + all its sessions), so it can be reopened whole.
-    /// WorkspaceId is the original id, reused on reopen to keep it stable across close→reopen.</summary>
-    private sealed record ClosedWorkspace(string Name, IReadOnlyList<ClosedSession> Sessions, long Seq, string WorkspaceId = "");
-    private readonly List<ClosedSession> _closedSessions = new();
-    private readonly List<ClosedWorkspace> _closedWorkspaces = new();
-    private const int MaxClosedSessions = 25;
-    private long _closeSeq;   // monotonic; orders closed sessions vs workspaces for "most recent"
-
-    /// <summary>Snapshot a session's restorable identity (stamped with the next close sequence).</summary>
-    private ClosedSession CaptureClosedSessionData(Ses ses)
-    {
-        var p = ses.ActivePane;
-        string live = PrettyCwd(SafeCwd(p));
-        string cwd = live.Length > 0 ? live : (p.StartCwd ?? "");
-        string display = !string.IsNullOrEmpty(ses.CustomName) ? ses.CustomName!
-            : (!string.IsNullOrEmpty(cwd) ? Path.GetFileName(cwd.TrimEnd('\\', '/')) : ses.Name);
-        if (string.IsNullOrEmpty(display)) display = ses.Name;
-        return new ClosedSession(ses.CustomName, ses.ProfileName, cwd, ses.Ws.Id, ses.Ws.Name, ses.Flagged, display, ses.Name, ses.Id, ++_closeSeq, ses.Context);
-    }
-
-    /// <summary>Remember a session's identity so it can be reopened after it's closed.</summary>
-    private void CaptureClosedSession(Ses ses)
-    {
-        try { _closedSessions.Add(CaptureClosedSessionData(ses)); if (_closedSessions.Count > MaxClosedSessions) _closedSessions.RemoveAt(0); }
-        catch { }
-    }
-
-    /// <summary>Remember a whole workspace (name + its sessions) so it can be reopened after it's deleted.</summary>
-    private void CaptureClosedWorkspace(Workspace ws, IReadOnlyList<Ses> sessions)
-    {
-        try
-        {
-            if (sessions.Count == 0) return;
-            var items = sessions.Select(CaptureClosedSessionData).ToList();
-            _closedWorkspaces.Add(new ClosedWorkspace(ws.Name, items, ++_closeSeq, ws.Id));
-            if (_closedWorkspaces.Count > MaxClosedSessions) _closedWorkspaces.RemoveAt(0);
-        }
-        catch { }
-    }
-
     /// <summary>True if any live workspace currently uses this id.</summary>
     private bool WorkspaceIdInUse(string id) { lock (_workspaces) return _workspaces.Any(w => w.Id == id); }
     /// <summary>True if any live session (in any workspace) currently uses this id.</summary>
@@ -1707,61 +1661,6 @@ internal partial class Program
                   : saved == fileSessionId ? sessionId
                   : saved;
         return PaneIdInUse(id) ? Guid.NewGuid().ToString() : id;
-    }
-
-    /// <summary>Reopen the most recently closed item — a session or a whole workspace, whichever was closed last.</summary>
-    private void ReopenMostRecent()
-    {
-        long sSeq = _closedSessions.Count > 0 ? _closedSessions[^1].Seq : -1;
-        long wSeq = _closedWorkspaces.Count > 0 ? _closedWorkspaces[^1].Seq : -1;
-        if (sSeq < 0 && wSeq < 0) { ShowToast("No recently closed items"); return; }
-        if (wSeq > sSeq) ReopenClosedWorkspace(_closedWorkspaces[^1]);
-        else ReopenClosedSession();
-    }
-
-    /// <summary>Reopen the most recently closed session (or a specific one) — restoring its profile, cwd,
-    /// custom name and flag, in its original workspace if it still exists.</summary>
-    private void ReopenClosedSession(ClosedSession? which = null)
-    {
-        ClosedSession c;
-        if (which is not null) { c = which; _closedSessions.Remove(which); }
-        else if (_closedSessions.Count > 0) { c = _closedSessions[^1]; _closedSessions.RemoveAt(_closedSessions.Count - 1); }
-        else { ShowToast("No recently closed sessions"); return; }
-
-        Workspace ws;
-        lock (_workspaces)
-            ws = _workspaces.FirstOrDefault(w => w.Id == c.WorkspaceId)
-                 ?? _workspaces.FirstOrDefault(w => string.Equals(w.Name, c.WorkspaceName, StringComparison.OrdinalIgnoreCase))
-                 ?? ActiveWorkspace();
-        string? cwd = !string.IsNullOrEmpty(c.Cwd) && (WslIntegration.IsWsl(ResolveProfile(c.ProfileName)?.Command) || Directory.Exists(c.Cwd)) ? c.Cwd : null;
-        var ses = CreateSession(StableSessionId(c.SessionId), null, cwd, ws, makeActive: true, profileName: c.ProfileName);
-        if (!string.IsNullOrEmpty(c.CustomName)) { ses.CustomName = c.CustomName; ses.Name = c.CustomName!; } // mirror rename
-        else if (!string.IsNullOrEmpty(c.Name)) ses.Name = c.Name;   // restore the original label
-        if (c.Flagged) ses.Flagged = true;
-        ses.Context = c.Context;   // session.context comes back with the session (P3)
-        RequestRedraw();
-        SaveState();
-    }
-
-    /// <summary>Reopen a closed workspace whole — recreate it and all its sessions (profile/cwd/name/flag).</summary>
-    private void ReopenClosedWorkspace(ClosedWorkspace c)
-    {
-        _closedWorkspaces.Remove(c);
-        var ws = CreateWorkspace(StableWorkspaceId(c.WorkspaceId), c.Name);
-        Ses? first = null;
-        foreach (var cs in c.Sessions)
-        {
-            string? cwd = !string.IsNullOrEmpty(cs.Cwd) && (WslIntegration.IsWsl(ResolveProfile(cs.ProfileName)?.Command) || Directory.Exists(cs.Cwd)) ? cs.Cwd : null;
-            var ses = CreateSession(StableSessionId(cs.SessionId), null, cwd, ws, makeActive: false, profileName: cs.ProfileName);
-            if (!string.IsNullOrEmpty(cs.CustomName)) { ses.CustomName = cs.CustomName; ses.Name = cs.CustomName!; }
-            else if (!string.IsNullOrEmpty(cs.Name)) ses.Name = cs.Name;
-            if (cs.Flagged) ses.Flagged = true;
-            ses.Context = cs.Context;   // session.context comes back with the session (P3)
-            first ??= ses;
-        }
-        if (first is not null) SetActive(first);
-        RequestRedraw();
-        SaveState();
     }
 
     /// <summary>Clone a session (agterm #234): a new session in the same workspace, launched in the

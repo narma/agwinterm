@@ -509,6 +509,11 @@ public static class AgentSkill
           restore-commands, blocked-sound, omp-theme. Changing the theme retints the WHOLE window (sidebar/title/status), not just the terminal.
 
         ## Config / restore
+        - `agwintermctl recent list` — newest-first durable closed sessions/workspaces with exact entry IDs, source window and remaining count.
+        - `agwintermctl recent open ENTRY-ID [--window ID]` — restore into an open library window (default active), without forcing OS focus.
+          Preserves split IDs/layout, profile/cwd, context, flags and restore pins. Pins are retained, not replayed. Inspect `outcome`,
+          `members` and `remaining`: partial workspace recovery retains failed members and must be retried in the same destination.
+        - `agwintermctl recent clear [ENTRY-ID]` — clear only recent history. List/clear reject window/target selectors.
         - `agwintermctl keymap reload`                           — re-parse keymap.conf (reports diagnostics)
         - `agwintermctl restore clear`                           — clear the saved session-tree state
         - `agwintermctl restore capture [--target ID]`            — capture the foreground command of EVERY real pane (or of the one

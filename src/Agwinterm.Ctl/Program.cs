@@ -50,6 +50,13 @@ bool printTextField = false;
 
 switch (area)
 {
+    case "recent":
+        if (rest.Count > 1 || sub == "list" && rest.Count != 0 || sub == "open" && rest.Count != 1 ||
+            rest.Count == 1 && !Guid.TryParse(rest[0], out _))
+        { Console.Error.WriteLine("recent list | open ENTRY-ID [--window ID] | clear [ENTRY-ID]"); return 2; }
+        cmd = "recent." + sub;
+        if (rest.Count == 1) cargs["id"] = rest[0];
+        break;
     case "ping": cmd = "ping"; break;
     case "version": cmd = "version"; break;   // handled locally, below: needs the resolved pipe name
     case "tree": cmd = "tree"; break;
