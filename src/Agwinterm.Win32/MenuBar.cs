@@ -53,7 +53,7 @@ internal partial class Program
     /// <summary>The bar takes input only while nothing modal owns the keyboard: Settings, Help, a
     /// palette, the native picker and an inline rename all do; the dashboard does not (its items
     /// still act on the tree behind it, as the keyboard's do).</summary>
-    private bool MenuBarUsable => MenuBarShown && !_setOpen && !_helpOpen && _palette == PaletteKind.None && _nativePick is null && _editHwnd == IntPtr.Zero;
+    private bool MenuBarUsable => MenuBarShown && !_setOpen && !_helpOpen && _palette == PaletteKind.None && !NativeDialogOpen && _editHwnd == IntPtr.Zero;
 
     /// <summary>Paint the labels from <paramref name="x"/>; returns the bar's right edge, or
     /// <paramref name="x"/> unchanged when the bar is hidden. A label that would run into the right

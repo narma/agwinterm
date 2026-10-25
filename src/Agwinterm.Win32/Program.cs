@@ -1023,7 +1023,7 @@ internal partial class Program : ISessionHost, IWindowHost
             Kind = Uia.NodeKind.Terminal,
             Name = "terminal",
             Parent = 0,
-            Focused = !_chromeFocus && !_setOpen && _nativePick is null,
+            Focused = !_chromeFocus && !_setOpen && !NativeDialogOpen,
             Rect = ScreenRect(_sidebarW, TitleBarH, ClientW() - _sidebarW, contentBottom - TitleBarH),
         });
 
@@ -1116,7 +1116,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <summary>UIA Invoke on a button/control — run the same action a click/keypress would.</summary>
     private void HandleUiaInvoke(Uia.NodeKind kind, int index)
     {
-        if (_nativePick is not null) return;
+        if (NativeDialogOpen) return;
         // Revalidate after the UI-thread queue hop, including modal visibility. A retained element
         // must never target a different action merely because the current controls were reordered.
         if (Uia.Find(BuildUiaTree(), kind, index) is null) return;
@@ -1145,6 +1145,7 @@ internal partial class Program : ISessionHost, IWindowHost
     private void HandleUiaSetFocus(Uia.NodeKind kind, int index)
     {
         if (_nativePick is not null) { _nativePick.FocusIfForeground(); return; }
+        if (_nativeAsk is not null) { _nativeAsk.FocusIfForeground(); return; }
         if (Uia.Find(BuildUiaTree(), kind, index) is null) return;
         switch (kind)
         {

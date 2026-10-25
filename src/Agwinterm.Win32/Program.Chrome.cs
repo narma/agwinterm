@@ -850,7 +850,7 @@ internal partial class Program
                     A("Toggle Broadcast Input", "", ToggleBroadcast);   // typing fans out to the whole workspace
                     A("Mark Mode (keyboard select)", "Ctrl+Shift+M", ToggleMarkMode);
                     A("Toggle Read-Only Pane", "", () => { if (ActiveSurface() is { } rp) { rp.ReadOnly = !rp.ReadOnly; ShowToast(rp.ReadOnly ? "pane read-only ON" : "pane read-only off"); RequestRedraw(); } });
-                    A("Close Window", "", () => DestroyWindow(_hwnd));
+                    A("Close Window", "", CloseLibraryWindow);
                     A("Switch Window…", "", () => TogglePalette(PaletteKind.Windows));
                     A("Rename Active Session", "F2", () => { if (_active is not null) StartRename(_active); });
                     A("Close Pane / Session", "Ctrl+Shift+W", CloseActivePane);

@@ -69,6 +69,14 @@ Check 'Enter returns original item id label and index' ($picked.result-eq 'picke
 $null=Rpc 'pick.cancel' @{} $pickId -Window ''
 Check 'cancel after choose preserves immutable answer' ((Pick-Result).result-eq 'picked')
 Check 'native window destroyed after answer' ([PickerProbe]::Find($hwnd)-eq [IntPtr]::Zero)
+$null=Open-Pick @{items=@(@{id='first';label='Duplicate'},@{id='second';label='Duplicate';status='Ready';color='#238856';shape='diamond'});selectedId='second'}
+Check 'C3 exact initial ID selects duplicate-label second row' ([int][HudOwnedJob]::SendMessageW($list,0x188,[IntPtr]::Zero,[IntPtr]::Zero)-eq 1)
+. "$PSScriptRoot/native-dialog-accessibility.ps1"
+$selectedNames=[NativeDialogAccess]::SelectedNames($list)
+Check 'C3 status stays in accessible selected row text' ($selectedNames.Count-eq 1 -and $selectedNames[0]-match 'Ready')
+$originalHwnd=$hwnd;try{$hwnd=$picker;$null=Shot 'native-picker-status'}finally{$hwnd=$originalHwnd}
+Pick-Key 0x0d
+Check 'C3 initial Enter preserves ID and original index' ((Pick-Result).id-eq 'second' -and (Pick-Result).index-eq 1)
 $null=Open-Pick @{items=@(@{id='';label='中文 🦊'});allowCustom=$true;query='  custom value  ';prompt='Select — Ctrl+C stays in the edit'}
 Check 'unmatched custom query creates one row' ((Pick-Count)-eq 1)
 [void][HudOwnedJob]::SendMessageW([PickerProbe]::GetDlgItem($picker,1),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)

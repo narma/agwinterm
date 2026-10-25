@@ -199,6 +199,23 @@ try {
     Start-Sleep -Seconds 1
     $watchCancelCode = ((& wsl @selectors --exec cat "$linuxHome/c1-watch-cancel.code") -join '').Trim()
     Check ($watchCancelCode -eq '130') 'C1 WSL terminal Ctrl+C terminates watch with exit 130'
+    $askNoBlock = 'printf ''%s'' ''{"title":"WSL question"}'' | agwintermctl ask --no-block > "$HOME/c3-ask-id.json"; printf "%s" "$?" > "$HOME/c3-ask-open.code"'
+    $null = Ctl @('session','type',($askNoBlock + [char]13),'--target',$copy)
+    Start-Sleep -Seconds 1
+    $askId = (((& wsl @selectors --exec cat "$linuxHome/c3-ask-id.json") -join "`n") | ConvertFrom-Json).id
+    $askPending = (& $ctl ask result $askId --pipe $id) | ConvertFrom-Json
+    Check ($LASTEXITCODE -eq 1 -and $askPending.result -eq 'pending') 'C3 WSL no-block form returns a usable exact ID'
+    $null = & $ctl ask cancel $askId --pipe $id
+    $askBlocking = 'printf ''%s'' ''{"title":"WSL cancellable question"}'' | agwintermctl ask > "$HOME/c3-ask-answer.json" 2> "$HOME/c3-ask.err"; printf "%s" "$?" > "$HOME/c3-ask.code"'
+    $null = Ctl @('session','type',($askBlocking + [char]13),'--target',$copy)
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session','type',([string][char]3),'--allow-control','--target',$copy)
+    Start-Sleep -Seconds 2
+    $askCode = ((& wsl @selectors --exec cat "$linuxHome/c3-ask.code") -join '').Trim()
+    Check ($askCode -eq '130') 'C3 WSL real terminal Ctrl+C exits ask with 130'
+    $probe = '{}' | & $ctl ask --no-block --pipe $id | ConvertFrom-Json
+    Check ($LASTEXITCODE -eq 0 -and $probe.id) 'C3 WSL cancellation releases the exact owned form slot'
+    $null = & $ctl ask cancel $probe.id --pipe $id
     $overlay = Ctl @('session', 'overlay', 'open', '--command', 'printf "OVERLAY_%s\n" "LINUX"; sleep 2', '--wait', '--target', $copy)
     Start-Sleep -Seconds 1
     $overlayText = Ctl @('session', 'overlay', 'text', '--target', $copy)

@@ -98,3 +98,14 @@ answer slot. Picker selectors require an exact or unique-prefix window match.
 
 Standard native controls supply their own accessibility; this does not repair the
 terminal's process-wide UIA provider limitation (#267) or workspace teardown issue #270.
+
+## Initial selection and status (C3)
+
+`pick open --selected-id ID` selects that exact item after the initial filter. Empty IDs
+are supported; a missing ID refuses before opening. If the query excludes the ID, the
+first match is selected. Later query edits reset selection as before. Wire: `args.selectedId`.
+
+JSON items additionally accept `status` (display text, 4096 UTF-16 units), `color`
+(`#RRGGBB`) and `shape` (`dot`, `square`, `diamond`). A color alone uses a dot; a shape
+alone uses the normal text color. Status joins the accessible row text; metadata does
+not participate in filtering or change the returned ID/index. These are optional fields.

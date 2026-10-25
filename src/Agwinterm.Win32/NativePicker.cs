@@ -6,7 +6,7 @@ using static Agwinterm.Win32.Win32;
 namespace Agwinterm.Win32;
 
 /// <summary>Owned modeless native controls. Only its owner UI thread calls this object.</summary>
-internal sealed class NativePicker : IDisposable
+internal sealed partial class NativePicker : IDisposable
 {
     private const string ClassName = "Agwinterm.NativePicker";
     private const uint NcDestroy = 0x82, GetDlgCode = 0x87;
@@ -71,7 +71,7 @@ internal sealed class NativePicker : IDisposable
         if (_hwnd == IntPtr.Zero) throw new InvalidOperationException("picker window creation failed");
         _label = Child("STATIC", Request.Spec.Prompt ?? "Select…", 0x80 /* SS_NOPREFIX */, 100);
         _edit = Child("EDIT", "", WS_TABSTOP | ES_AUTOHSCROLL | 0x800000 /* WS_BORDER */, 101);
-        _list = Child("LISTBOX", "", WS_TABSTOP | WS_VSCROLL | 1 /* LBS_NOTIFY */ | 0x100 /* LBS_NOINTEGRALHEIGHT */ | 0x800000, 102);
+        _list = Child("LISTBOX", "", WS_TABSTOP | WS_VSCROLL | 1 /* LBS_NOTIFY */ | 0x100 /* LBS_NOINTEGRALHEIGHT */ | 0x800000 | (StyledRows ? 0x50u /* OWNERDRAWFIXED | HASSTRINGS */ : 0), 102);
         _accept = Child("BUTTON", "Select", WS_TABSTOP | 1 /* default push button */, 1);
         _cancel = Child("BUTTON", "Cancel", WS_TABSTOP, 2);
         foreach (var child in new[] { _edit, _list, _accept, _cancel })
@@ -84,6 +84,8 @@ internal sealed class NativePicker : IDisposable
         UpdateFont(); Layout();
         SetWindowTextW(_edit, Request.Spec.Query ?? "");
         Refilter();
+        _selection.SelectInitial();
+        SendMessageW(_list, LbSetSel, (IntPtr)(_selection.Count == 0 ? -1 : _selection.Selected), IntPtr.Zero);
         if (_ended || _hwnd == IntPtr.Zero) throw new InvalidOperationException("picker closed during creation");
         ShowWindow(_hwnd, 4 /* SW_SHOWNOACTIVATE */);
         if (follow) SetForegroundWindow(_hwnd);
@@ -105,6 +107,7 @@ internal sealed class NativePicker : IDisposable
         foreach (var h in new[] { _label, _edit, _list, _accept, _cancel }) if (h != IntPtr.Zero) SendMessageW(h, WM_SETFONT, font, (IntPtr)1);
         if (_font != IntPtr.Zero) DeleteObject(_font);
         _font = font;
+        if (StyledRows && _list != IntPtr.Zero) SendMessageW(_list, 0x1a0 /* LB_SETITEMHEIGHT */, IntPtr.Zero, (IntPtr)Scale(24));
     }
 
     private void Layout()
@@ -138,7 +141,7 @@ internal sealed class NativePicker : IDisposable
         foreach (int index in _selection.Matches)
         {
             var item = Request.Spec.Items[index];
-            string text = item.Label + (string.IsNullOrEmpty(item.Subtitle) ? "" : " — " + item.Subtitle);
+            string text = RowText(item);
             if (SendMessageW(_list, LbAdd, IntPtr.Zero, text).ToInt64() < 0) throw new InvalidOperationException("picker list allocation failed");
         }
         if (_selection.Custom && SendMessageW(_list, LbAdd, IntPtr.Zero, "Use \"" + _selection.Query.Trim() + "\"").ToInt64() < 0)
@@ -185,6 +188,8 @@ internal sealed class NativePicker : IDisposable
         {
             switch (msg)
             {
+                case 0x2b: picker.DrawRow(l); return (IntPtr)1; // WM_DRAWITEM
+                case 0x2c: picker.MeasureRow(l); return (IntPtr)1; // WM_MEASUREITEM
                 case WM_CLOSE: picker.End(new("cancelled")); return IntPtr.Zero;
                 case WM_COMMAND:
                     int id = (int)((long)w & 0xffff), code = (int)(((long)w >> 16) & 0xffff);

@@ -84,7 +84,7 @@ internal partial class Program
     {
         var p = ResolveOpen(selector);
         if (p is null) return false;
-        LiveWindow().PostVerb(() => DestroyWindow(p._hwnd)); // WM_DESTROY does teardown + index bookkeeping
+        LiveWindow().PostVerb(p.CloseLibraryWindow); // WM_DESTROY does teardown + index bookkeeping
         return true;
     }
 
@@ -96,7 +96,7 @@ internal partial class Program
         LiveWindow().PostVerb(() =>
         {
             Program? open; lock (_windowIndex) _byId.TryGetValue(target.Id, out open);
-            if (open is not null) DestroyWindow(open._hwnd);
+            if (open is not null) open.CloseLibraryWindow();
             lock (_windowIndex)
             {
                 _windowIndex.RemoveAll(m => m.Id == target.Id);
@@ -716,7 +716,7 @@ internal partial class Program
     public string ConfigList() => InvokeOnUi(() => string.Join("\n", ConfigKeys.Select(k => $"{k} = {ConfigValue(k)}")));
     public string SettingsOpen() => InvokeOnUiQueued(() =>
     {
-        if (_nativePick is not null) throw new InvalidOperationException("a picker owns this window");
+        if (NativeDialogOpen) throw new InvalidOperationException("a native dialog owns this window");
         OpenSettingsWindow(); return "settings opened";
     });
 

@@ -162,6 +162,11 @@ jobs:
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Picker -Strict
 
+      - name: Native question integration
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./tests/integration/hud-ui.ps1 -Suite Ask -Strict
+
       - name: Menu bar integration
         shell: pwsh
         timeout-minutes: 5

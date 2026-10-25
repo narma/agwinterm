@@ -545,3 +545,10 @@ monotonic clock from registration: a transition at or after the deadline
 cannot turn timeout into success. CLI transport defaults to this deadline
 plus five seconds, or unbounded for zero. Explicit `--timeout` retains its
 independent C0 transport meaning; a shorter transport timeout exits 1, not 3.
+
+## Native questions and picker presentation (C3)
+
+See [native questions](native-questions.md) for the `ask open/result/cancel` schema,
+exact-ID outcomes, limits, cancellation and transport uncertainty. See
+[native picker](native-picker.md) for `--selected-id` and optional item status markers.
+These use owned native controls and share the window's modal input slot.

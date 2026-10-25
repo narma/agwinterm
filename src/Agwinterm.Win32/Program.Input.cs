@@ -158,7 +158,7 @@ internal partial class Program
             case "attention_list": TogglePalette(PaletteKind.Attention); break;
             case "custom_palette": TogglePalette(PaletteKind.Custom); break;
             case "new_window": WindowNew(null); break;
-            case "close_window": DestroyWindow(_hwnd); break; // WM_DESTROY tears down + updates the library
+            case "close_window": CloseLibraryWindow(); break; // WM_DESTROY tears down + updates the library
             case "switch_window": TogglePalette(PaletteKind.Windows); break;
             case "next_attention": GoToNextAttention(1); break;
             case "previous_attention": GoToNextAttention(-1); break;
