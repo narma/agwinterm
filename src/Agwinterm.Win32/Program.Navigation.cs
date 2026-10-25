@@ -25,8 +25,8 @@ internal partial class Program
         if (ws is null) return false;
         lock (_workspaces) if (!_workspaces.Contains(ws)) return false;
         MruCommit();
-        if (_focusedWorkspaceId is not null && _focusedWorkspaceId != ws.Id)
-            _focusedWorkspaceId = null; // explicit selection must reveal its destination
+        if (FocusFilterActive && !_focusedWorkspaceIds.Contains(ws.Id))
+            _workspaceFilterEnabled = false; // reveal without discarding membership
         if (ws.Sessions.FirstOrDefault() is { } first) SetActive(first);
         else { _workspaceTarget = ws; RequestRedraw(); SaveState(); }
         EmitEvent("tree");
@@ -41,7 +41,7 @@ internal partial class Program
             return ISessionHost.RefusePrefix + "workspace go requires next or prev";
         List<Workspace> visible;
         lock (_workspaces) visible = _sidebarMode == SidebarMode.Flagged ? new()
-            : _workspaces.Where(w => _focusedWorkspaceId is null || w.Id == _focusedWorkspaceId).ToList();
+            : _workspaces.Where(w => !FocusFilterActive || _focusedWorkspaceIds.Contains(w.Id)).ToList();
         int index = WorkspaceNavigation.Destination(visible.Count, visible.IndexOf(CurrentWorkspace()!), step);
         if (index < 0) return ISessionHost.RefusePrefix + "no other visible workspace to navigate to";
         var destination = visible[index];

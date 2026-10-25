@@ -1670,6 +1670,9 @@ internal partial class Program
                 SidebarVisible = _sidebarW > 0,
                 SidebarMode = _sidebarMode == SidebarMode.Flagged ? "flagged" : "tree",
                 FocusedWorkspaceId = _focusedWorkspaceId,
+                FocusedWorkspaceIds = _focusedWorkspaceIds.Count > 0 || _workspaceFilterEnabled ? _focusedWorkspaceIds.ToList() : null,
+                WorkspaceFilterEnabled = _focusedWorkspaceIds.Count > 0 || _workspaceFilterEnabled ? _workspaceFilterEnabled : null,
+                FlaggedLayout = _flaggedLayout == "plain" ? null : _flaggedLayout,
                 Mru = _mru.ToList(),   // Ctrl+Tab recency order survives relaunch
             };
             CaptureGeometry(st);
@@ -1980,10 +1983,10 @@ internal partial class Program
 
         // Restore sidebar mode + workspace focus (Wave D1). Focus that no longer resolves is dropped.
         _sidebarMode = string.Equals(st.SidebarMode, "flagged", StringComparison.OrdinalIgnoreCase) ? SidebarMode.Flagged : SidebarMode.Tree;
-        _focusedWorkspaceId = st.FocusedWorkspaceId;
+        var focus = WorkingSets.LoadFocus(_workspaces.Select(w => w.Id), st.FocusedWorkspaceIds, st.WorkspaceFilterEnabled, st.FocusedWorkspaceId);
+        _focusedWorkspaceIds.Clear(); _focusedWorkspaceIds.UnionWith(focus.Ids); _workspaceFilterEnabled = focus.Enabled;
+        _flaggedLayout = WorkingSets.Layout(st.FlaggedLayout);
         if (st.Mru is { Count: > 0 }) { _mru.Clear(); _mru.AddRange(st.Mru); } // EnsureMru prunes dead ids on first walk
-        if (_focusedWorkspaceId is not null)
-            lock (_workspaces) if (!_workspaces.Any(w => w.Id == _focusedWorkspaceId)) _focusedWorkspaceId = null;
 
         if (_active is null) { var f = AllSessions().FirstOrDefault(); if (f is not null) SetActive(f); }
         if (AllSessions().Count == 0) return false; // nothing usable came back -> default

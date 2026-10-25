@@ -59,3 +59,10 @@ cursor overrides still take precedence. Shape changes do not resize terminal cel
 
 P17 mirrors this contract to lite and expands shared conformance; native tooltip,
 config UI and process boundaries are recorded in [lite parity](lite-parity.md#p17-wave-3-mirror).
+
+## Retained working sets
+
+[Working-set organization](working-sets.md) adds multiple focused workspaces and a separate
+filter switch. Session navigation follows effective visible order; flagged layouts can be
+plain, flat with workspace suffix, or grouped tree. Existing empty-workspace navigation
+continues to retain the visible terminal and change only the placement target.

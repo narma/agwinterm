@@ -327,6 +327,27 @@ public sealed partial class ControlServer : IDisposable
             if (windowSel is not null && _windows is not null && _windows.ResolveWindow(windowSel) is null)
                 return Err("window not found: " + windowSel);
 
+            if (WorkingSetRequest.Applies(cmd, args))
+            {
+                var seenWorkingFields = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var field in root.EnumerateObject())
+                {
+                    if (!seenWorkingFields.Add(field.Name) || field.Name is not ("cmd" or "args" or "target" or "window")) return Err("unknown or duplicate working-set field");
+                    if (field.Name is "target" or "window" && field.Value.ValueKind != JsonValueKind.Null &&
+                        (field.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(field.Value.GetString()))) return Err("invalid working-set selector");
+                }
+                if (windowSel is not null && _windows is null) return Err("window routing unavailable");
+                if (windowSel is not (null or "active" or "quick") && _windows is not null)
+                {
+                    var open = _windows.Windows().Where(w => w.Open).ToArray();
+                    if (!open.Any(w => w.Id == windowSel) && open.Count(w => w.Id.StartsWith(windowSel, StringComparison.Ordinal)) != 1) return Err("unknown or ambiguous window");
+                }
+                WorkingSetRequest.Validate(cmd, args, target);
+                if (host is not IWorkingSetHost && cmd == "workspace.focus" && target is null && (WorkingSetRequest.String(args, "op") ?? "toggle") != "clear")
+                { host.WorkspaceFocus(WorkingSetRequest.String(args, "op") ?? "toggle"); return Ok("focus"); }
+                return host is IWorkingSetHost working ? OkRaw(JsonSerializer.Serialize(working.WorkingSetCommand(cmd, args.Clone(), target))) : Err("working-set operations unavailable");
+            }
+
             var auxiliary = host.AuxiliaryTarget(target);
             if (windowSel is not null && cmd is "session.focus" or "session.resize" or "command.run" &&
                 auxiliary is not null && !ReferenceEquals(auxiliary, host))
@@ -716,7 +737,9 @@ public sealed partial class ControlServer : IDisposable
             }
             sb.Append("]}");
         }
-        sb.Append("]}");
+        sb.Append(']');
+        if (host is IWorkingSetHost working) sb.Append(",\"workingSet\":").Append(JsonSerializer.Serialize(working.WorkingSetState()));
+        sb.Append('}');
         return OkRaw(sb.ToString());
     }
 
@@ -996,6 +1019,7 @@ public sealed partial class ControlServer : IDisposable
           .Append(",\"fullscreen\":").Append(s.Fullscreen ? "true" : "false")
           .Append(",\"maximized\":").Append(s.Maximized ? "true" : "false")
           .Append(",\"quickTerminalVisible\":").Append(s.QuickTerminalVisible ? "true" : "false");
+        if (host is IWorkingSetHost working) sb.Append(",\"workingSet\":").Append(JsonSerializer.Serialize(working.WorkingSetState()));
         if (s.ActiveWorkspace is not null) sb.Append(",\"activeWorkspace\":").Append(JsonSerializer.Serialize(s.ActiveWorkspace));
         if (s.ActiveSession is not null) sb.Append(",\"activeSession\":").Append(JsonSerializer.Serialize(s.ActiveSession));
         sb.Append('}');

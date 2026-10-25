@@ -74,28 +74,22 @@ internal partial class Program
     /// <summary>Tree mode: the workspace→session outline (or, when a workspace is focused, only that one + a "show all" banner).</summary>
     private void DrawTreeList(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, ref float y, float rowH, float rowsBottom)
     {
-        List<Workspace> wss;
-        lock (_workspaces) wss = _workspaces.ToList();
-
-        Workspace? focused = _focusedWorkspaceId is null ? null : wss.FirstOrDefault(w => w.Id == _focusedWorkspaceId);
-        if (focused is not null)
+        var rows = WorkingRows();
+        var wss = _workspaces.Where(w => rows.Any(r => r.WorkspaceId == w.Id)).ToList();
+        if (_sidebarMode != SidebarMode.Flagged && FocusFilterActive)
         {
-            // "Focused" banner: a full-width accent strip; clicking it clears the focus (back to all workspaces).
             brush.Color = Mix(SbBg, ChromeAccent, 0.32f);
             rt.FillRectangle(new Rect(0, y, _sidebarW, rowH), brush);
-            brush.Color = Mix(ChromeAccent, new Color4(1f, 1f, 1f, 1f), 0.35f);
+            brush.Color = ChromeAccent;
             rt.DrawText("‹  Focused — show all", _uiSmall, new Rect(12f, y, _sidebarW - 20f, rowH), brush);
-            _sidebarRows.Add((y, y + rowH, false, _showAllMarker));
-            y += rowH;
-            wss = new List<Workspace> { focused };
+            _sidebarRows.Add((y, y + rowH, false, _showAllMarker)); y += rowH;
         }
-
         foreach (var ws in wss)
         {
             if (y + rowH > rowsBottom) break;
             List<Ses> sessions;
             bool expanded;
-            lock (_workspaces) { sessions = ws.Sessions.ToList(); expanded = ws.Expanded; }
+            lock (_workspaces) { sessions = ws.Sessions.Where(s => _sidebarMode != SidebarMode.Flagged || s.Flagged).ToList(); expanded = ws.Expanded; }
 
             brush.Color = SbHeaderText;
             rt.DrawText(expanded ? "▾" : "▸", _format, TextRect(6f, y, 18f, rowH), brush); // chevron (mono, top-aligned)
@@ -128,7 +122,8 @@ internal partial class Program
         rt.DrawText("FLAGGED", _uiSmall, new Rect(12f, y, _sidebarW - 20f, rowH), brush);
         y += rowH;
 
-        var flagged = AllSessions().Where(s => s.Flagged).ToList();
+        if (_flaggedLayout == "tree") { DrawTreeList(rt, brush, ref y, rowH, rowsBottom); return; }
+        var flagged = VisibleSessions();
         if (flagged.Count == 0)
         {
             brush.Color = SbDimText;
@@ -197,7 +192,7 @@ internal partial class Program
             if (badgeText is not null) nameRight = MathF.Min(nameRight, badgeX - 5f);
             float nameAvail = MathF.Max(0f, nameRight - nameX);
             // Clip + ellipsis-trim so a long name (or an enlarged sidebar font) never spills over the dot.
-            string name = s.SidebarName; // one nonblocking snapshot for drawing, accessibility and context placement
+            string name = _sidebarMode == SidebarMode.Flagged && _flaggedLayout == "flat" ? s.SidebarName + " : " + s.Ws.Name : s.SidebarName; // one nonblocking snapshot for drawing, accessibility and context placement
             rt.DrawText(name, _sidebarFont, new Rect(nameX, y, nameAvail, rowH), brush, DrawTextOptions.Clip);
             RecordSidebarName(s, name, nameX, y, nameAvail, rowH);
             // session.context (P3): a dimmer, smaller suffix after the name in the SAME row, clipped to
@@ -274,12 +269,12 @@ internal partial class Program
         }
 
         // Focus pill (only when a workspace is focused): shows its name + ✕, click clears focus.
-        if (_focusedWorkspaceId is not null)
+        if (FocusFilterActive)
         {
-            Workspace? fw; lock (_workspaces) fw = _workspaces.FirstOrDefault(w => w.Id == _focusedWorkspaceId);
+            Workspace? fw; lock (_workspaces) fw = _workspaces.FirstOrDefault(w => _focusedWorkspaceIds.Contains(w.Id));
             if (fw is not null)
             {
-                string label = fw.Name.Length > 12 ? fw.Name[..12] + "…" : fw.Name;
+                string label = _focusedWorkspaceIds.Count > 1 ? $"{_focusedWorkspaceIds.Count} workspaces" : fw.Name.Length > 12 ? fw.Name[..12] + "…" : fw.Name;
                 float tw = MeasureText(label, _uiSmall);
                 float pw = tw + 34f, ph = 20f;
                 float px = MathF.Max(bx + bwid + 6f, fx - pw - 8f), py = y + (FooterH - ph) / 2f;
@@ -302,7 +297,7 @@ internal partial class Program
         foreach (var (y0, y1, isWs, item) in _sidebarRows)
         {
             if (my < y0 || my >= y1) continue;
-            if (ReferenceEquals(item, _showAllMarker)) { _focusedWorkspaceId = null; RequestRedraw(); SaveState(); }
+            if (ReferenceEquals(item, _showAllMarker)) { DisableWorkspaceFilter(); }
             else if (isWs && item is Workspace ws)
             {
                 // Click on the "+" adds a session to this workspace (#233); elsewhere toggles collapse.
@@ -482,7 +477,7 @@ internal partial class Program
         }
         else if (item is Workspace cws)
         {
-            bool wsFocused = _focusedWorkspaceId == cws.Id;
+            bool wsFocused = _focusedWorkspaceIds.Contains(cws.Id);
             int wsCount; lock (_workspaces) wsCount = _workspaces.Count;
             if (_profileCfg.Profiles.Count > 1)
                 foreach (var p in _profileCfg.Profiles)
@@ -629,7 +624,7 @@ internal partial class Program
             CaptureClosedWorkspace(ws, sessions);   // remember it so Reopen Closed can bring the whole workspace back
             ws.Sessions.Clear();
             _workspaces.Remove(ws);
-            if (_focusedWorkspaceId == ws.Id) _focusedWorkspaceId = null;
+            _focusedWorkspaceIds.Remove(ws.Id);
             if (ReferenceEquals(_workspaceTarget, ws)) _workspaceTarget = null;
             if (_workspaces.Count == 0) _workspaces.Add(new Workspace { Id = Guid.NewGuid().ToString(), Name = "workspace 1" });
         }
@@ -1591,7 +1586,7 @@ internal partial class Program
             case "split": SplitOp("toggle"); break;   // title-bar split button toggles the split on/off
             case "quick terminal": QuickOp("toggle"); break;
             case "flag": ToggleFlaggedView(); break;   // footer flag button toggles the flagged working-set view
-            case "unfocus": _focusedWorkspaceId = null; RequestRedraw(); SaveState(); break;
+            case "unfocus": DisableWorkspaceFilter(); break;
             case "settings": OpenSettingsWindow(); break;
             case var m when m.StartsWith(MenuIdPrefix, StringComparison.Ordinal):
                 if (int.TryParse(m[MenuIdPrefix.Length..], out int mi) && MenuBarUsable) OpenMenuBar(mi);

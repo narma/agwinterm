@@ -7,7 +7,7 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
@@ -19,13 +19,13 @@ public static class CtlArguments
         ["install hooks"] = "window target", ["install skill"] = "window target",
         ["install shell"] = "window target", ["install cli"] = "window target remove",
         ["omp list"] = "", ["omp set"] = "window persist",
-        ["workspace new"] = "window name", ["workspace rename"] = "window target",
+        ["workspace new"] = "window name collapsed", ["workspace rename"] = "window target",
         ["workspace delete"] = "window target", ["workspace select"] = "window target",
         ["workspace go"] = "window to", ["workspace collapse"] = "window target",
-        ["workspace expand"] = "window target", ["workspace focus"] = "window",
+        ["workspace expand"] = "window target", ["workspace focus"] = "window target", ["workspace filter"] = "window", ["workspace flag"] = "window target",
         ["workspace move"] = "window target to",
-        ["session new"] = "window command command-mode cwd name workspace workspace-name create-workspace profile no-select wait",
-        ["session select"] = "window target", ["session close"] = "window target",
+        ["session new"] = "window command command-mode cwd name workspace workspace-name create-workspace profile no-select wait before after",
+        ["session select"] = "window target", ["session close"] = "window target targets",
         ["session duplicate"] = "window target", ["session rename"] = "window target name clear",
         ["session context"] = "window target clear stdin", ["session metrics"] = "window target",
         ["session status"] = "window target blink auto-reset sound",
@@ -33,7 +33,7 @@ public static class CtlArguments
         ["session write"] = "window target stdin select", ["session text"] = "window target styles all lines",
         ["session copy"] = "window target", ["session seen"] = "window target", ["session output"] = "window target",
         ["session paste"] = "window target text", ["session go"] = "window",
-        ["session move"] = "window target to", ["session search"] = "window target close next prev",
+        ["session move"] = "window target to targets before after", ["session search"] = "window target close next prev",
         ["session split"] = "window target axis", ["session split close"] = "window target",
         ["session swap"] = "window target", ["session readonly"] = "window target",
         ["session scratch"] = "window target", ["session focus"] = "window target",

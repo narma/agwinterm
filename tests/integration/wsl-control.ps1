@@ -245,6 +245,17 @@ try {
     $c4Hud = ((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).hud
     Check ($c4Code -eq '0' -and $c4Hud.markdown -and $c4Hud.message.Contains('Linux HUD') -and $c4Hud.fontSize -eq 18 -and $c4Hud.sticky -and -not $c4Hud.frame) 'C4 WSL explicit file conversion preserves UTF-8 Markdown and paths with spaces'
     $null = Ctl @('session','hud','close','--target',$copy)
+    $c6 = Ctl @('session','new','--after',$copy,'--profile','WSL test','--cwd',"$linuxHome/path with spaces",'--name','C6 anchored','--no-select')
+    $c6Order = @((Ctl @('tree')).workspaces.sessions.id)
+    Check ([array]::IndexOf($c6Order,$c6) -eq ([array]::IndexOf($c6Order,$copy)+1)) 'C6 anchored WSL creation preserves requested order'
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session','type',('printf "C6_%s=%s\n" "CWD" "$PWD"' + [char]13),'--target',$c6)
+    Start-Sleep -Seconds 1
+    Check (((Ctl @('session','text','--target',$c6)) -replace '\s','').Contains("C6_CWD=$linuxHome/pathwithspaces")) 'C6 anchored WSL creation preserves Linux cwd with spaces'
+    $null = Ctl @('session','move','--target',$c6,'--before',$copy)
+    $c6Order = @((Ctl @('tree')).workspaces.sessions.id)
+    Check ([array]::IndexOf($c6Order,$c6) -eq ([array]::IndexOf($c6Order,$copy)-1)) 'C6 anchored WSL move preserves identity and order'
+    $null = Ctl @('session','close','--target',$c6)
     $c5 = Ctl @('session','duplicate','--target',$copy)
     $c5Right = Ctl @('session','split','on','--axis','horizontal','--target',$c5)
     Start-Sleep -Seconds 1
