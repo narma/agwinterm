@@ -1,5 +1,10 @@
 # agterm parity tracker
 
+> **October 2026 scope:** [Staged capability adoption from agterm 0.38.1](plans/2026-10-25-control-capabilities.md)
+> records the current planned work, dependencies, readiness criteria and explicit exclusions.
+> Full parity is not the goal. The v0.26.0 comparison and completed batches below remain
+> historical evidence; “nothing left” below does not describe the latest upstream release.
+
 What [umputun/agterm](https://github.com/umputun/agterm) has that **agwinterm** and **agliteterm** do
 not, and what we have closed.
 

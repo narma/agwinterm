@@ -690,7 +690,7 @@ try {
                 @('--stdin', 'from argv', '--stdin'))) {   # #246 r1: a later BARE --stdin must not erase the swallow
             $out = 'from pipe' | & $ctl session type @shape --target $survivorId --pipe $pipe 2>&1
             $code = $LASTEXITCODE
-            Check "session type --stdin refuses a swallowed positional ($($shape -join ' '))" ($code -eq 2 -and ("$out" -match 'one source')) "exit $code, output: $out"
+            Check "session type --stdin refuses invalid or conflicting input ($($shape -join ' '))" ($code -eq 2 -and ("$out" -match 'one source|unsupported option --wait|unknown option --allow-controll|duplicate option --stdin')) "exit $code, output: $out"
         }
         Start-Sleep -Milliseconds 300
         $stdinAfter = (Invoke-Ctl @('session', 'text', '--target', $survivorId)).result
@@ -1270,7 +1270,7 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
         Check 'session swap moves the slot: paneOverlays == ["left"], the overlay id is kept' ($p5Swap.ok -and $p5SwapNode -and ((@($p5SwapNode.paneOverlays) -join ',') -eq 'left')) "$($p5SwapNode | ConvertTo-Json -Compress)"
         Check 'and the overlay measures its pane''s NEW box (the narrow one, 30%)' ($p5SwappedBox -and $p5OvlBox2.ok -and [int]$p5OvlBox2.result.cols -eq [int]$p5SwappedBox.result.cols -and [int]$p5OvlBox2.result.cols -lt [int]$p5RightBox.result.cols) "ovl=$($p5OvlBox2.result | ConvertTo-Json -Compress) pane=$($p5SwappedBox.result | ConvertTo-Json -Compress)"
         $p5AfterSwap = Invoke-Ctl @('session', 'text', '--target', $p5Ovl)
-        Check 'session text --target <overlay id> still reads the program after the swap' ($p5AfterSwap.ok -and ("$($p5AfterSwap.result)" -match $p5Marker)) "$($p5AfterSwap | ConvertTo-Json -Compress)"
+        Check 'session text --target <overlay id> still reads the program after the swap' ($p5AfterSwap.ok -and (("$($p5AfterSwap.result)" -replace '\s','') -match $p5Marker)) "$($p5AfterSwap | ConvertTo-Json -Compress)"
         $p5CloseEmpty = Invoke-Ctl @('session', 'overlay', 'close', '--pane', 'right', '--target', $p5Id)
         Check 'overlay close --pane right (the slot emptied by the swap) answers ok "no overlay"' ($p5CloseEmpty.ok -and [string]$p5CloseEmpty.result -eq 'no overlay') "$($p5CloseEmpty | ConvertTo-Json -Compress)"
         # split close of the pane holding the overlay: the survivor is the other pane, the slot is gone, the id resolves nowhere, the program is gone.
@@ -1462,7 +1462,9 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
             Invoke-Ctl @('session', 'type', "$pingLine`r", '--target', $survivorId) | Out-Null
             for ($i = 0; $i -lt 16; $i++) {
                 Start-Sleep -Milliseconds 250
-                if (([string](Invoke-Ctl @('session', 'text', '--target', $survivorId)).result) -match 'Pinging 127\.0\.0\.1') { $pingUp = $true; break }
+                # Locale-neutral reply: Windows ping translates its heading. Match a
+                # received packet, allowing terminal line wraps, before sending again.
+                if (([string](Invoke-Ctl @('session', 'text', '--target', $survivorId)).result -replace '\s','') -match '127\.0\.0\.1.*TTL=') { $pingUp = $true; break }
             }
             if ($pingUp) { break }
         }
@@ -1507,14 +1509,11 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
         $capState = Wait-StateFile { param($t) $t -match '(?i)"Command":\s*"[^"]*ping' }
         Check 'the capture is in the state file under Command (what a restart, or a kill, leaves)' `
             ($capState -and ((Get-Content -LiteralPath $capState.FullName -Raw) -match '(?i)"Command":\s*"[^"]*ping')) "file=$($capState.FullName)"
-        # #246: the splitter's LAST occurrence of an option decides whether it consumed a value.
-        # `--target <id> --target` ends in a bare flag, so it is the empty-target refusal (exit 2,
-        # nothing sent) — it used to send the WORD "true" as the target, because the first occurrence
-        # had marked --target as valued for good.
+        # C0: repeated selectors always refuse, whether the last occurrence has a value or not.
         $capDup = & $ctl restore capture --target $survivorId --target --pipe $pipe 2>&1
         $capDupCode = $LASTEXITCODE
-        Check '--target <id> --target is refused before sending: the last occurrence decides (#246)' `
-            ($capDupCode -eq 2 -and ("$capDup" -match 'is empty') -and ("$capDup" -match 'Nothing sent')) "exit $capDupCode, output: $capDup"
+        Check '--target <id> --target is refused before sending as a duplicate selector' `
+            ($capDupCode -eq 2 -and ("$capDup" -match 'duplicate option --target') -and ("$capDup" -match 'Nothing sent')) "exit $capDupCode, output: $capDup"
         # #246: a capture whose save does not land is REFUSED, saying what it left: the slots are in
         # memory (tree shows them), but this save did not persist them; an earlier checkpoint may remain. The state file is replaced by a
         # DIRECTORY of its own name, which the atomic File.Move cannot overwrite; the file goes back
@@ -1676,7 +1675,9 @@ function Read-MouseReport([int]$terminator) {
                 for ($i = 0; $i -lt 40; $i++) {
                     $candidate = Invoke-Ctl @('session', 'metrics', '--target', $mouseOverlayId)
                     if (-not $candidate.ok) { Start-Sleep -Milliseconds 100; continue }
-                    if ([double]$candidate.result.cellWidth -ne [double]$backgroundMetrics.result.cellWidth) {
+                    $coverMid = [int][Math]::Floor([double]$candidate.result.cols / 2.0) + 1
+                    $backgroundMid = [int][Math]::Floor(([double]$candidate.result.widthPx / 2.0) / [double]$backgroundMetrics.result.cellWidth) + 1
+                    if ([Math]::Abs($coverMid - $backgroundMid) -gt 1) {
                         $overlayMetrics = $candidate
                         break
                     }

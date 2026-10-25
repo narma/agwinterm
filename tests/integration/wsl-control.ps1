@@ -46,7 +46,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Cannot create Python-free PATH' }
         $profileEnv.PATH = "$linuxHome/tools"
     }
-    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = $selectors + @('--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = $profileEnv }) } |
+    @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = $selectors + @('--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = $profileEnv }, @{name='C0 Windows';command='cmd.exe';args=@('/d');cwd=$state}) } |
         ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'profiles.json') -Encoding utf8
     'new-session-dir = current' | Set-Content -LiteralPath (Join-Path $state 'agwinterm.conf')
     $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id, '--no-restore', '--default-session-host', 'inprocess') -WindowStyle Hidden -PassThru
@@ -127,6 +127,31 @@ try {
     Start-Sleep -Seconds 1
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
     Check (($saved -join '').Contains("$linuxHome/path with spaces")) 'Persistence retains Linux cwd'
+    # C0: Windows remains selected while a command addresses the Linux source. Each
+    # mode writes an observed process context, not just an echoed control request.
+    $windowsSession = Ctl @('session','new','--name','C0 Windows visible','--profile','C0 Windows')
+    $expectedUser = ((& wsl @selectors --exec id -un) -join '').Trim()
+    foreach ($mode in 'send','detached','overlay','new') {
+        $null = Ctl @('session','select',$windowsSession)
+        $contextFile = "$linuxHome/c0-$mode.txt"
+        $identity = if ($mode -eq 'send') { "'{AGW_PANE_ID}' '{AGW_CWD}'" } else { '"$AGW_PANE_ID" "$AGW_CWD"' }
+        $body = 'printf ''%s\n'' "$PWD" "$(id -un)" "$WSL_DISTRO_NAME" ' + $identity + " > '$contextFile'"
+        if ($mode -eq 'overlay') { $body += '; sleep 3' }
+        $null = Ctl @('command','run',$body,'--mode',$mode,'--target',$copy)
+        $lines = @()
+        for ($attempt=0; $attempt -lt 30; $attempt++) {
+            $lines = @(& wsl @selectors --exec sh -c 'test -f "$1" && cat "$1"' c0 $contextFile)
+            if ($lines.Count -ge 5) { break }
+            Start-Sleep -Milliseconds 100
+        }
+        Check ($lines.Count -eq 5 -and $lines[0] -eq "$linuxHome/path with spaces" -and $lines[1] -eq $expectedUser -and $lines[2] -eq $Distro -and $lines[3] -eq $copy -and $lines[4] -eq "$linuxHome/path with spaces") "C0 $mode preserves target distro/user/Linux cwd/AGW identity"
+        if ($mode -ne 'new') {
+            Check ([bool]((Ctl @('tree')).workspaces.sessions | Where-Object { $_.id -eq $windowsSession -and $_.active })) "C0 $mode never selects source"
+        }
+        if ($mode -eq 'overlay') { $null = Ctl @('session','overlay','close','--target',$copy) }
+    }
+    $null = Ctl @('session','close',$windowsSession)
+    $null = Ctl @('session','select',$copy)
     $fixture = (& wsl -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'wsl-agent.py')).Trim()
     # Python is only the test's fake agent, explicitly outside the integration PATH.
     $agentCommand = "bash -c 'exec -a codex /usr/bin/python3 `"$fixture`" --dangerously-bypass-approvals-and-sandbox'"

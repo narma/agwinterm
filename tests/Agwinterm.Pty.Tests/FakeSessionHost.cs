@@ -616,9 +616,9 @@ internal sealed class FakeSessionHost : ISessionHost
     }
     // The same rules as the app's host: the words and their axis are SplitAxes' (a direction that
     // does not exist on the session's axis is refused with focus unmoved), one pane is refused.
-    public string FocusPaneDir(string dir)
+    public string FocusPaneDir(string dir, string? target = null)
     {
-        if (ActiveSess is not { PaneCount: > 1 } a) return ISessionHost.RefusePrefix + SplitAxes.NotSplit;
+        if ((target is null or "active" ? ActiveSess : FindPane(target)?.s) is not { PaneCount: > 1 } a) return ISessionHost.RefusePrefix + SplitAxes.NotSplit;
         if (!SplitAxes.TryFocusIndex(dir, a.Axis, a.FocusedPane, out int index, out string? refusal)) return ISessionHost.RefusePrefix + refusal;
         a.FocusedPane = index;
         return "focus";
@@ -626,9 +626,9 @@ internal sealed class FakeSessionHost : ISessionHost
     /// <summary>The fake has no cells: a grow step moves the ratio by 0.02 per cell, clamped to the app's
     /// 0.05..0.95, which is enough for a test to see that a refused request moved nothing and an
     /// accepted one moved the divider the way it asked.</summary>
-    public string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom)
+    public string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom, string? target = null)
     {
-        if (ActiveSess is not { PaneCount: > 1 } a) return ISessionHost.RefusePrefix + SplitAxes.NoDivider;
+        if ((target is null or "active" ? ActiveSess : FindPane(target)?.s) is not { PaneCount: > 1 } a) return ISessionHost.RefusePrefix + SplitAxes.NoDivider;
         if (!SplitAxes.TryGrow(a.Axis, growLeft, growRight, growTop, growBottom, out int shift, out string? refusal)) return ISessionHost.RefusePrefix + refusal;
         double first = ratio ?? Math.Clamp(a.Ratios[0] + shift * 0.02, 0.05, 0.95);
         a.Ratios = new() { first, 1 - first };
@@ -953,7 +953,13 @@ internal sealed class FakeSessionHost : ISessionHost
     public string SessionBackground(string? target, string action, string? path, int opacity, string? mode) => FindSes(target) is not null ? "ok" : "no session";
     public SessionSwitchReply SessionSwitch(string op) => SessionOperations.IsSwitchOp(op)
         ? new(true, ActiveSess?.Name ?? "") : new(false, $"unknown op '{op}'; nothing changed");
-    public string CommandRun(string nameOrCommand, string? mode) => $"{mode ?? "new"}: {nameOrCommand}";
+    public string? LastCommandTarget;
+    public string CommandRun(string nameOrCommand, string? mode, string? target = null)
+    {
+        if (target is not (null or "active") && Resolve(target) is null) return ISessionHost.RefusePrefix + "unknown target";
+        LastCommandTarget = target;
+        return $"{mode ?? "new"}: {nameOrCommand}";
+    }
     public string CommandList() => "";
     public string CommandLeader(string op) => "idle";
     /// <summary>The fake knows one theme, "fake-theme"; every other name is the app's not-found refusal.</summary>

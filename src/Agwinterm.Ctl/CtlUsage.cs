@@ -22,6 +22,9 @@ public static class CtlUsage
     public const string Long = """
         agwintermctl — drive agwinterm's control API from the shell (agterm's agtermctl analog).
         Usage:
+          Ordinary replies: exit 0 success, 1 refusal/transport/protocol error, 2 invalid arguments.
+          --json keeps the raw reply; ok:false still exits 1. Offline version and picker have their own outcomes.
+          Unknown options and duplicate selectors refuse before sending. --pipe/--socket are exclusive aliases.
           agwintermctl ping
           agwintermctl version [--json]                  (the CLI that ran + the app serving the pipe)
           agwintermctl tree [--json]
@@ -49,11 +52,18 @@ public static class CtlUsage
               side. Target = a session, either of its panes, or nothing — from a pane's own CLI, that pane's
               session; otherwise the active one. Replies
               {session,paneIds,focusedPane,axis} — the tree's split block after the swap. A one-pane session is refused)
-          agwintermctl session focus [primary|split|left|right|top|bottom|other]   (default other; left/right exist on a
+          agwintermctl session focus [primary|split|left|right|top|bottom|other] [--target ID]   (default other; left/right exist on a
               vertical split only, top/bottom on a horizontal one — the wrong pair is refused naming the axis)
-          agwintermctl session resize [--split-ratio R] [--grow-left N|--grow-right N|--grow-top N|--grow-bottom N]
+          agwintermctl session resize [--split-ratio R] [--grow-left N|--grow-right N|--grow-top N|--grow-bottom N] [--target ID]
               (left/right move a vertical split's divider by N columns, top/bottom a horizontal one's by N rows;
               the other axis's flags are refused, and the divider does not move)
+              Focus/resize target a session or main/split pane; background changes never select it. Covers refuse.
+          agwintermctl command run <label-or-command> [--mode send|new|overlay|detached] [--target ID]
+              Named commands use their configured mode; raw text defaults to new. Target supplies pane/cwd/workspace/profile
+              and AGW context. Explicit send never broadcasts; new selects its new session, overlay uses the target's
+              session slot, detached launches independently. Quick supports send/detached only.
+              For focus, resize and command run, OMITTED target retains active scope (ignores caller pane environment).
+              Explicit active uses this window's active context. --window bounds resolution; unknown/ambiguous targets refuse.
           agwintermctl session context <text...> [--target ID]   (one line of "what is this pane for", shown dimmed
               beside the name and read back in `tree --json` as context; survives a restart. Blank, a control
               character or more than 200 characters is refused; replies {session,context})

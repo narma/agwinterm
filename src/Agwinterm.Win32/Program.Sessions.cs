@@ -877,7 +877,7 @@ internal partial class Program
     /// host checks the slot in the same UI hop before calling, this is the guard that makes a missed
     /// check a refusal rather than a silent replace). <c>_lastOverlayExit</c> is NOT reset by a pane
     /// open — the pane arm has its own <see cref="OverlaySlot.LastResult"/>, reset here.</summary>
-    private string OverlayOpen(Ses ses, Pane? pane, string command, int sizePercent, bool wait, Dictionary<string, string>? extraEnv = null)
+    private string OverlayOpen(Ses ses, Pane? pane, string command, int sizePercent, bool wait, Dictionary<string, string>? extraEnv = null, string? launchCwd = null)
     {
         if (!OwnsSession(ses) || (pane is not null && !ses.Panes.Contains(pane)))
             return ISessionHost.RefusePrefix + "session or pane no longer exists";
@@ -898,7 +898,7 @@ internal partial class Program
             id = pane.Id + ":overlay:" + Guid.NewGuid().ToString("N")[..6];
         }
         var owner = pane ?? ses.ActivePane;
-        var term = CreatePane(id, ses.Ws, CwdOf(owner), owner.FontSize, command, shellWrap: true, extraEnv: extraEnv, profileName: ses.ProfileName);
+        var term = CreatePane(id, ses.Ws, launchCwd ?? CwdOf(owner), owner.FontSize, command, shellWrap: true, extraEnv: extraEnv, profileName: ses.ProfileName);
         term.FontZoomed = owner.FontZoomed;
         term.OverlayDone = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         // The slot's LAST exit is reset by every open, and the new term becomes the slot's overlay in
@@ -1380,6 +1380,25 @@ internal partial class Program
         if (FindSessionByPrefixOrName(target) is { } session)
             return (session.ActivePane, session, false);
         return null;
+    }
+
+    // Used by the C0 verbs on the UI queue. Keep exact-ID precedence, but never pick
+    // the first of several prefix/name matches. Covers participate in ambiguity too.
+    private (Pane pane, Ses? ses, bool cover)? FindStrictControlPane(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return null;
+        if (FindPaneBy(p => p.Id == target) is { } exact) return exact;
+        if (FindSessionByExactId(target) is { } session) return (session.ActivePane, session, false);
+        var matches = new List<Pane>();
+        FindPaneBy(p =>
+        {
+            if (p.Id.StartsWith(target, StringComparison.Ordinal)) matches.Add(p);
+            return false;
+        });
+        if (matches.Count > 0) return matches.Count == 1 ? FindPaneBy(p => ReferenceEquals(p, matches[0])) : null;
+        var sessions = _workspaces.SelectMany(w => w.Sessions)
+            .Where(s => s.Id.StartsWith(target, StringComparison.Ordinal) || s.Name.Equals(target, StringComparison.OrdinalIgnoreCase)).ToList();
+        return sessions.Count == 1 ? (sessions[0].ActivePane, sessions[0], false) : null;
     }
 
     private (Pane pane, Ses? ses, bool cover)? FindPaneBy(Func<Pane, bool> match)
@@ -1986,9 +2005,8 @@ internal partial class Program
     /// width against the content WIDTH on a vertical split, rows of its cell height against the
     /// content HEIGHT on a horizontal one. Grow flags from the other axis are refused by
     /// <see cref="SplitAxes.TryGrow"/> before anything moves. Returns null, or the refusal.</summary>
-    private string? ResizeActiveSplitInternal(double? ratio, int growLeft, int growRight, int growTop, int growBottom)
+    private string? ResizeSplitInternal(Ses? ses, double? ratio, int growLeft, int growRight, int growTop, int growBottom)
     {
-        var ses = _active;
         if (ses is null || ses.Panes.Count < 2) return SplitAxes.NoDivider;
         if (!SplitAxes.TryGrow(ses.Axis, growLeft, growRight, growTop, growBottom, out int cells, out string? refusal)) return refusal;
         int i = Math.Min(ses.Active, ses.Panes.Count - 2); // boundary between pane i and i+1

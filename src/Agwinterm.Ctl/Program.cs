@@ -25,34 +25,12 @@ if (args.Length == 0)
     return 2;
 }
 
-// Split into positionals and --options.
-var positionals = new List<string>();
-var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-// Which options EVER consumed the token after them. The splitter cannot tell a flag from a valued
-// option, so `--wait "text"` gives --wait the text; verbs that must know whether a bare word was
-// swallowed (session type --stdin) ask this set rather than guessing from the value ("true" is also
-// a word). Cumulative: `--stdin hello --stdin` still swallowed "hello".
-var valued = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-// Which options' LAST occurrence was bare. The value is the last occurrence's (below), so whether
-// that occurrence consumed one is a separate question from `valued`: `--target victim --target` is
-// an empty target, not "victim" (#246); `--target --target x` is "x".
-var bareLast = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-bool jsonOut = false;
-for (int i = 0; i < args.Length; i++)
+if (!Agwinterm.Ctl.CtlArguments.TryParse(args, out var positionals, out var options,
+    out var valued, out var bareLast, out bool jsonOut, out var argumentError))
 {
-    string a = args[i];
-    if (a == "--json") { jsonOut = true; }
-    else if (a.StartsWith("--"))
-    {
-        string key = a[2..];
-        bool takes = !key.Equals("spinner", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length && !args[i + 1].StartsWith("--");
-        string val = takes ? args[++i] : "true";
-        options[key] = val;
-        if (takes) { valued.Add(key); bareLast.Remove(key); } else bareLast.Add(key);
-    }
-    else positionals.Add(a);
+    Console.Error.WriteLine(argumentError);
+    return 2;
 }
-
 string area = positionals.Count > 0 ? positionals[0].ToLowerInvariant() : "";
 string sub = positionals.Count > 1 ? positionals[1].ToLowerInvariant() : "";
 var rest = positionals.Skip(2).ToList();
@@ -138,7 +116,7 @@ switch (area)
             {
                 string action = rest.Count > 0 && rest[0] is "open" or "update" or "close" ? rest[0] : "open";
                 if (rest.Count > 0 && rest[0] is "open" or "update" or "close") rest.RemoveAt(0);
-                string[] allowed = ["target", "window", "pipe", "socket", "detail", "spinner", "spinner-style", "position", "size-percent", "background-color", "text-color"];
+                string[] allowed = ["target", "window", "pipe", "socket", "timeout", "detail", "spinner", "spinner-style", "position", "size-percent", "background-color", "text-color"];
                 foreach (var key in options.Keys)
                 {
                     if (!allowed.Contains(key, StringComparer.OrdinalIgnoreCase)) { Console.Error.WriteLine("hud: unknown option --" + key); return 2; }
@@ -146,7 +124,7 @@ switch (area)
                     if ((key.Equals("target", StringComparison.OrdinalIgnoreCase) || key.Equals("window", StringComparison.OrdinalIgnoreCase)) && options[key].Length == 0)
                     { Console.Error.WriteLine("hud: --" + key + " must not be empty"); return 2; }
                 }
-                if (action == "close" && (rest.Count != 0 || options.Keys.Any(k => !new[] { "target", "window", "pipe", "socket" }.Contains(k, StringComparer.OrdinalIgnoreCase))))
+                if (action == "close" && (rest.Count != 0 || options.Keys.Any(k => !new[] { "target", "window", "pipe", "socket", "timeout" }.Contains(k, StringComparer.OrdinalIgnoreCase))))
                 { Console.Error.WriteLine("hud close takes no message or display options"); return 2; }
                 if (action != "close")
                 {
@@ -416,7 +394,7 @@ switch (area)
                 if (options.ContainsKey("wait")) cargs["wait"] = true;
                 if (options.ContainsKey("block")) cargs["block"] = true;
                 break;
-            case "focus": cargs["dir"] = rest.Count > 0 ? rest[0] : "other"; break; // primary|split|left|right|top|bottom|other — `other` is the one word valid on either axis
+            case "focus": target = Opt("target"); cargs["dir"] = rest.Count > 0 ? rest[0] : "other"; break;
             case "flag": cargs["op"] = rest.Count > 0 ? rest[0] : "toggle"; break; // on|off|toggle|clear
             case "bind":
                 cargs["agent"] = rest.Count > 0 ? rest[0] : "claude";
@@ -434,6 +412,7 @@ switch (area)
                 break;
             case "switch": cargs["op"] = rest.Count > 0 ? rest[0] : "advance"; target = null; break; // MRU walk: begin|advance|advance-back|commit|cancel
             case "resize":
+                target = Opt("target"); // legacy default is the active session, not the CLI caller
                 if (double.TryParse(Opt("split-ratio"), System.Globalization.CultureInfo.InvariantCulture, out var sr)) cargs["ratio"] = sr;
                 if (int.TryParse(Opt("grow-left"), out var gl)) cargs["grow-left"] = gl;
                 if (int.TryParse(Opt("grow-right"), out var gr)) cargs["grow-right"] = gr;
@@ -448,6 +427,7 @@ switch (area)
         switch (sub)
         {
             case "run": // command run "<name-or-command...>" [--mode new|overlay|detached|send]
+                target = Opt("target");
                 cmd = "command.run";
                 if (rest.Count > 0) cargs["name"] = string.Join(' ', rest);
                 else if (Opt("command") is { } rawcmd) cargs["command"] = rawcmd;
@@ -705,27 +685,7 @@ try
     string? response = Agwinterm.Ctl.CtlRequest.Exchange(pipeName, requestJson, replyTimeout);
     if (response is null) { Console.Error.WriteLine("no response"); return 1; }
 
-    if (jsonOut) { Console.WriteLine(response); }
-    else
-    {
-        using var doc = JsonDocument.Parse(response);
-        var root = doc.RootElement;
-        bool ok = root.TryGetProperty("ok", out var o) && o.GetBoolean();
-        if (ok)
-        {
-            if (root.TryGetProperty("result", out var res))
-            {
-                if (printTextField && res.ValueKind == JsonValueKind.Object && res.TryGetProperty(Agwinterm.Pty.OverlayPanes.TextKey, out var textField) && textField.ValueKind == JsonValueKind.String)
-                    Console.WriteLine(textField.GetString());
-                else
-                    Console.WriteLine(res.ValueKind == JsonValueKind.String ? res.GetString() : res.GetRawText());
-            }
-            return 0;
-        }
-        Console.Error.WriteLine(root.TryGetProperty("error", out var err) ? err.GetString() : "error");
-        return 1;
-    }
-    return 0;
+    return Agwinterm.Ctl.CtlReply.Print(response, jsonOut, printTextField, Console.Out, Console.Error);
 }
 catch (TimeoutException)
 {

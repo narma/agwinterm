@@ -13,9 +13,21 @@ shares is canonical in [`tests/conformance/control-api.json`](../tests/conforman
 
 ## Reaching an instance
 
+Ordinary requests exit 0 on success, 1 on server refusal, transport failure or invalid
+reply, and 2 on invalid CLI arguments. `--json` preserves the server reply on stdout,
+including `ok:false`, but does not turn a refusal into exit 0. This corrects older CLI
+versions that returned 0 for every JSON reply. Offline `version` and picker outcome
+codes retain their documented exceptions. A reply timeout does not prove rollback.
+
+Unsupported options, missing values, invalid numeric values and duplicate selectors
+are refused before connecting or installing anything. Choose one `--target`, one
+`--window`, and either `--pipe` or `--socket`; repeated targets are not batch operations.
+Boolean flags do not consume the positional text following them.
+
 Inside a session you get `AGWINTERM_SESSION_ID`, `AGWINTERM_WINDOW_ID` and `AGWINTERM_PIPE`, so a
 bare `agwintermctl` targets the instance and pane it runs in. `--pipe <name>` addresses another one
-(a Debug build is `agwinterm-dev`). Target defaults to `$AGWINTERM_SESSION_ID` when not given. Run
+(a Debug build is `agwinterm-dev`). Most content verbs default to `$AGWINTERM_SESSION_ID`; focus,
+resize and command run preserve active scope as described below. Run
 `agwintermctl install skill` (or the palette entry) to teach Claude Code / Codex the full verb set.
 
 The CLI waits at most 30 s for the app's reply and then exits 1 with "no reply from agwinterm within
@@ -346,3 +358,40 @@ unless it says otherwise, and `--workspace` / `--workspace-name` are how it says
 
 Only a CLI with no pane identity, or one whose pane has since been closed, still lands in the active
 workspace; a stale caller is not refused, because that would break a working script.
+
+## Explicit targets for focus, resize and custom commands
+
+`session focus`, `session resize` and `command run` accept `--target ID` and `--window ID`.
+For these three operations, an omitted target preserves the legacy active context in the routed
+window, even when `AGWINTERM_SESSION_ID` names another pane. Explicit `active` selects that same
+context. Other commands retain their documented caller defaults.
+
+Explicit window selection bounds resolution. Empty, unknown, ambiguous or incompatible targets
+refuse without falling back to the visible session. Resolution occurs on the UI queue, so a target
+removed before execution is refused. Exact pane IDs win over session IDs; prefixes must be unique.
+
+Focus and resize resolve a main/split pane to its owning session, including after swap. Auxiliary
+panes and single-pane sessions refuse. Background focus changes remembered focus; resize changes
+that session's divider. Neither selects the source, raises its window, clears unseen notifications
+or changes recency. Axis restrictions, ratio clamps and integer row/column growth are unchanged.
+
+```powershell
+agwintermctl session focus other --target <background-pane-id> --window <window-id>
+agwintermctl session resize --split-ratio 0.3 --target <background-session-id>
+agwintermctl command run 'echo {AGW_PANE_ID}' --mode send --target <pane-id>
+```
+
+Named and raw custom commands use the addressed pane's cwd and identity, owning workspace and
+profile for `{AGW_*}` tokens and launched-process `AGW_*` environment. Named commands keep their
+configured mode; raw commands default to `new`. Supported modes are `send`, `new`, `overlay` and
+`detached`; unknown modes refuse. Explicit `send` writes only to the addressed pane even when
+broadcast is enabled, and refuses readonly/input-closed destinations. Untargeted send keeps the
+existing human broadcast behavior. New mode creates and selects its new session in the source
+workspace/profile context; overlay uses the source session's overlay slot and addressed cwd;
+detached launches independently. None temporarily selects the source. Quick retains send/detached
+only. Windows launch conventions remain PowerShell for new and cmd for overlay/detached; WSL
+retains its selected distribution/user and Linux cwd. Success means accepted input or launch,
+not program completion; write/timeout failures do not imply rollback or safe retry.
+
+These explicit-target guarantees require a serving Win32 build with C0 support. An updated CLI
+cannot make an older server honor fields it previously ignored. The shared Lite contract is unchanged.

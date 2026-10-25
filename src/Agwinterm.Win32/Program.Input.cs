@@ -225,40 +225,61 @@ internal partial class Program
     }
 
     /// <summary>Run an arbitrary command string in a mode, expanding {AGW_*} tokens and injecting $AGW_*
-    /// env from the active session. Returns the expanded command line (for the control API / observability).</summary>
-    private string RunCommandText(string text, string? mode)
+    /// env from the resolved context. Returns the expanded command line (for the control API / observability).</summary>
+    private string RunCommandText(string text, string? mode, string? target = null)
     {
         var ctx = _active;
+        var surface = ActiveSurface();
+        if (target is not (null or "active"))
+        {
+            var hit = FindStrictControlPane(target);
+            if (hit is null) return ISessionHost.RefusePrefix + "unknown or ambiguous target: " + target;
+            ctx = hit.Value.ses;
+            surface = hit.Value.pane;
+        }
         mode = (mode ?? "send").ToLowerInvariant();
+        if (mode is not ("send" or "new" or "overlay" or "detached"))
+            return ISessionHost.RefusePrefix + "mode must be send, new, overlay or detached";
         if (_isQuickWindow && mode is not ("send" or "detached"))
             return ISessionHost.RefusePrefix + "quick terminal commands support send or detached mode only";
-        string expanded = ExpandAgwTokens(text, ctx);
+        string cwd = surface is not null ? CwdOf(surface) ?? "" : RawCwdOf(ctx);
+        string expanded = ExpandAgwTokens(text, ctx, surface, cwd);
         switch ((mode ?? "send").ToLowerInvariant())
         {
             case "new":
-                CreateSession(Guid.NewGuid().ToString(), null, RawCwdOf(ctx), ActiveWorkspace(), makeActive: true,
-                    command: expanded, interactive: true, extraEnv: AgwEnv(ctx), profileName: ctx?.ProfileName);
+                CreateSession(Guid.NewGuid().ToString(), null, cwd, ctx?.Ws ?? ActiveWorkspace(), makeActive: true,
+                    command: expanded, interactive: true, extraEnv: AgwEnv(ctx, surface, cwd), profileName: ctx?.ProfileName);
                 break;
             case "overlay":
-                if (ctx is not null) OverlayOpen(ctx, null, expanded, 0, false, AgwEnv(ctx));
-                else ShowToast("no session for overlay command");
+                if (ctx is null) return ISessionHost.RefusePrefix + "no session for overlay command";
+                string overlay = OverlayOpen(ctx, null, expanded, 0, false, AgwEnv(ctx, surface, cwd), cwd);
+                if (overlay.StartsWith(ISessionHost.RefusePrefix, StringComparison.Ordinal)) return overlay;
                 break;
             case "detached":
-                RunDetached(expanded, CommandCwd(ctx), AgwEnv(ctx));
+                try { RunDetached(expanded, cwd, AgwEnv(ctx, surface, cwd), ctx?.ProfileName); }
+                catch (InvalidOperationException ex) { return ISessionHost.RefusePrefix + ex.Message; }
                 break;
             default: // send — type it into the active session, as if the user typed it + Enter
                 // Send's human-key path may quietly reject input. A command acknowledgement must
                 // instead report that refusal, for library and quick surfaces alike. These checks
                 // and Send run together on the UI thread; local write failures propagate through
                 // queued CommandRun. Accepted transport input is not proof of child execution (#268).
-                var surface = ActiveSurface();
-                if (!BroadcastActive)
+                if (target is not null || !BroadcastActive)
                 {
-                    if (surface is null || _session is null || surface.S.InputClosed)
+                    if (surface is null || surface.S.InputClosed)
                         return ISessionHost.RefusePrefix + "no live pane for send command";
                     if (surface.ReadOnly) return ISessionHost.RefusePrefix + "pane is read-only";
                 }
-                if (!Send(expanded.Replace("\r", "").Replace("\n", "") + "\r"))
+                string input = expanded.Replace("\r", "").Replace("\n", "") + "\r";
+                bool sent;
+                if (target is not null)
+                {
+                    surface!.ScrollOffset = 0;
+                    surface.ClearSel();
+                    sent = SessionInput.TryWrite(surface.S, Encoding.UTF8.GetBytes(input));
+                }
+                else sent = Send(input);
+                if (!sent)
                     return ISessionHost.RefusePrefix + "input unavailable on at least one pane; other panes or part of the payload may have received bytes; do not retry blindly";
                 break;
         }
@@ -273,13 +294,6 @@ internal partial class Program
         return live.Length > 0 ? live : (ses.StartCwd ?? "");
     }
 
-    private string CommandCwd(Ses? ses)
-    {
-        if (!_isQuickWindow || ActiveSurface() is not { } p) return RawCwdOf(ses);
-        string live = PrettyCwd(SafeCwd(p));
-        return live.Length > 0 ? live : p.StartCwd ?? "";
-    }
-
     /// <summary>Best-effort path to agwintermctl.exe (next to us), else just "agwintermctl" (assume PATH).</summary>
     private static string CtlPath()
     {
@@ -291,15 +305,14 @@ internal partial class Program
     /// <summary>The {AGW_*} / $AGW_* values for a session context (active by default). AGW_PANE names
     /// the surface the command fired from — left/right/scratch/overlay/quick (agterm #210's $AGT_PANE) —
     /// and AGW_PANE_ID is that surface's id, so a keybinding can route a follow-up ctl call back into it.</summary>
-    private Dictionary<string, string> AgwValues(Ses? ses)
+    private Dictionary<string, string> AgwValues(Ses? ses, Pane? surface, string cwd)
     {
-        var surface = ActiveSurface();
         string paneName = _isQuickWindow && surface is not null ? "quick" : "";
         if (surface is not null && ses is not null)
         {
-            if (_coverKind == 1 && ReferenceEquals(surface, ses.Scratch)) paneName = "scratch";
-            else if (_coverKind == 3 && ReferenceEquals(surface, ses.Overlay.Term)) paneName = "overlay";
-            else if (_coverKind == 2 && ReferenceEquals(surface, _quick)) paneName = "quick";
+            if (ReferenceEquals(surface, ses.Scratch)) paneName = "scratch";
+            else if (ReferenceEquals(surface, ses.Overlay.Term)) paneName = "overlay";
+            else if (ReferenceEquals(surface, _quick)) paneName = "quick";
             // A pane overlay is its pane's surface (P5): the command fired from the overlay, so
             // AGW_PANE is "overlay" and AGW_PANE_ID (below: surface.Id) is the overlay term's id. The
             // program under it keeps left/right — it is the pane, and it is not the surface.
@@ -315,7 +328,7 @@ internal partial class Program
             ["AGW_SESSION"] = ses?.Name ?? "",
             ["AGW_SESSION_ID"] = ses?.Id ?? "",
             ["AGW_WORKSPACE"] = ses?.Ws.Name ?? "",
-            ["AGW_CWD"] = CommandCwd(ses),
+            ["AGW_CWD"] = cwd,
             ["AGW_PANE_ID"] = surface?.Id ?? ses?.ActivePane.Id ?? "",
             ["AGW_PANE"] = paneName,
             ["AGW_APP"] = CtlPath(),
@@ -323,29 +336,29 @@ internal partial class Program
     }
 
     /// <summary>Expand {AGW_*} tokens; unknown {AGW_*} tokens expand to "".</summary>
-    private string ExpandAgwTokens(string text, Ses? ses)
+    private string ExpandAgwTokens(string text, Ses? ses, Pane? surface, string cwd)
     {
         if (string.IsNullOrEmpty(text) || text.IndexOf("{AGW_", StringComparison.Ordinal) < 0) return text;
-        var vals = AgwValues(ses);
+        var vals = AgwValues(ses, surface, cwd);
         return System.Text.RegularExpressions.Regex.Replace(text, @"\{AGW_[A-Z0-9_]+\}",
             m => vals.TryGetValue(m.Value[1..^1], out var v) ? v : "");
     }
 
     /// <summary>$AGW_* environment (+ AGWINTERM=1) for a launched custom-command process.</summary>
-    private Dictionary<string, string> AgwEnv(Ses? ses)
+    private Dictionary<string, string> AgwEnv(Ses? ses, Pane? surface, string cwd)
     {
-        var d = AgwValues(ses);
+        var d = AgwValues(ses, surface, cwd);
         d["AGWINTERM"] = "1";
         return d;
     }
 
     /// <summary>Detached run: an independent OS process (no PTY, not tied to a session), via cmd /c so
     /// shell syntax (redirection, `start &lt;url&gt;`) works. Non-blocking; inherits the $AGW_* context + cwd.</summary>
-    private void RunDetached(string command, string? cwd, Dictionary<string, string> env)
+    private void RunDetached(string command, string? cwd, Dictionary<string, string> env, string? profileName)
     {
         try
         {
-            var profile = ResolveProfile(_active?.ProfileName);
+            var profile = ResolveProfile(profileName);
             bool wsl = profile is not null && WslIntegration.IsWsl(profile.Command);
             var psi = new System.Diagnostics.ProcessStartInfo(wsl ? profile!.Command : "cmd.exe")
             {
@@ -358,11 +371,13 @@ internal partial class Program
                 WslIntegration.ExportEnvironment(env);
                 foreach (string arg in WslIntegration.CommandArgs(profile!, command, cwd, false)) psi.ArgumentList.Add(arg);
             }
-            else { psi.ArgumentList.Add("/c"); psi.ArgumentList.Add(command); }
+            // cmd parses its own command tail; ArgumentList's CRT escaping turns inner
+            // path quotes into backslash-quotes, which cmd does not unescape.
+            else psi.Arguments = "/d /s /c \"" + command + "\"";
             foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
             System.Diagnostics.Process.Start(psi);
         }
-        catch (Exception ex) { ShowToast("detached: " + ex.Message); }
+        catch (Exception ex) { throw new InvalidOperationException("detached launch failed: " + ex.Message, ex); }
     }
 
     // ---- Leader/prefix chord state machine (used by OnKeyDown + the command.leader control verb) ----

@@ -1,5 +1,13 @@
 # WSL
 
+`command run ... --target <pane-id>` uses the addressed session's WSL distribution/user and the
+addressed pane's Linux cwd, even with a Windows session selected. `send`, `new`, `overlay` and
+`detached` all expand `{AGW_*}` from that target; launched processes also receive its `AGW_*`
+environment. For example, `agwintermctl command run 'pwd; echo {AGW_PANE_ID}' --mode send --target
+<wsl-pane-id>` sends only to that pane even with broadcast enabled. New mode selects its new session;
+the other modes never select the source. Omitting target retains the active context rather than
+using `AGWINTERM_SESSION_ID`. See [control target rules](control-api.md#explicit-targets-for-focus-resize-and-custom-commands).
+
 Open a `WSL: <distribution>` shell profile and run the integration installers from the menu or command palette. They use the active session's distribution and `--user`, including custom WSL profiles. From a terminal, `agwintermctl install cli|hooks|skill|shell --target <session>` selects the same environment; inside an agwinterm session the target defaults to the caller. An unknown target fails instead of installing into Windows. With no running session or target, the standalone CLI's `install cli` and `install skill` retain their Windows installation behavior.
 
 Run `agwintermctl profiles reload` to discover distributions installed since the first launch. Existing profiles and their settings are retained. Profile `cwd` may be a Linux path; restored and duplicated sessions, splits and reopened sessions keep their Linux working directory. Without a configured directory, the WSL home mode opens `~` for the selected Linux user.
