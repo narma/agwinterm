@@ -810,7 +810,8 @@
       ]
     },
     {
-      "note": "P2: --size-percent outside 1..100 is refused, naming the value and the range, and NO overlay opens. It used to clamp (or, in lite, be ignored) and answer ok.",
+      "note": "P2: --size-percent outside 1..100 is refused, naming the value and the range, and NO overlay opens. Client validation may reject it before connecting.",
+      "allowUsageError": true,
       "args": [
         "session",
         "overlay",

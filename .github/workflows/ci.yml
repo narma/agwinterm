@@ -137,6 +137,11 @@ jobs:
         timeout-minutes: 5
         run: ./tests/integration/control-events-and-wait.ps1
 
+      - name: Program overlay controls integration
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./tests/integration/program-overlay-controls.ps1 -Dpi 144
+
       - name: Passive HUD integration
         shell: pwsh
         timeout-minutes: 5

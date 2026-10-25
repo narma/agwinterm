@@ -315,7 +315,7 @@ internal partial class Program
             // Refusing its reply must not abort the output pump and lose the remaining output.
             SessionInput.TryWrite(_s, Encoding.UTF8.GetBytes(reply));
         }
-        public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _theme.DefaultBackground);
+        public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
         public void Unhandled(string kind, string detail) => VtLog.Write(_pane.Id, kind, detail);       // AGWINTERM_VT_LOG tap
     }
@@ -588,6 +588,11 @@ internal partial class Program
             // tuple, with its own font metrics — there is no second source of geometry for it.
             if (pane.Overlay.Term is { } ovl) RegridTerm(ovl, w, h);
         }
+        if (ses.Overlay.Term is { } sessionOverlay && !ReferenceEquals(sessionOverlay, _cover))
+        {
+            var (_, _, w, h) = OverlayRect(ses.Overlay);
+            RegridTerm(sessionOverlay, w, h);
+        }
     }
 
     /// <summary>Resize one terminal's PTY grid to fit a <paramref name="w"/> × <paramref name="h"/> px box
@@ -623,7 +628,7 @@ internal partial class Program
         if (_coverKind is 1 or 3) { _cover = null; _coverKind = 0; _ovlOwner = null; }
         // If the newly-active session has a session-wide overlay up, re-show it as the cover. Pane
         // overlays (P5) need nothing here: they live on the panes and are drawn with them.
-        if (ses.Overlay.Term is { } ovl) { _cover = ovl; _coverKind = 3; _ovlOwner = ses; }
+        if (!ses.Overlay.Hidden && ses.Overlay.Term is { } ovl) { _cover = ovl; _coverKind = 3; _ovlOwner = ses; }
         _session = ActiveSurface()?.S;                          // a quick cover (if any) keeps input; else the new pane
         RegridSession(ses);
         if (_cover is not null) RegridCover();
@@ -740,13 +745,13 @@ internal partial class Program
     /// the pane. Used by <see cref="ActiveSurface"/>, <c>PaneAt</c> / <c>PaneBox</c> / <c>ActivePaneView</c>
     /// (the hit-tests: the box is the PANE's, the metrics are the surface's) and the wheel — so the
     /// pane-to-surface step lives once and no caller branches on the slot itself.</summary>
-    private static Pane SurfaceOf(Pane pane) => pane.Overlay.Term ?? pane;
+    private static Pane SurfaceOf(Pane pane) => !pane.Overlay.Hidden ? pane.Overlay.Term ?? pane : pane;
 
     /// <summary>The active session's focused pane when its overlay slot is open and no cover is over it —
     /// the slot the keyboard's close chords (Ctrl+Shift+W, Esc) and the any-key close act on, in that
     /// order: a cover first (it is over everything), then this slot, then the pane. Null otherwise.</summary>
     private Pane? FocusedPaneWithOverlay()
-        => _cover is null && _active is { } a && a.ActivePane.Overlay.Term is not null ? a.ActivePane : null;
+        => _cover is null && _active is { } a && !a.ActivePane.Overlay.Hidden && a.ActivePane.Overlay.Term is not null ? a.ActivePane : null;
 
     /// <summary>The any-key close of a <c>--wait</c> overlay whose program has exited (WM_KEYDOWN and
     /// WM_CHAR both ask): the kind-3 cover if it has exited, else the focused pane's slot if IT has
@@ -775,7 +780,7 @@ internal partial class Program
         // pane's surface while open, so its output warrants a repaint exactly when the pane's would.
         lock (_workspaces)
             foreach (var q in act.Panes)
-                if (ReferenceEquals(q, p) || ReferenceEquals(q.Overlay.Term, p)) return true;
+                if (ReferenceEquals(q, p) || (!q.Overlay.Hidden && ReferenceEquals(q.Overlay.Term, p))) return true;
         return false;
     }
 
@@ -830,11 +835,7 @@ internal partial class Program
     {
         var (x0, y0, w, h) = ContentArea();
         if (_isQuickWindow) return (x0, y0, w, h);
-        if (_coverKind == 3 && _ovlOwner is { Overlay.SizePercent: > 0 and <= 100 } o)
-        {
-            float fw = w * o.Overlay.SizePercent / 100f, fh = h * o.Overlay.SizePercent / 100f;
-            return (x0 + (w - fw) / 2f, y0 + (h - fh) / 2f, fw, fh);
-        }
+        if (_coverKind == 3 && _ovlOwner is { } o) return OverlayRect(o.Overlay);
         if (_coverKind == 2)   // quick terminal: a centered floating panel over the main window (~85%)
         {
             float fw = w * 0.85f, fh = h * 0.85f;
@@ -938,6 +939,7 @@ internal partial class Program
             slot.Term = term;
         }
         slot.SizePercent = sizePercent;   // validated at the control API (TryOverlaySize); in-app callers pass literals
+        slot.Hidden = false; slot.WidthDip = null; slot.HeightDip = null;
         slot.Wait = wait;
         slot.Exited = false; slot.ExitCode = 0;
         if (pane is null)
@@ -1482,7 +1484,7 @@ internal partial class Program
         if (_cover is not null) { ChangeFontSizeOfPane(_cover, delta); RegridCover(); RequestRedraw(); }
         // The focused pane's overlay (P5) is that pane's surface: it zooms alone, like a cover, and
         // its size is not persisted (overlays never are) — so no SaveState, unlike the pane's own zoom.
-        else if (_active is { } act && act.ActivePane.Overlay.Term is { } ovl) { ChangeFontSizeOfPane(ovl, delta); RegridSession(act); RequestRedraw(); }
+        else if (_active is { } act && !act.ActivePane.Overlay.Hidden && act.ActivePane.Overlay.Term is { } ovl) { ChangeFontSizeOfPane(ovl, delta); RegridSession(act); RequestRedraw(); }
         else if (_active is not null) ChangeFontSizeOf(_active, delta);
     }
 

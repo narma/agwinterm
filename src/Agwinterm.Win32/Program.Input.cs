@@ -1528,15 +1528,18 @@ internal partial class Program
     /// <summary>Effective foreground for a cell, resolved through the active theme: inverse swap,
     /// then faint (SGR 2) dimming. Resolving via the theme (not the baked RGB) is what makes a
     /// theme switch recolour already-printed content.</summary>
-    private static Color EffectiveFg(Cell cell)
+    private static Color EffectiveFg(Cell cell, Color? defaultBackground = null)
     {
-        Color fg = cell.Attributes.HasFlag(CellAttributes.Inverse) ? _theme.ResolveBg(cell.BgSpec) : _theme.ResolveFg(cell.FgSpec);
+        Color fg = cell.Attributes.HasFlag(CellAttributes.Inverse)
+            ? cell.BgSpec.Kind == ColorSpecKind.Default && defaultBackground is { } bg ? bg : _theme.ResolveBg(cell.BgSpec)
+            : _theme.ResolveFg(cell.FgSpec);
         if (cell.Attributes.HasFlag(CellAttributes.Dim))
             fg = new Color((byte)(fg.R * 0.6f), (byte)(fg.G * 0.6f), (byte)(fg.B * 0.6f));
         return fg;
     }
 
     /// <summary>Effective background for a cell, resolved through the active theme (inverse swaps with fg).</summary>
-    private static Color EffectiveBg(Cell cell)
-        => cell.Attributes.HasFlag(CellAttributes.Inverse) ? _theme.ResolveFg(cell.FgSpec) : _theme.ResolveBg(cell.BgSpec);
+    private static Color EffectiveBg(Cell cell, Color? defaultBackground = null)
+        => cell.Attributes.HasFlag(CellAttributes.Inverse) ? _theme.ResolveFg(cell.FgSpec)
+            : cell.BgSpec.Kind == ColorSpecKind.Default && defaultBackground is { } bg ? bg : _theme.ResolveBg(cell.BgSpec);
 }

@@ -358,6 +358,9 @@ internal partial class Program
 
     private void RenderTerminal(ISession session, float ox, float oy, IDWriteTextFormat fmt, float cw, float ch, int scrollOffset, Pane? selPane = null)
     {
+        Color? localBackground = selPane?.DefaultBackground;
+        if (localBackground is not null && session.Emulator.DynamicBg is > 0 and var dynamicBg)
+            localBackground = new Color((byte)(dynamicBg >> 16), (byte)(dynamicBg >> 8), (byte)dynamicBg);
         var rt = _rt!;
         var brush = _brush!;
         // Underline / strikethrough lines for a run (brush colour = the run's fg, set by the caller).
@@ -426,13 +429,13 @@ internal partial class Program
                 while (c < cols)  // Pass 1: coalesced background fills
                 {
                     Cell cell = CellAt(r, c);
-                    Color bg = EffectiveBg(cell);
-                    if (bg == _theme.DefaultBackground) { c++; continue; }
+                    Color bg = EffectiveBg(cell, localBackground);
+                    if (bg == _theme.DefaultBackground && localBackground is null) { c++; continue; }
                     int start = c;
                     while (c < cols)
                     {
                         Cell cc = CellAt(r, c);
-                        if (cc.Width != 0 && EffectiveBg(cc) != bg) break;
+                        if (cc.Width != 0 && EffectiveBg(cc, localBackground) != bg) break;
                         c++;
                     }
                     brush.Color = C4(bg);
@@ -478,7 +481,7 @@ internal partial class Program
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (cell.Attributes & LineMask) == 0)) { c++; continue; }
-                    Color runFg = EffectiveFg(cell);
+                    Color runFg = EffectiveFg(cell, localBackground);
                     CellAttributes runStyle = cell.Attributes & StyleMask;
                     // Only claim the vector renderer's implemented set. Other glyphs retain the
                     // normal font-fallback, style and clipping rules below.
@@ -526,7 +529,7 @@ internal partial class Program
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
                         if (blank) { if ((cc.Attributes & LineMask) != (runStyle & LineMask)) break; }
-                        else if (EffectiveFg(cc) != runFg || (cc.Attributes & StyleMask) != runStyle) break;
+                        else if (EffectiveFg(cc, localBackground) != runFg || (cc.Attributes & StyleMask) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);
                         c++;
                         if (!blank) lastNonBlank = _run.Length;
@@ -639,11 +642,12 @@ internal partial class Program
     {
         // Sized program overlays float over normal content. The detached quick host (kind 2)
         // fills its own tool window, as scratch/full overlays fill their normal content region.
-        bool floatingPanel = !_isQuickWindow && _cover is not null && ((_coverKind == 3 && _ovlOwner is { Overlay.SizePercent: > 0 }) || _coverKind == 2);
+        bool floatingPanel = !_isQuickWindow && _cover is not null && ((_coverKind == 3 && _ovlOwner?.Overlay.Geometry.Floating == true) || _coverKind == 2);
         if (_cover is not null && !floatingPanel)
         {
             var (ox, oy, cw0, ch0) = ContentArea();
             var (fmt, cw, ch) = Metrics(_cover.FontSize);
+            if (_cover.DefaultBackground is { } coverBg) { brush.Color = C4(coverBg); rt.FillRectangle(new Rect(ox, oy, cw0, ch0), brush); }
             // The scratch terminal keeps its owning session's watermark, so the pane isn't unidentified (#275).
             if (_coverKind == 1 && OwningSes(_cover) is { } scratchOwner) DrawWatermark(scratchOwner, ox, oy, cw0, ch0);
             RenderTerminal(_cover.S, ox, oy, fmt, cw, ch, _cover.ScrollOffset, _cover);
@@ -659,7 +663,7 @@ internal partial class Program
                 brush.Color = new Color4(0f, 0f, 0f, 0.45f);                 // dim scrim over the session
                 rt.FillRectangle(new Rect(cx0, cy0, cw0, ch0), brush);
                 var (fx, fy, fw, fh) = CoverRect();
-                brush.Color = C4(_theme.DefaultBackground);                  // opaque panel
+                brush.Color = C4(_cover!.DefaultBackground ?? _theme.DefaultBackground); // opaque panel
                 rt.FillRectangle(new Rect(fx, fy, fw, fh), brush);
                 var (fmt, cw, ch) = Metrics(_cover!.FontSize);
                 RenderTerminal(_cover.S, fx, fy, fmt, cw, ch, _cover.ScrollOffset, _cover);
@@ -750,7 +754,7 @@ internal partial class Program
             }
             else if (overlaid)
             {
-                brush.Color = C4(_theme.DefaultBackground);
+                brush.Color = C4(surface.DefaultBackground ?? _theme.DefaultBackground);
                 rt.FillRectangle(new Rect(ox, oy, pw, ph), brush);
             }
             RenderTerminal(surface.S, ox, oy, fmt, cw, ch, surface.ScrollOffset, surface);

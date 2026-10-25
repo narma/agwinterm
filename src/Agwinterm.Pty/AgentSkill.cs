@@ -246,7 +246,7 @@ public static class AgentSkill
           visible and interactive. --pane left|right names the slot: left is pane 0 and right is pane 1
           whatever the axis (on a horizontal split left is the top pane), a non-split session accepts
           --pane left, and the flag omitted means the session-wide slot - today's behaviour, byte for
-          byte. A pane overlay is that pane's surface while it is open: keys typed into the focused pane,
+          byte. A pane overlay is that pane's surface while it is open and shown: keys typed into the focused pane,
           the mouse inside the pane's box and --target active reach the overlay; --target with a pane id
           reaches the shell underneath (agterm: "session text reads the surface underneath"); --target
           with the overlay's id reaches the overlay from anywhere, and on session overlay itself names
@@ -302,6 +302,13 @@ public static class AgentSkill
           the value and the range named) and NO overlay opens — read `tree` to confirm. To ask for the full region, omit
           the flag; there is no number that means it. The same rule applies to `overlay resize --size-percent N`, whose
           reply `resized N%` is always the N you asked for.
+        - `overlay hide|show|toggle` preserves the program and ID; hidden overlays do not capture ordinary input.
+          Explicit overlay IDs still read/write the hidden terminal. Empty slots refuse; background show does not select.
+          Open/resize accept independent `--width`/`--height` in 1..16384 Windows DIP for session slots only.
+          Each overrides its percent axis. Partial resize keeps omitted settings; explicit percent resets DIP overrides.
+          `resize --full` (or bare resize) clears all sizing. Pane overlays remain full-pane.
+          Open accepts `--cwd`, `--follow` (select owner after open) and `--background-color '#RRGGBB'`.
+          Tree `overlayDetails` reports IDs, hidden/effective visible state and client-pixel geometry with requested sizes.
         - `--wait` keeps the panel after the program exits (shows "press any key to close") instead of auto-dismissing.
           With `--pane` the banner sits at the bottom of THAT pane's box and only a key typed into that pane (while it is
           the focused one) dismisses it — a key in the other pane goes to the other pane's shell.

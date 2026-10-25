@@ -7,7 +7,7 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
@@ -41,10 +41,11 @@ public static class CtlArguments
         ["session resize"] = "window target split-ratio grow-left grow-right grow-top grow-bottom",
         ["session background set"] = "window target path opacity mode",
         ["session background clear"] = "window target",
-        ["session overlay open"] = "window target command pane wait block size-percent",
+        ["session overlay open"] = "window target command pane wait block size-percent width height cwd follow background-color",
         ["session overlay close"] = "window target pane", ["session overlay result"] = "window target pane",
         ["session overlay copy"] = "window target pane", ["session overlay text"] = "window target pane all lines",
-        ["session overlay resize"] = "window target size-percent pane", // specialized validator explains the refusal
+        ["session overlay resize"] = "window target size-percent width height full pane",
+        ["session overlay hide"] = "window target pane", ["session overlay show"] = "window target pane", ["session overlay toggle"] = "window target pane",
         ["session hud open"] = "window target detail spinner spinner-style position size-percent background-color text-color",
         ["session hud update"] = "window target detail spinner spinner-style position size-percent background-color text-color",
         ["session hud close"] = "window target",

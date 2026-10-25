@@ -410,6 +410,16 @@ switch (area)
                 }
                 if (options.ContainsKey("wait")) cargs["wait"] = true;
                 if (options.ContainsKey("block")) cargs["block"] = true;
+                foreach (string key in new[] { "width", "height" })
+                    if (Opt(key) is { } dimension)
+                    {
+                        if (!int.TryParse(dimension, out int value)) { Console.Error.WriteLine(key + " must be an integer DIP size. Nothing sent."); return 2; }
+                        cargs[key] = value;
+                    }
+                foreach (string key in new[] { "cwd", "background-color" }) if (Opt(key) is { } value) cargs[key] = value;
+                foreach (string key in new[] { "full", "follow" }) if (options.ContainsKey(key)) cargs[key] = true;
+                try { Agwinterm.Pty.OverlayOptions.Parse(ovAction, JsonSerializer.SerializeToElement(cargs)); }
+                catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message + ". Nothing sent."); return 2; }
                 break;
             case "focus": target = Opt("target"); cargs["dir"] = rest.Count > 0 ? rest[0] : "other"; break;
             case "flag": cargs["op"] = rest.Count > 0 ? rest[0] : "toggle"; break; // on|off|toggle|clear

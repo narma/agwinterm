@@ -176,6 +176,39 @@ wrote.
 
 ## `session overlay`
 
+C2 adds `hide`, `show` and `toggle`, with the same `--target` and `--pane left|right`
+slot selection as open/close. Hiding keeps the process, ID, buffer and exit result alive.
+Ordinary input reaches the underlying surface; explicit overlay-ID reads/writes still
+reach the hidden program. Empty slots refuse. A background show does not select its
+session. A hidden `--wait` banner is retained until shown and dismissed or explicitly closed.
+
+Session-wide open/resize accepts `--width N` and `--height N` (integer Windows DIP,
+1..16384). Each overrides its axis of `--size-percent 1..100`, or full size when no
+percentage was set. Partial resize retains omitted settings. An explicit percentage
+resets DIP overrides before applying dimensions in that request. `resize --full`, or
+legacy bare `resize`, resets all sizing; `--full` conflicts with other sizing flags.
+Pane overlays remain full-pane and reject resizing, including via their overlay IDs.
+Effective dimensions are centered and clamped to the content bounds; requested values
+survive window resizing and DPI changes.
+
+Open also accepts `--cwd PATH`, `--follow` and `--background-color '#RRGGBB'`.
+Cwd uses the owner's Windows/WSL profile and directory rules. Follow selects the owner
+session and pane after opening, without promising OS foreground activation. Background
+color is local to that overlay; explicit terminal colors retain precedence. Invalid
+options refuse before replacing a program. Wire keys match CLI names, with JSON integers
+for dimensions and booleans for follow/full.
+
+`tree --json` adds `overlayDetails` for occupied slots: `id`, `slot` (session/pane),
+`ownerPaneId`, `hidden`, `visible`, `exited`, and `geometry` (`x`, `y`, `width`, `height`
+in client pixels; `percent`, `widthDip`, `heightDip` requested sizing). Background or
+occluded slots remain present with `visible:false`. Existing presence/result fields
+retain their meanings. C1 events add overlay actions `hidden`, `shown`, `resized` with
+stable owners; idempotent visibility requests do not fabricate changes.
+
+Examples: `session overlay open "cmd /d" --width 500 --height 300`,
+`session overlay hide --target OVERLAY_ID`, `session overlay show --target OVERLAY_ID`,
+`session overlay resize --full --target SESSION_ID`.
+
 `open --size-percent N` and `resize --size-percent N` take 1..100 and **refuse** anything else,
 naming the value and the range. `0`, `150` and `sixty` used to open a full-screen overlay and report
 success; now nothing opens and `ok` is false. Omit the flag for the full content region.

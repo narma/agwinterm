@@ -1,6 +1,6 @@
 # Control capabilities: staged adoption from agterm 0.38.1
 
-Date: 2026-10-25. Status: **C0–C1 implemented and locally verified; C2–C8 not started**.
+Date: 2026-10-25. Status: **C0–C2 implemented and locally verified; C3 planning; C4–C8 not started**.
 
 The objective is useful new capabilities for agwinterm, adapted to Windows, ConPTY,
 native rendering and WSL. Full command, spelling, wire-format or behavior parity with
@@ -63,7 +63,11 @@ the Release build, tests and isolated Windows/WSL checks. This is implementation
 not a release or live installation. C0 is archived, synced and committed as `5970e69`.
 **C1 is implemented and locally verified** under `control-events-and-wait`.
 [C1 acceptance evidence](../../openspec/changes/archive/2026-10-25-control-events-and-wait/verification.md)
-records managed, native, Windows and WSL checks. **C2–C8 are not started**.
+records managed, native, Windows and WSL checks. C1 is committed as `0997759`.
+**C2 is implemented and locally verified** through `program-overlay-controls`.
+[C2 acceptance evidence](../../openspec/changes/archive/2026-10-25-program-overlay-controls/verification.md)
+covers geometry, visibility, process lifetime, compatibility and WSL. **C3 is in OpenSpec
+planning** under `native-questions-and-picker`; **C4–C8 are not started**.
 Every stage goes through its own OpenSpec proposal, design, specs and tasks, followed
 by implementation, verification, sync/archive and a separate implementation commit.
 Each stage may need several focused changes; it
