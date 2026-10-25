@@ -95,7 +95,9 @@ public static class CtlArguments
             { error = $"--{key} is empty. Nothing sent."; return false; }
             if (key == "json") json = true;
             if (key == "timeout" && !CtlRequest.TryResolveTimeout(value, false, out _, out error)) return false;
-            if ((Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
+            bool hudFont = key == "font-size" && argv.Length > 1 &&
+                argv[0].Equals("session", StringComparison.OrdinalIgnoreCase) && argv[1].Equals("hud", StringComparison.OrdinalIgnoreCase);
+            if (!hudFont && (Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
                 !(key is "seq" or "since" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
                     int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
             { error = $"--{key} needs a whole number. Nothing sent."; return false; }

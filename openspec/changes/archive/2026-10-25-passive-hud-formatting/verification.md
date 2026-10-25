@@ -12,3 +12,5 @@ Implemented `passive-hud-formatting` after archived C1/C2/C3.
 Evidence: ignored `artifacts/c4-build.log`, `c4-regression.log`, `c4-hud-ui.log`, `c4-hud-96.log`, `c4-hud-regression.log`, `c4-wsl.log`, `c4-win32-regression.log`; private screenshots under `.revmux/hudadvanced-ui-20261025T224621-fbbf2e`.
 
 Limits: DPI override exercises native scaling without moving the user's windows across physical monitors. Markdown is the documented bounded subset, not CommonMark/HTML. UI-thread congestion may delay expiry, never advance it. No release or live installation performed; unrelated ConPTY edits are excluded from this stage.
+
+Post-archive audit: corrected generic CLI integer validation to allow fractional HUD font-size as specified, while retaining dashboard integer validation. All 16 HudPresentationTests passed (rtifacts/c4-font-fix.log).

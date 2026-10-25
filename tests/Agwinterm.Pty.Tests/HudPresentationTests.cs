@@ -36,6 +36,11 @@ public class HudPresentationTests
         Assert.Null(SessionHuds.ResolvePane("unknown", ["a", "b"], 0));
         Assert.Null(SessionHuds.ResolvePane("right", ["a"], 0));
     }
+    [Fact] public void HudCliAcceptsFractionalFontButDashboardRetainsIntegerContract()
+    {
+        Assert.True(CtlArguments.TryParse(["session", "hud", "hello", "--font-size", "13.5"], out _, out _, out _, out _, out _, out _));
+        Assert.False(CtlArguments.TryParse(["dashboard", "--font-size", "13.5"], out _, out _, out _, out _, out _, out _));
+    }
     [Fact] public void FileInputIsStrictBoundedUtf8AndAllowsBom()
     {
         string path = Path.Combine(Path.GetTempPath(), "hud-" + Guid.NewGuid() + ".md");
