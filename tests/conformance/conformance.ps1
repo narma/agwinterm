@@ -95,7 +95,11 @@ function Invoke-Ctl($argv, $InputText = $null) {
     $start.StandardOutputEncoding=[Text.UTF8Encoding]::new($false)
     $start.StandardErrorEncoding=[Text.UTF8Encoding]::new($false)
     $start.StandardInputEncoding=[Text.UTF8Encoding]::new($false)
-    foreach($arg in @($argv)+@('--pipe',$pipe,'--json')){$start.ArgumentList.Add([string]$arg)}
+    # Some contract steps explicitly request JSON. The CLI rejects duplicate options,
+    # so add the runner's output format only when the step did not already select it.
+    $cliArgs = @($argv) + @('--pipe', $pipe)
+    if ($cliArgs -notcontains '--json') { $cliArgs += '--json' }
+    foreach($arg in $cliArgs){$start.ArgumentList.Add([string]$arg)}
     $child=[Diagnostics.Process]::new();$child.StartInfo=$start
     try {
         if(-not $child.Start()){throw 'CLI did not start'}

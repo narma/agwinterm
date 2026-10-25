@@ -200,6 +200,30 @@ public class CtlRequestTests : IDisposable
         else Assert.Equal(target, doc.RootElement.GetProperty("target").GetString());
     }
 
+    [Theory]
+    [InlineData("CLOSE")] [InlineData("Close")] [InlineData("OPEN")] [InlineData("UPDATE")]
+    public async Task HudActionLikeMessagesKeepTheirDisplayOptions(string message)
+    {
+        string pipe = "agwinterm-test-hud-literal-" + Guid.NewGuid().ToString("N");
+        using var server = new NamedPipeServerStream(pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var exchange = Task.Run(async () =>
+        {
+            await server.WaitForConnectionAsync(deadline.Token);
+            using var reader = new StreamReader(server, Encoding.UTF8, false, 1024, true);
+            string request = (await reader.ReadLineAsync(deadline.Token))!;
+            using var writer = new StreamWriter(server, new UTF8Encoding(false), 1024, true) { AutoFlush = true };
+            await writer.WriteLineAsync("{\"ok\":true,\"result\":\"opened\"}");
+            return request;
+        });
+        var result = RunCtl("session", "hud", message, "--spinner", "--pipe", pipe);
+        Assert.Equal(0, result.ExitCode);
+        using var doc = System.Text.Json.JsonDocument.Parse(await exchange);
+        Assert.Equal("session.hud.open", doc.RootElement.GetProperty("cmd").GetString());
+        Assert.Equal(message, doc.RootElement.GetProperty("args").GetProperty("message").GetString());
+        Assert.Equal("bar", doc.RootElement.GetProperty("args").GetProperty("spinner").GetString());
+    }
+
     internal static (int ExitCode, string StdOut, string StdErr) RunCtl(params string[] args) => RunCtlWithCaller(null, args);
 
     private static (int ExitCode, string StdOut, string StdErr) RunCtlWithCaller(string? caller, params string[] args)

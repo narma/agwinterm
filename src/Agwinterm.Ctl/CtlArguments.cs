@@ -106,7 +106,9 @@ public static class CtlArguments
             ? area : area + " " + sub;
         string third = positionals.ElementAtOrDefault(2)?.ToLowerInvariant() ?? "";
         if (operation is "session overlay" or "session background") operation += " " + (third.Length == 0 ? sub == "overlay" ? "open" : "set" : third);
-        if (operation == "session hud") operation += " " + (third is "open" or "update" or "close" ? third : "open");
+        // HUD action words are case-sensitive in the request builder; uppercase words
+        // such as CLOSE remain literal messages and may use open's display options.
+        if (operation == "session hud") operation += " " + (positionals.ElementAtOrDefault(2) is "open" or "update" or "close" ? third : "open");
         if (operation == "session split" && third == "close") operation += " close";
         if (!Vocabulary.TryGetValue(operation, out string? vocabulary))
         { error = $"unknown command '{operation}'. Nothing sent."; return false; }
