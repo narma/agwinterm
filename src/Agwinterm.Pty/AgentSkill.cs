@@ -88,7 +88,8 @@ public static class AgentSkill
           `active` report the freshest of the two: the session-level age cannot tell a dead hook
           from a live one beside it, and no verb reports the stamp per pane. Always present, even
           for an idle session that never set one)
-        - `agwintermctl events [--since CURSOR] [--limit N]`      — poll the event log (status/notification/session/tree changes); returns {cursor, events:[{seq,type,session,info}]}. Pass the returned cursor as --since next poll.
+        - `agwintermctl events [--since CURSOR] [--limit N] [--kind status,overlay]` — bounded event pages. Save run/window/cursor after consuming each page; head is separate, gap means history loss. `events --watch --json` tails UTF-8 NDJSON pages; explicit resume after zero requires --since, --run and exact --window. No automatic reconnect.
+        - `agwintermctl session wait completed,blocked [--target ID] [--scope session|pane] [--wait-timeout 30] --json` — wait for agent-reported status (not process exit). Session scope aggregates main/split panes: blocked > completed > active > idle. Pane scope can address scratch/overlay/quick. Target defaults to caller; selection changes do not retarget. Exit 0 matched, 3 timeout, 2 usage, 130 cancellation, 1 refusal/transport/protocol failure. Timeout 0 is unbounded; explicit --timeout controls transport independently.
         - `agwintermctl session new [--name N] [--cwd DIR] [--workspace ID|--workspace-name NAME [--create-workspace]] [--command "PowerShell code"] [--command-mode powershell|direct] [--profile NAME] [--no-select] [--wait]`
           `--no-select` creates the session in the background without stealing focus or changing the current selection.
           `--command` runs PowerShell code and leaves an interactive prompt. `--wait` is accepted in this mode; the prompt stays open either way.

@@ -36,6 +36,8 @@ public interface ISession : IDisposable
     bool Blink { get; }
     bool AutoReset { get; }
     event Action? StatusChanged;
+    /// <summary>Immutable, serialized status writes, including reassertions. Null only for legacy test/third-party adapters.</summary>
+    StatusSignal? StatusSignal => null;
     event Action<string?>? SoundRequested;
     /// <summary>Unix epoch SECONDS at which this session's status was last WRITTEN (not merely
     /// changed) — the liveness clock behind the tree's <c>statusChangedAt</c>. Initialised at

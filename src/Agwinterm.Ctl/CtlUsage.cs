@@ -28,6 +28,13 @@ public static class CtlUsage
           agwintermctl ping
           agwintermctl version [--json]                  (the CLI that ran + the app serving the pipe)
           agwintermctl tree [--json]
+          agwintermctl events [--since INT64] [--limit 0..1000] [--kind status,overlay] [--run ID] [--window ID] [--json]
+            cursor is safe page progress; head is journal head. Save run/window/cursor; gap means history was lost.
+          agwintermctl events --watch [--since INT64 --run ID --window EXACT_ID] [--kind status,overlay] [--json]
+            Default: tail from now. JSON: NDJSON pages including baseline/heartbeat. No automatic reconnect.
+          agwintermctl session wait STATUS[,STATUS...] [--target ID] [--scope session|pane] [--wait-timeout SECONDS] [--json]
+            Default scope=session, timeout=30s (0=unbounded). Aggregate: blocked > completed > active > idle.
+            Exit 0 matched, 3 observation timeout, 2 usage, 130 Ctrl+C, 1 refusal/transport/protocol failure.
           agwintermctl session new [--command "PowerShell code"] [--command-mode powershell|direct] [--cwd DIR] [--name NAME] [--workspace ID|--workspace-name NAME [--create-workspace]] [--no-select]
               (no workspace given = the workspace of the pane running this CLI; the active one only when there is none)
                                                          (an unknown workspace is refused, never swapped for the active one)

@@ -395,3 +395,120 @@ not program completion; write/timeout failures do not imply rollback or safe ret
 
 These explicit-target guarantees require a serving Win32 build with C0 support. An updated CLI
 cannot make an older server honor fields it previously ignored. The shared Lite contract is unchanged.
+
+## Event pages (C1)
+
+`agwintermctl events --since 0 --limit 100 --kind status,session-status --json`
+reads one bounded page in the selected window. `--run ID` checks process identity.
+The wire command is `events`, with `args.since` (nonnegative Int64), `limit`
+(0 or omitted = 1000; otherwise 1..1000), `kinds` (optional unique array of
+known event types), and `run` (optional nonempty string). Invalid arguments refuse.
+
+The result contains `schema:1`, `run`, `window`, `oldest`, `head`, `cursor`,
+`gap`, `more`, and `events`. Each event retains `seq`, `type` and existing
+`session`/`info` fields and includes its owning window. Save the tuple
+`(run,window,cursor)` only after processing a page. A limited page's cursor
+now stops at its last scanned event, fixing the previous behavior that could
+skip events; use `head` when the journal head itself is needed. Filters do
+not renumber events and advance over excluded records. `more` means unscanned
+history remains, which might contain only excluded types.
+
+History retains at most 1000 records, each at most 8 KiB serialized UTF-8.
+Free text may be shortened with `truncated:true`; identity is preserved.
+`gap:true` means `since < oldest-1`, including explicit zero after retention
+has wrapped. The retained suffix is returned but is not a complete history.
+An empty journal has oldest 1 and head/cursor 0. No history survives restart.
+`run-mismatch` and `cursor-ahead` are explicit error codes. Legacy polling
+without a run remains supported but cannot detect restarts. External clients
+must preserve Int64 integers exactly (including clients using JavaScript).
+
+Wire `tail:true` requests an empty baseline at the sampled head and conflicts
+with any explicit `since`. These metadata guarantees require a C1 server.
+
+### Continuous observation and connection lifetime
+
+`events --watch --kind status,session-status --json` starts at a tail baseline.
+`events --watch --since 25 --run RUN --window EXACT_WINDOW --json` resumes an
+explicit identity. The initial active window is resolved once; later changes
+to the frontmost window do not redirect the watch. Explicit `--since 0`
+replays retained history and fails if that history has a gap.
+
+JSON watch emits one flushed ordinary envelope per line, including the initial
+baseline and empty heartbeat pages. Plain output emits tab-separated
+`seq type window sessionId-or-- paneId-or-- info-as-JSON`; resume metadata is
+on stderr. A gap emits its suffix envelope in JSON, diagnoses the gap and exits
+1; plain output does not print a misleading continuous suffix. Transport,
+protocol, identity change and refusal also exit 1. Ctrl+C exits 130. No
+automatic reconnect occurs; checkpoint only consumed pages and deduplicate
+by run/window/seq if a consumer's own output checkpoint is uncertain.
+
+Wire `args.wait-ms` accepts integer 0..25000, default zero. It returns available
+matching events immediately, otherwise waits for a match or deadline; excluded
+events advance the safe cursor without waking the client. Each pending request
+owns its connection until its one response; do not pipeline another request.
+Ordinary sequential exchanges remain supported. EOF, cancellation, window
+closure and server shutdown release pending observers. Long polls and status
+waits share a limit of 128 pending observers per window (`observer-limit` on
+excess). Reply writes and waiting never hold the UI or journal lock.
+
+### Lifecycle payloads
+
+Every record carries `seq`, `type`, `window`, plus applicable exact `sessionId`
+and `paneId`. Legacy `session`/`info` retain their meanings: `status.session`
+is still a pane ID. New records describe committed changes; refusals and
+unchanged operations do not generate false changes.
+
+| Type | Actions | Additional fields |
+| --- | --- | --- |
+| selection | selected, cleared | previousSessionId; new sessionId when selected |
+| focus | changed | previousPaneId, paneId |
+| split | opened, closed, axis-changed, resized, swapped | paneIds in slot order, focusedPane, axis, ratios when split, removedPaneId on close |
+| scratch | opened, shown, hidden, closed | paneId |
+| overlay | opened, exited, closed | overlayId, slot=session or pane, ownerPaneId for pane slot, exitCode on exit, reason on close |
+| hud | opened, updated, closed | slot=session, reason on close; no message body |
+| status | changed | status, statusChangedAt, blink, autoReset; legacy session/info preserved |
+| session-status | changed | status, previousStatus, winningPaneId, statusChangedAt |
+| session | created, closed | sessionId and legacy session/info |
+
+Close reasons are `closed`, `replaced`, or `owner-removed`. Overlay IDs remain
+stable through slot swaps; a late callback from a replaced process cannot
+report an exit for its replacement. Pane status writes carry immutable
+snapshots in serialized write order, and session aggregation uses the same
+priority as the tree. Same-status flag changes produce pane status events but
+not false aggregate status transitions. No terminal buffers, process environments
+or new command/message bodies are recorded. Legacy bind info remains compatible.
+
+### Status waiting
+
+`session wait completed,blocked --target ID --scope session --wait-timeout 30 --json`
+maps to `session.wait` with `args.statuses` (unique lowercase status names),
+`scope` and integer `timeout-ms`. CLI status names are case-insensitive.
+Omitted target uses the caller's AGWINTERM_SESSION_ID, otherwise active context.
+Session scope accepts a session or its main/split pane, but refuses auxiliary
+surfaces; pane scope can observe scratch, program overlay or quick. Explicit
+window bounds resolution. Resolved identity stays pinned until completion.
+
+Session priority is blocked > completed > active > idle, considering normal
+main/split panes only. Removing a pane recomputes this aggregate. Process exit
+does not mean completed; status is agent-reported, and an input-closed retained
+pane can still be observed. Snapshot and observer registration are atomic:
+a brief matching transition is latched even if auto-reset or journal wrap
+occurs before delivery. Historical matches before registration do not count.
+
+Matched result: `outcome:matched`, scope, run, window, owner IDs, status, seq,
+`source:snapshot|transition`, elapsedMs. Snapshot seq is the registration head;
+transition seq identifies the matching status/session-status record. Timeout
+has `outcome:timeout` and identity/elapsed fields, without status/seq/source.
+Both are wire `ok:true`, but CLI exits **0 only for matched, 3 for timeout**.
+Usage is 2; refusal, target/window loss and transport/protocol errors are 1.
+Plain matched output contains only the status; nonmatch diagnostics use stderr.
+JSON emits exactly one final envelope. Removal errors use `target-gone` or
+`window-gone`. Ctrl+C closes the connection and exits 130; if no final result
+was consumed, JSON emits a client-sourced `cancelled` error envelope.
+
+Default deadline is 30 seconds; `--wait-timeout` accepts 0..86400 integer
+seconds (wire timeout-ms 0..86400000). Zero is unbounded. Deadlines use a
+monotonic clock from registration: a transition at or after the deadline
+cannot turn timeout into success. CLI transport defaults to this deadline
+plus five seconds, or unbounded for zero. Explicit `--timeout` retains its
+independent C0 transport meaning; a shorter transport timeout exits 1, not 3.

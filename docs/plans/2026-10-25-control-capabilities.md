@@ -1,11 +1,13 @@
 # Control capabilities: staged adoption from agterm 0.38.1
 
-Date: 2026-10-25. Status: **C0 implemented and locally verified; C1–C8 not started**.
+Date: 2026-10-25. Status: **C0–C1 implemented and locally verified; C2–C8 not started**.
 
 The objective is useful new capabilities for agwinterm, adapted to Windows, ConPTY,
 native rendering and WSL. Full command, spelling, wire-format or behavior parity with
 agterm is **not** the objective. This plan records the scope requested in the October
-control-API comparison; it does not authorize implementation, release or installation.
+control-API comparison. The subsequent user instruction authorizes implementation of
+every stage through OpenSpec, with verification, archiving and a commit after each stage.
+Release and live installation remain outside that authorization.
 
 Baseline: agterm **v0.38.1**, released 2026-10-23, compared by source inspection with
 agwinterm working tree at `6089f0c`. This was not a runtime conformance test on macOS.
@@ -58,8 +60,13 @@ scope; it does not overwrite shipped contracts or reopen completed P1–P17 work
 **C0 is implemented and locally verified** through OpenSpec `control-cli-reliability`.
 [Acceptance evidence](../../openspec/changes/archive/2026-10-25-control-cli-reliability/verification.md) records
 the Release build, tests and isolated Windows/WSL checks. This is implementation readiness,
-not a release or live installation; archive/sync has not been performed.
-**C1–C8 are not started**. Each stage may need several focused changes; it
+not a release or live installation. C0 is archived, synced and committed as `5970e69`.
+**C1 is implemented and locally verified** under `control-events-and-wait`.
+[C1 acceptance evidence](../../openspec/changes/archive/2026-10-25-control-events-and-wait/verification.md)
+records managed, native, Windows and WSL checks. **C2–C8 are not started**.
+Every stage goes through its own OpenSpec proposal, design, specs and tasks, followed
+by implementation, verification, sync/archive and a separate implementation commit.
+Each stage may need several focused changes; it
 is not a requirement to put a whole row into one PR. Dependencies are readiness gates,
 not authorization to start work or a requirement to use parallel agents.
 

@@ -100,7 +100,7 @@ internal partial class Program
         host._quickAutoHiddenAt = 0;
         host._quickPreviousForeground = GetForegroundWindow();
         host.PositionQuick();
-        if (host._quick is { S.HasExited: true }) { host._quick.S.Dispose(); host._quick = null; }
+        host.RetireExitedQuick();
         host._quick ??= host.CreatePane("quick:" + Guid.NewGuid().ToString("N")[..6],
             new Workspace { Id = "", Name = "" }, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), (float)_config.FontSize);
         host._cover = host._quick; host._coverKind = 2; host.SyncSession(); host.RegridCover();
@@ -108,6 +108,15 @@ internal partial class Program
         ShowWindow(host._hwnd, SW_SHOWNOACTIVATE);
         if (!pin) SetForegroundWindow(host._hwnd); // human summons only; scripts do not seize focus
         host.RequestRedraw();
+    }
+
+    private void RetireExitedQuick()
+    {
+        if (_quick is not { S.HasExited: true } previous) return;
+        // The queued exit callback may run after replacement and ignore this pane.
+        // Release pinned observers before dropping its identity here as well.
+        ReleaseAndDispose(previous);
+        _quick = null;
     }
 
     private void DismissQuick(bool blur = false)

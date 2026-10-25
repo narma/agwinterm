@@ -56,3 +56,24 @@ Build the solution and native binaries below, then run `pwsh -NoProfile -File te
 For native hooks, build `cargo build --release --manifest-path native/Cargo.toml -p agwinterm-hook` on Windows and run `tools/build-wsl-hook.ps1`. The Linux build requires Rust in WSL with both musl targets installed (`rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl` inside WSL). It produces both static binaries under `artifacts/wsl-hook`; `-Architecture x64` or `-Architecture arm64` builds only the requested target. Run `tests/integration/wsl-control.ps1 -NativeHooks` to stage the binaries and test installation; add `-LinuxUser root` to exercise a non-default user in the disposable HOME. After `installer/build-portable.ps1`, use `tests/integration/portable-tools.ps1` to check the actual standalone executable and `tests/integration/wsl-control.ps1 -Portable -NoPython` for the full WSL test using its embedded tools. `tests/integration/wsl-hook-bench.ps1` compares Python, Windows Rust and Linux Rust paths, tests a stalled pipe, and writes raw measurements under `artifacts/wsl-hook-research`.
 
 PR CI and releases share a Linux workflow that builds and executes musl Rust tests and the installer/bootstrap suite on native x64 and ARM64 runners. The installer tests use an explicit `AGWINTERM_TEST_POSIX_PATHS=1` path-conversion stub on ordinary Linux; they do not claim to test Windows interop. Real WSL runs omit that flag and use `wslpath`. CI also builds the portable executable and verifies extraction, tool hashes, ELF architectures, and standalone CLI execution.
+# Observing agent status from WSL
+
+The installed `agwintermctl` wrapper runs the Windows CLI through WSL interop;
+native Linux hooks continue reporting status through their existing Windows bridge.
+For watch/wait the existing native Linux helper owns SIGINT, terminates and reaps
+the interop child, and returns cancellation exit 130. It forwards watch pages as
+they arrive and buffers the single bounded wait response to avoid duplicate final
+JSON envelopes. A completed response wins over a late interrupt. Reinstall the
+CLI integration after updating to C1 to receive this wrapper behavior; older direct
+interop wrappers cannot guarantee a final cancellation envelope. Ordinary commands
+still exec the Windows CLI, and hook watchdog deadlines are unchanged.
+`session wait completed --scope pane --json` observes the caller's pane without
+polling its text. Exit 0 means a requested status matched; 3 is a confirmed wait
+timeout; 1 means refusal or transport/protocol failure. `--wait-timeout 0` is
+unbounded; explicit `--timeout` is a separate transport deadline.
+
+`events --watch --kind status --json` writes NDJSON pages including its initial
+baseline. Save run/window/cursor only after consuming each page; gaps and identity
+changes terminate the watch. When starting an interop observer as a background
+shell job, redirect stdin from `/dev/null` so it cannot compete for the shell's
+terminal input. Neither watch nor wait automatically reconnects after transport loss.

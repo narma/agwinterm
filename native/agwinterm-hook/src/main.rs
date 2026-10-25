@@ -26,6 +26,8 @@ use std::io::Write;
 mod install;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "linux")]
+mod observe;
 
 #[cfg(any(windows, test))]
 fn transcript_path(distro: &str, path: &str) -> Result<String, String> {
@@ -187,6 +189,13 @@ fn main() {
     // A hard process deadline also bounds a blocked stdin/pipe write/read. Windows
     // closes all process handles on exit. Missing pipes fail immediately.
     let operation = env::args().nth(1).unwrap_or_default();
+    #[cfg(target_os = "linux")]
+    if operation == "--ctl" {
+        let code = observe::run(env::args().skip(2).collect()).unwrap_or_else(|error| {
+            eprintln!("agwintermctl: {error}"); 1
+        });
+        std::process::exit(code);
+    }
     let administrative = operation.starts_with("--");
     let deadline = if operation == "--install" {
         25

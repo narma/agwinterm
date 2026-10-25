@@ -154,6 +154,10 @@ try {
     $null = Ctl @('session','select',$copy)
     $fixture = (& wsl -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'wsl-agent.py')).Trim()
     # Python is only the test's fake agent, explicitly outside the integration PATH.
+    # Observe native Linux hook transitions through the installed CLI/Windows interop path.
+    $observe = '(agwintermctl session wait completed --scope pane --wait-timeout 15 --json < /dev/null > "$HOME/c1-match.json"; printf "%s" "$?" > "$HOME/c1-match.code") & (agwintermctl events --watch --kind status --timeout 1 --json < /dev/null > "$HOME/c1-watch.jsonl" 2> "$HOME/c1-watch.err"; printf "%s" "$?" > "$HOME/c1-watch.code") &'
+    $null = Ctl @('session','type',($observe + [char]13),'--target',$copy)
+    Start-Sleep -Milliseconds 300
     $agentCommand = "bash -c 'exec -a codex /usr/bin/python3 `"$fixture`" --dangerously-bypass-approvals-and-sandbox'"
     $null = Ctl @('session', 'type', ($agentCommand + [char]13), '--target', $copy)
     Start-Sleep -Seconds 3
@@ -164,6 +168,37 @@ try {
     $tree = Ctl @('tree')
     $copiedSession = $tree.workspaces.sessions | Where-Object id -eq $copy
     Check ($copiedSession.status -eq 'completed') 'Linux Stop hook updates pane status'
+    $matchRaw = (& wsl @selectors --exec cat "$linuxHome/c1-match.json") -join "`n"
+    $matchCode = (& wsl @selectors --exec cat "$linuxHome/c1-match.code") -join ''
+    $matchReply = $matchRaw | ConvertFrom-Json
+    if ($matchCode.Trim() -ne '0') { Write-Host (Ctl @('session','text','--target',$copy)); Write-Host $matchRaw }
+    Check ($matchCode.Trim() -eq '0' -and $matchReply.result.outcome -eq 'matched' -and $matchReply.result.source -eq 'transition') 'C1 WSL wait latches native hook completion'
+    $watchRaw = @(& wsl @selectors --exec cat "$linuxHome/c1-watch.jsonl")
+    $watchCode = (& wsl @selectors --exec cat "$linuxHome/c1-watch.code") -join ''
+    Check ($watchCode.Trim() -eq '1' -and $watchRaw.Count -ge 1) 'C1 WSL watch flushes pages and terminates on transport deadline'
+    $timeoutCommand = 'agwintermctl session wait blocked --scope pane --wait-timeout 1 --json > "$HOME/c1-timeout.json"; printf "%s" "$?" > "$HOME/c1-timeout.code"'
+    $null = Ctl @('session','type',($timeoutCommand + [char]13),'--target',$copy)
+    Start-Sleep -Seconds 2
+    $timeoutCode = (& wsl @selectors --exec cat "$linuxHome/c1-timeout.code") -join ''
+    $timeoutReply = ((& wsl @selectors --exec cat "$linuxHome/c1-timeout.json") -join "`n") | ConvertFrom-Json
+    Check ($timeoutCode.Trim() -eq '3' -and $timeoutReply.result.outcome -eq 'timeout') 'C1 WSL preserves confirmed wait timeout exit 3'
+    $cancelCommand = 'agwintermctl session wait blocked --scope pane --wait-timeout 0 --json > "$HOME/c1-cancel.json" 2> "$HOME/c1-cancel.err"; printf "%s" "$?" > "$HOME/c1-cancel.code"'
+    $null = Ctl @('session','type',($cancelCommand + [char]13),'--target',$copy)
+    Start-Sleep -Milliseconds 700
+    $null = Ctl @('session','type',([string][char]3),'--allow-control','--target',$copy)
+    Start-Sleep -Seconds 2
+    $cancelRaw = ((& wsl @selectors --exec cat "$linuxHome/c1-cancel.json") -join "`n")
+    $cancelCode = ((& wsl @selectors --exec cat "$linuxHome/c1-cancel.code") -join '').Trim()
+    if (-not $cancelRaw) { Write-Host (Ctl @('session','text','--target',$copy)); Write-Host "C1 cancellation wrapper exit=$cancelCode" }
+    $cancelReply = $cancelRaw | ConvertFrom-Json
+    Check ($cancelCode -eq '130' -and $cancelReply.code -eq 'cancelled' -and $cancelReply.source -eq 'client') 'C1 WSL terminal Ctrl+C cancels the pending Windows CLI wait with exit 130'
+    $cancelWatch = 'agwintermctl events --watch --json > "$HOME/c1-watch-cancel.jsonl" 2> "$HOME/c1-watch-cancel.err"; printf "%s" "$?" > "$HOME/c1-watch-cancel.code"'
+    $null = Ctl @('session','type',($cancelWatch + [char]13),'--target',$copy)
+    Start-Sleep -Milliseconds 700
+    $null = Ctl @('session','type',([string][char]3),'--allow-control','--target',$copy)
+    Start-Sleep -Seconds 1
+    $watchCancelCode = ((& wsl @selectors --exec cat "$linuxHome/c1-watch-cancel.code") -join '').Trim()
+    Check ($watchCancelCode -eq '130') 'C1 WSL terminal Ctrl+C terminates watch with exit 130'
     $overlay = Ctl @('session', 'overlay', 'open', '--command', 'printf "OVERLAY_%s\n" "LINUX"; sleep 2', '--wait', '--target', $copy)
     Start-Sleep -Seconds 1
     $overlayText = Ctl @('session', 'overlay', 'text', '--target', $copy)
@@ -179,6 +214,7 @@ try {
     Start-Sleep -Seconds 1
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
     Check (-not ($saved -join '').Contains('wsl-test-conversation')) 'Test agent binding is cleared before restart'
+    $observationBeforeRestart = Ctl @('events')
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit()
     $process = Start-Process -FilePath $exe -ArgumentList @('--app-id', $id, '--pipe', $id, '--default-session-host', 'inprocess') -WindowStyle Hidden -PassThru
@@ -186,6 +222,14 @@ try {
         Start-Sleep -Milliseconds 300
         try { $null = Ctl @('ping'); break } catch { if ($i -eq 29) { throw } }
     }
+    # Ping can succeed while restore is still creating the first window.
+    for ($i = 0; $i -lt 30; $i++) {
+        try { $observationAfterRestart = Ctl @('events'); break }
+        catch { if ($i -eq 29) { throw }; Start-Sleep -Milliseconds 300 }
+    }
+    Check ($observationBeforeRestart.run -ne $observationAfterRestart.run) 'C1 app restart changes observation run identity'
+    $oldRunReply = ((& $ctl events --run $observationBeforeRestart.run --since $observationBeforeRestart.cursor --pipe $id --json) -join "`n") | ConvertFrom-Json
+    Check (-not $oldRunReply.ok -and $oldRunReply.code -eq 'run-mismatch') 'C1 refuses an old cursor/run after real restart'
     # A fresh capture proves a Linux child is running in the restored pane, rather than
     # merely finding the old command in persisted scrollback. In-process shells cannot be adopted.
     for ($i = 0; $i -lt 20; $i++) {

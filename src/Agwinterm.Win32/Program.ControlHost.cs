@@ -1479,49 +1479,41 @@ internal partial class Program
         return result;
     }
 
-    // ---- Control-API event bus (agterm #273): a bounded, cursor-polled log of status / notification /
-    // session-lifecycle / tree-change events. Poll with `events --since <cursor>`; the reply carries the
-    // new max cursor. Instance-scoped (this window). Emitted from any thread; polled from the pipe. ----
-    private readonly object _evtLock = new();
-    private readonly Queue<(long Seq, string Type, string? Session, string? Info)> _evtLog = new();
-    private long _evtSeq;
+    private ControlObservation? _observation;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> ObservationHeads = new();
+    public ControlObservation Observation => LazyInitializer.EnsureInitialized(ref _observation,
+        () => new ControlObservation(_isQuickWindow ? "quick" : Id,
+            initialSequence: ObservationHeads.GetValueOrDefault(_isQuickWindow ? "quick" : Id)));
 
     internal void EmitEvent(string type, string? session = null, string? info = null)
     {
-        lock (_evtLock)
+        var fields = new Dictionary<string, object?>();
+        if (session is not null) fields["session"] = session;
+        if (info is not null) fields["info"] = info;
+        if (type == "session" && session is not null) { fields["sessionId"] = session; fields["action"] = info; }
+        else if (session is not null && Observation.Status("pane", session) is { } pane)
         {
-            _evtLog.Enqueue((++_evtSeq, type, session, info));
-            while (_evtLog.Count > 1000) _evtLog.Dequeue();   // bounded history
+            fields["paneId"] = session;
+            if (pane.SessionId is not null) fields["sessionId"] = pane.SessionId;
         }
+        Observation.Publish(type, fields);
     }
 
-    public string Events(long since, int limit)
-    {
-        (long Seq, string Type, string? Session, string? Info)[] items;
-        long cursor;
-        lock (_evtLock)
+    public string Events(long since, int limit) => Observation.Read(new(since, limit)).ToJson();
+    public Task<StatusWaitResult> WaitStatusAsync(string? target, StatusWaitQuery query, CancellationToken cancellationToken)
+        => InvokeOnUiQueued(() =>
         {
-            cursor = _evtSeq;
-            var q = _evtLog.Where(e => e.Seq > since);
-            if (limit > 0) q = q.Take(limit);
-            items = q.ToArray();
-        }
-        var sb = new System.Text.StringBuilder();
-        sb.Append("{\"cursor\":").Append(cursor).Append(",\"events\":[");
-        for (int i = 0; i < items.Length; i++)
-        {
-            if (i > 0) sb.Append(',');
-            var e = items[i];
-            sb.Append("{\"seq\":").Append(e.Seq)
-              .Append(",\"type\":").Append(System.Text.Json.JsonSerializer.Serialize(e.Type));
-            if (e.Session is not null) sb.Append(",\"session\":").Append(System.Text.Json.JsonSerializer.Serialize(e.Session));
-            if (e.Info is not null) sb.Append(",\"info\":").Append(System.Text.Json.JsonSerializer.Serialize(e.Info));
-            sb.Append('}');
-        }
-        sb.Append("]}");
-        return sb.ToString();
-    }
-
+            cancellationToken.ThrowIfCancellationRequested();
+            if (query.Scope == "session")
+            {
+                var session = ResolveSplitTarget(target, out var refusal);
+                if (session is null || refusal is not null) throw new ObservationException("invalid-target", refusal ?? "no session");
+                return Observation.WaitAsync("session", session.Id, query.Statuses, query.TimeoutMs, cancellationToken);
+            }
+            var pane = target is null or "active" ? ActiveSurface() : FindStrictControlPane(target)?.pane;
+            if (pane is null) throw new ObservationException("invalid-target", "unknown or ambiguous pane");
+            return Observation.WaitAsync("pane", pane.Id, query.Statuses, query.TimeoutMs, cancellationToken);
+        });
     public string AdoptClaude() => InvokeOnUi(() => AdoptClaudeSessions());
 
     public string RestartClaudeYolo(string? target) => InvokeOnUi(() =>

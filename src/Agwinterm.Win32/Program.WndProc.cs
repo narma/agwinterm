@@ -49,7 +49,7 @@ internal partial class Program
                 if ((int)wParam == _quickHotkeyId && _quickHotkeyId != 0) QuickOp("toggle", global: true);
                 return IntPtr.Zero;
             }
-            if (msg == WM_DESTROY) { _uia.Dispose(); _uiGone.Cancel(); return IntPtr.Zero; }
+            if (msg == WM_DESTROY) { _uia.Dispose(); _uiGone.Cancel(); EndObservation(); return IntPtr.Zero; }
         }
         switch (msg)
         {
@@ -689,6 +689,7 @@ internal partial class Program
                 _uia.Dispose();
                 CloseWindowPicker();
                 _uiGone.Cancel();                 // release any pipe thread waiting in InvokeOnUiQueued
+                EndObservation();
                 RemoveTrayIcon();                 // drop the shell tray balloon icon
                 bool quitting;
                 lock (_windowIndex) quitting = _updateQuitting || _byId.Count <= 1;

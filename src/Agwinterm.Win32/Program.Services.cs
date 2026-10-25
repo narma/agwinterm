@@ -1622,6 +1622,7 @@ internal partial class Program
     /// stall the UI thread every window shares.</summary>
     private bool SaveState(bool captureCommands = false, bool sync = false)
     {
+        foreach (var session in AllSessions()) ObserveLayout(session);
         string? json = BuildStateSnapshot(out _, captureCommands);
         if (json is null) return false;
         if (sync)
