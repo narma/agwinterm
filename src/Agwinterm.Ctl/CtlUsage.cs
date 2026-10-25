@@ -100,6 +100,8 @@ public static class CtlUsage
               --styles = JSON attribute runs with grid columns and a cursor snapshot)
           agwintermctl session hud [open|update] <message...> [--detail TEXT] [--spinner|--spinner-style STYLE]
               [--position ANCHOR] [--size-percent N] [--background-color HEX] [--text-color HEX] [--target ID]
+              [--hide-after 0..86400] [--sticky] [--no-frame] [--font-size 6..72] [--pane left|right|focused|ID]
+              [--markdown] [--file PATH instead of message] (strict UTF-8 up to 64 KiB; convert WSL paths with wslpath -w)
           agwintermctl session hud close [--target ID]   (see docs/session-hud.md)
           agwintermctl session overlay open <command...> [--pane left|right] [--wait|--block] [--size-percent N] [--target ID]
           agwintermctl session overlay close|result|copy [--pane left|right] [--target ID]

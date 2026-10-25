@@ -7,7 +7,7 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
@@ -46,8 +46,8 @@ public static class CtlArguments
         ["session overlay copy"] = "window target pane", ["session overlay text"] = "window target pane all lines",
         ["session overlay resize"] = "window target size-percent width height full pane",
         ["session overlay hide"] = "window target pane", ["session overlay show"] = "window target pane", ["session overlay toggle"] = "window target pane",
-        ["session hud open"] = "window target detail spinner spinner-style position size-percent background-color text-color",
-        ["session hud update"] = "window target detail spinner spinner-style position size-percent background-color text-color",
+        ["session hud open"] = "window target detail spinner spinner-style position size-percent background-color text-color hide-after font-size sticky no-frame markdown pane file",
+        ["session hud update"] = "window target detail spinner spinner-style position size-percent background-color text-color hide-after font-size sticky no-frame markdown pane file",
         ["session hud close"] = "window target",
         ["command run"] = "window target command mode", ["command list"] = "window", ["command leader"] = "window",
         ["claude adopt"] = "window", ["claude yolo"] = "window target", ["claude update"] = "window",

@@ -271,7 +271,15 @@ public static class AgentSkill
           `hud update "message"` replaces the whole spec except its original background; omitted options reset.
           `hud close` dismisses only the HUD. Open replaces a HUD but refuses over a program overlay; program
           overlay open replaces a HUD. Overlay close/the ordinary close shortcut dismiss a HUD too. Tree's hud
-          object is its read-back. No timeout or persistence. Max 256 normalized Unicode scalars per text field,
+          object is its read-back. No persistence; --hide-after 0..86400 seconds sets elapsed expiry (0/default untimed).
+          --sticky removes edge margin and allows width 100% off-center; --no-frame removes border/reduces padding.
+          --font-size 6..72 DIP updates native text in place. --pane left|right|focused|EXACT_ID pins a main/split pane
+          through swaps; pane removal closes the HUD. Existing --target still requires the owning session.
+          --markdown supports bounded multiline headings, simple emphasis, code, flat lists, quotes, rules and
+          pipe tables (8 columns/32 rows); 4096 scalars/128 lines, no HTML or clickable links. --file PATH reads
+          strict UTF-8 up to 64 KiB instead of a positional message; WSL callers use wslpath -w explicitly.
+          Tree adds style, anchorPaneId, visible and client-pixel geometry. Expiry cannot close a replacement.
+          Plain mode keeps max 256 normalized Unicode scalars per text field,
           no control characters, nonblank message. Split-pane-only/auxiliary ids refuse: name the owning session.
           Scratch/quick/dashboard obscure it. See docs/session-hud.md for exact wire fields and clipping limits.
         - `agwintermctl session overlay open "<command>" [--pane left|right] [--size-percent N] [--wait] [--block] [--target <id>]`

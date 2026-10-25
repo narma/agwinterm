@@ -194,6 +194,7 @@ internal partial class Program
         lock (_workspaces) panes = _workspaces.SelectMany(w => w.Sessions).SelectMany(s => s.Panes).ToArray();
         var shells = ReadForegroundShells(panes);
         var overlays = InvokeOnUiQueued(() => AllSessions().ToDictionary(s => s.Id, OverlayDetails));
+        var huds = InvokeOnUiQueued(() => AllSessions().ToDictionary(s => s.Id, ProjectHud));
         lock (_workspaces)
             return _workspaces.Select(w => new WorkspaceSnapshot(
                 w.Id, w.Name, ReferenceEquals(CurrentWorkspace(), w),
@@ -215,7 +216,7 @@ internal partial class Program
                         // panes and the slots ride on them, so `["right"]` becomes `["left"]` by
                         // construction. Empty = the server omits the key.
                         PaneOverlays: s.Panes.Select((p, i) => (p, i)).Where(t => t.p.Overlay.Term is not null)
-                                             .Select(t => OverlayPanes.Word(t.i)).ToList(), Hud: s.Hud,
+                                             .Select(t => OverlayPanes.Word(t.i)).ToList(), Hud: huds.GetValueOrDefault(s.Id),
                         ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList(),
                         CustomName: s.CustomName,
                         PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf), OverlayDetails: overlays.GetValueOrDefault(s.Id));

@@ -96,7 +96,7 @@ All rows include `window`, `action` and applicable exact `sessionId`/`paneId`. O
 | split | opened, closed, axis-changed, resized, swapped | paneIds in current slot order, focusedPane, axis; ratios for split layouts; removedPaneId on close |
 | scratch | opened, shown, hidden, closed | paneId of scratch |
 | overlay | opened, exited, closed | overlayId, slot (session|pane), ownerPaneId for pane slot; exitCode on exit; reason on close (closed|replaced|owner-removed) |
-| hud | opened, updated, closed | slot=session, reason on close (closed|replaced|owner-removed); no message body |
+| hud | opened, updated, closed | slot=session, anchorPaneId when anchored, reason on close (closed|replaced|owner-removed|expired); no message body |
 | session-status | changed | status, previousStatus, winningPaneId, statusChangedAt |
 | status (existing) | changed | paneId, status, statusChangedAt, blink, autoReset; retain legacy session/info |
 

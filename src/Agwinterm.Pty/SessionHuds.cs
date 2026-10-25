@@ -1,10 +1,21 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Agwinterm.Core;
 
 namespace Agwinterm.Pty;
 
 public sealed record HudSpec(string Message, string? Detail, string Spinner, string? BackgroundColor,
-    string? TextColor, int? SizePercent, string Position);
+    string? TextColor, int? SizePercent, string Position, double HideAfter = 0, bool Sticky = false,
+    bool Frame = true, double? FontSize = null, bool Markdown = false, [property: JsonIgnore] string? Pane = null)
+{
+    public string? AnchorPaneId { get; init; }
+    public double EffectiveFontSize { get; init; } = FontSize ?? 13;
+    public bool Visible { get; init; }
+    public HudGeometry? Geometry { get; init; }
+    [JsonIgnore] public HudDocument? Document { get; init; }
+}
+public sealed record HudGeometry(int X, int Y, int Width, int Height);
 
 /// <summary>Host-independent HUD validation, read-back and bounded nine-anchor geometry.</summary>
 public static class SessionHuds
@@ -22,18 +33,36 @@ public static class SessionHuds
         if (args.ValueKind is not (JsonValueKind.Object or JsonValueKind.Undefined))
         { error = "hud: args must be an object"; return false; }
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        double hideAfter = 0; double? fontSize = null; bool sticky = false, frame = true, markdown = false;
         int? width = null;
         if (args.ValueKind == JsonValueKind.Object)
         foreach (var field in args.EnumerateObject())
         {
+            if (!seen.Add(field.Name)) { error = "hud: duplicate option '" + field.Name + "'"; return false; }
             if (action == "close") { error = "hud close takes no display options"; return false; }
+            if (field.Name is "hide-after" or "font-size")
+            {
+                if (field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetDouble(out double n) || !double.IsFinite(n) ||
+                    (field.Name == "hide-after" ? n is < 0 or > 86400 : n is < 6 or > 72))
+                { error = "hud: hide-after must be 0..86400 seconds and font-size 6..72 DIP"; return false; }
+                if (field.Name == "hide-after") hideAfter = n; else fontSize = n;
+                continue;
+            }
+            if (field.Name is "sticky" or "frame" or "markdown")
+            {
+                if (field.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) { error = "hud: " + field.Name + " must be boolean"; return false; }
+                if (field.Name == "sticky") sticky = field.Value.GetBoolean();
+                else if (field.Name == "frame") frame = field.Value.GetBoolean(); else markdown = field.Value.GetBoolean();
+                continue;
+            }
             if (field.Name == "size-percent")
             {
                 if (field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetInt32(out int n) || n is < 1 or > 100)
                 { error = "hud: size-percent must be a whole number in 1..100"; return false; }
-                width = Math.Clamp(n, 10, 80); continue;
+                width = n; continue;
             }
-            if (field.Name is not ("message" or "detail" or "spinner" or "color" or "text-color" or "position"))
+            if (field.Name is not ("message" or "detail" or "spinner" or "color" or "text-color" or "position" or "pane"))
             { error = "hud: unknown option '" + field.Name + "'"; return false; }
             if (field.Value.ValueKind != JsonValueKind.String)
             { error = "hud: '" + field.Name + "' must be text"; return false; }
@@ -43,19 +72,24 @@ public static class SessionHuds
         string Read(string key, string fallback = "") => values.GetValueOrDefault(key, fallback);
         string message = Read("message"), detail = Read("detail");
         if (string.IsNullOrWhiteSpace(message)) { error = "hud requires a nonblank message"; return false; }
-        foreach (var value in new[] { message, detail })
+        foreach (var (value, formatted) in new[] { (message, markdown), (detail, false) })
         {
-            if (value.Any(char.IsControl)) { error = "hud text must not contain control characters"; return false; }
+            if (value.Any(c => char.IsControl(c) && !(formatted && c is '\r' or '\n' or '\t'))) { error = "hud text must not contain control characters"; return false; }
             // Normalize validates UTF-16 too; malformed Unicode is a refusal, never a render exception.
             try
             {
-                if (value.Normalize().EnumerateRunes().Count() > MaxTextLength)
-                { error = "hud text exceeds 256 Unicode scalars"; return false; }
+                int limit = formatted ? HudMarkdown.MaxScalars : MaxTextLength;
+                if (value.Normalize().EnumerateRunes().Count() > limit)
+                { error = $"hud text exceeds {limit} Unicode scalars"; return false; }
             }
             catch (ArgumentException) { error = "hud text is not valid Unicode"; return false; }
         }
         string position = Read("position", "center") switch { "top" => "top-center", "bottom" => "bottom-center", var p => p };
         if (!Positions.Contains(position)) { error = "hud: invalid position; use " + string.Join('|', Positions) + " (top/bottom aliases accepted)"; return false; }
+        if (width is { } requested) width = Math.Clamp(requested, 10, sticky && position != "center" ? 100 : 80);
+        string? pane = values.GetValueOrDefault("pane");
+        if (pane is not null && (string.IsNullOrWhiteSpace(pane) || pane.Length > 256 || pane.Any(char.IsControl)))
+        { error = "hud: invalid pane selector"; return false; }
         string spinner = Read("spinner", "none");
         if (!Spinners.Contains(spinner)) { error = "hud: invalid spinner; use " + string.Join('|', Spinners); return false; }
         foreach (string key in new[] { "color", "text-color" })
@@ -66,12 +100,25 @@ public static class SessionHuds
             { error = "hud: " + key + " must be #rrggbb"; return false; }
             values[key] = "#" + digits.ToLowerInvariant();
         }
+        HudDocument? document = null;
+        try { if (markdown) document = HudMarkdown.Parse(message); }
+        catch (ArgumentException ex) { error = ex.Message; return false; }
         spec = new(message.Normalize(), string.IsNullOrEmpty(detail) ? null : detail.Normalize(), spinner,
-            values.GetValueOrDefault("color"), values.GetValueOrDefault("text-color"), width, position);
+            values.GetValueOrDefault("color"), values.GetValueOrDefault("text-color"), width, position, hideAfter, sticky, frame, fontSize, markdown, pane)
+            { Document = document };
         return true;
     }
 
     public static string Reply(string session, HudSpec? hud) => JsonSerializer.Serialize(new { session, hud }, JsonOptions);
+
+    public static string? ResolvePane(string selector, IReadOnlyList<string> paneIds, int focused)
+    {
+        if (paneIds.Contains(selector, StringComparer.Ordinal)) return selector;
+        int index = selector switch { "left" => 0, "right" => 1, "focused" => focused, _ => -1 };
+        return index >= 0 && index < paneIds.Count ? paneIds[index] : null;
+    }
+
+    public static long? Deadline(long nowMilliseconds, double seconds) => seconds == 0 ? null : checked(nowMilliseconds + (long)Math.Ceiling(seconds * 1000));
 
     public sealed record Target(string Id, string Name, IEnumerable<string> SurfaceIds);
 
@@ -96,11 +143,13 @@ public static class SessionHuds
     public static Box Place(float x, float y, float width, float height, float neededWidth, float neededHeight, HudSpec spec)
     {
         width = Math.Max(0, width); height = Math.Max(0, height);
-        float w = spec.SizePercent is { } n ? width * n / 100 : Math.Clamp(neededWidth, width * .1f, width * .8f);
+        float cap = spec.Sticky && spec.Position != "center" ? 1 : .8f;
+        float w = spec.SizePercent is { } n ? width * n / 100 : Math.Clamp(neededWidth, width * .1f, width * cap);
         float h = Math.Clamp(neededHeight, 0, height * .8f);
         int i = Array.IndexOf(Positions, spec.Position); if (i < 0) i = 4;
-        static float Offset(float extent, float size, int band) => band switch
-        { 0 => extent * .1f, 2 => extent * .9f - size, _ => (extent - size) / 2 };
+        float margin = spec.Sticky && spec.Position != "center" ? 0 : .1f;
+        float Offset(float extent, float size, int band) => band switch
+        { 0 => extent * margin, 2 => extent * (1 - margin) - size, _ => (extent - size) / 2 };
         return new(x + Offset(width, w, i % 3), y + Offset(height, h, i / 3), w, h);
     }
 

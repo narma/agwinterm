@@ -10,6 +10,7 @@ internal partial class Program
 
     private void ObserveLayout(Ses ses)
     {
+        ReconcileHud(ses);
         if (ses.Panes.Count == 0 || _uiGone.IsCancellationRequested || _retiredObservationSessions.TryGetValue(ses, out _)) return;
         var now = new ObservedLayout(ses.Panes.Select(p => p.Id).ToArray(), ses.ActivePane.Id,
             ses.Axis, ses.Panes.Select(p => p.Ratio).ToArray());
@@ -39,7 +40,7 @@ internal partial class Program
     }
 
     private void SurfaceEvent(string type, string action, Ses ses, Pane? surface = null,
-        Pane? owner = null, string? reason = null, int? exitCode = null)
+        Pane? owner = null, string? reason = null, int? exitCode = null, string? anchorPaneId = null)
     {
         var fields = new Dictionary<string, object?> { ["action"] = action, ["sessionId"] = ses.Id };
         if (surface is not null) fields["paneId"] = surface.Id;
@@ -48,6 +49,7 @@ internal partial class Program
         if (owner is not null) fields["ownerPaneId"] = owner.Id;
         if (reason is not null) fields["reason"] = reason;
         if (exitCode is not null) fields["exitCode"] = exitCode;
+        if (anchorPaneId is not null) fields["anchorPaneId"] = anchorPaneId;
         Observation.Publish(type, fields);
     }
 
@@ -63,7 +65,7 @@ internal partial class Program
         if (_observation is not { } observation) return;
         foreach (var session in AllSessions())
         {
-            if (session.Hud is not null) SurfaceEvent("hud", "closed", session, reason: "owner-removed");
+            if (session.Hud is not null) SurfaceEvent("hud", "closed", session, reason: "owner-removed", anchorPaneId: session.Hud.AnchorPaneId);
             if (session.Scratch is { } scratch) SurfaceEvent("scratch", "closed", session, scratch);
             if (session.Overlay.Term is { } overlay) SurfaceEvent("overlay", "closed", session, overlay, reason: "owner-removed");
             foreach (var pane in session.Panes)
