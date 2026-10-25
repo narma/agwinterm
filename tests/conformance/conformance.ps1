@@ -123,6 +123,11 @@ function Wait-Session([string]$Id, [switch]$Prompt) {
     return $false
 }
 
+function Test-Refusal($resp, [int]$ExitCode, [string]$Diagnostic, [bool]$AllowUsageError = $false) {
+    if ($AllowUsageError -and $ExitCode -eq 2 -and $Diagnostic -and $null -eq $resp) { return $true }
+    return ($null -ne $resp) -and ($resp.PSObject.Properties.Name -notcontains '__raw') -and (-not $resp.ok) -and [bool]$resp.error
+}
+
 function Test-Shape($resp, [string]$kind, $fields, [bool]$Payload = $false) {
     if ($null -eq $resp -or $resp.PSObject.Properties.Name -contains '__raw') { return "not JSON: $($resp.__raw)" }
     if (-not $Payload -and -not $resp.ok) { return "ok:false — $($resp.error)" }
@@ -204,7 +209,7 @@ try {
     # cheerful ok:true that did nothing.
     foreach ($e in $contract.errors) {
         $resp = Invoke-Ctl (Expand-Args $e.args)
-        $isRefusal = ($null -ne $resp) -and ($resp.PSObject.Properties.Name -notcontains '__raw') -and (-not $resp.ok) -and $resp.error
+        $isRefusal = Test-Refusal $resp $ctlExit $ctlError ([bool]$e.allowUsageError)
         Check "refuses: $($e.args -join ' ')" $isRefusal
     }
 }

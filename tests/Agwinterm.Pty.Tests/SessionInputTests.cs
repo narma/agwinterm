@@ -7,6 +7,41 @@ public class SessionInputTests
 {
     [Theory]
     [InlineData(false)] [InlineData(true)]
+    public void HidingOverlayCancelsOnlyItsOwnSelectionDrag(bool selectedOverlay)
+    {
+        nint hwnd = CreateWindowExW(0, "STATIC", "overlay drag test", 0, 0, 0, 0, 0, new nint(-3), 0, 0, 0);
+        Assert.NotEqual(nint.Zero, hwnd);
+        try
+        {
+            var program = LoadProgram();
+            var app = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(program);
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+            object MakePane() => Activator.CreateInstance(program.GetNestedType("Pane", BindingFlags.NonPublic)!, true)!;
+            var selected = MakePane();
+            var hidden = selectedOverlay ? selected : MakePane();
+            program.GetField("_hwnd", fields)!.SetValue(app, hwnd);
+            program.GetField("_selPane", fields)!.SetValue(app, selected);
+            program.GetField("_selecting", fields)!.SetValue(app, true);
+            program.GetField("_selAutoDir", fields)!.SetValue(app, 1);
+            SetCapture(hwnd);
+            Assert.Equal(hwnd, GetCapture());
+
+            program.GetMethod("CancelOverlaySelection", fields)!.Invoke(app, [hidden]);
+
+            Assert.Equal(!selectedOverlay, program.GetField("_selecting", fields)!.GetValue(app));
+            Assert.Equal(selectedOverlay ? 0 : 1, program.GetField("_selAutoDir", fields)!.GetValue(app));
+            Assert.Same(selectedOverlay ? null : selected, program.GetField("_selPane", fields)!.GetValue(app));
+            Assert.Equal(selectedOverlay ? nint.Zero : hwnd, GetCapture());
+        }
+        finally { ReleaseCapture(); DestroyWindow(hwnd); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint SetCapture(nint hwnd);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetCapture();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ReleaseCapture();
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
     public async Task QuickReplacementRetiresOnlyExitedPaneAndItsWaiters(bool exited)
     {
         var program = LoadProgram();

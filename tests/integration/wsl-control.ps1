@@ -205,12 +205,16 @@ try {
     Check ($overlayText.text -match 'OVERLAY_LINUX') 'Overlay commands run in Linux'
     $null = Ctl @('session', 'overlay', 'close', '--target', $copy)
     $null = Ctl @('session', 'select', $session)
-    $c2Command = 'printf "C2_CWD=%s\n" "$PWD"; sleep 3'
+    $c2Command = 'printf "C2_CWD=%s\n" "$PWD"; sleep 30'
     $c2Overlay = Ctl @('session','overlay','open','--command',$c2Command,'--cwd',"$linuxHome/path with spaces",'--target',$copy,'--width','420','--height','240','--background-color','#123456','--wait')
     Start-Sleep -Seconds 1
     $c2Text = (Ctl @('session','overlay','text','--target',$c2Overlay)).text
     Check (($c2Text -replace '\s','').Contains("C2_CWD=$linuxHome/pathwithspaces")) 'C2 explicit overlay cwd preserves Linux paths with spaces'
     Check (((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session).active) 'C2 background open does not select the owner'
+    $badCwd = (& $ctl session overlay open --command 'echo SHOULD_NOT_RUN' --cwd "$linuxHome/missing ' directory" --target $copy --pipe $id --json) | ConvertFrom-Json
+    Check (-not $badCwd.ok -and $LASTEXITCODE -eq 1) 'C2 nonexistent WSL cwd refuses replacement'
+    $preserved = ((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).overlayDetails[0]
+    Check ($preserved.id -eq $c2Overlay -and -not $preserved.exited) 'C2 invalid WSL cwd preserves the running overlay identity and process'
     $null = Ctl @('session','overlay','hide','--target',$c2Overlay)
     Check (((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).overlayDetails[0].hidden) 'C2 WSL overlay hides without losing its identity'
     $null = Ctl @('session','overlay','open','--command','sleep 2','--target',$copy,'--follow','--wait')

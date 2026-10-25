@@ -10,6 +10,25 @@ internal partial class Program
         string? pane, OverlayTextArgs text, OverlayOptions options)
     {
         TaskCompletionSource<string>? done = null;
+        string? checkedCwd = options.Cwd;
+        Ses? cwdSession = null;
+        ShellProfile? cwdProfile = null;
+        if (action == "open" && checkedCwd is not null)
+        {
+            // WSL may be cold: resolve on the UI, probe on the pipe thread, then
+            // revalidate the owner/profile before any destructive slot change.
+            (cwdSession, cwdProfile) = InvokeOnUiQueued(() =>
+            {
+                var candidate = FindSesForTarget(target);
+                return (candidate, candidate is null ? null : ResolveProfile(candidate.ProfileName));
+            });
+            if (cwdProfile is not null && WslIntegration.IsWsl(cwdProfile.Command))
+            {
+                try { checkedCwd = WslIntegration.ValidateDirectory(cwdProfile, checkedCwd); }
+                catch (Exception ex) when (ex is IOException or TimeoutException or System.ComponentModel.Win32Exception)
+                { return ISessionHost.RefusePrefix + "overlay cwd is unavailable in the target WSL profile: " + ex.Message; }
+            }
+        }
         string reply = InvokeOnUiQueued(() =>
         {
             // The shipped session-wide result is window-wide even when no session resolves.
@@ -53,7 +72,9 @@ internal partial class Program
             if (action == "open")
             {
                 if (string.IsNullOrWhiteSpace(command)) return ISessionHost.RefusePrefix + "overlay open needs a command; nothing opened";
-                string? cwd = options.Cwd;
+                if (cwdSession is not null && (!ReferenceEquals(session, cwdSession) || !ReferenceEquals(ResolveProfile(session.ProfileName), cwdProfile)))
+                    return ISessionHost.RefusePrefix + "overlay target or profile changed while checking cwd; nothing replaced";
+                string? cwd = checkedCwd;
                 if (cwd is not null && !WslIntegration.IsWsl(ResolveProfile(session.ProfileName)?.Command))
                 {
                     cwd = Path.GetFullPath(WslIntegration.DecodeCwd(cwd));
@@ -99,6 +120,7 @@ internal partial class Program
             bool hidden = action == "hide" || action == "toggle" && !slot.Hidden;
             if (hidden != slot.Hidden)
             {
+                if (hidden) CancelOverlaySelection(slot.Term);
                 slot.Hidden = hidden;
                 if (owner is null && ReferenceEquals(session, _active))
                 {
@@ -116,6 +138,15 @@ internal partial class Program
         try { done.Task.Wait(Timeout.Infinite, _uiGone.Token); }
         catch (OperationCanceledException) { throw new InvalidOperationException(OverlayWindowGone); }
         return done.Task.Result;
+    }
+
+    private void CancelOverlaySelection(Pane term)
+    {
+        if (!ReferenceEquals(_selPane, term)) return;
+        _selecting = false;
+        _selPane = null;
+        StopSelAutoscroll();
+        if (GetCapture() == _hwnd) Win32.ReleaseCapture();
     }
 
     private (float x, float y, float w, float h) OverlayRect(OverlaySlot slot)

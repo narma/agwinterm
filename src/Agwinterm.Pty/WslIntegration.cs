@@ -130,6 +130,17 @@ public static class WslIntegration
 
     public static string WindowsPath(ShellProfile profile, string path) => RunCore(profile, ["wslpath", "-w", path]);
 
+    /// <summary>Check access as the selected Linux user before replacing a running program.</summary>
+    public static string ValidateDirectory(ShellProfile profile, string path)
+    {
+        path = DecodeCwd(path);
+        if ((path.Length >= 2 && path[1] == ':') || path.StartsWith(@"\\"))
+            path = RunCore(profile, ["wslpath", "-u", path], timeoutMs: 5000);
+        return RunCore(profile, ["/bin/sh", "-c",
+            "if [ \"$1\" = '~' ]; then set -- \"$HOME\"; fi; cd -- \"$1\" && pwd -P",
+            "overlay-cwd", path], timeoutMs: 5000);
+    }
+
     public static string QuotedLinuxPaths(ShellProfile profile, IEnumerable<string> paths) =>
         string.Join(' ', paths.Select(path => QuoteShell(RunCore(profile, ["wslpath", "-u", path]))));
 
