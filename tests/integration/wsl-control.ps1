@@ -256,6 +256,12 @@ try {
     $c6Order = @((Ctl @('tree')).workspaces.sessions.id)
     Check ([array]::IndexOf($c6Order,$c6) -eq ([array]::IndexOf($c6Order,$copy)-1)) 'C6 anchored WSL move preserves identity and order'
     $null = Ctl @('session','close','--target',$c6)
+    $c7Reveal = Ctl @('session','reveal','--target',$copy,'--path-only')
+    Check (-not $c7Reveal.opened -and (Test-Path -LiteralPath $c7Reveal.path -PathType Container) -and $c7Reveal.path.EndsWith('path with spaces')) 'C7 WSL Reveal converts the addressed profile and directory without launching Explorer'
+    $c7Windows = Ctl @('session','new','--name','C7 Windows visible','--profile','C0 Windows')
+    $c7Background = Ctl @('session','reveal','--target',$copy,'--path-only')
+    Check ($c7Background.path -eq $c7Reveal.path -and ((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $c7Windows).active) 'C7 background WSL Reveal uses target profile while Windows session remains selected'
+    $null = Ctl @('session','close','--target',$c7Windows)
     $c5 = Ctl @('session','duplicate','--target',$copy)
     $c5Right = Ctl @('session','split','on','--axis','horizontal','--target',$c5)
     Start-Sleep -Seconds 1

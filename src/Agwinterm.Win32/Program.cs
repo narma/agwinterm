@@ -766,7 +766,7 @@ internal partial class Program : ISessionHost, IWindowHost
 
         if (_isQuickWindow) return; // auxiliary window is shown only by a deliberate summon
 
-        ShowWindow(_hwnd, _argMaximized || (_geoValid && _geoMax) ? SW_MAXIMIZE : SW_SHOW);
+        ShowWindow(_hwnd, _startMinimized ? 7 : _argMaximized || (_geoValid && _geoMax) ? SW_MAXIMIZE : SW_SHOW);
         if (_argFullscreen) { _argFullscreen = false; ToggleFullscreen(); }   // first window only
         _argMaximized = false;
         _wasMaximized = IsZoomed(_hwnd);

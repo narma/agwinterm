@@ -143,6 +143,14 @@ public static class CtlUsage
               pane/session named — into its restore slot NOW, so a crash or Stop-Process keeps it; replies
               {captured,replayOnRestore,panes:[{pane,session,captured|null}]}; read back in `tree --json` as
               capturedCommands; replayOnRestore = the restore-commands toggle, which gates the replay, not the capture)
+          agwintermctl window new --minimized [--name NAME] (background creation; effective geometry reply)
+          agwintermctl window next|previous|minimize|restore|geometry [--target WINDOW]
+          agwintermctl window fullscreen [on|off|toggle] [--target WINDOW]
+          agwintermctl window monitors                     (device IDs and physical work areas)
+          agwintermctl window move --monitor primary|DEVICE [--target WINDOW]
+          agwintermctl session reveal [--target PANE] [--window WINDOW] [--path-only]
+            Reveal selects the pane directory in Explorer; path-only validates without opening it.
+            Window geometry uses physical desktop pixels; minimize/restore do not request focus.
           agwintermctl restore clear                       (delete this window's saved session tree)
           agwintermctl recent list                         (app-wide durable closed session/workspace history)
           agwintermctl recent open ENTRY-ID [--window ID]   (open in a live library window; partial workspace outcomes are explicit)

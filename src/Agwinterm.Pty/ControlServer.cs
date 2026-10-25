@@ -305,6 +305,20 @@ public sealed partial class ControlServer : IDisposable
                     cmd == "recent.clear" ? recent.RecentClear(entryId) : recent.RecentOpen(entryId!, windowSel)));
             }
 
+            if (NativeWindowRequest.Applies(cmd, args))
+            {
+                var seen = new HashSet<string>();
+                foreach (var field in root.EnumerateObject())
+                {
+                    if (!seen.Add(field.Name) || field.Name is not ("cmd" or "args" or "target" or "window")) return Err("unknown or duplicate native-window field");
+                    if (field.Name is "target" or "window" && field.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.String)) return Err("invalid selector type");
+                }
+                NativeWindowRequest.Validate(cmd, args, target, windowSel);
+                return (_windows as INativeWindowHost ?? _host as INativeWindowHost) is { } native
+                    ? OkRaw(JsonSerializer.Serialize(native.NativeWindowCommand(cmd, args.ValueKind == JsonValueKind.Undefined ? default : args.Clone(), target, windowSel)))
+                    : Err("native window controls unavailable");
+            }
+
             // App-level, window-agnostic verbs first.
             switch (cmd)
             {

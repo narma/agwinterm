@@ -525,14 +525,12 @@ internal partial class Program
     private void RevealActiveInExplorer()
     {
         if (_active is null) return;
-        string cwd = PaneCwd(_active.ActivePane);
-        if (WslIntegration.IsWsl(ResolveProfile(_active.ProfileName)?.Command) && cwd.StartsWith('/'))
+        var context = RevealContext("active");
+        _ = Task.Run(() =>
         {
-            RevealLinuxPath(cwd, select: true);
-            return;
-        }
-        if (cwd.Length == 0 || !Directory.Exists(cwd)) { ShowToast("no directory to reveal"); return; }
-        ShellExecuteW(IntPtr.Zero, "open", "explorer.exe", "/select,\"" + cwd + "\"", null, SW_SHOW);   // the directory selected in its parent, as agterm's Reveal does
+            try { RevealDirectory(context.cwd, context.profile, false); }
+            catch (Exception ex) { Post(() => ShowToast("reveal failed: " + ex.Message)); }
+        });
     }
 
     /// <summary>Edit Keymap… / Edit agwinterm.conf…: the file in whatever the shell associates with

@@ -267,6 +267,10 @@ switch (area)
             }
             // session metrics [<pane-id>] — cell size + pixel box of a pane, for sizing an
             // image.frameshm buffer. No args of its own; --json is the useful form.
+            case "reveal":
+                if (rest.Count > 0) { Console.Error.WriteLine("session reveal accepts --target, not positional arguments"); return 2; }
+                cargs["path-only"] = options.ContainsKey("path-only");
+                break;
             case "metrics":
                 if (rest.Count > 0) target = rest[0];
                 break;
@@ -640,7 +644,17 @@ switch (area)
             case "new":
                 if (Opt("name") is { } wn) cargs["name"] = wn;
                 else if (rest.Count > 0) cargs["name"] = string.Join(' ', rest);
+                if (options.ContainsKey("minimized")) { cargs["minimized"] = true; target = null; }
                 break;
+            case "monitors":
+                if (rest.Count != 0) { Console.Error.WriteLine("window monitors takes no arguments"); return 2; }
+                target = null; break;
+            case "fullscreen":
+                if (rest.Count > 1) { Console.Error.WriteLine("window fullscreen accepts on/off/toggle and --target"); return 2; }
+                cargs["op"] = rest.Count == 0 ? "toggle" : rest[0]; target = Opt("target") ?? "active"; break;
+            case "next": case "previous": case "minimize": case "restore": case "geometry":
+                if (rest.Count > 1 || rest.Count > 0 && Opt("target") is not null) { Console.Error.WriteLine("choose one window selector"); return 2; }
+                target = rest.Count == 1 ? rest[0] : Opt("target") ?? "active"; break;
             case "list": case "state": break;   // state = read-back of window UI flags
             case "select":
             case "close":
@@ -658,6 +672,11 @@ switch (area)
                 if (int.TryParse(rest.Count > 2 ? rest[2] : Opt("h"), out var rh)) cargs["h"] = rh;
                 break;
             case "move":
+                if (Opt("monitor") is { } monitor)
+                {
+                    if (rest.Count > 1 || options.ContainsKey("x") || options.ContainsKey("y") || rest.Count > 0 && Opt("target") is not null) { Console.Error.WriteLine("monitor move accepts one window and no coordinates"); return 2; }
+                    target = rest.Count == 1 ? rest[0] : Opt("target") ?? "active"; cargs["monitor"] = monitor; break;
+                }
                 target = rest.Count > 0 ? rest[0] : "active";
                 if (int.TryParse(rest.Count > 1 ? rest[1] : Opt("x"), out var mx)) cargs["x"] = mx;
                 if (int.TryParse(rest.Count > 2 ? rest[2] : Opt("y"), out var my)) cargs["y"] = my;
@@ -711,6 +730,7 @@ try
 {
     var workingArgs = JsonSerializer.SerializeToElement(cargs);
     if (WorkingSetRequest.Applies(cmd, workingArgs)) WorkingSetRequest.Validate(cmd, workingArgs, target);
+    if (NativeWindowRequest.Applies(cmd, workingArgs)) NativeWindowRequest.Validate(cmd, workingArgs, target, Opt("window"));
 }
 catch (ArgumentException e) { Console.Error.WriteLine(e.Message + ". Nothing sent."); return 2; }
 
