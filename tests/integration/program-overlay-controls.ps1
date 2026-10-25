@@ -72,6 +72,7 @@ try {
     $before = Detail $b $overlay
     Check ($before.visible -and $before.id -eq $overlay) 'Show restores the same terminal'
     $capturePath = Join-Path $repo "artifacts/c2-overlay-$Dpi.png"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $capturePath) | Out-Null
     $captureHwnd = [C2Window]::Find($process.Id)
     [C2Window]::Reveal($captureHwnd)
     Start-Sleep -Milliseconds 400
