@@ -153,3 +153,6 @@ try {
     $env:AGWINTERM_SESSION_ID = $savedCaller
     $env:AGWINTERM_DPI_OVERRIDE = $savedDpi
 }
+# The last assertion deliberately invokes a refused CLI request. Report suite success
+# explicitly so PowerShell command wrappers do not propagate that expected exit code.
+exit 0
