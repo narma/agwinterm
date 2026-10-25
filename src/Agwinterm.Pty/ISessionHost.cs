@@ -345,20 +345,21 @@ public interface ISessionHost
     /// INSIDE the same FIFO UI hop, re-resolving there; a hop that cannot be queued or run is a refusal.</para>
     /// </summary>
     SwapResult Swap(string? target);
-    /// <summary><c>session.focus</c>: move pane focus in the active session. dir is one of agterm's
+    /// <summary><c>session.focus</c>: move pane focus in the target's owning session (null/active = active).
+    /// Background targets must not select the session or rebind visible input. dir is one of agterm's
     /// words — <c>primary|split|left|right|top|bottom|other</c> — judged against the session's axis by
     /// <see cref="SplitAxes.TryFocusIndex"/> (<c>top</c> on a vertical split is refused naming the
     /// axis). Returns <c>"focus"</c>, or <see cref="RefusePrefix"/> + a refusal with focus unmoved:
     /// the axis refusal, an unknown word, or <see cref="SplitAxes.NotSplit"/> for a one-pane session
     /// (P4; before, every case answered ok having possibly done nothing).</summary>
-    string FocusPaneDir(string dir);
-    /// <summary><c>session.resize</c>: set the active session's split — an absolute ratio (0..1) for
+    string FocusPaneDir(string dir, string? target = null);
+    /// <summary><c>session.resize</c>: set the target session's split (null/active = active) — an absolute ratio (0..1) for
     /// the first (left/top) pane, or move the divider by N cells: <c>growLeft</c>/<c>growRight</c>
     /// in columns on a vertical split, <c>growTop</c>/<c>growBottom</c> in rows on a horizontal one
     /// (<see cref="SplitAxes.TryGrow"/>; flags from the other axis are refused naming the axis, and
     /// the divider does not move). Returns <c>"resized"</c>, or <see cref="RefusePrefix"/> + the
     /// refusal — also <see cref="SplitAxes.NoDivider"/> for a one-pane session.</summary>
-    string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom);
+    string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom, string? target = null);
 
     IReadOnlyList<string> ThemeList();
     bool ThemeSet(string name);
@@ -620,9 +621,10 @@ public interface ISessionHost
     SessionSwitchReply SessionSwitch(string op);
 
     /// <summary>Run a custom command (by keymap label) or a raw command string, expanding {AGW_*} tokens and
-    /// injecting $AGW_* env from the active session. <paramref name="mode"/> (send|new|overlay|detached)
+    /// injecting $AGW_* env from the addressed pane (null/active = active context). Explicit send does not broadcast.
+    /// <paramref name="mode"/> (send|new|overlay|detached)
     /// overrides the command's configured mode (raw strings default to "new"). Returns "mode: &lt;expanded&gt;".</summary>
-    string CommandRun(string nameOrCommand, string? mode);
+    string CommandRun(string nameOrCommand, string? mode, string? target = null);
 
     /// <summary>List configured custom commands: one tab-separated "label\tmode\tchord\ttext" line each.</summary>
     string CommandList();
@@ -687,8 +689,8 @@ public sealed class SingleSessionHost : ISessionHost
     public string Split(string? target, string op, string? axis) => ISessionHost.RefusePrefix + "session not found";
     public string SplitClose(string? target) => ISessionHost.RefusePrefix + SplitCloseReply.SinglePane(target ?? "active");
     public SwapResult Swap(string? target) => SwapResult.Refuse(SwapReply.SinglePane(target ?? "active"));
-    public string FocusPaneDir(string dir) => ISessionHost.RefusePrefix + SplitAxes.NotSplit;
-    public string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom) => ISessionHost.RefusePrefix + SplitAxes.NoDivider;
+    public string FocusPaneDir(string dir, string? target = null) => ISessionHost.RefusePrefix + SplitAxes.NotSplit;
+    public string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom, string? target = null) => ISessionHost.RefusePrefix + SplitAxes.NoDivider;
     public IReadOnlyList<string> ThemeList() => Array.Empty<string>();
     public bool ThemeSet(string name) => false;
     public string KeymapReload() => "";
@@ -730,7 +732,7 @@ public sealed class SingleSessionHost : ISessionHost
     public void WorkspaceFocus(string op) { }
     public string SessionBackground(string? target, string action, string? path, int opacity, string? mode) => "unsupported";
     public SessionSwitchReply SessionSwitch(string op) => new(false, "unsupported");
-    public string CommandRun(string nameOrCommand, string? mode) => "unsupported";
+    public string CommandRun(string nameOrCommand, string? mode, string? target = null) => "unsupported";
     public string CommandList() => "";
     public string CommandLeader(string op) => "idle";
     public string OmpSet(string nameOrPath, bool persist) => "unsupported";

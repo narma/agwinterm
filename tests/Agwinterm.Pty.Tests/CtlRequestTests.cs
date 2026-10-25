@@ -135,7 +135,98 @@ public class CtlRequestTests : IDisposable
         Assert.Equal("pong", stdout.Trim());
     }
 
-    private static (int ExitCode, string StdOut, string StdErr) RunCtl(params string[] args)
+    [Theory]
+    [InlineData(true, true, 0)]
+    [InlineData(true, false, 0)]
+    [InlineData(false, true, 1)]
+    [InlineData(false, false, 1)]
+    public void ReplyOutcomeDoesNotDependOnOutputFormat(bool ok, bool json, int expected)
+    {
+        string reply = ok ? "{\"ok\":true,\"result\":\"Привет ─ 世界\"}" : "{\"ok\":false,\"error\":\"session not found\"}";
+        string pipe = StartServer(reply);
+        var args = new List<string> { "ping", "--pipe", pipe };
+        if (json) args.Add("--json");
+        var (code, stdout, stderr) = RunCtl(args.ToArray());
+        Assert.Equal(expected, code);
+        Assert.Equal(json ? reply : ok ? "Привет ─ 世界" : "", stdout.Trim());
+        Assert.Equal(!ok && !json ? "session not found" : "", stderr.Trim());
+    }
+
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("{\"ok\":\"true\"}")]
+    public void InvalidJsonReplyIsAProtocolFailure(string reply)
+    {
+        var (code, stdout, stderr) = RunCtl("ping", "--json", "--pipe", StartServer(reply));
+        Assert.Equal(1, code);
+        Assert.Empty(stdout);
+        Assert.Contains("invalid control reply", stderr);
+    }
+
+    [Fact]
+    public void OfflineVersionAndHelpRemainLocalDiagnostics()
+    {
+        string pipe = "agwinterm-test-absent-" + Guid.NewGuid().ToString("N");
+        Assert.Equal(0, RunCtl("version", "--pipe", pipe).ExitCode);
+        Assert.Equal(0, RunCtl("session", "close", "--help", "--pipe", pipe).ExitCode);
+        Assert.Equal(1, RunCtl("ping", "--json", "--pipe", pipe).ExitCode);
+    }
+
+    [Theory]
+    [InlineData("session", "focus", null)] [InlineData("session", "resize", null)] [InlineData("command", "run", null)]
+    [InlineData("session", "focus", "active")] [InlineData("session", "resize", "pane-B")] [InlineData("command", "run", "pane-B")]
+    public async Task TargetedVerbsDoNotInheritCaller(string area, string verb, string? target)
+    {
+        string pipe = "agwinterm-test-route-" + Guid.NewGuid().ToString("N");
+        using var server = new NamedPipeServerStream(pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var exchange = Task.Run(async () =>
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await server.WaitForConnectionAsync(deadline.Token);
+            using var reader = new StreamReader(server, Encoding.UTF8, false, 1024, true);
+            string request = (await reader.ReadLineAsync(deadline.Token))!;
+            using var writer = new StreamWriter(server, new UTF8Encoding(false), 1024, true) { AutoFlush = true };
+            await writer.WriteLineAsync("{\"ok\":true,\"result\":\"accepted\"}");
+            return request;
+        });
+        var argv = new List<string> { area, verb, "--pipe", pipe };
+        if (area == "command") argv.AddRange(["echo literal", "--mode", "send"]);
+        if (target is not null) argv.AddRange(["--target", target]);
+        Assert.Equal(0, RunCtlWithCaller("pane-A", [.. argv]).ExitCode);
+        using var doc = System.Text.Json.JsonDocument.Parse(await exchange);
+        if (target is null) Assert.False(doc.RootElement.TryGetProperty("target", out _));
+        else Assert.Equal(target, doc.RootElement.GetProperty("target").GetString());
+    }
+
+    [Theory]
+    [InlineData("CLOSE")] [InlineData("Close")] [InlineData("OPEN")] [InlineData("UPDATE")]
+    public async Task HudActionLikeMessagesKeepTheirDisplayOptions(string message)
+    {
+        string pipe = "agwinterm-test-hud-literal-" + Guid.NewGuid().ToString("N");
+        using var server = new NamedPipeServerStream(pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var exchange = Task.Run(async () =>
+        {
+            await server.WaitForConnectionAsync(deadline.Token);
+            using var reader = new StreamReader(server, Encoding.UTF8, false, 1024, true);
+            string request = (await reader.ReadLineAsync(deadline.Token))!;
+            using var writer = new StreamWriter(server, new UTF8Encoding(false), 1024, true) { AutoFlush = true };
+            await writer.WriteLineAsync("{\"ok\":true,\"result\":\"opened\"}");
+            return request;
+        });
+        var result = RunCtl("session", "hud", message, "--spinner", "--pipe", pipe);
+        Assert.Equal(0, result.ExitCode);
+        using var doc = System.Text.Json.JsonDocument.Parse(await exchange);
+        Assert.Equal("session.hud.open", doc.RootElement.GetProperty("cmd").GetString());
+        Assert.Equal(message, doc.RootElement.GetProperty("args").GetProperty("message").GetString());
+        Assert.Equal("bar", doc.RootElement.GetProperty("args").GetProperty("spinner").GetString());
+    }
+
+    internal static (int ExitCode, string StdOut, string StdErr) RunCtl(params string[] args) => RunCtlWithCaller(null, args);
+
+    private static (int ExitCode, string StdOut, string StdErr) RunCtlWithCaller(string? caller, params string[] args)
     {
         string exe = Path.Combine(AppContext.BaseDirectory, "agwintermctl.exe");
         Assert.True(File.Exists(exe), $"agwintermctl apphost was not copied to {AppContext.BaseDirectory}");
@@ -146,8 +237,11 @@ public class CtlRequestTests : IDisposable
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (string arg in args) start.ArgumentList.Add(arg);
+        if (caller is not null) start.Environment["AGWINTERM_SESSION_ID"] = caller;
 
         using var process = Process.Start(start) ?? throw new InvalidOperationException("could not start agwintermctl");
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();

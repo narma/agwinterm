@@ -1,5 +1,18 @@
 # Control API — stop lying to the caller
 
+## C0 explicit target regression
+
+Run `pwsh -NoProfile -File tests/integration/control-cli-reliability.ps1` after the Release build.
+It creates an isolated instance and checks background focus/resize, MRU and unread preservation,
+axis/auxiliary/deleted/ambiguous target refusals, swapped pane IDs, caller-versus-active defaults,
+two-window bounds, named/raw commands, broadcast isolation, readonly, new/overlay/detached contexts
+and quick restrictions. No global input or clipboard is used. The Windows/WSL cross-context cases
+are in `tests/integration/wsl-control.ps1 -NativeHooks` and verify actual process identity/cwd.
+For manual replay use the explicit-target examples in `docs/control-api.md`; observe both target
+and visible nodes after every operation. A successful send proves accepted input, not child completion.
+
+## Earlier control contracts
+
 Batch P2 (0.17.11) closed one defect class in the control API: **a call that appears to succeed while
 doing something other than what was asked.** Every case here is a call that used to answer `ok:true`
 and then did something else — typed a shortened line, opened a full-screen overlay for `--size-percent

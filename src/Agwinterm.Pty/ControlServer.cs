@@ -207,6 +207,21 @@ public sealed class ControlServer : IDisposable
                 if (windowSel is not null && _windows is null) return Err("hud: window routing is unavailable in this host");
             }
 
+            if (cmd is "session.focus" or "session.resize" or "command.run")
+            {
+                foreach (string selectorName in new[] { "target", "window" })
+                    if (root.TryGetProperty(selectorName, out var value) &&
+                        (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString())))
+                        return Err(selectorName + " must be a nonempty string selector");
+                if (windowSel is not null && _windows is null) return Err("window routing is unavailable in this host");
+                if (windowSel is not (null or "active" or "quick") && _windows is not null)
+                {
+                    var open = _windows.Windows().Where(w => w.Open).ToList();
+                    if (!open.Any(w => w.Id == windowSel) && open.Count(w => w.Id.StartsWith(windowSel, StringComparison.Ordinal)) > 1)
+                        return Err("ambiguous window: " + windowSel);
+                }
+            }
+
             // App-level, window-agnostic verbs first.
             switch (cmd)
             {
@@ -229,7 +244,11 @@ public sealed class ControlServer : IDisposable
             if (windowSel is not null && _windows is not null && _windows.ResolveWindow(windowSel) is null)
                 return Err("window not found: " + windowSel);
 
-            host = host.AuxiliaryTarget(target) ?? host;
+            var auxiliary = host.AuxiliaryTarget(target);
+            if (windowSel is not null && cmd is "session.focus" or "session.resize" or "command.run" &&
+                auxiliary is not null && !ReferenceEquals(auxiliary, host))
+                return Err("target is outside the selected window");
+            host = auxiliary ?? host;
 
             if (cmd is "install.hooks" or "install.skill" or "install.shell" or "install.cli")
                 return Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
@@ -337,13 +356,23 @@ public sealed class ControlServer : IDisposable
                     }
                 // The default direction is `other` — the one word that names a pane on either axis
                 // (P4: `right` would be refused on a horizontal split).
-                case "session.focus": return HostReply(host.FocusPaneDir(GetString(args, "dir") ?? "other"));
+                case "session.focus":
+                    if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("dir", out var focusDirection) && focusDirection.ValueKind != JsonValueKind.String)
+                        return Err("focus direction must be a string");
+                    return HostReply(host.FocusPaneDir(GetString(args, "dir") ?? "other", target));
                 case "session.resize":
                     {
                         double? ratio = null;
-                        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("ratio", out var rv) && rv.TryGetDouble(out var rd)) ratio = rd;
+                        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("ratio", out var rv))
+                        {
+                            if (rv.ValueKind != JsonValueKind.Number || !rv.TryGetDouble(out var rd) || !double.IsFinite(rd)) return Err("ratio must be finite");
+                            ratio = rd;
+                        }
+                        foreach (string key in new[] { "grow-left", "grow-right", "grow-top", "grow-bottom" })
+                            if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var grow) &&
+                                (grow.ValueKind != JsonValueKind.Number || !grow.TryGetInt32(out _))) return Err(key + " must be an integer");
                         return HostReply(host.ResizeSplit(ratio, GetInt(args, "grow-left", 0), GetInt(args, "grow-right", 0),
-                            GetInt(args, "grow-top", 0), GetInt(args, "grow-bottom", 0)));
+                            GetInt(args, "grow-top", 0), GetInt(args, "grow-bottom", 0), target));
                     }
                 case "theme.list": return Ok(string.Join("\n", host.ThemeList()));
                 case "theme.set": return host.ThemeSet(GetString(args, "name") ?? "") ? Ok("theme set") : Err("theme not found");
@@ -431,7 +460,12 @@ public sealed class ControlServer : IDisposable
                     {
                         string? nameOrCmd = GetString(args, "name") ?? GetString(args, "command");
                         if (string.IsNullOrWhiteSpace(nameOrCmd)) return Err("command.run needs args.name or args.command");
-                        return HostReply(host.CommandRun(nameOrCmd!, GetString(args, "mode")));
+                        if (args.TryGetProperty("mode", out var modeValue) && modeValue.ValueKind != JsonValueKind.String)
+                            return Err("command mode must be a string");
+                        string? mode = GetString(args, "mode");
+                        if (mode is not null && mode.ToLowerInvariant() is not ("send" or "new" or "overlay" or "detached"))
+                            return Err("command mode must be send, new, overlay or detached");
+                        return HostReply(host.CommandRun(nameOrCmd!, mode, target));
                     }
                 case "command.list": return Ok(host.CommandList());
                 case "command.leader": return Ok(host.CommandLeader(GetString(args, "op") ?? "state"));

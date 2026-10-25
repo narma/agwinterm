@@ -10,6 +10,59 @@ namespace Agwinterm.Pty.Tests;
 /// lifecycle, config, overlay, toggles, and error handling.</summary>
 public class ControlApiTests
 {
+    [Theory]
+    [InlineData("session.focus", "{\"dir\":42}")]
+    [InlineData("session.resize", "{\"ratio\":\"0.5\"}")]
+    [InlineData("session.resize", "{\"grow-left\":1.5}")]
+    [InlineData("command.run", "{\"command\":\"echo bad\",\"mode\":42}")]
+    public void InvalidTypedArgumentsDoNotBecomeDefaults(string command, string args)
+    {
+        var (server, host) = New();
+        host.Split(null, "on", "vertical");
+        int focusBefore = host.ActiveSess!.FocusedPane;
+        using var reply = JsonDocument.Parse(server.Dispatch($"{{\"cmd\":\"{command}\",\"args\":{args}}}"));
+        Assert.False(Ok(reply.RootElement));
+        Assert.Equal(focusBefore, host.ActiveSess!.FocusedPane);
+        Assert.Equal(0.5, host.ActiveSess.Ratios[0]);
+        Assert.Null(host.LastCommandTarget);
+    }
+
+    [Fact]
+    public void ExplicitSplitTargetLeavesActiveSessionAndNotificationsAlone()
+    {
+        var (server, host) = New();
+        var background = host.ActiveSess!;
+        host.Split(background.Id, "on", "vertical");
+        background.Notifications = 3;
+        host.NewSession("visible", null, null);
+        var visible = host.ActiveSess!;
+        Assert.NotSame(background, visible);
+        Assert.True(Ok(Dispatch(server, "session.focus", new { dir = "right" }, background.PaneIds[1])));
+        Assert.True(Ok(Dispatch(server, "session.resize", new { ratio = 0.3 }, background.Id)));
+        Assert.Equal(1, background.FocusedPane);
+        Assert.Equal(0.3, background.Ratios[0]);
+        Assert.Equal(3, background.Notifications);
+        Assert.Same(visible, host.ActiveSess);
+        Assert.False(Ok(Dispatch(server, "session.focus", new { dir = "left" }, "missing")));
+        Assert.True(Ok(Dispatch(server, "command.run", new { command = "echo test", mode = "send" }, background.Id)));
+        Assert.Equal(background.Id, host.LastCommandTarget);
+        Assert.False(Ok(Dispatch(server, "command.run", new { command = "bad", mode = "typo" }, background.Id)));
+    }
+
+    [Theory]
+    [InlineData("session.focus")] [InlineData("session.resize")] [InlineData("command.run")]
+    public void ExplicitEmptyOrNonStringRoutingNeverFallsBack(string command)
+    {
+        var (server, host) = New();
+        foreach (string field in new[] { "target", "window" })
+            foreach (string value in new[] { "null", "\"\"", "\" \"", "42" })
+            {
+                using var reply = JsonDocument.Parse(server.Dispatch($"{{\"cmd\":\"{command}\",\"{field}\":{value}}}"));
+                Assert.False(Ok(reply.RootElement));
+            }
+        Assert.Null(host.LastCommandTarget);
+    }
+
     private static (ControlServer server, FakeSessionHost host) New()
     {
         var host = new FakeSessionHost();

@@ -660,24 +660,39 @@ internal partial class Program
     }
 
     // Both answer with state (a refusal must mean nothing moved), so they run in the FIFO UI hop and
-    // read the active session INSIDE it — the axis a direction is judged against is the one the
+    // resolve the target INSIDE it — the axis a direction is judged against is the one the
     // session has when the move happens, not the one the pipe thread saw a moment earlier (P4).
-    public string FocusPaneDir(string dir)
+    public string FocusPaneDir(string dir, string? target = null)
         => InvokeOnUiQueued(() =>
         {
-            var ses = _active;
+            var ses = ResolveSplitTarget(target, out var targetError);
+            if (targetError is not null) return ISessionHost.RefusePrefix + targetError;
             if (ses is null || ses.Panes.Count < 2) return ISessionHost.RefusePrefix + SplitAxes.NotSplit;
             if (!SplitAxes.TryFocusIndex(dir, ses.Axis, ses.Active, out int index, out string? refusal)) return ISessionHost.RefusePrefix + refusal;
             ses.Active = Math.Clamp(index, 0, ses.Panes.Count - 1);
-            SyncSession();   // the focused pane's SURFACE (its overlay while one is open — P5)
+            if (ReferenceEquals(ses, _active)) SyncSession();
+            SaveState();
             RequestRedraw();
             return "focus";
         });
 
-    public string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom)
-        => InvokeOnUiQueued(() => ResizeActiveSplitInternal(ratio, growLeft, growRight, growTop, growBottom) is { } refusal
-            ? ISessionHost.RefusePrefix + refusal
-            : "resized");
+    public string ResizeSplit(double? ratio, int growLeft, int growRight, int growTop, int growBottom, string? target = null)
+        => InvokeOnUiQueued(() =>
+        {
+            var ses = ResolveSplitTarget(target, out var refusal);
+            refusal ??= ResizeSplitInternal(ses, ratio, growLeft, growRight, growTop, growBottom);
+            return refusal is null ? "resized" : ISessionHost.RefusePrefix + refusal;
+        });
+
+    private Ses? ResolveSplitTarget(string? target, out string? refusal)
+    {
+        refusal = null;
+        if (target is null or "active") return _isQuickWindow ? null : _active;
+        var hit = FindStrictControlPane(target);
+        if (hit is null) { refusal = "unknown or ambiguous target: " + target; return null; }
+        if (hit.Value.cover || hit.Value.ses is null) { refusal = "split operations require a main or split pane"; return null; }
+        return hit.Value.ses;
+    }
 
     public IReadOnlyList<string> ThemeList() => _allThemes.Select(t => t.Name).ToList();
 
@@ -1532,13 +1547,13 @@ internal partial class Program
 
     public SessionSwitchReply SessionSwitch(string op) => InvokeOnUiQueued(() => SwitchOp(op));
 
-    public string CommandRun(string nameOrCommand, string? mode) => InvokeOnUiQueued(() =>
+    public string CommandRun(string nameOrCommand, string? mode, string? target = null) => InvokeOnUiQueued(() =>
     {
         var cmd = _commands.FirstOrDefault(c => string.Equals(c.Label, nameOrCommand, StringComparison.OrdinalIgnoreCase));
         string text = cmd?.Text ?? nameOrCommand;
         // A configured command uses its mode unless overridden; a raw command defaults to a new session.
         string useMode = mode ?? cmd?.Mode ?? "new";
-        string expanded = RunCommandText(text, useMode);
+        string expanded = RunCommandText(text, useMode, target);
         if (expanded.StartsWith(ISessionHost.RefusePrefix, StringComparison.Ordinal)) return expanded;
         return $"{useMode}: {expanded}";
     });

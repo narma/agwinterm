@@ -20,6 +20,12 @@ public static class AgentSkill
 
         # agwinterm
 
+        Ordinary control requests exit 0 on success, 1 on refusal/transport/protocol failure,
+        and 2 on invalid CLI arguments. --json preserves the reply but ok:false exits 1.
+        Offline version and picker retain their documented special outcomes. A timeout does
+        not prove rollback. Unknown options, invalid numbers and duplicate selectors refuse
+        before sending. Use one --target, one --window and either --pipe or --socket; no batches.
+
         agwinterm is a Windows terminal built for AI coding agents. When you run inside it you can
         control it: report your status (a colored dot per session in the sidebar), manage sessions,
         type into sessions, and show images — via the `agwintermctl` CLI (preferred) or by writing
@@ -27,7 +33,7 @@ public static class AgentSkill
 
         ## Detect
         You are inside agwinterm when `AGWINTERM_ENABLED=1`. Relevant env vars:
-        - `AGWINTERM_SESSION_ID` — your session id (the default target for commands). Unique PER PANE:
+        - `AGWINTERM_SESSION_ID` — your session id (most content commands default to it; focus/resize/command run retain active scope). Unique PER PANE:
           two agents in a split can't collide (each pane resolves as its own target). Inside a scratch, an
           overlay or the quick terminal it is THAT cover's id: `session text` / `type` / `keys` with no target act on
           the cover you run in. `session overlay` verbs resolve it by what it names — from inside a PANE overlay a
@@ -397,8 +403,13 @@ public static class AgentSkill
         - `command [new] <Label> = <text>`              — run in a fresh session's shell (stays interactive after)
         - `command [overlay] <Label> = <text>`          — run in an ephemeral overlay pane over the session
         - `command [detached] <Label> = <text>`         — launch an independent OS process (open a URL, external tool)
-        - Run one: `agwintermctl command run "<Label or raw command>" [--mode new|overlay|detached|send]`
+        - Run one: `agwintermctl command run "<Label or raw command>" [--mode new|overlay|detached|send] [--target ID]`
           (a raw command with no matching label defaults to `--mode new`).
+          Explicit target supplies pane, cwd, workspace, profile and AGW context. Explicit send bypasses broadcast.
+          New selects its newly created session in the target workspace; overlay uses the target session's slot;
+          detached launches independently. Target resolution never selects the source. Quick supports send/detached only.
+          Omitted target retains active scope, even with AGWINTERM_SESSION_ID set; explicit active uses the routed window.
+          Unknown/ambiguous/empty targets and unknown modes refuse. Success accepts input/launch, not child completion.
         - List them: `agwintermctl command list`         — tab-separated `label  mode  chord  text`.
         - `{AGW_*}` tokens are expanded in the text AND passed as `$AGW_*` env vars to the launched process:
           `{AGW_SESSION}` (name) · `{AGW_SESSION_ID}` · `{AGW_WORKSPACE}` · `{AGW_CWD}` (active pane cwd) ·
@@ -442,13 +453,16 @@ public static class AgentSkill
           status, the context, the flag — and EVERY ID, the overlay ids included. A swap moves panes, never ids: the id you hold keeps reaching the same shell, now on the other
           side, and the session id keeps naming the pane it always named. Replies `{session, paneIds, focusedPane, axis}` = the
           tree's split block after the swap. A one-pane session is refused.
-        - `agwintermctl session focus [primary|split|left|right|top|bottom|other]` — move focus between the panes (default
+        - `agwintermctl session focus [primary|split|left|right|top|bottom|other] [--target ID]` — move focus between the panes (default
           `other`, the one word valid on either axis; `primary` = pane 0, `split` = pane 1). `left`/`right` exist on a vertical
           split only and `top`/`bottom` on a horizontal one — the wrong pair is refused naming the axis; so is a one-pane session.
-        - `agwintermctl session resize [--split-ratio R] [--grow-left N|--grow-right N|--grow-top N|--grow-bottom N]` — move the
+        - `agwintermctl session resize [--split-ratio R] [--grow-left N|--grow-right N|--grow-top N|--grow-bottom N] [--target ID]` — move the
           divider: `--split-ratio` is pane 0's share (0.7 = the left/top pane gets 70%); `--grow-left/--grow-right` move a
           vertical split's divider by N columns, `--grow-top/--grow-bottom` a horizontal one's by N rows. The other axis's flags
           are refused and the divider does not move; so is a one-pane session.
+          Focus/resize accept session or main/split pane IDs, including after swap; auxiliary panes refuse.
+          Background targets change remembered focus/ratio without selection, unseen clearing or recency changes.
+          Omitted targets retain active scope (ignore caller environment); --window bounds explicit target resolution.
         - `agwintermctl font inc|dec|reset [--target <id>]`      — font zoom; target a session (active pane) or a specific split/scratch/quick pane by its id (see `tree` paneIds)
         - `agwintermctl dashboard [<id> ...] [--close] [--font-size N]` — grid overlay of live sessions (no ids = most-recent; `--close` dismisses; Ctrl+Shift+D toggles it in the UI)
         - `agwintermctl sidebar show|hide|toggle|expand|collapse` (`on`/`off` are aliases of show/hide). An op the sidebar
