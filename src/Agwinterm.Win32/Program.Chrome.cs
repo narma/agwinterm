@@ -231,10 +231,7 @@ internal partial class Program
                 _sidebarNames.Add(new SidebarNameHit(s, $"{unread} unread; session ended (exit {code})", badgeX, y, badgeWidth, rowH));
         }
         // Pane-aware: the status circle shows the most attention-worthy state across ALL panes.
-        var dot = StatusDot(AggStatus(s));
-        if (AggBlink(s) && !_cursorOn) dot = new Color4(dot.R, dot.G, dot.B, 0.22f);
-        brush.Color = dot;
-        rt.FillEllipse(new Ellipse(new System.Numerics.Vector2(_sidebarW - 16f, y + rowH / 2f), 4.5f, 4.5f), brush);
+        DrawSessionStatus(rt, brush, s, _sidebarW - 16f, y + rowH / 2f);
         _sidebarRows.Add((y, y + rowH, false, s));
     }
 

@@ -430,11 +430,13 @@ internal partial class Program
                 {
                     Cell cell = CellAt(r, c);
                     Color bg = EffectiveBg(cell, localBackground);
-                    if (bg == _theme.DefaultBackground && localBackground is null) { c++; continue; }
+                    if (selPane?.Appearance is not null && cell.BgSpec.Kind == ColorSpecKind.Default && !cell.Attributes.HasFlag(CellAttributes.Inverse)) { c++; continue; }
+                    if (selPane?.Appearance is null && bg == _theme.DefaultBackground && localBackground is null) { c++; continue; }
                     int start = c;
                     while (c < cols)
                     {
                         Cell cc = CellAt(r, c);
+                        if (selPane?.Appearance is not null && cc.BgSpec.Kind == ColorSpecKind.Default && !cc.Attributes.HasFlag(CellAttributes.Inverse)) break;
                         if (cc.Width != 0 && EffectiveBg(cc, localBackground) != bg) break;
                         c++;
                     }
@@ -742,7 +744,7 @@ internal partial class Program
             // Faint session background, behind the cells — of the pane's own terminal only: under an
             // opaque overlay nothing of it would show, so it is not drawn. The pane's own terminal is
             // not drawn under the overlay either (same reason; its PTY runs on, untouched).
-            if (!overlaid) DrawWatermark(ses, ox, oy, pw, ph);
+            if (!overlaid && surface.Appearance is null) DrawWatermark(ses, ox, oy, pw, ph);
             // Per-pane dynamic background (OSC 11, agterm #240): the program set its own bg, so fill this
             // box with it instead of leaving the (possibly translucent) window backing showing through.
             // An overlay is filled opaque either way: its own dynamic bg, else the theme's background.
@@ -752,10 +754,15 @@ internal partial class Program
                 brush.Color = new Color4(((dbg >> 16) & 0xFF) / 255f, ((dbg >> 8) & 0xFF) / 255f, (dbg & 0xFF) / 255f, 1f);
                 rt.FillRectangle(new Rect(ox, oy, pw, ph), brush);
             }
-            else if (overlaid)
+            else if (overlaid || surface.DefaultBackground is not null)
             {
                 brush.Color = C4(surface.DefaultBackground ?? _theme.DefaultBackground);
                 rt.FillRectangle(new Rect(ox, oy, pw, ph), brush);
+            }
+            if (!overlaid && surface.Appearance is { } appearance)
+            {
+                if (!appearance.HideImage && dbg == 0) DrawWatermark(ses, ox, oy, pw, ph);
+                DrawPaneText(surface, ox, oy, pw, ph);
             }
             RenderTerminal(surface.S, ox, oy, fmt, cw, ch, surface.ScrollOffset, surface);
             if (overlaid)

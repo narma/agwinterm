@@ -7,7 +7,7 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed", "minimized", "path-only" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed", "minimized", "path-only", "hide-image" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
@@ -16,6 +16,9 @@ public static class CtlArguments
         ["recent list"] = "", ["recent open"] = "window", ["recent clear"] = "",
         ["events"] = "window since limit kind run watch",
         ["session wait"] = "window target scope wait-timeout",
+        ["session appearance get"] = "window target", ["session appearance clear"] = "window target",
+        ["session appearance set"] = "window target color text opacity status-color status-shape hide-image",
+        ["keymap list"] = "window", ["config reload"] = "window", ["app version"] = "window",
         ["install hooks"] = "window target", ["install skill"] = "window target",
         ["install shell"] = "window target", ["install cli"] = "window target remove",
         ["omp list"] = "", ["omp set"] = "window persist",
@@ -107,6 +110,7 @@ public static class CtlArguments
             ? area : area + " " + sub;
         string third = positionals.ElementAtOrDefault(2)?.ToLowerInvariant() ?? "";
         if (operation is "session overlay" or "session background") operation += " " + (third.Length == 0 ? sub == "overlay" ? "open" : "set" : third);
+        if (operation == "session appearance") operation += " " + (third.Length == 0 ? "get" : third);
         // HUD action words are case-sensitive in the request builder; uppercase words
         // such as CLOSE remain literal messages and may use open's display options.
         if (operation == "session hud") operation += " " + (positionals.ElementAtOrDefault(2) is "open" or "update" or "close" ? third : "open");

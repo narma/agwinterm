@@ -79,7 +79,7 @@ internal partial class Program : IRecentHost
             string cwd = PrettyCwd(SafeCwd(p));
             if (string.IsNullOrEmpty(cwd)) cwd = p.StartCwd ?? "";
             state.Panes.Add(new() { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed,
-                Ratio = p.Ratio, RestoreCommand = p.RestoreCommand });
+                Ratio = p.Ratio, Appearance = p.Appearance, RestoreCommand = p.RestoreCommand });
         }
         return new(s.CustomName, s.ProfileName, state.Panes[0].Cwd, s.Ws.Id, s.Ws.Name, s.Flagged,
             s.CustomName ?? s.Name, s.Name, s.Id, Recent.NextSequence(), s.Context, state, Id, Guid.NewGuid().ToString());
@@ -231,6 +231,7 @@ internal partial class Program : IRecentHost
                 s.Panes[i].Ratio = state.Panes[i].Ratio;
                 s.Panes[i].FontZoomed = PaneFontSize.Restore(state.Panes[i].FontSize, (float)_config.FontSize, state.Panes[i].FontZoomed).Zoomed;
                 s.Panes[i].RestoreCommand = state.Panes[i].RestoreCommand;
+                ApplyPaneAppearance(s.Panes[i], PaneAppearance.Restore(state.Panes[i].Appearance));
             }
             s.Active = Math.Clamp(state.Active, 0, s.Panes.Count - 1);
             s.CustomName = state.CustomName; s.Flagged = state.Flagged; s.Context = RestoreState.LoadContext(state.Context);

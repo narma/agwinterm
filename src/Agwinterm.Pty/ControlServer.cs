@@ -341,6 +341,23 @@ public sealed partial class ControlServer : IDisposable
             if (windowSel is not null && _windows is not null && _windows.ResolveWindow(windowSel) is null)
                 return Err("window not found: " + windowSel);
 
+            if (PresentationRequest.Applies(cmd))
+            {
+                var seen = new HashSet<string>();
+                foreach (var field in root.EnumerateObject())
+                {
+                    if (!seen.Add(field.Name) || field.Name is not ("cmd" or "args" or "target" or "window")) return Err("unknown or duplicate presentation field");
+                    if (field.Name is "target" or "window" && field.Value.ValueKind != JsonValueKind.Null && (field.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(field.Value.GetString()))) return Err("invalid selector");
+                }
+                if (windowSel is not (null or "active") && _windows is not null)
+                {
+                    var open = _windows.Windows().Where(w => w.Open).ToArray();
+                    if (!open.Any(w => w.Id == windowSel) && open.Count(w => w.Id.StartsWith(windowSel, StringComparison.Ordinal)) != 1) return Err("unknown or ambiguous window");
+                }
+                PresentationRequest.Validate(cmd, args, target);
+                return host is IPresentationHost presentation ? OkRaw(JsonSerializer.Serialize(presentation.PresentationCommand(cmd, args.ValueKind == JsonValueKind.Undefined ? default : args.Clone(), target))) : Err("native presentation unavailable");
+            }
+
             if (WorkingSetRequest.Applies(cmd, args))
             {
                 var seenWorkingFields = new HashSet<string>(StringComparer.Ordinal);

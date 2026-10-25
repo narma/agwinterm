@@ -468,6 +468,13 @@ switch (area)
                 if (Opt("cwd") is { } hookCwd) cargs["cwd"] = hookCwd;
                 break;
             case "restore": cargs["command"] = rest.Count > 0 ? string.Join(' ', rest) : (Opt("command") ?? ""); break; // pin a per-pane restore command | none to clear
+            case "appearance":
+                if (rest.Count > 1) { Console.Error.WriteLine("appearance expects get/set/clear and named options"); return 2; }
+                cargs["op"] = rest.FirstOrDefault() ?? "get";
+                foreach (string key in new[] { "color", "text", "status-color", "status-shape" }) if (Opt(key) is { } val) cargs[key] = val;
+                if (Opt("opacity") is { } opacity) cargs["opacity"] = int.Parse(opacity, System.Globalization.CultureInfo.InvariantCulture);
+                if (options.ContainsKey("hide-image")) cargs["hide-image"] = true;
+                break;
             case "background": // session background set <path> [--opacity N] [--mode fit|fill|center|tile] | background clear
                 cargs["action"] = rest.Count > 0 ? rest[0] : "set";
                 if (rest.Count > 1) cargs["path"] = string.Join(' ', rest.Skip(1));
@@ -518,6 +525,11 @@ switch (area)
         cargs["name"] = string.Join(' ', rest);
         break;
     case "keymap" when sub == "reload": cmd = "keymap.reload"; break;
+    case "keymap" when sub == "list":
+    case "config" when sub == "reload":
+    case "app" when sub == "version":
+        if (rest.Count != 0) { Console.Error.WriteLine("diagnostic command takes no positional arguments"); return 2; }
+        cmd = area + "." + sub; target = null; break;
     case "profiles" when sub == "list": cmd = "profiles.list"; break;
     case "profiles" when sub == "reload": cmd = "profiles.reload"; break;
     case "restore" when sub == "clear": cmd = "restore.clear"; break;
@@ -732,6 +744,7 @@ try
     var workingArgs = JsonSerializer.SerializeToElement(cargs);
     if (WorkingSetRequest.Applies(cmd, workingArgs)) WorkingSetRequest.Validate(cmd, workingArgs, target);
     if (NativeWindowRequest.Applies(cmd, workingArgs)) NativeWindowRequest.Validate(cmd, workingArgs, target, Opt("window"));
+    if (PresentationRequest.Applies(cmd)) PresentationRequest.Validate(cmd, workingArgs, target);
 }
 catch (ArgumentException e) { Console.Error.WriteLine(e.Message + ". Nothing sent."); return 2; }
 

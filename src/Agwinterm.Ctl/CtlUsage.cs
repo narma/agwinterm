@@ -151,6 +151,14 @@ public static class CtlUsage
           agwintermctl session reveal [--target PANE] [--window WINDOW] [--path-only]
             Reveal selects the pane directory in Explorer; path-only validates without opening it.
             Window geometry uses physical desktop pixels; minimize/restore do not request focus.
+          agwintermctl session appearance get|clear [--target PANE] [--window WINDOW]
+          agwintermctl session appearance set [--target PANE] [--color #RRGGBB] [--text TEXT]
+            [--opacity 0..100] [--status-color #RRGGBB] [--status-shape circle|square|diamond] [--hide-image]
+            Set replaces local overrides; clear resumes inheritance. Text: 512 scalars, 12 lines.
+          agwintermctl keymap list [--window WINDOW] [--json]
+          agwintermctl config reload [--window WINDOW] [--json]
+          agwintermctl app version [--window WINDOW] [--json]
+            Effective bindings, shared live reload diagnostics, or running/on-disk executable versions.
           agwintermctl restore clear                       (delete this window's saved session tree)
           agwintermctl recent list                         (app-wide durable closed session/workspace history)
           agwintermctl recent open ENTRY-ID [--window ID]   (open in a live library window; partial workspace outcomes are explicit)
