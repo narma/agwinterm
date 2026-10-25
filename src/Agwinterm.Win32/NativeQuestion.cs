@@ -23,8 +23,8 @@ internal sealed class NativeQuestion : IDisposable
     private readonly Dictionary<string, AskValue> _values = new(StringComparer.Ordinal);
     private readonly List<IntPtr> _buttons = new();
     private IntPtr _hwnd, _font, _prompt, _label, _field, _otherLabel, _other, _back, _next, _cancel;
-    private int _dpi = 96, _page;
-    private bool _ended, _disposing, _building;
+    private int _dpi = 96, _page, _scrollY, _contentHeight;
+    private bool _ended, _disposing, _building, _layouting;
     public PendingAsk Request { get; }
     private AskField? Field => Request.Spec.Fields.Count == 0 ? null : Request.Spec.Fields[_page];
 
@@ -34,6 +34,11 @@ internal sealed class NativeQuestion : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetFocus();
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hwnd);
+    [StructLayout(LayoutKind.Sequential)] private struct ScrollInfo
+    { public uint Size, Mask; public int Min, Max; public uint Page; public int Pos, Track; }
+    [DllImport("user32.dll")] private static extern int SetScrollInfo(IntPtr hwnd, int bar, ref ScrollInfo info, bool redraw);
+    [DllImport("user32.dll")] private static extern bool GetScrollInfo(IntPtr hwnd, int bar, ref ScrollInfo info);
+    [DllImport("user32.dll")] private static extern int MapWindowPoints(IntPtr from, IntPtr to, ref RECT rect, uint count);
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateFontW(int height, int width, int escapement, int orientation, int weight,
         uint italic, uint underline, uint strikeout, uint charset, uint outPrecision, uint clipPrecision, uint quality, uint pitch, string family);
 
@@ -57,7 +62,7 @@ internal sealed class NativeQuestion : IDisposable
         int x = Math.Clamp(ownerRect.left + (ownerRect.right - ownerRect.left - width) / 2, info.rcWork.left, info.rcWork.right - width);
         int y = Math.Clamp(ownerRect.top + Scale(40), info.rcWork.top, info.rcWork.bottom - height);
         _creating = this;
-        try { _hwnd = CreateWindowExW(0x10000, ClassName, Request.Spec.Title, WS_CAPTION | WS_SYSMENU | WS_POPUP,
+        try { _hwnd = CreateWindowExW(0x10000, ClassName, Request.Spec.Title, WS_CAPTION | WS_SYSMENU | WS_POPUP | WS_VSCROLL,
             x, y, width, height, _owner, IntPtr.Zero, GetModuleHandleW(null), IntPtr.Zero); }
         finally { _creating = null; }
         if (_hwnd == IntPtr.Zero) throw new InvalidOperationException("question window creation failed");
@@ -106,6 +111,7 @@ internal sealed class NativeQuestion : IDisposable
         _building = true;
         try
         {
+            _scrollY = 0;
             if (_field != IntPtr.Zero) { DestroyWindow(_field); _field = IntPtr.Zero; }
             if (_other != IntPtr.Zero) { DestroyWindow(_other); _other = IntPtr.Zero; }
             var f = Field;
@@ -166,30 +172,67 @@ internal sealed class NativeQuestion : IDisposable
     { SavePage(); End(AskOutcome.Answer(Request.Spec, Request.Spec.Buttons[index].Id, _values)); }
     private void Layout()
     {
-        if (_cancel == IntPtr.Zero) return;
-        GetClientRect(_hwnd, out var r);
-        int pad = Scale(12), gap = Scale(6), full = Math.Max(1, r.right - 2 * pad);
-        int columns = Math.Max(1, Math.Min(4, full / Scale(120))), rows = (_buttons.Count + columns - 1) / columns;
-        int buttonHeight = Scale(30), bottom = r.bottom - pad - buttonHeight;
-        Place(_back, pad, bottom, Math.Max(1, (full - 2 * gap) / 3), buttonHeight);
-        Place(_next, pad + (full + gap) / 3, bottom, Math.Max(1, (full - 2 * gap) / 3), buttonHeight);
-        Place(_cancel, pad + 2 * (full + gap) / 3, bottom, Math.Max(1, (full - 2 * gap) / 3), buttonHeight);
-        int actions = bottom - rows * (buttonHeight + gap);
-        for (int i = 0; i < _buttons.Count; i++) Place(_buttons[i], pad + i % columns * (full + gap) / columns,
-            actions + i / columns * (buttonHeight + gap), Math.Max(1, (full - (columns - 1) * gap) / columns), buttonHeight);
-        int promptHeight = Request.Spec.Prompt.Length == 0 ? 0 : Math.Min(Scale(60), Math.Max(Scale(20), actions / 5));
-        Place(_prompt, pad, pad, full, Math.Max(1, promptHeight));
-        int labelTop = pad + promptHeight + gap, fieldTop = labelTop + Scale(40);
-        Place(_label, pad, labelTop, full, Scale(36));
-        int otherHeight = Field?.AllowOther == true ? Scale(58) : 0;
-        int fieldHeight = Math.Max(Scale(24), actions - fieldTop - gap - otherHeight);
-        if (Field?.Type == "text") fieldHeight = Math.Min(Scale(30), fieldHeight);
-        Place(_field, pad, fieldTop, full, fieldHeight);
-        Place(_otherLabel, pad, actions - Scale(58), full, Scale(22));
-        Place(_other, pad, actions - Scale(34), full, Scale(28));
+        if (_cancel == IntPtr.Zero || _layouting) return;
+        _layouting = true;
+        try
+        {
+            GetClientRect(_hwnd, out var r);
+            int pad = Scale(12), gap = Scale(6), full = Math.Max(1, r.right - 2 * pad);
+            int columns = Math.Max(1, Math.Min(4, full / Scale(120))), rows = (_buttons.Count + columns - 1) / columns;
+            int buttonHeight = Scale(30);
+            int promptHeight = Request.Spec.Prompt.Length == 0 ? 0 : Scale(60);
+            int otherHeight = Field?.AllowOther == true ? Scale(58) : 0;
+            int fieldTop = pad + promptHeight + gap + Scale(40);
+            int minimumFieldHeight = Scale(Field?.Type is "multi" or "single" or "multiline" ? 60 : 30);
+            _contentHeight = Math.Max(r.bottom, fieldTop + minimumFieldHeight + gap + otherHeight + rows * (buttonHeight + gap) + buttonHeight + pad);
+            _scrollY = Math.Clamp(_scrollY, 0, Math.Max(0, _contentHeight - r.bottom));
+            var scroll = new ScrollInfo { Size = (uint)Marshal.SizeOf<ScrollInfo>(), Mask = 15,
+                Max = _contentHeight - 1, Page = (uint)Math.Max(0, r.bottom), Pos = _scrollY };
+            // Keep the disabled scrollbar's width reserved so showing it cannot change the column count.
+            SetScrollInfo(_hwnd, 1, ref scroll, true);
+            int bottom = _contentHeight - pad - buttonHeight;
+            Place(_back, pad, bottom, Math.Max(1, (full - 2 * gap) / 3), buttonHeight);
+            Place(_next, pad + (full + gap) / 3, bottom, Math.Max(1, (full - 2 * gap) / 3), buttonHeight);
+            Place(_cancel, pad + 2 * (full + gap) / 3, bottom, Math.Max(1, (full - 2 * gap) / 3), buttonHeight);
+            int actions = bottom - rows * (buttonHeight + gap);
+            for (int i = 0; i < _buttons.Count; i++) Place(_buttons[i], pad + i % columns * (full + gap) / columns,
+                actions + i / columns * (buttonHeight + gap), Math.Max(1, (full - (columns - 1) * gap) / columns), buttonHeight);
+            Place(_prompt, pad, pad, full, Math.Max(1, promptHeight));
+            int labelTop = pad + promptHeight + gap;
+            Place(_label, pad, labelTop, full, Scale(36));
+            int fieldHeight = actions - fieldTop - gap - otherHeight;
+            if (Field?.Type == "text") fieldHeight = Math.Min(Scale(30), fieldHeight);
+            Place(_field, pad, fieldTop, full, fieldHeight);
+            Place(_otherLabel, pad, actions - Scale(58), full, Scale(22));
+            Place(_other, pad, actions - Scale(34), full, Scale(28));
+        }
+        finally { _layouting = false; }
     }
-    private static void Place(IntPtr h, int x, int y, int w, int height)
-    { if (h != IntPtr.Zero) SetWindowPos(h, IntPtr.Zero, x, y, w, height, SWP_NOZORDER | SWP_NOACTIVATE); }
+    private void Place(IntPtr h, int x, int y, int w, int height)
+    { if (h != IntPtr.Zero) SetWindowPos(h, IntPtr.Zero, x, y - _scrollY, w, height, SWP_NOZORDER | SWP_NOACTIVATE); }
+    private void ScrollTo(int position)
+    {
+        GetClientRect(_hwnd, out var r);
+        _scrollY = Math.Clamp(position, 0, Math.Max(0, _contentHeight - r.bottom));
+        Layout();
+    }
+    private void Scroll(int command)
+    {
+        GetClientRect(_hwnd, out var r);
+        var info = new ScrollInfo { Size = (uint)Marshal.SizeOf<ScrollInfo>(), Mask = 16 };
+        GetScrollInfo(_hwnd, 1, ref info);
+        ScrollTo(command switch { 0 => _scrollY - Scale(30), 1 => _scrollY + Scale(30),
+            2 => _scrollY - r.bottom, 3 => _scrollY + r.bottom, 4 or 5 => info.Track,
+            6 => 0, 7 => _contentHeight, _ => _scrollY });
+    }
+    private void RevealControl(IntPtr control)
+    {
+        if (_building || _layouting) return;
+        GetWindowRect(control, out var rect); MapWindowPoints(IntPtr.Zero, _hwnd, ref rect, 2);
+        GetClientRect(_hwnd, out var client);
+        if (rect.top < 0) ScrollTo(_scrollY + rect.top);
+        else if (rect.bottom > client.bottom) ScrollTo(_scrollY + rect.bottom - client.bottom);
+    }
     public void FocusIfForeground()
     {
         if (_ended || _building) return;
@@ -223,6 +266,9 @@ internal sealed class NativeQuestion : IDisposable
                 case WM_COMMAND:
                     if (((long)w >> 16 & 0xffff) == 0) form.Command((int)((long)w & 0xffff)); return IntPtr.Zero;
                 case WM_SIZE: form.Layout(); break;
+                case 0x115: form.Scroll((int)((long)w & 0xffff)); return IntPtr.Zero; // WM_VSCROLL
+                case WM_MOUSEWHEEL:
+                    form.ScrollTo(form._scrollY - (short)((long)w >> 16) * form.Scale(30) / 120); return IntPtr.Zero;
                 case WM_ACTIVATE: if (((long)w & 0xffff) != 0) { form._activated(); form.FocusIfForeground(); } break;
                 case WM_SETFOCUS: form.FocusIfForeground(); return IntPtr.Zero;
                 case WM_DPICHANGED:
@@ -243,6 +289,7 @@ internal sealed class NativeQuestion : IDisposable
         if (!_original.TryGetValue(hwnd, out var original)) return DefWindowProcW(hwnd, msg, w, l);
         try
         {
+            if (msg == WM_SETFOCUS) RevealControl(hwnd);
             if (msg == GetDlgCode) return CallWindowProcW(original, hwnd, msg, w, l) | (IntPtr)4;
             if (msg == 0x106 /* WM_SYSCHAR */)
             {

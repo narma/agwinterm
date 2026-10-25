@@ -26,6 +26,10 @@ public static class AskProbe {
         GetClientRect(root,out var bounds);GetWindowRect(child,out var r);MapWindowPoints(IntPtr.Zero,root,ref r,2);
         return r.left>=0 && r.top>=0 && r.right<=bounds.right && r.bottom<=bounds.bottom && r.right>r.left && r.bottom>r.top;
     }
+    public static bool Overlaps(IntPtr first,IntPtr second) {
+        GetWindowRect(first,out var a);GetWindowRect(second,out var b);
+        return a.left<b.right && b.left<a.right && a.top<b.bottom && b.top<a.bottom;
+    }
     public static IntPtr Find(IntPtr owner) { IntPtr found=IntPtr.Zero;EnumWindows((h,p)=>{var b=new StringBuilder(100);GetClassNameW(h,b,100);
         if(GetWindow(h,4)==owner && b.ToString()=="Agwinterm.NativeQuestion"){found=h;return false;}return true;},IntPtr.Zero);return found; }
 }
@@ -119,6 +123,26 @@ Check 'all sixteen fields remain reachable through native paging' ([AskProbe]::T
 $originalHwnd=$hwnd;try{$hwnd=$ask;$null=Shot 'native-ask-192-compact'}finally{$hwnd=$originalHwnd}
 Ask-Click 1007
 Check 'last custom button returns all sixteen empty typed answers' ((Ask-Result).button-eq 'b7' -and @((Ask-Result).values.PSObject.Properties).Count-eq 16) ((Ask-Result)|ConvertTo-Json -Compress -Depth 8)
+$compact=@{prompt='Small high-DPI monitor';fields=@(@{id='many';label='Choose';type='multi';allowOther=$true;choices=@(@{id='a';label='Alpha'})});buttons=$large.buttons}
+Open-Ask $compact
+$oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
+try {
+    [AskProbe]::Dpi($ask,192,900,500)
+    $controls=@(100,101,200,202,203,2,3,4)+@(1000..1007)
+    $overlap=$false
+    for($i=0;$i-lt $controls.Count;$i++){for($j=$i+1;$j-lt $controls.Count;$j++){
+        if([AskProbe]::Overlaps((Ask-Control $controls[$i]),(Ask-Control $controls[$j]))){$overlap=$true}
+    }}
+    Check 'compact high-DPI question controls never overlap' (-not $overlap)
+    [void][HudOwnedJob]::SendMessageW($ask,0x115,[IntPtr]7,[IntPtr]::Zero)
+    Check 'vertical scrolling reveals final action and navigation' ([AskProbe]::Fits($ask,(Ask-Control 1007)) -and [AskProbe]::Fits($ask,(Ask-Control 2)))
+    # Tab focus notifications must reveal the newly focused offscreen field as well.
+    [void][HudOwnedJob]::SendMessageW((Ask-Control 200),7,[IntPtr]::Zero,[IntPtr]::Zero)
+    Check 'keyboard focus reveals an offscreen question field' ([AskProbe]::Fits($ask,(Ask-Control 200)))
+    [void][HudOwnedJob]::SendMessageW($ask,0x115,[IntPtr]7,[IntPtr]::Zero)
+    Ask-Click 1007
+    Check 'scrolled custom action completes the compact form' ((Ask-Result).button-eq 'b7')
+} finally { [void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi) }
 $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
 $opened='{}'|& $ctl ask --no-block --pipe $pipe|ConvertFrom-Json
 Check 'actual ask CLI returns generated no-block ID' ($LASTEXITCODE-eq 0 -and $opened.id)

@@ -35,6 +35,9 @@ controls, multiline Enter inserts a newline, and Alt+hotkey uses the active layo
 (including Cyrillic). Submit actions remain available on every page. Native controls
 expose labels, values and selection state. Single choices may remain unselected;
 multiple selections return IDs in the original input order.
+On short or high-DPI screens, the form scrolls vertically rather than overlapping its
+fields and buttons. The scrollbar and mouse wheel move through the form; keyboard
+focus automatically reveals the selected control.
 Native accessibility is verified through MSAA. The existing process-wide UI Automation
 proxy limitation remains; this stage does not claim to repair it or certify a screen reader.
 
