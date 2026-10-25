@@ -612,6 +612,11 @@ public sealed partial class ControlServer : IDisposable
                 if (n.Notifications > 0) sb.Append(",\"notifications\":").Append(n.Notifications);
                 if (n.StatusBlink) sb.Append(",\"statusBlink\":true");
                 if (n.OverlaySize > 0) sb.Append(",\"overlaySize\":").Append(n.OverlaySize);
+                if (n.OverlayDetails is { Count: > 0 } details)
+                    sb.Append(",\"overlayDetails\":").Append(JsonSerializer.Serialize(details.Select(d => new {
+                        id = d.Id, slot = d.Slot, ownerPaneId = d.OwnerPaneId, hidden = d.Hidden, visible = d.Visible, exited = d.Exited,
+                        geometry = new { x = d.X, y = d.Y, width = d.Width, height = d.Height, percent = d.Percent, widthDip = d.WidthDip, heightDip = d.HeightDip }
+                    })));
                 // context: the session.context read-back, emitted only when one is set — absent is
                 // "none", the same spelling the flags above use for "no" (P3).
                 if (n.Context is not null) sb.Append(",\"").Append(SessionContexts.Key).Append("\":").Append(JsonSerializer.Serialize(n.Context));
@@ -764,11 +769,14 @@ public sealed partial class ControlServer : IDisposable
             if (args.TryGetProperty(OverlaySizeKey, out _)) return Err(OverlayPanes.SizeWithPaneRefusal);
         }
         if (!TryOverlaySize(args, out int sizePercent, out string? sizeErr)) return Err(sizeErr!);
+        OverlayOptions options;
+        try { options = OverlayOptions.Parse(action, args); }
+        catch (ArgumentException ex) { return Err(ex.Message); }
         var textArgs = OverlayTextArgs.Screen;
         if (action == "text" && GetBool(args, "styles")) return Err(OverlayPanes.StylesRefusal);
         if (action == "text" && !TryTextArgs(args, out textArgs, out string? textErr)) return Err(textErr!);
         string ovl = host.SessionOverlay(target, action, GetString(args, "command"), sizePercent,
-            GetBool(args, "wait"), GetBool(args, "block"), pane, textArgs);
+            GetBool(args, "wait"), GetBool(args, "block"), pane, textArgs, options);
         if (ovl.StartsWith(ISessionHost.RefusePrefix, StringComparison.Ordinal)) return Err(ovl[ISessionHost.RefusePrefix.Length..]);
         return action is "copy" or "text" ? OkRaw(OverlayPanes.TextReply(ovl)) : Ok(ovl);
     }

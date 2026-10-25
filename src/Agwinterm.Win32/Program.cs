@@ -349,6 +349,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public Task? Start;
         public float FontSize;     // per-pane font zoom (pt)
         public bool FontZoomed;   // reset resumes inheritance; equal numeric sizes alone do not
+        public Color? DefaultBackground; // overlay-local fallback; explicit terminal colors still win
         public float Ratio = 1f;   // this pane's OWN share of the session's extent along its axis (width when vertical, height when horizontal); PaneLayout normalises by the sum
         public int ScrollOffset;   // lines scrolled up from the live bottom (0 = live; clamped to HistoryCount)
         public long LastScrollGen; // emulator ScrollGeneration last seen on output (detects real scroll vs in-place repaint)
@@ -444,6 +445,9 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <c>--block</c> caller holds the source of the term its own open created.</summary>
     private sealed class OverlaySlot
     {
+        public bool Hidden;
+        public int? WidthDip, HeightDip;
+        public OverlayGeometry Geometry => new(SizePercent, WidthDip, HeightDip);
         public Pane? Term;        // the overlay's terminal (a cover-kind pane) while the slot is open; null = empty
         public int SizePercent;   // session-wide slot only: 0 = full content region; 1..100 = centered floating panel. Always 0 on a pane slot (full-pane, never floating)
         public bool Wait;         // keep the overlay after its program exits (press a key to close)

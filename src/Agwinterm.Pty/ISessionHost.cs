@@ -25,7 +25,11 @@ public sealed record SessionSnapshot(string Id, string Name, bool Active, AgentS
     string? Context = null, IReadOnlyList<string>? CapturedCommands = null,
     string? Axis = null, IReadOnlyList<string>? PaneOverlays = null, HudSpec? Hud = null,
     IReadOnlyList<string?>? ForegroundShells = null,
-    string? CustomName = null, IReadOnlyDictionary<string, string?>? PaneCwds = null);
+    string? CustomName = null, IReadOnlyDictionary<string, string?>? PaneCwds = null,
+    IReadOnlyList<OverlayDetailSnapshot>? OverlayDetails = null);
+
+public sealed record OverlayDetailSnapshot(string Id, string Slot, string? OwnerPaneId, bool Hidden, bool Visible,
+    bool Exited, float X, float Y, float Width, float Height, int Percent, int? WidthDip, int? HeightDip);
 
 /// <summary>A workspace (with its sessions) for the control-API tree.</summary>
 public sealed record WorkspaceSnapshot(string Id, string Name, bool Active, IReadOnlyList<SessionSnapshot> Sessions, bool Collapsed = false);
@@ -439,7 +443,7 @@ public interface ISessionHost
     /// visible and interactive. --pane left|right names the slot: left is pane 0 and right is pane 1
     /// whatever the axis (on a horizontal split left is the top pane), a non-split session accepts
     /// --pane left, and the flag omitted means the session-wide slot - today's behaviour, byte for
-    /// byte. A pane overlay is that pane's surface while it is open: keys typed into the focused pane,
+    /// byte. A pane overlay is that pane's surface while it is open and shown: keys typed into the focused pane,
     /// the mouse inside the pane's box and --target active reach the overlay; --target with a pane id
     /// reaches the shell underneath (agterm: "session text reads the surface underneath"); --target
     /// with the overlay's id reaches the overlay from anywhere, and on session overlay itself names
@@ -519,6 +523,12 @@ public interface ISessionHost
     /// </summary>
     string SessionOverlay(string? target, string action, string? command, int sizePercent, bool wait, bool block,
         string? pane, OverlayTextArgs text);
+
+    string SessionOverlay(string? target, string action, string? command, int sizePercent, bool wait, bool block,
+        string? pane, OverlayTextArgs text, OverlayOptions options)
+        => options.Extended || action is "hide" or "show" or "toggle"
+            ? RefusePrefix + "host does not support extended overlay controls"
+            : SessionOverlay(target, action, command, sizePercent, wait, block, pane, text);
 
     /// <summary>Raise a desktop notification against a session (in-app banner + sidebar badge + OS tray balloon).
     /// Returns false if the target isn't found.</summary>

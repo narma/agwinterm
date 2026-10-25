@@ -192,7 +192,8 @@ public class OverlaySizeTests
         var (server, _) = New();
         foreach (var action in new[] { "close", "resize" })
         {
-            var r = JsonDocument.Parse(server.Dispatch("{\"cmd\":\"session.overlay\",\"target\":\"no-such-session\",\"args\":{\"action\":\"" + action + "\",\"size-percent\":50}}")).RootElement;
+            var size = action == "resize" ? ",\"size-percent\":50" : "";
+            var r = JsonDocument.Parse(server.Dispatch("{\"cmd\":\"session.overlay\",\"target\":\"no-such-session\",\"args\":{\"action\":\"" + action + "\"" + size + "}}")).RootElement;
             Assert.False(r.GetProperty("ok").GetBoolean());
             Assert.Contains("no session", r.GetProperty("error").GetString());
             Assert.DoesNotContain("open one first", r.GetProperty("error").GetString());

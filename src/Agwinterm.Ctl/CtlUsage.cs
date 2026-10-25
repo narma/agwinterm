@@ -97,6 +97,12 @@ public static class CtlUsage
           agwintermctl session overlay close|result|copy [--pane left|right] [--target ID]
           agwintermctl session overlay text [--all|--lines N] [--pane left|right] [--target ID]
           agwintermctl session overlay resize --size-percent N [--target ID]   (the session-wide overlay only)
+          agwintermctl session overlay hide|show|toggle [--pane left|right] [--target ID]
+              Hiding preserves the process/ID; explicit overlay IDs still address hidden programs.
+              Open/resize: --width N --height N (1..16384 DIP, session slot only), percent fallback per axis.
+              Partial resize retains omitted axes; explicit percent resets DIP overrides. Resize --full resets all.
+              Open: --cwd PATH --follow --background-color '#RRGGBB'. Follow selects the owner after opening.
+              Tree overlayDetails reports hidden/effective visible state and client-pixel geometry.
               (copy and text print result.text; --pane names a PANE slot, passed through as typed — the server validates
               the word; --size-percent beside --pane, and resize --pane, are refused here and nothing is sent: a pane
               overlay is always full-pane. The rule, quoted from ISessionHost.SessionOverlay — the skill quotes it too:
@@ -106,7 +112,7 @@ public static class CtlUsage
               visible and interactive. --pane left|right names the slot: left is pane 0 and right is pane 1
               whatever the axis (on a horizontal split left is the top pane), a non-split session accepts
               --pane left, and the flag omitted means the session-wide slot - today's behaviour, byte for
-              byte. A pane overlay is that pane's surface while it is open: keys typed into the focused pane,
+              byte. A pane overlay is that pane's surface while it is open and shown: keys typed into the focused pane,
               the mouse inside the pane's box and --target active reach the overlay; --target with a pane id
               reaches the shell underneath (agterm: "session text reads the surface underneath"); --target
               with the overlay's id reaches the overlay from anywhere, and on session overlay itself names

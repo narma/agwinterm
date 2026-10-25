@@ -204,6 +204,18 @@ try {
     $overlayText = Ctl @('session', 'overlay', 'text', '--target', $copy)
     Check ($overlayText.text -match 'OVERLAY_LINUX') 'Overlay commands run in Linux'
     $null = Ctl @('session', 'overlay', 'close', '--target', $copy)
+    $null = Ctl @('session', 'select', $session)
+    $c2Command = 'printf "C2_CWD=%s\n" "$PWD"; sleep 3'
+    $c2Overlay = Ctl @('session','overlay','open','--command',$c2Command,'--cwd',"$linuxHome/path with spaces",'--target',$copy,'--width','420','--height','240','--background-color','#123456','--wait')
+    Start-Sleep -Seconds 1
+    $c2Text = (Ctl @('session','overlay','text','--target',$c2Overlay)).text
+    Check (($c2Text -replace '\s','').Contains("C2_CWD=$linuxHome/pathwithspaces")) 'C2 explicit overlay cwd preserves Linux paths with spaces'
+    Check (((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session).active) 'C2 background open does not select the owner'
+    $null = Ctl @('session','overlay','hide','--target',$c2Overlay)
+    Check (((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).overlayDetails[0].hidden) 'C2 WSL overlay hides without losing its identity'
+    $null = Ctl @('session','overlay','open','--command','sleep 2','--target',$copy,'--follow','--wait')
+    Check (((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).active) 'C2 follow selects the WSL owner explicitly'
+    $null = Ctl @('session','overlay','close','--target',$copy)
     $null = Ctl @('session', 'bind', 'none', '--target', $copy)
     $null = Ctl @('config', 'set', 'restore-commands', 'true')
     $null = Ctl @('session', 'type', ('sleep 15' + [char]13), '--target', $copy)

@@ -227,6 +227,8 @@ $process = $null
 $sessionId = $null
 $scId = $null
 try {
+    New-Item -ItemType Directory -Path $testAppDir -Force | Out-Null
+    'map f10 = reopen_session' | Set-Content -LiteralPath (Join-Path $testAppDir 'keymap.conf') -Encoding utf8
     $process = Start-Process $Exe -ArgumentList @('--app-id', $appId, '--pipe', $pipe, '--no-restore') -PassThru
     $up = $false
     for ($i = 0; $i -lt 40; $i++) {
@@ -1427,10 +1429,8 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
             ($ctxClear.ok -and $ctxClear.result.PSObject.Properties['context'] -and $null -eq $ctxClear.result.context -and
              -not $ctxNode4.PSObject.Properties['context']) "reply=$($ctxClear | ConvertTo-Json -Compress)"
 
-        # session reopen carries the context (P3): the undo-close record holds it, so the reopened
-        # session comes back on the same id WITH it. Reopen is not a control verb — it is the
-        # Ctrl+Shift+R binding — so it is driven through the window's own key path (PostMessage to
-        # this instance's hwnd with the modifier set on its input queue; nothing global).
+        # The private F10 binding exercises the same native reopen action without an injected
+        # Ctrl/Shift state that may disappear before a posted key is processed.
         $reopenCtx = 'reopen me ' + [guid]::NewGuid().ToString('N').Substring(0, 8)
         $reopenMade = Invoke-Ctl @('session', 'new', '--name', 'p3-reopen', '--no-select')
         $reopenId = [string]$reopenMade.result
@@ -1441,10 +1441,11 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
         for ($i = 0; $i -lt 30 -and (Get-SessionSnapshot $reopenId); $i++) { Start-Sleep -Milliseconds 200 }
         $reopenGone = -not (Get-SessionSnapshot $reopenId)
         $process.Refresh()
-        [Agwinterm.Win32ControlTest.NativeMethods]::Chord($process.MainWindowHandle, 0x52, $true)   # Ctrl+Shift+R = reopen_session
+        [void][Agwinterm.Win32ControlTest.NativeMethods]::SendMessageW($process.MainWindowHandle, 0x0100, [IntPtr]0x79, [IntPtr]1)
+        [void][Agwinterm.Win32ControlTest.NativeMethods]::SendMessageW($process.MainWindowHandle, 0x0101, [IntPtr]0x79, [IntPtr]1)
         $reopenNode = $null
         for ($i = 0; $i -lt 30; $i++) { $reopenNode = Get-SessionSnapshot $reopenId; if ($reopenNode) { break }; Start-Sleep -Milliseconds 200 }
-        Check 'session reopen (Ctrl+Shift+R) brings the session back on its id with its context' `
+        Check 'session reopen through the private key binding brings back its id and context' `
             ($reopenMade.ok -and $reopenSet.ok -and $reopenGone -and $reopenNode -and $reopenNode.context -eq $reopenCtx) `
             "gone=$reopenGone node=$($reopenNode | ConvertTo-Json -Compress)"
         if ($reopenNode) { Invoke-Ctl @('session', 'close', $reopenId) | Out-Null; Start-Sleep -Milliseconds 400 }
