@@ -21,7 +21,24 @@ extern "C" fn interrupt(_: i32) {
 }
 
 fn mode(args: &[String]) -> Option<bool> {
-    let is = |i: usize, text: &str| args.get(i).is_some_and(|s| s.eq_ignore_ascii_case(text));
+    // The CLI accepts transport/output options before or between command words.
+    // Skip their values as well: a pipe named "events" is not a command.
+    let mut words = Vec::new();
+    let mut args_iter = args.iter().peekable();
+    while let Some(arg) = args_iter.next() {
+        if arg.starts_with("--") {
+            if !matches!(arg.to_ascii_lowercase().as_str(), "--json" | "--watch")
+                && args_iter
+                    .peek()
+                    .is_some_and(|value| !value.starts_with("--"))
+            {
+                args_iter.next();
+            }
+        } else {
+            words.push(arg);
+        }
+    }
+    let is = |i: usize, text: &str| words.get(i).is_some_and(|s| s.eq_ignore_ascii_case(text));
     if is(0, "session") && is(1, "wait") {
         Some(false)
     } else if is(0, "events") && args.iter().any(|s| s.eq_ignore_ascii_case("--watch")) {
@@ -180,6 +197,29 @@ mod tests {
         for (args, expected) in [
             (vec!["session", "wait", "completed"], Some(false)),
             (vec!["EVENTS", "--WATCH"], Some(true)),
+            (
+                vec![
+                    "--json",
+                    "session",
+                    "wait",
+                    "completed",
+                    "--wait-timeout",
+                    "0",
+                ],
+                Some(false),
+            ),
+            (
+                vec![
+                    "--pipe", "events", "--json", "session", "--window", "W", "wait", "idle",
+                ],
+                Some(false),
+            ),
+            (
+                vec!["--json", "--pipe", "session", "events", "--watch"],
+                Some(true),
+            ),
+            (vec!["--WATCH", "--window", "W", "EVENTS"], Some(true)),
+            (vec!["--pipe", "events", "ping"], None),
             (vec!["events"], None),
             (vec!["session", "type", "wait"], None),
         ] {

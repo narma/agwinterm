@@ -31,7 +31,15 @@ function Node([string]$target, [string]$window) {
 }
 function AwaitFile([string]$path) {
     for ($i=0; $i -lt 50; $i++) {
-        if (Test-Path -LiteralPath $path) { return [IO.File]::ReadAllText($path).Trim() }
+        if (Test-Path -LiteralPath $path) {
+            try {
+                $content = [IO.File]::ReadAllText($path).Trim()
+                if ($content.Length -gt 0) { return $content }
+            } catch [IO.IOException] {
+                # Redirection creates the file before the writer releases its handle.
+                # Retry reads within the existing deadline; never rerun the command.
+            }
+        }
         Start-Sleep -Milliseconds 100
     }
     throw "Command did not create $path"

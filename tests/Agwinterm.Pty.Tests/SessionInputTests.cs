@@ -6,6 +6,45 @@ namespace Agwinterm.Pty.Tests;
 public class SessionInputTests
 {
     [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task QuickReplacementRetiresOnlyExitedPaneAndItsWaiters(bool exited)
+    {
+        var program = LoadProgram();
+        var app = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(program);
+        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+        using var session = new InputSession { HasExited = exited };
+        var pane = Activator.CreateInstance(program.GetNestedType("Pane", BindingFlags.NonPublic)!, true)!;
+        pane.GetType().GetField("Id", fields)!.SetValue(pane, "quick:old");
+        pane.GetType().GetField("S", fields)!.SetValue(pane, session);
+        program.GetField("_quick", fields)!.SetValue(app, pane);
+        var observation = new ControlObservation("quick-window");
+        program.GetField("_observation", fields)!.SetValue(app, observation);
+        observation.ObservePane("quick:old", new StatusSignal());
+        using var cancel = new CancellationTokenSource();
+        var wait = observation.WaitAsync("pane", "quick:old", new HashSet<AgentStatus> { AgentStatus.Completed }, cancellationToken: cancel.Token);
+
+        program.GetMethod("RetireExitedQuick", fields)!.Invoke(app, null);
+
+        if (exited)
+        {
+            var error = await Assert.ThrowsAsync<ObservationException>(() => wait.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal("target-gone", error.Code);
+            Assert.Null(program.GetField("_quick", fields)!.GetValue(app));
+            Assert.Null(observation.Status("pane", "quick:old"));
+            Assert.True(session.Disposed);
+        }
+        else
+        {
+            Assert.Same(pane, program.GetField("_quick", fields)!.GetValue(app));
+            Assert.False(session.Disposed);
+            Assert.False(wait.IsCompleted);
+            cancel.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+        }
+        Assert.Equal(0, observation.PendingCount);
+    }
+
+    [Theory]
     [InlineData("focus")] [InlineData("resize")] [InlineData("command")]
     public async Task QueuedTargetRemovedBeforeExecutionNeverFallsBack(string operation)
     {
@@ -196,7 +235,8 @@ public class SessionInputTests
         public int Cols => 80; public int Rows => 24; public int? ChildProcessId => null;
         public object SyncRoot { get; } = new();
         public AgentStatus Status => AgentStatus.Idle; public bool Blink => false; public bool AutoReset => false;
-        public long StatusChangedAt => 0; public bool HasExited => false; public int? ExitCode => null;
+        public long StatusChangedAt => 0; public bool HasExited { get; init; } public int? ExitCode => null;
+        public bool Disposed { get; private set; }
         public event Action? OutputReceived { add { } remove { } }
         public event Action? StatusChanged { add { } remove { } }
         public event Action<string?>? SoundRequested { add { } remove { } }
@@ -212,6 +252,6 @@ public class SessionInputTests
         public void Resize(int cols, int rows) => Emulator.Resize(cols, rows);
         public string SnapshotRow(int row) => Emulator.DumpRow(row);
         public (int Row, int Col) SnapshotCursor() => (Emulator.CursorRow, Emulator.CursorCol);
-        public void Detach() { } public void Dispose() { }
+        public void Detach() { } public void Dispose() { Disposed = true; }
     }
 }
