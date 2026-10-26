@@ -137,6 +137,7 @@ public sealed class HudOwnedJob {
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
     @('session-host = in-process','claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
     'map f12 = close_pane'|Set-Content (Join-Path $appDir 'keymap.conf')
+    if($Suite-eq 'WorkingSets'){'map f8 = toggle_workspace_filter'|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'Quick'){
         @('map f7 = toggle_search','map f8 = command:QuickProbe',
           ('command [send] QuickProbe = echo {AGW_PANE}>"'+(Join-Path $artifact 'keymap-send.txt')+'"'))|Add-Content (Join-Path $appDir 'keymap.conf')

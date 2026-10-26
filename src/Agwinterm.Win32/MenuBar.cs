@@ -421,7 +421,7 @@ internal partial class Program
             case "toggle_flag": if (_active is not null) FlagOp(_active, "toggle"); break;
             case "clear_flagged": FlagOp(null, "clear"); break;
             case "focus_workspace": WorkspaceFocusOp("toggle"); break;
-            case "toggle_workspace_filter": _workspaceFilterEnabled = !_workspaceFilterEnabled; RequestRedraw(); SaveState(); EmitEvent("tree"); break;
+            case "toggle_workspace_filter": SetWorkspaceFilter(!_workspaceFilterEnabled); break;
             case "clear_workspace_focus": ClearWorkspaceFocus(); break;
             case "toggle_split_v": SplitOp("toggle", _active, SplitAxes.Vertical); break;
             case "toggle_split_h": SplitOp("toggle", _active, SplitAxes.Horizontal); break;

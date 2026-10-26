@@ -22,7 +22,13 @@ internal partial class Program : IWorkingSetHost
         workspaceFilterEnabled = _workspaceFilterEnabled, sidebarFlaggedLayout = _flaggedLayout,
         visibleSessionIds = WorkingRows().Where(r => r.SessionId is not null).Select(r => r.SessionId).ToArray()
     };
-    private void DisableWorkspaceFilter() { _workspaceFilterEnabled = false; RequestRedraw(); SaveState(); EmitEvent("tree"); }
+    private void SetWorkspaceFilter(bool enabled)
+    {
+        _workspaceFilterEnabled = enabled;
+        ClearExcludedWorkspaceTarget();
+        RequestRedraw(); SaveState(); EmitEvent("tree");
+    }
+    private void DisableWorkspaceFilter() => SetWorkspaceFilter(false);
     private void ClearWorkspaceFocus() { _focusedWorkspaceIds.Clear(); DisableWorkspaceFilter(); }
     private void ClearExcludedWorkspaceTarget()
     {
@@ -75,9 +81,8 @@ internal partial class Program : IWorkingSetHost
         }
         if (command == "workspace.filter")
         {
-            _workspaceFilterEnabled = op == "on" || op == "toggle" && !_workspaceFilterEnabled;
-            ClearExcludedWorkspaceTarget();
-            SaveState(); RequestRedraw(); EmitEvent("tree"); return WorkingSetStateCore();
+            SetWorkspaceFilter(op == "on" || op == "toggle" && !_workspaceFilterEnabled);
+            return WorkingSetStateCore();
         }
         if (command == "sidebar.flagged-layout")
         {

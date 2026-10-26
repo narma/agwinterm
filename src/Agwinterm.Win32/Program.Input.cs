@@ -171,7 +171,7 @@ internal partial class Program
             case "toggle_flag": if (_active is not null) FlagOp(_active, "toggle"); break;
             case "toggle_flagged_view": ToggleFlaggedView(); break;
             case "focus_workspace": WorkspaceFocusOp("toggle"); break;
-            case "toggle_workspace_filter": _workspaceFilterEnabled = !_workspaceFilterEnabled; RequestRedraw(); SaveState(); EmitEvent("tree"); break;
+            case "toggle_workspace_filter": SetWorkspaceFilter(!_workspaceFilterEnabled); break;
             case "clear_workspace_focus": ClearWorkspaceFocus(); break;
             case "next_workspace": NavigateWorkspace("next"); break;
             case "previous_workspace": NavigateWorkspace("prev"); break;

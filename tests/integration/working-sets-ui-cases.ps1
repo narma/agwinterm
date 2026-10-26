@@ -102,12 +102,18 @@ Check 'empty visible projection leaves active session intact' (WSWait {(Node $se
 $null=Rpc 'sidebar' @{op='mode:tree'} -NoTarget
 # Empty-workspace placement must not outlive a filter that excludes that workspace.
 $empty=[string](Rpc 'workspace.new' @{name='Excluded placement';collapsed=$false} -NoTarget)
-foreach($scenario in 'membership add','filter enable','membership remove'){
+foreach($scenario in 'membership add','filter enable','membership remove','keymap enable'){
     $null=Rpc 'workspace.filter' @{op='off'} -NoTarget
     $null=Rpc 'session.select' @{} $b1
     if($scenario-eq 'membership remove'){$null=Rpc 'workspace.focus' @{op='on'} $empty}
     $null=Rpc 'workspace.select' @{} $empty
     if($scenario-eq 'filter enable'){$null=Rpc 'workspace.filter' @{op='on'} -NoTarget}
+    elseif($scenario-eq 'keymap enable'){
+        $currentHandle=([Diagnostics.Process]::GetProcessById($job.Pid)).MainWindowHandle
+        if($currentHandle-eq [IntPtr]::Zero){throw 'No owned window for filter keymap test'}
+        [void][HudOwnedJob]::SendMessageW($currentHandle,0x100,[IntPtr]119,[IntPtr]1)
+        [void][HudOwnedJob]::SendMessageW($currentHandle,0x101,[IntPtr]119,[IntPtr]1)
+    }
     elseif($scenario-eq 'membership remove'){$null=Rpc 'workspace.focus' @{op='off'} $empty}
     else{$null=Rpc 'workspace.focus' @{op='on'} $b}
     $placed=[string](Rpc 'session.new' @{name="After $scenario";'no-select'=$true})
