@@ -769,11 +769,12 @@ internal partial class Program
             p.SelAlt = em.IsAltScreen;
             // History coordinates track ordinary shell output. TUIs own their viewport and can
             // redraw it without growing history; preserve the selected content in that case.
-            p.SelTrackable = !em.IsAltScreen && !em.MouseReporting && em.ScrollbackMax > 0
+            // Mouse reporting changes live-grid tracking, not history eviction accounting.
+            p.SelTrackable = !em.IsAltScreen && em.ScrollbackMax > 0
                              && em.ScrollTop == 0 && em.ScrollBottom == em.Screen.Rows - 1;
             p.SelContent = null;
             p.SelContentVisible = true;
-            if (!p.SelTrackable && ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
+            if ((!p.SelTrackable || em.MouseReporting) && ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
             {
                 NormSel(p, out int first, out int from, out int last, out int to);
                 if (first >= em.HistoryCount)
@@ -935,8 +936,8 @@ internal partial class Program
         // CURRENT history count and applied to the stored focus, so an unreconciled anchor would be
         // left in the old numbering and the two ends would name different eras of the buffer.
         if (p.HasSel && !ReconcileSel(p)) { _markMode = false; p.ClearSel(); RequestRedraw(); return true; }
-        // Copy an offscreen selection, but do not extend stale coordinates with the arrows.
-        if (p.SelContent is not null && !p.SelContentVisible && vk is not (VK_ESCAPE or VK_RETURN)
+        // Keep cached offscreen rows until the entire selection can be extended on the grid.
+        if (!CanExtendSelection(p) && vk is not (VK_ESCAPE or VK_RETURN)
             && !(vk == 0x43 && ctrl)) return true;
         var em = p.S.Emulator;
         int cols, rows, hist; bool alt;
@@ -980,12 +981,26 @@ internal partial class Program
         RequestRedraw();
     }
 
+    private static bool CanExtendSelection(Pane p)
+    {
+        lock (p.S.SyncRoot)
+        {
+            if (p.SelContent is null) return true;
+            int hist = p.S.Emulator.HistoryCount, end = hist + p.S.Emulator.Screen.Rows;
+            return p.SelContentVisible && p.SelAncLine >= hist && p.SelAncLine < end
+                && p.SelFocLine >= hist && p.SelFocLine < end;
+        }
+    }
+
     private void BeginSelect(Pane p, int line, int col, bool extend)
     {
         lock (p.S.SyncRoot)
         {
-            if (extend && HasLiveSel(p) && p.SelContentVisible)
-            { p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampSel(p); }
+            if (extend && HasLiveSel(p))
+            {
+                if (!CanExtendSelection(p)) return;
+                p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampSel(p);
+            }
             else { p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
         }
     }
@@ -994,9 +1009,11 @@ internal partial class Program
     {
         lock (p.S.SyncRoot)
         {
-            // Reconcile before adding a focus in today's coordinates. If the anchor disappeared
-            // during a redraw, start this drag segment at the pointer instead of reviving it.
-            if (!ReconcileSel(p) || !p.SelContentVisible)
+            // Reconcile before adding a focus in today's coordinates. Preserve cached hidden
+            // rows until they return; only an invalidated selection starts a new drag segment.
+            bool reconciled = ReconcileSel(p);
+            if (reconciled && !CanExtendSelection(p)) return;
+            if (!reconciled)
             {
                 p.SelAncLine = line; p.SelAncCol = col;
             }

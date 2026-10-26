@@ -136,12 +136,13 @@ public sealed class ContentSelection
                 int target = candidate + i;
                 if (!RowMatches(_selected[i], target)) { matches = false; break; }
                 visibleInk += _selected[i].Ink;
-                if (RowMatches(_wholeRows[i], target)) context++;
+                if (_wholeRows[i].Ink > 0 && RowMatches(_wholeRows[i], target)) context++;
             }
             if (!matches || visibleInk == 0) continue;
-            if (_before is not null && candidate > 0 && RowMatches(_before, candidate - 1)) context++;
-            if (_after is not null && candidate + Height < rows && RowMatches(_after, candidate + Height)) context++;
+            if (_before is { Ink: > 0 } && candidate > 0 && RowMatches(_before, candidate - 1)) context++;
+            if (_after is { Ink: > 0 } && candidate + Height < rows && RowMatches(_after, candidate + Height)) context++;
             // A common word alone is insufficient evidence of the selected occurrence moving.
+            // Blank rows are layout, not identifying context (including inside a selection).
             if (context == 0) continue;
             int score = visibleInk * (_originalRows + 3) + context;
             if (score > bestScore) { bestScore = score; best = candidate; ambiguous = false; }

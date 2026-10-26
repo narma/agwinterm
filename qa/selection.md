@@ -11,6 +11,9 @@ repainting in place, a reserved DECSTBM line, scrollback off — keep a content 
 cell spans plus row context relocate the highlight. Absent or ambiguous content is not highlighted,
 but the original text remains copyable and can be highlighted when it returns. A different screen
 still clears the selection. This does not infer identity from wheel direction or a lone common word.
+Blank neighbouring rows do not count as identifying context. A partially hidden content selection
+remains copyable; keyboard arrows, Shift+click and drag extension leave it unchanged until all its
+rows return to the live grid. A plain click can start a new selection at any time.
 
 Setup for every case: sandbox instance per `qa/product.md`, `copy-on-select = false`,
 `copy-on-ctrl-c = true`, unless the case says otherwise. Fixtures print **distinct** text per line

@@ -52,9 +52,15 @@ case. See [the benchmark instructions](../tools/selection-bench/README.md) for m
 Validation on the final implementation:
 
 - 18,000 differential checks passed (linear/block selection, scrolling, edits and clears).
-- All 501 Core tests passed, including managed/Rust selection regressions.
+- All 509 Core tests passed, including managed/Rust selection regressions.
 - New regression tests check zero allocations after capture on changing repeated text, lazy Unicode
   copying, negative-cache recovery, resize invalidation and equal spans at different columns.
 
 Timing thresholds are deliberately kept out of unit tests; functional and allocation regressions
 are deterministic, while performance measurements depend on the machine and concurrent load.
+
+After the review fixes (reject blank context, retain history eviction tracking with mouse reporting,
+and preserve hidden rows during extension), the 18,000 differential checks still passed. The separate
+regression cases intentionally correct baseline behavior. A repeat of `status-word` measured
+16.27 → 4.12 µs at 120×40, 81.16 → 18.95 µs at 240×100, and 279.83 → 63.46 µs at 400×200,
+with zero bytes allocated per update in all three optimized cases.

@@ -178,6 +178,56 @@ public class SelectionScrollRegressionTests
     }
 
     [Fact]
+    public void BlankNeighboursDoNotIdentifyAnUnrelatedWord()
+    {
+        using var f = new Fixture(alt: true);
+        f.Feed("\x1b[2J\x1b[3;1HOK original message");
+        f.Select(2, to: 1);
+        f.Feed("\x1b[2J\x1b[5;1HOK unrelated message");
+        Assert.Equal("OK", f.Text());
+        Assert.False(f.Visible);
+    }
+
+    [Fact]
+    public void MouseReportingDoesNotKeepEvictedHistorySelected()
+    {
+        using var f = new Fixture(alt: false);
+        ((TerminalEmulator)f.Core).ScrollbackMax = 2;
+        f.Feed("\x1b[6;1H\r\n\x1b[?1000h");
+        f.Select(-1);
+        Assert.Equal("MARKER00", f.Text());
+        f.Feed(string.Concat(Enumerable.Repeat("\r\nnew", 600)));
+        Assert.Equal("", f.Text());
+    }
+
+    [Theory]
+    [InlineData("MarkModeKey", true)]
+    [InlineData("BeginSelect", true)]
+    [InlineData("UpdateSelect", true)]
+    [InlineData("MarkModeKey", false)]
+    [InlineData("BeginSelect", false)]
+    [InlineData("UpdateSelect", false)]
+    public void ExtendingPartiallyOffscreenSelectionPreservesHiddenText(string method, bool up)
+    {
+        using var f = new Fixture(alt: true);
+        f.Select(1, last: 3, block: true);
+        string selected = f.Text();
+        f.Feed(up ? "\x1b[2S" : "\x1b[3T");
+        Assert.Equal(selected, f.Text());
+        var program = RuntimeHelpers.GetUninitializedObject(ProgramType);
+        ProgramType.GetField("_cover", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(program, f.Pane);
+        object[] args = method switch
+        {
+            "MarkModeKey" => new object[] { 0x27, false },
+            "BeginSelect" => new object[] { f.Pane, 2, 9, true },
+            _ => new object[] { f.Pane, 2, 9 }
+        };
+        ProgramType.GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(program, args);
+        Assert.Equal(selected, f.Text());
+        Assert.Equal(up ? -1 : 4, f.Line);
+    }
+
+    [Fact]
     public void PartiallyOffscreenBlockKeepsAllTextAndVisibleRows()
     {
         using var f = new Fixture(alt: true);
