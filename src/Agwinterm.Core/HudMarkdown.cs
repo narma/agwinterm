@@ -62,7 +62,7 @@ public static class HudMarkdown
         }
         return new(text.ToString(), ranges.AsReadOnly());
     }
-    private static string[] Cells(string line) => line.Trim().Trim('|').Split('|').Select(c => c.Trim()).ToArray();
+    private static string[] Cells(string line) => line.Trim().Trim('|').Split('|').Select(c => c.Trim().Replace("\t", "    ")).ToArray();
     private static bool IsTableDivider(string line)
     {
         var cells = Cells(line);

@@ -41,6 +41,22 @@ public class HudPresentationTests
         Assert.True(CtlArguments.TryParse(["session", "hud", "hello", "--font-size", "13.5"], out _, out _, out _, out _, out _, out _));
         Assert.False(CtlArguments.TryParse(["dashboard", "--font-size", "13.5"], out _, out _, out _, out _, out _, out _));
     }
+    [Fact] public void FractionalHudFontUsesParsedCommandRegardlessOfOptionOrder()
+    {
+        string[][] accepted = [
+            ["--json", "session", "hud", "open", "hello", "--font-size", "13.5"],
+            ["--font-size", "13.5", "session", "hud", "hello"],
+            ["session", "--pipe", "hud", "hud", "update", "hello", "--font-size", "13.5"],
+            ["--pipe", "session", "--font-size", "13.5", "session", "hud", "hello"]
+        ];
+        foreach (var argv in accepted)
+        {
+            Assert.True(CtlArguments.TryParse(argv, out _, out var options, out _, out _, out _, out var error), error);
+            Assert.Equal("13.5", options["font-size"]);
+        }
+        Assert.False(CtlArguments.TryParse(["--font-size", "13.5", "--json", "dashboard"], out _, out _, out _, out _, out _, out _));
+        Assert.False(CtlArguments.TryParse(["--pipe", "session", "dashboard", "--font-size", "13.5"], out _, out _, out _, out _, out _, out _));
+    }
     [Fact] public void FileInputIsStrictBoundedUtf8AndAllowsBom()
     {
         string path = Path.Combine(Path.GetTempPath(), "hud-" + Guid.NewGuid() + ".md");

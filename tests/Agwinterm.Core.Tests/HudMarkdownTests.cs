@@ -24,6 +24,16 @@ public class HudMarkdownTests
     }
     [Theory][InlineData("bad\u001btext")][InlineData("bad\0text")]
     public void ControlsRefuse(string text) => Assert.Throws<ArgumentException>(() => HudMarkdown.Parse(text));
+    [Theory]
+    [InlineData("A\tB|C\n---|---\n12345|D", "A    B │ C\n12345  │ D")]
+    [InlineData("A|C\n---|---\n1\t2|D", "A      │ C\n1    2 │ D")]
+    public void TableTabsAreExpandedBeforeColumnAlignment(string markdown, string expected)
+    {
+        var document = HudMarkdown.Parse(markdown);
+        Assert.Equal(expected, document.Text);
+        var rows = document.Text.Split('\n');
+        Assert.Equal(rows[0].IndexOf('│'), rows[1].IndexOf('│'));
+    }
     [Fact] public void WorkBoundsAndMalformedMarkupArePredictable()
     {
         Assert.Throws<ArgumentException>(() => HudMarkdown.Parse(new string('x', 4097)));

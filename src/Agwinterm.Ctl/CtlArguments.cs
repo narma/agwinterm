@@ -95,12 +95,6 @@ public static class CtlArguments
             { error = $"--{key} is empty. Nothing sent."; return false; }
             if (key == "json") json = true;
             if (key == "timeout" && !CtlRequest.TryResolveTimeout(value, false, out _, out error)) return false;
-            bool hudFont = key == "font-size" && argv.Length > 1 &&
-                argv[0].Equals("session", StringComparison.OrdinalIgnoreCase) && argv[1].Equals("hud", StringComparison.OrdinalIgnoreCase);
-            if (!hudFont && (Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
-                !(key is "seq" or "since" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
-                    int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
-            { error = $"--{key} needs a whole number. Nothing sent."; return false; }
             if (key == "split-ratio" && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double n) || !double.IsFinite(n)))
             { error = "--split-ratio needs a finite number. Nothing sent."; return false; }
         }
@@ -126,6 +120,15 @@ public static class CtlArguments
                 error = $"{operation}: unsupported option --{key}. Nothing sent."; return false;
             }
         options.Remove("json"); valued.Remove("json"); bare.Remove("json");
+        // Command-specific number rules need the parsed command, independent of option order.
+        foreach (var (key, value) in options)
+        {
+            bool hudFont = key == "font-size" && operation is "session hud open" or "session hud update";
+            if (!hudFont && (Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
+                !(key is "seq" or "since" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
+                    int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+            { error = $"--{key} needs a whole number. Nothing sent."; return false; }
+        }
         // Positionals and options must not specify two different sources for the same value.
         bool positionalTarget = operation is "session select" or "session close" or "session duplicate" or "session metrics"
             or "workspace collapse" or "workspace expand" or "window select" or "window close" or "window delete" or "window zoom";
