@@ -59,6 +59,20 @@ public class RecentHistoryTests : IDisposable
         await second.Enqueue(stale, next);
         var result = await first.ReadAsync(); Assert.Equal(added.EntryId, Assert.Single(result.Sessions).EntryId);
     }
+    [Fact] public async Task CorruptHistoryWarningSurvivesSupersedingRefreshAndSave()
+    {
+        File.WriteAllText(FilePath, "{");
+        var writer = new RecentHistoryWriter(FilePath);
+        var initial = await writer.ReadAsync();
+        var refreshed = await writer.ReadAsync();
+        Assert.Contains("unavailable", initial.Warning);
+        Assert.Equal(initial.Warning, refreshed.Warning);
+        Assert.True(File.Exists(FilePath + ".bad"));
+        var next = refreshed.Copy(); next.Sessions.Add(Item());
+        await writer.Enqueue(refreshed, next);
+        var saved = await writer.ReadAsync();
+        Assert.Single(saved.Sessions); Assert.Equal(initial.Warning, saved.Warning);
+    }
     [Fact] public async Task QueuedWritesReturnWhileFileLockIsHeldAndKeepMutationOrder()
     {
         var writer = new RecentHistoryWriter(FilePath);

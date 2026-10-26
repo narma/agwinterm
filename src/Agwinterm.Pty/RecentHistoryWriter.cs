@@ -12,6 +12,7 @@ public sealed class RecentHistoryWriter
     private readonly List<Change> _pending = [];
     private Task<RecentHistory> _tail = Task.FromResult(new RecentHistory());
     private string? _warning;
+    private string? _historyWarning;
     public string? Warning => Volatile.Read(ref _warning);
     public RecentHistoryWriter(string path) => _path = Path.GetFullPath(path);
 
@@ -53,12 +54,17 @@ public sealed class RecentHistoryWriter
     {
         using var locked = LockFile();
         var current = RecentHistory.Load(_path, throwOnIo: true);
+        _historyWarning = current.Warning ?? _historyWarning;
         foreach (var change in _pending) Apply(current, change);
         if (_pending.Count > 0)
         {
             if (!current.Save(_path)) throw new IOException(current.Warning);
             _pending.Clear(); // Failed writes keep their operations for the next attempt.
         }
+        // A quarantined file is absent on the next read; keep the explanation even when
+        // an earlier UI publication was superseded by a newer refresh.
+        _historyWarning = current.Warning ?? _historyWarning;
+        current.Warning ??= _historyWarning;
         Volatile.Write(ref _warning, current.Warning);
         return current;
     }
