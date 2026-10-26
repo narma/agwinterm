@@ -15,10 +15,8 @@ internal partial class Program : IPresentationHost
     private Pane AppearancePane(string? target)
     {
         if (target is null or "active") return _active?.ActivePane ?? throw new ArgumentException("no active pane");
-        var panes = AllSessions().SelectMany(s => s.Panes).ToArray();
-        var exact = panes.FirstOrDefault(p => p.Id == target); if (exact is not null) return exact;
-        var matches = panes.Where(p => p.Id.StartsWith(target, StringComparison.Ordinal)).ToArray();
-        return matches.Length == 1 ? matches[0] : throw new ArgumentException("unknown or ambiguous primary/split pane");
+        return FindStrictControlPane(target) is { cover: false, ses: not null } hit ? hit.pane
+            : throw new ArgumentException("unknown, ambiguous or auxiliary session/pane");
     }
     public object PresentationCommand(string command, JsonElement args, string? target) => InvokeOnUiQueued(() =>
     {

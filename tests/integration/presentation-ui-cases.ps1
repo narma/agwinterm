@@ -31,7 +31,16 @@ Check 'swap keeps local appearance on its pane ID' ((Appearance $right).override
 $null=Rpc 'session.appearance' @{op='clear'} $right
 Check 'clear removes all local overrides' ($null-eq (Appearance $right).overrides)
 $null=Rpc 'session.appearance' @{op='set';color='#254565';text='C8 durable';'status-shape'='square'} $right
-Start-Sleep -Milliseconds 400
+$savedAppearance=PWait {
+    foreach($file in Get-ChildItem (Join-Path $appDir 'windows') -Filter '*.json'){
+        try{$saved=Get-Content $file.FullName -Raw|ConvertFrom-Json}catch{continue}
+        foreach($ws in $saved.Workspaces){foreach($ses in $ws.Sessions){
+            if($ses.Id-eq $session -and $ses.Panes[0].Id-eq $right -and $ses.Panes[0].Appearance.Text-eq 'C8 durable' -and $ses.Panes[0].Appearance.StatusShape-eq 'square'){return $true}
+        }}
+    };return $false
+}
+Check 'pane appearance and swapped identity reach disk before restart' $savedAppearance
+if(-not $savedAppearance){throw 'Refuse to restart before the expected pane appearance is saved'}
 $job.Finish();$job=[HudOwnedJob]::new();$job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe",$root)
 Check 'restart restores appearance with swapped pane identity' (PWait {(Appearance $right).overrides.Text-eq 'C8 durable' -and $null-eq (Appearance $session).overrides})
 $null=Rpc 'session.close' @{} $session
@@ -67,3 +76,6 @@ $cli=(& $ctl session appearance get --target $right --pipe $pipe --json)|Convert
 Check 'actual CLI reads persistent appearance' ($LASTEXITCODE-eq 0 -and $cli.result.overrides.Text-eq 'C8 durable')
 $cli=(& $ctl keymap list --pipe $pipe --json)|ConvertFrom-Json
 Check 'actual CLI reads effective keymap' ($LASTEXITCODE-eq 0 -and $cli.result.bindings.f5-eq 'toggle_sidebar')
+$null=Rpc 'session.split.close' @{} $session
+$survivorAppearance=Appearance $session
+Check 'appearance resolves stable session ID after original pane closes' ($survivorAppearance.paneId-eq $right -and $survivorAppearance.overrides.Text-eq 'C8 durable')
