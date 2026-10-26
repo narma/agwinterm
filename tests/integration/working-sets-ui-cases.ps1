@@ -79,3 +79,38 @@ $null=Rpc 'workspace.delete' @{} $a
 Check 'deleting one workspace preserves other focus membership' ((WSState).focusedWorkspaceIds.Count-eq 1 -and (WSState).focusedWorkspaceIds[0]-eq $b)
 $null=Rpc 'workspace.focus' @{op='clear'} -NoTarget
 Check 'clear explicitly removes all focus membership' ((WSState).focusedWorkspaceIds.Count-eq 0 -and -not (WSState).workspaceFilterEnabled)
+# Navigation starts at the appropriate edge when the active session is hidden.
+foreach($ws in (Rpc 'tree').workspaces){$null=Rpc 'workspace.flag' @{op='off'} $ws.id}
+$null=Rpc 'session.flag' @{op='on'} $b1
+$null=Rpc 'sidebar' @{op='mode:flagged'} -NoTarget
+foreach($direction in 'next','prev'){
+    $null=Rpc 'session.select' @{} $session
+    $null=Rpc 'session.go' @{dir=$direction} -NoTarget
+    Check "$direction reaches the lone visible session from a hidden active session" (WSWait {(Node $b1).active})
+}
+$null=Rpc 'workspace.flag' @{op='on'} $b
+$null=Rpc 'session.select' @{} $session
+$null=Rpc 'session.go' @{dir='prev'} -NoTarget
+Check 'previous starts at the last visible session when active is hidden' (WSWait {(Node $b1).active})
+$null=Rpc 'session.select' @{} $session
+$null=Rpc 'session.go' @{dir='next'} -NoTarget
+Check 'next starts at the first visible session when active is hidden' (WSWait {(Node $cliId).active})
+$null=Rpc 'workspace.flag' @{op='off'} $b
+$null=Rpc 'session.select' @{} $session
+$null=Rpc 'session.go' @{dir='next'} -NoTarget
+Check 'empty visible projection leaves active session intact' (WSWait {(Node $session).active})
+$null=Rpc 'sidebar' @{op='mode:tree'} -NoTarget
+# Empty-workspace placement must not outlive a filter that excludes that workspace.
+$empty=[string](Rpc 'workspace.new' @{name='Excluded placement';collapsed=$false} -NoTarget)
+foreach($scenario in 'membership add','filter enable','membership remove'){
+    $null=Rpc 'workspace.filter' @{op='off'} -NoTarget
+    $null=Rpc 'session.select' @{} $b1
+    if($scenario-eq 'membership remove'){$null=Rpc 'workspace.focus' @{op='on'} $empty}
+    $null=Rpc 'workspace.select' @{} $empty
+    if($scenario-eq 'filter enable'){$null=Rpc 'workspace.filter' @{op='on'} -NoTarget}
+    elseif($scenario-eq 'membership remove'){$null=Rpc 'workspace.focus' @{op='off'} $empty}
+    else{$null=Rpc 'workspace.focus' @{op='on'} $b}
+    $placed=[string](Rpc 'session.new' @{name="After $scenario";'no-select'=$true})
+    Check "$scenario clears hidden empty-workspace placement" (WSWait {@(WSSessions $b|Where-Object id -eq $placed).Count-eq 1 -and (WSSessions $empty).Count-eq 0 -and (WSState).workspaceFilterEnabled})
+}
+Check 'untargeted focus preserves its legacy string reply' ((Rpc 'workspace.focus' @{op='off'} -NoTarget)-ceq 'focus')

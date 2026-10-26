@@ -24,12 +24,18 @@ internal partial class Program : IWorkingSetHost
     };
     private void DisableWorkspaceFilter() { _workspaceFilterEnabled = false; RequestRedraw(); SaveState(); EmitEvent("tree"); }
     private void ClearWorkspaceFocus() { _focusedWorkspaceIds.Clear(); DisableWorkspaceFilter(); }
+    private void ClearExcludedWorkspaceTarget()
+    {
+        if (FocusFilterActive && _workspaceTarget is { } target && !_focusedWorkspaceIds.Contains(target.Id))
+            _workspaceTarget = null;
+    }
     private void SetWorkspaceMembership(string op, string id)
     {
         if (op == "clear") { ClearWorkspaceFocus(); return; }
         bool member = op == "on" || op == "toggle" && !_focusedWorkspaceIds.Contains(id);
         if (member) { _focusedWorkspaceIds.Add(id); _workspaceFilterEnabled = true; }
         else _focusedWorkspaceIds.Remove(id);
+        ClearExcludedWorkspaceTarget();
         RequestRedraw(); SaveState(); EmitEvent("tree");
     }
     private Workspace WorkingWorkspace(string? selector) => selector is null or "active" ? ActiveWorkspace() :
@@ -64,11 +70,13 @@ internal partial class Program : IWorkingSetHost
             if (op == "clear") ClearWorkspaceFocus();
             else if (target is null) WorkspaceFocusOp(op);
             else SetWorkspaceMembership(op, WorkingWorkspace(target).Id);
-            return WorkingSetStateCore();
+            // Preserve the original untargeted focus command's string reply.
+            return target is null && op != "clear" ? (object)"focus" : WorkingSetStateCore();
         }
         if (command == "workspace.filter")
         {
             _workspaceFilterEnabled = op == "on" || op == "toggle" && !_workspaceFilterEnabled;
+            ClearExcludedWorkspaceTarget();
             SaveState(); RequestRedraw(); EmitEvent("tree"); return WorkingSetStateCore();
         }
         if (command == "sidebar.flagged-layout")

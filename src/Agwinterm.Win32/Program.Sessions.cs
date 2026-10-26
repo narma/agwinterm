@@ -1808,9 +1808,9 @@ internal partial class Program
     private void CycleSession(int dir)
     {
         var all = VisibleSessions();
-        if (all.Count < 2) return;
-        int i = _active is null ? 0 : all.IndexOf(_active);
-        SetActive(all[((i + dir) % all.Count + all.Count) % all.Count]);
+        if (all.Count == 0) return;
+        int i = _active is null ? -1 : all.IndexOf(_active);
+        SetActive(all[i < 0 ? (dir > 0 ? 0 : all.Count - 1) : ((i + dir) % all.Count + all.Count) % all.Count]);
     }
 
     // ---- Wave A1 internal helpers (called on the UI thread via Host/Post) ----
