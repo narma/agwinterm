@@ -50,6 +50,7 @@ internal partial class Program : INativeWindowHost
         var monitors = Displays(); var display = monitors.FirstOrDefault(d => d.Handle == MonitorFromWindow(_hwnd, MONITOR_DEFAULTTONEAREST)) ?? monitors[0];
         var wp = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
         if (!GetWindowPlacement(_hwnd, ref wp)) throw new InvalidOperationException("cannot read restore geometry");
+        if (_fullscreen) wp = _fsPrev;
         var restore = Rect(wp.rcNormalPosition);
         restore = restore with { X = restore.X + display.Work.X - display.Bounds.X, Y = restore.Y + display.Work.Y - display.Bounds.Y };
         return new { id = Id, rect = Rect(r), restoreRect = restore, monitor = display.Id, dpi = GetDpiForWindow(_hwnd), minimized = IsIconic(_hwnd), maximized = IsZoomed(_hwnd), fullscreen = _fullscreen };
@@ -123,14 +124,15 @@ internal partial class Program : INativeWindowHost
         if (target is null or "active") { session = _active; pane = session?.ActivePane; }
         else
         {
-            var all = AllSessions().SelectMany(s => s.Panes.Select(p => (session: s, pane: p))).ToArray();
-            var matches = all.Where(x => x.pane.Id == target).ToArray();
-            if (matches.Length == 0) matches = all.Where(x => x.pane.Id.StartsWith(target, StringComparison.Ordinal)).ToArray();
-            if (matches.Length != 1) throw new ArgumentException("unknown or ambiguous session/pane");
-            (session, pane) = matches[0];
+            var resolved = FindStrictControlPane(target);
+            if (resolved is not { cover: false, ses: { } owner } hit)
+                throw new ArgumentException("unknown, ambiguous or auxiliary session/pane");
+            session = owner; pane = hit.pane;
         }
         if (session is null || pane is null) throw new ArgumentException("no session directory");
-        return (PaneCwd(pane), IntegrationProfileOnUi(session.Id));
+        string cwd = PrettyCwd(SafeCwd(pane));
+        if (string.IsNullOrWhiteSpace(cwd)) cwd = pane.StartCwd ?? "";
+        return (cwd, IntegrationProfileOnUi(session.Id));
     }
     private static string RevealDirectory(string cwd, ShellProfile? profile, bool pathOnly)
     {

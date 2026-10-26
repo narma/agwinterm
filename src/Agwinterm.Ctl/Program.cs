@@ -677,7 +677,8 @@ switch (area)
                     if (rest.Count > 1 || options.ContainsKey("x") || options.ContainsKey("y") || rest.Count > 0 && Opt("target") is not null) { Console.Error.WriteLine("monitor move accepts one window and no coordinates"); return 2; }
                     target = rest.Count == 1 ? rest[0] : Opt("target") ?? "active"; cargs["monitor"] = monitor; break;
                 }
-                target = rest.Count > 0 ? rest[0] : "active";
+                if (rest.Count > 0 && Opt("target") is not null) { Console.Error.WriteLine("coordinate move accepts one window selector"); return 2; }
+                target = rest.Count > 0 ? rest[0] : Opt("target") ?? "active";
                 if (int.TryParse(rest.Count > 1 ? rest[1] : Opt("x"), out var mx)) cargs["x"] = mx;
                 if (int.TryParse(rest.Count > 2 ? rest[2] : Opt("y"), out var my)) cargs["y"] = my;
                 break;

@@ -22,7 +22,9 @@ request foreground activation; navigation deliberately selects its destination.
 These operations return an object with id, rect, restoreRect, monitor, dpi, minimized,
 maximized and fullscreen. Rectangles contain X/Y/Width/Height in physical desktop pixels;
 negative coordinates are valid. A minimized window's rect is the OS minimized rectangle;
-restoreRect describes its future normal placement. Monitor enumeration returns device id,
+restoreRect describes its future normal placement, including the saved placement while
+fullscreen is active. Coordinate moves also honor --target and reject a simultaneous
+positional window selector. Monitor enumeration returns device id,
 primary, bounds and workArea. Pass a returned device id or `primary` to --monitor.
 Movement fits the normal size into that work area; minimized windows remain minimized.
 The original coordinate-based move and ordinary window-new replies stay unchanged.
@@ -35,7 +37,9 @@ agwintermctl session reveal --target PANE --path-only --json
 Reveal selects the current directory in Explorer. It resolves only primary/split panes
 in the routed window, and does not select the session first. WSL conversion uses that
 pane's distribution and user. Unknown targets, non-absolute/missing directories and
-conversion failures refuse. `--path-only` performs the same path validation and returns
+conversion failures refuse. A stable session ID still selects its surviving active pane
+after the original pane closes. A reported missing directory is refused rather than
+replaced with the launch directory. `--path-only` performs the same path validation and returns
 `{path, opened:false}` without starting Explorer; normal success returns opened:true.
 Explorer launch acceptance does not prove that the user has viewed its window.
 

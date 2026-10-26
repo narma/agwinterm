@@ -22,6 +22,7 @@ public class NativeWindowRequestTests
     [InlineData("window", "fullscreen", "typo")]
     [InlineData("window", "restore", "a", "--target", "b")]
     [InlineData("window", "move", "--monitor", "primary", "--x", "1")]
+    [InlineData("window", "move", "a", "--target", "b", "--x", "1", "--y", "2")]
     [InlineData("window", "monitors", "a")]
     [InlineData("session", "reveal", "a")]
     public void CliRefusesBeforeConnecting(params string[] args) =>
