@@ -13,6 +13,7 @@ public static class CtlArguments
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ping"] = "", ["version"] = "", ["tree"] = "window",
+        ["recent list"] = "", ["recent open"] = "window", ["recent clear"] = "",
         ["events"] = "window since limit kind run watch",
         ["session wait"] = "window target scope wait-timeout",
         ["install hooks"] = "window target", ["install skill"] = "window target",

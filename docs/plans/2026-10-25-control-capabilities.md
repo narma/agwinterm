@@ -1,6 +1,6 @@
 # Control capabilities: staged adoption from agterm 0.38.1
 
-Date: 2026-10-25. Status: **C0–C4 implemented and locally verified; C5–C8 pending**.
+Date: 2026-10-25. Status: **C0–C5 implemented and locally verified; C6–C8 pending**.
 
 The objective is useful new capabilities for agwinterm, adapted to Windows, ConPTY,
 native rendering and WSL. Full command, spelling, wire-format or behavior parity with
@@ -72,7 +72,9 @@ and locally verified** through `native-questions-and-picker`.
 covers native forms, picker presentation, accessibility, cancellation and WSL.
 **C4 is implemented and locally verified** through `passive-hud-formatting`.
 [C4 acceptance evidence](../../openspec/changes/archive/2026-10-25-passive-hud-formatting/verification.md)
-covers lifetime, native formatting, pane anchors, scaling and Windows/WSL file input. **C5–C8 are pending**.
+covers lifetime, native formatting, pane anchors, scaling and Windows/WSL file input. **C5 is implemented and locally verified** through `recent-closed-work`.
+[C5 acceptance evidence](../../openspec/changes/archive/2026-10-25-recent-closed-work/verification.md)
+covers durable history, partial retries, split/pin recovery, identity collisions and Windows/WSL restart. **C6–C8 are pending**.
 Every stage goes through its own OpenSpec proposal, design, specs and tasks, followed
 by implementation, verification, sync/archive and a separate implementation commit.
 Each stage may need several focused changes; it

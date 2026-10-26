@@ -318,7 +318,7 @@ internal partial class Program
                     { var cw = _closedWorkspaces[wi]; string l = $"{cw.Name} ({cw.Sessions.Count})"; list.Add(new PalItem { Label = l, Search = l, Run = () => ReopenClosedWorkspace(cw) }); }
                 }
                 list.Add(MenuSeparator());
-                list.Add(new PalItem { Label = "Clear Menu", Search = "Clear Menu", Run = () => { _closedSessions.Clear(); _closedWorkspaces.Clear(); } });
+                list.Add(new PalItem { Label = "Clear Menu", Search = "Clear Menu", Run = () => { ClearRecentCore(null); } });
                 break;
         }
         return list;

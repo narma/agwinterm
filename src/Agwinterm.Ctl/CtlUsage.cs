@@ -144,6 +144,9 @@ public static class CtlUsage
               {captured,replayOnRestore,panes:[{pane,session,captured|null}]}; read back in `tree --json` as
               capturedCommands; replayOnRestore = the restore-commands toggle, which gates the replay, not the capture)
           agwintermctl restore clear                       (delete this window's saved session tree)
+          agwintermctl recent list                         (app-wide durable closed session/workspace history)
+          agwintermctl recent open ENTRY-ID [--window ID]   (open in a live library window; partial workspace outcomes are explicit)
+          agwintermctl recent clear [ENTRY-ID]              (history only; does not change live sessions or restore checkpoints)
           agwintermctl session copy [--target ID]           (returns the selection text)
           agwintermctl session paste <text...> [--target ID] (pastes text; clipboard if omitted)
           agwintermctl selection all|copy|clear|finalize [--target ID]

@@ -245,6 +245,16 @@ try {
     $c4Hud = ((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).hud
     Check ($c4Code -eq '0' -and $c4Hud.markdown -and $c4Hud.message.Contains('Linux HUD') -and $c4Hud.fontSize -eq 18 -and $c4Hud.sticky -and -not $c4Hud.frame) 'C4 WSL explicit file conversion preserves UTF-8 Markdown and paths with spaces'
     $null = Ctl @('session','hud','close','--target',$copy)
+    $c5 = Ctl @('session','duplicate','--target',$copy)
+    $c5Right = Ctl @('session','split','on','--axis','horizontal','--target',$c5)
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session','type',('cd /tmp' + [char]13),'--target',$c5Right)
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session','restore','echo C5_PIN_ONLY','--target',$c5Right)
+    $null = Ctl @('session','swap','--target',$c5)
+    $c5Before = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $c5
+    $null = Ctl @('session','close','--target',$c5)
+    $c5Entry = @((Ctl @('recent','list')).entries)[0]
     $null = Ctl @('config', 'set', 'restore-commands', 'true')
     $null = Ctl @('session', 'type', ('sleep 15' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1
@@ -290,6 +300,18 @@ try {
     $row = $rows | Where-Object id -eq $session
     Check ($row.name -eq 'path with spaces' -and $null -eq $row.customName) 'Automatic name stays automatic after restart'
     Write-Host 'WSL control integration passed.'
+    $c5AfterRestart = @((Ctl @('recent','list')).entries | Where-Object id -eq $c5Entry.id)
+    Check ($c5AfterRestart.Count -eq 1) 'C5 recent entry survives actual process restart'
+    $c5Opened = Ctl @('recent','open',$c5Entry.id)
+    $c5Row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $c5
+    Check ($c5Opened.outcome -eq 'completed' -and $c5Row.axis -eq 'horizontal' -and ($c5Row.paneIds -join ',') -eq ($c5Before.paneIds -join ',')) 'C5 WSL swapped split identities and axis restore'
+    Start-Sleep -Seconds 1
+    $null = Ctl @('session','type',('printf "C5_%s=%s\n" "CWD" "$PWD"' + [char]13),'--target',$c5)
+    Start-Sleep -Seconds 1
+    $c5Text = Ctl @('session','text','--target',$c5)
+    Check (($c5Text -replace '\s','').Contains("C5_CWD=$linuxHome/pathwithspaces")) 'C5 restores the WSL distribution user and directory'
+    Check (($c5Row.restoreCommands|ConvertTo-Json -Compress) -eq ($c5Before.restoreCommands|ConvertTo-Json -Compress)) 'C5 preserves WSL restore pins'
+    Check ($c5Row.paneCwds.$c5Right -eq '/tmp' -and $c5Row.paneCwds.$c5 -eq "$linuxHome/path with spaces") 'C5 restores distinct WSL pane directories'
 }
 finally {
     if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
