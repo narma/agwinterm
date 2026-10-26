@@ -82,9 +82,10 @@ Through the real control client, `agwintermctl`, against the sandbox pipe:
 | `Send-Ctl $s @('session','type', "text`r")` | `session type` | type into the sandbox |
 | `Send-Ctl $s @('selection','all' / 'clear')` | `selection.*` | drive selection without the mouse |
 
-**The invariant most cases rest on:** `session copy` and `session text` must agree. A selection may
-only name lines the pane can SHOW, so anything the copy returns has to be findable in the visible
-text. That is why the checks compare the two rather than comparing against a literal.
+**Selection checks:** capture `session copy` before changing the viewport and compare it afterwards.
+For a TUI selection that has moved offscreen, copying retains the original text while the highlight
+is hidden. Thus copied text need not be present in the current `session text`; visible highlights
+must still correspond to the selected content. See `qa/selection.md` for both cases.
 
 **Clear `AGWINTERM_SESSION_ID` / `AGWINTERM_PANE_ID` / `AGWINTERM_PIPE` before every ctl call.**
 `Send-Ctl` does it, and it matters more than it looks: a QA run is started from inside an agwinterm

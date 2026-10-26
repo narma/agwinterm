@@ -59,6 +59,31 @@ public sealed class ScreenBuffer
         Array.Copy(_cells, row * Cols, dest, 0, Math.Min(Cols, dest.Length));
     }
 
+    /// <summary>Refresh selection's compact text-only frame, reporting any change. Reading the
+    /// flat array avoids per-cell coordinate checks; no bookkeeping is added to terminal writes.</summary>
+    internal bool CopyTextTo(Span<uint> destination)
+    {
+        if (destination.Length != _cells.Length) throw new ArgumentException("Frame size mismatch", nameof(destination));
+        bool changed = false;
+        for (int i = 0; i < _cells.Length; i++)
+        {
+            // Unicode scalar: 21 bits; cell width: 8 bits. Colours do not identify selected text.
+            uint text = (uint)_cells[i].Rune | ((uint)_cells[i].Width << 21);
+            changed |= destination[i] != text;
+            destination[i] = text;
+        }
+        return changed;
+    }
+
+    /// <summary>Cheap rejection of a missing selected word without copying an entire frame.</summary>
+    internal bool TextMatches(int row, int from, ReadOnlySpan<uint> text)
+    {
+        var cells = _cells.AsSpan(row * Cols + from, text.Length);
+        for (int i = 0; i < text.Length; i++)
+            if (((uint)cells[i].Rune | ((uint)cells[i].Width << 21)) != text[i]) return false;
+        return true;
+    }
+
     public void Resize(int cols, int rows)
     {
         if (cols <= 0) throw new ArgumentOutOfRangeException(nameof(cols));

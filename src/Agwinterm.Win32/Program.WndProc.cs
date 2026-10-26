@@ -491,9 +491,13 @@ internal partial class Program
                     {
                         var (line, col) = CellAtPx(h0.pane, h0.ox, h0.oy, h0.cw, h0.ch, mx, my);
                         if (Environment.TickCount - _lastClickMs < 400 && _clickCount >= 2)  // triple-click -> line
-                        { SelectLine(h0.pane, line); _clickCount = 3; _selMoved = true; }
-                        else { BeginSelect(h0.pane, line, col, shiftDn); _clickCount = 1; }
-                        h0.pane.BlockSel = KeyDown(VK_MENU) && _clickCount == 1;   // Alt+drag = rectangular
+                        { h0.pane.BlockSel = false; SelectLine(h0.pane, line); _clickCount = 3; _selMoved = true; }
+                        else
+                        {
+                            // A rejected extension must not change shape or start a drag/copy cycle.
+                            if (!BeginSelect(h0.pane, line, col, shiftDn, KeyDown(VK_MENU))) return IntPtr.Zero;
+                            _clickCount = 1;
+                        }
                         _lastClickMs = Environment.TickCount;
                         _selPane = h0.pane; _selAutoDir = 0; _selMouseX = mx;
                         _selecting = true; SetCapture(hwnd); RequestRedraw();
@@ -643,6 +647,8 @@ internal partial class Program
                         var p = under.pane;
                         if (p.S.Emulator.MouseReporting)
                         {
+                            // Preserve the selection. Reconciliation follows the actual output,
+                            // not wheel direction: the child decides how much content moves.
                             SendMouseTo(p, (under.ox, under.oy, under.cw, under.ch),
                                 HiWord(wParam) > 0 ? 64 : 65, pt.x, pt.y, deviceX, deviceY, true);
                             return IntPtr.Zero;

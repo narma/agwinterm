@@ -2,20 +2,70 @@
 
 What happens to a selection while the buffer moves under it. Every case here is a bug that shipped.
 
-**The rule they all serve:** a selection may only name lines its screen can SHOW, and the highlight
-and the clipboard read the same cells — so what lands on the clipboard is always what is visibly
-highlighted.
+**The rule they all serve:** selection follows the originally selected text. A highlight may only
+cover matching cells, and copying must not silently substitute text that moved into the old position.
 
 Where a shift can be *measured* (main screen, scrollback on, full scroll region) a selection follows
-its text and dies with its lines. Where it cannot — a full-screen TUI repainting in place, a
-reserved DECSTBM line, scrollback off — it cannot follow, so it stays on the cells it covers,
-bounded to the visible range. On the alt screen that range starts at `HistoryCount`: below it is the
-*other* screen's scrollback, which the renderer never draws there.
+its text and dies with its lines. For viewport selections where it cannot — a full-screen TUI
+repainting in place, a reserved DECSTBM line, scrollback off — keep a content snapshot. Matching
+cell spans plus row context relocate the highlight. Absent or ambiguous content is not highlighted,
+but the original text remains copyable and can be highlighted when it returns. A different screen
+still clears the selection. This does not infer identity from wheel direction or a lone common word.
+Blank neighbouring rows do not count as identifying context. A partially hidden content selection
+remains copyable; keyboard arrows, Shift+click and drag extension leave it unchanged until all its
+rows return to the live grid. A plain click can start a new selection at any time.
 
 Setup for every case: sandbox instance per `qa/product.md`, `copy-on-select = false`,
 `copy-on-ctrl-c = true`, unless the case says otherwise. Fixtures print **distinct** text per line
 throughout — with identical lines, a selection that slid onto different rows compares equal to the
 original and passes, which is the exact defect being tested for.
+
+---
+
+## Scrolling inside a mouse-reporting app preserves the selected text
+
+**Setup:** open a TUI that handles the mouse wheel and has enough distinct lines to scroll.
+Use Shift+drag to select a word; confirm `session copy` returns that word.
+
+**Steps:** scroll over that pane, in either direction.
+
+**Expect:** the app scrolls, the highlight follows the selected word, and `session copy` is unchanged.
+Scroll the word out of view: no unrelated text is highlighted, but the word still copies. Scroll it
+back: the highlight returns. Repeat with keyboard mark mode and a multi-line rectangular selection.
+In a split layout, scrolling a different pane must leave the first pane's selection alone.
+
+**Control:** in ordinary shell history (mouse reporting off), select a word and scroll up and
+back down. The highlight follows that word and `session copy` still returns the same word.
+Ordinary TUI status repaints without wheel input must still allow selection and copying.
+
+**Fails when:** forwarding a wheel report leaves a selection anchored to screen cells that the
+child can replace with unrelated content.
+
+## Automated regression: TUI selection must follow its text
+
+`tests/Agwinterm.Core.Tests/SelectionScrollRegressionTests.cs` drives the managed emulator with
+real VT sequences and invokes the UI's `StampSel` / `SelectionText` methods. It checks the original
+word and both highlight endpoints, with distinct row contents. This is a headless reproduction of
+the output side of application scrolling, not an end-to-end mouse-wheel test. A native adapter
+case also runs when the Rust core has been built under `native/target/release`.
+
+Run from the repository root:
+
+```powershell
+dotnet test tests/Agwinterm.Core.Tests/Agwinterm.Core.Tests.csproj --filter FullyQualifiedName~SelectionScrollRegressionTests
+```
+
+The original four regression cases cover alt-screen SU/SD and viewport redraws in both directions.
+Before the fix, selecting `MARKER02` yielded `MARKER01` or `MARKER03`. Controls cover unrelated
+status repaint and main-screen history. Further cases cover synchronized redraws, offscreen return,
+duplicate words, ambiguous context, partial scroll regions, rectangular and Unicode selections.
+Clearing selection is not a passing result; the original word must remain selected.
+
+Origin: upstream commit [`2d77a68` (#210)](https://github.com/yeroo/agwinterm/commit/2d77a68144b53fcbc83e8b27ba8e992fb99bf174),
+2026-09-01, deliberately kept untrackable selections on screen cells to allow copying during
+status repaints. Before this fix, `ReconcileSel` and `SelectionText` in our branch matched upstream
+`main` as checked on 2026-10-26. The refactor did not introduce this policy. This provenance check
+compared source and history; it did not run an upstream executable.
 
 ---
 
@@ -204,19 +254,16 @@ gating on `CopySelection`'s return value.
 
 ---
 
-## With scrollback off, the selection stays put — and copies what is on screen
+## With scrollback off, the original selected text remains copyable
 
-**Guards:** with `scrollback-lines = 0` nothing is ever pushed into history, so no shift can be
-measured. The selection cannot follow its text; keeping it is only safe because the highlight and
-the copy read the same cells.
+**Guards:** with `scrollback-lines = 0` nothing is ever pushed into history. Content tracking must
+move the highlight while the selected rows remain visible, then hide it without changing copied text.
 
 **Setup:** a second sandbox instance with `scrollback-lines = 0`. Run `marker.ps1`, drag
 (300,150) → (900,400), then run `noise.ps1`.
 
-**Expect:** `session copy` is still non-empty, and its first non-blank line is present in
-`session text`. A selected row may legitimately be blank after the scroll — compare the first row
-that carries text, and require **at least 8 characters** of it: a one-character row like `6` is
-present in almost any screen, so matching on it proves nothing.
+**Expect:** record `session copy` before the noise. Afterwards it must return exactly the same
+non-empty string. Once the selected text is gone, no unrelated row may be highlighted.
 
 **Fails when:** `scrollback-lines` stops reaching the core (it is an ABI call, and it silently did
-nothing once), or the non-trackable branch starts dropping on output again.
+nothing once), or the content snapshot is lost or replaced on output.
