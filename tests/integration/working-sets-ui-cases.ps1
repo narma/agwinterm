@@ -6,6 +6,7 @@ $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl
 $a=[string](Rpc 'workspace.new' @{name='Alpha';collapsed=$true} -NoTarget)
 Check 'workspace new collapsed reports an empty folded workspace' (@((Rpc 'tree').workspaces|Where-Object id -eq $a)[0].collapsed -and (WSSessions $a).Count-eq 0)
 $a1=[string](Rpc 'session.new' @{workspace=$a;name='A one';'no-select'=$true})
+if(-not (WSWait {@(WSSessions $a|Where-Object id -eq $a1).Count-eq 1})){throw 'First anchor session did not appear'}
 $a2=[string](Rpc 'session.new' @{after=$a1;name='A two';'no-select'=$true} -NoTarget)
 $a0=[string](Rpc 'session.new' @{before=$a1;name='A zero';'no-select'=$true} -NoTarget)
 Check 'anchored creation inserts in deterministic order' (((WSSessions $a).id -join ',')-eq "$a0,$a1,$a2")
@@ -13,6 +14,7 @@ $bad=Rpc 'session.new' @{before=$a1;after=$a2} -NoTarget -AllowError
 Check 'two anchors refuse before creating anything' (-not $bad.ok -and (WSSessions $a).Count-eq 3)
 $b=[string](Rpc 'workspace.new' @{name='Beta'} -NoTarget)
 $b1=[string](Rpc 'session.new' @{workspace=$b;name='B one';'no-select'=$true})
+if(-not (WSWait {@(WSSessions $b|Where-Object id -eq $b1).Count-eq 1})){throw 'Destination anchor session did not appear'}
 $bad=Rpc 'session.move' @{before=$b1;workspace=$a} $a0 -AllowError
 Check 'workspace-anchor conflict leaves original order intact' (-not $bad.ok -and ((WSSessions $a).id -join ',')-eq "$a0,$a1,$a2")
 $bad=Rpc 'session.move' @{targets=@($a0,'A zero');after=$b1} -NoTarget -AllowError
@@ -57,7 +59,18 @@ $cliId=[string]$json.result
 Check 'actual CLI supports anchored placement' ($LASTEXITCODE-eq 0 -and (WSSessions $a)[1].id-eq $cliId)
 $json=(& $ctl session move --targets "$cliId,$a2" --before $b1 --pipe $pipe --json)|ConvertFrom-Json
 Check 'actual CLI batch keeps requested insertion order' ($LASTEXITCODE-eq 0 -and $json.result.outcome-eq 'completed' -and ((WSSessions $b).id -join ',')-eq "$cliId,$a2,$b1")
-Start-Sleep -Milliseconds 400
+$savedWorkingSet=WSWait {
+    $states=@(Get-ChildItem (Join-Path $appDir 'windows') -Filter '*.json' | ForEach-Object {
+        try { Get-Content $_.FullName -Raw | ConvertFrom-Json } catch { }
+    })
+    @($states | Where-Object {
+        $_.FocusedWorkspaceIds.Count-eq 2 -and $_.FocusedWorkspaceIds-contains $a -and $_.FocusedWorkspaceIds-contains $b -and
+        $_.WorkspaceFilterEnabled-eq $false -and $_.FlaggedLayout-eq 'tree' -and
+        (($_.Workspaces | Where-Object Id -eq $b).Sessions.Id -join ',')-eq "$cliId,$a2,$b1"
+    }).Count-eq 1
+}
+Check 'working-set snapshot reaches disk before restart' $savedWorkingSet
+if(-not $savedWorkingSet){throw 'Refuse to restart before the expected working-set snapshot is saved'}
 $job.Finish();$job=[HudOwnedJob]::new();$job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe",$root)
 Check 'restart preserves disabled focus set and chosen layout' (WSWait {(WSState).focusedWorkspaceIds.Count-eq 2 -and -not (WSState).workspaceFilterEnabled -and (WSState).sidebarFlaggedLayout-eq 'tree'})
 $null=Rpc 'workspace.filter' @{op='on'} -NoTarget
