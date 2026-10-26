@@ -3,15 +3,15 @@ using System.Reflection;
 namespace Agwinterm.Core.Tests;
 
 /// <summary>
-/// Guards the one bound the whole selection invariant now rests on.
+/// Guards coordinate bounds when creating a selection or reconciling ordinary scrollback.
 ///
-/// A selection may only name lines the pane can SHOW, because the highlight and the clipboard read
-/// the same absolute rows: a selection outside that range is painted nowhere yet still copies,
-/// handing over text the user never saw highlighted. On the main screen the range starts at line 0.
+/// A new selection may only name lines the pane can SHOW. Otherwise it can capture text the user
+/// never saw highlighted. On the main screen the range starts at line 0.
 /// On the ALT screen it starts at HistoryCount — the main screen's scrollback is still in the
 /// buffer, but it belongs to the other screen and the renderer never draws it there.
 ///
-/// That rule lives in one place, Program.ClampSel, which every reconcile ends in. It was reached
+/// That rule lives in Program.ClampSel. TUI content snapshots are bounded at creation, then may
+/// retain offscreen text; SelectionScrollRegressionTests covers their separate lifetime. It was reached
 /// three times by three different doors (Select All anchoring at 0, mark-mode Up flooring at 0,
 /// drag-autoscroll walking the focus down through a scroll offset), and each fix reopened it
 /// somewhere else. Nothing in the repo failed when it regressed, hence this.
@@ -21,7 +21,7 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class SelectionBoundsTests
 {
-    private static string FindUiAssembly()
+    internal static string FindUiAssembly()
     {
         var dir = AppContext.BaseDirectory;
         while (dir != null && !Directory.Exists(Path.Combine(dir, "src", "Agwinterm.Win32")))

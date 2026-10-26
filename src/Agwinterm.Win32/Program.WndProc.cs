@@ -643,6 +643,8 @@ internal partial class Program
                         var p = under.pane;
                         if (p.S.Emulator.MouseReporting)
                         {
+                            // Preserve the selection. Reconciliation follows the actual output,
+                            // not wheel direction: the child decides how much content moves.
                             SendMouseTo(p, (under.ox, under.oy, under.cw, under.ch),
                                 HiWord(wParam) > 0 ? 64 : 65, pt.x, pt.y, deviceX, deviceY, true);
                             return IntPtr.Zero;

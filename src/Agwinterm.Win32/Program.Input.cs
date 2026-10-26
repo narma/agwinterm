@@ -767,14 +767,19 @@ internal partial class Program
             p.SelGen = em.ScrollGeneration;
             p.SelHist = em.HistoryCount;
             p.SelAlt = em.IsAltScreen;
-            // Trackable = every line leaving the screen is either kept in history or countable as
-            // evicted, so a shift can be MEASURED. Without scrollback there is no history to count
-            // against; inside a partial DECSTBM region (a reserved status line) rows move with no
-            // history push at all; the alt screen has no history by definition. ScrollGeneration
-            // stays flat in all three — see TerminalEmulator.ScrollRegionUp's guard — so a selection
-            // taken there cannot follow its text; it stays on the cells it was drawn over.
-            p.SelTrackable = !em.IsAltScreen && em.ScrollbackMax > 0
+            // History coordinates track ordinary shell output. TUIs own their viewport and can
+            // redraw it without growing history; preserve the selected content in that case.
+            p.SelTrackable = !em.IsAltScreen && !em.MouseReporting && em.ScrollbackMax > 0
                              && em.ScrollTop == 0 && em.ScrollBottom == em.Screen.Rows - 1;
+            p.SelContent = null;
+            p.SelContentVisible = true;
+            if (!p.SelTrackable && ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
+            {
+                NormSel(p, out int first, out int from, out int last, out int to);
+                if (first >= em.HistoryCount)
+                    p.SelContent = new ContentSelection(em.Screen, first - em.HistoryCount, from,
+                        last - em.HistoryCount, to, p.BlockSel);
+            }
         }
     }
 
@@ -792,6 +797,11 @@ internal partial class Program
     /// caller must re-anchor and re-stamp rather than carry them forward.</summary>
     private static bool ReconcileSel(Pane p)
     {
+        lock (p.S.SyncRoot) return ReconcileSelLocked(p);
+    }
+
+    private static bool ReconcileSelLocked(Pane p)
+    {
         var em = p.S.Emulator;
         long gen; int hist, rows, cols; bool alt; int top, bottom, sbMax;
         lock (p.S.SyncRoot)
@@ -801,20 +811,25 @@ internal partial class Program
         }
         // The alt screen is a different buffer: an index into one names unrelated text in the other.
         if (alt != p.SelAlt) { p.ClearSel(); return false; }
+        if (p.SelContent is { } content)
+        {
+            // Never reconcile against half of a synchronized redraw. Copy still uses the
+            // immutable text; suppress the highlight until a complete frame can be located.
+            int first = 0;
+            p.SelContentVisible = !em.SynchronizedOutput && content.TryLocate(em.Screen, out first);
+            if (p.SelContentVisible)
+            {
+                int shift = hist + first - Math.Min(p.SelAncLine, p.SelFocLine);
+                p.SelAncLine += shift;
+                p.SelFocLine += shift;
+            }
+            return true; // offscreen/ambiguous content stays available for copying
+        }
         bool trackable = !alt && sbMax > 0 && top == 0 && bottom == rows - 1;
         if (!trackable || !p.SelTrackable)
         {
-            // Content can move here with nothing to measure it by — a full-screen TUI repainting in
-            // place, a reserved status line, scrollback off. The selection cannot FOLLOW its text,
-            // but it can stay on the cells it covers: the highlight is redrawn from these very
-            // coordinates every frame and SelectionText reads the same cells the renderer draws, so
-            // what lands on the clipboard is always what is visibly highlighted.
-            //
-            // Dropping it on the first byte of output instead (as this did) made selection
-            // impossible in exactly the apps people select from most. codex repaints its status line
-            // about once a second: every mouse-move mid-drag found new output, dropped the anchor and
-            // re-anchored under the cursor, so the drag never built a selection at all — and Ctrl+C,
-            // finding nothing live, fell through to the app as an interrupt.
+            // A selection created in history can span history and live rows. Keep the existing
+            // buffer bounds for that case; viewport-only selections have a content anchor above.
             return ClampSel(p, hist, rows, cols, alt);
         }
         // One generation per line pushed into history: what scrolled but did not grow history was
@@ -833,9 +848,9 @@ internal partial class Program
         return ClampSel(p, hist, rows, cols, alt);
     }
 
-    /// <summary>Hold a selection inside the range of lines the pane can actually SHOW, which is the
-    /// range the renderer highlights — that equality is the whole invariant: a selection outside it
-    /// is painted nowhere yet still copies, handing over text the user never saw highlighted.
+    /// <summary>Bound newly captured selections and ordinary history coordinates to this screen.
+    /// A TUI content snapshot can later move offscreen; it is not clamped again, since its original
+    /// text remains copyable and the renderer clips the matching portion to the viewport.
     ///
     /// On the main screen that range starts at 0 (history is scrolled to and highlighted). On the
     /// ALT screen it starts at <paramref name="hist"/>: the main-screen history is still in the
@@ -865,11 +880,12 @@ internal partial class Program
 
     private static string SelectionText(Pane pane)
     {
-        if (!HasLiveSel(pane)) return "";
         var em = pane.S.Emulator;
         var sb = new StringBuilder();
         lock (pane.S.SyncRoot)
         {
+            if (!HasLiveSel(pane)) return "";
+            if (pane.SelContent is { } content) return content.Text;
             int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
             NormSel(pane, out int l0, out int c0, out int l1, out int c1);
             // Block selection: every row uses the same [minCol, maxCol] column span (rectangle).
@@ -919,6 +935,9 @@ internal partial class Program
         // CURRENT history count and applied to the stored focus, so an unreconciled anchor would be
         // left in the old numbering and the two ends would name different eras of the buffer.
         if (p.HasSel && !ReconcileSel(p)) { _markMode = false; p.ClearSel(); RequestRedraw(); return true; }
+        // Copy an offscreen selection, but do not extend stale coordinates with the arrows.
+        if (p.SelContent is not null && !p.SelContentVisible && vk is not (VK_ESCAPE or VK_RETURN)
+            && !(vk == 0x43 && ctrl)) return true;
         var em = p.S.Emulator;
         int cols, rows, hist; bool alt;
         lock (p.S.SyncRoot) { cols = em.Screen.Cols; rows = em.Screen.Rows; hist = em.HistoryCount; alt = em.IsAltScreen; }
@@ -939,6 +958,7 @@ internal partial class Program
             default: return true;   // swallow everything else while in mark mode
         }
         p.HasSel = true;
+        StampSel(p);
         // Keep the focus line visible (scroll the pane if the caret walked off the top). The alt
         // screen shows no history: there is nothing to scroll to, and the focus is already bounded
         // to the live grid above.
@@ -962,25 +982,27 @@ internal partial class Program
 
     private void BeginSelect(Pane p, int line, int col, bool extend)
     {
-        if (extend && HasLiveSel(p)) { p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; }
-        else { p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
+        lock (p.S.SyncRoot)
+        {
+            if (extend && HasLiveSel(p) && p.SelContentVisible)
+            { p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampSel(p); }
+            else { p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
+        }
     }
 
     private void UpdateSelect(Pane p, int line, int col)
     {
-        // Reconcile BEFORE writing: `line` is in today's numbering, while the anchor may still be in
-        // the numbering of whenever the drag started. Storing them together would leave the next
-        // reconcile shifting the fresh end as well, dragging the selection off its text.
-        //
-        // And HONOUR the answer. Setting HasSel = true after a reconcile that dropped the selection
-        // would revive an anchor that was never shifted next to a baseline that was — the selection
-        // then looks self-consistent and quietly covers text the user never highlighted.
-        if (!ReconcileSel(p))
+        lock (p.S.SyncRoot)
         {
-            p.SelAncLine = line; p.SelAncCol = col;   // its anchor is gone: start again from here
+            // Reconcile before adding a focus in today's coordinates. If the anchor disappeared
+            // during a redraw, start this drag segment at the pointer instead of reviving it.
+            if (!ReconcileSel(p) || !p.SelContentVisible)
+            {
+                p.SelAncLine = line; p.SelAncCol = col;
+            }
+            p.SelFocLine = line; p.SelFocCol = col; p.HasSel = true; _selMoved = true;
             StampSel(p);
         }
-        p.SelFocLine = line; p.SelFocCol = col; p.HasSel = true; _selMoved = true;
     }
 
     private void SelectWord(Pane p, int line, int col)
@@ -1010,7 +1032,7 @@ internal partial class Program
     }
 
     /// <summary>Copy the selection; false if there was nothing to copy. A live selection can still
-    /// hold no text — a TUI that repaints blanks the cells under it — and the caller needs to tell
+    /// hold no text — the user selected blank cells — and the caller needs to tell
     /// the two apart: plain Ctrl+C must interrupt rather than be swallowed by a copy of nothing.
     ///
     /// "Nothing" is decided on CONTENT, not on length: SelectionText joins its rows with CRLF

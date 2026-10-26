@@ -380,9 +380,14 @@ internal partial class Program
         int cols, rows, hist, off;
         bool cursorVisible; int cursorCol, cursorRow, cursorShape;
         bool drawImages;
+        bool hasSel;
+        int sl0 = 0, sc0 = 0, sl1 = 0, sc1 = 0;
         (int PromptLine, int? ExitCode)[] marks;
         lock (session.SyncRoot)
         {
+            // Reconcile and capture the cells in the same frame under the same lock.
+            hasSel = selPane is not null && HasLiveSel(selPane) && selPane.SelContentVisible;
+            if (hasSel) NormSel(selPane!, out sl0, out sc0, out sl1, out sc1);
             em.CellPixelWidth = Math.Max(1, (int)cw); em.CellPixelHeight = Math.Max(1, (int)ch);  // for sixel cell-span
             var screen = em.Screen;
             cols = screen.Cols; rows = screen.Rows;
@@ -416,11 +421,6 @@ internal partial class Program
         {
             var snap = _cellSnap;
             Cell CellAt(int r, int c) => snap[r * cols + c];
-            // Reconcile before drawing: the highlight must sit on the text the user selected,
-            // and a selection whose lines have been evicted must stop being drawn at all.
-            bool hasSel = selPane is not null && HasLiveSel(selPane);
-            int sl0 = 0, sc0 = 0, sl1 = 0, sc1 = 0;
-            if (hasSel) NormSel(selPane!, out sl0, out sc0, out sl1, out sc1);
             bool searchHere = _searchActive && selPane is not null && ReferenceEquals(selPane, ActiveSurface());
             for (int r = 0; r < rows; r++)
             {

@@ -371,13 +371,15 @@ internal partial class Program : ISessionHost, IWindowHost
         // is a different buffer entirely. Everything is recorded at selection time and compared on
         // the UI thread when the selection is used, so nothing about a selection is ever written
         // from the thread reading the pty. SelTrackable = false means the shift cannot be measured
-        // at all (no scrollback, a partial DECSTBM region, the alt screen) — such a selection cannot
-        // follow its text, so it stays on the cells it covers and copies exactly what they hold.
+        // at all (no scrollback, a partial DECSTBM region, the alt screen) — viewport selections
+        // use SelContent instead, retaining their text and locating it in later frames.
         public long SelGen;
         public int SelHist;
         public bool SelAlt, SelTrackable;
         public bool BlockSel;   // rectangular (Alt+drag) selection: clip each row to [minCol,maxCol]
-        public void ClearSel() => HasSel = false;
+        public ContentSelection? SelContent;
+        public bool SelContentVisible = true;
+        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; }
         public int UiaAnnouncedAbs = -1;   // absolute buffer line (history + cursor row) last spoken to a screen reader
     }
 
