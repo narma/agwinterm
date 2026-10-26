@@ -26,7 +26,9 @@ internal partial class Program : IPresentationHost
         if (command == "keymap.list") return new
         {
             bindings = new Dictionary<string,string>(_keymap), leader = _leader, leaderBindings = new Dictionary<string,string>(_leaderBindings),
-            reserved = new Dictionary<string,string> { ["f1"] = "app help while alternate screen is active", ["f6"] = "accessibility focus-zone navigation takes precedence" }, diagnostics = _keymapDiag.ToArray()
+            reserved = ReservedKeyBehavior(), diagnostics = _keymapDiag.ToArray(),
+            precedence = new[] { "Open menus, mark mode, exited overlays, exit-hold Enter, MRU Escape, settings, palettes, search, help, dashboard and chrome-focus modes can consume keys before normal bindings.",
+                "F1, dashboard and F6 handling precede leader handling; an active leader sequence or configured leader chord precedes scrolling, zoom, quick-terminal, clipboard and normal bindings." }
         };
         if (command == "config.reload")
         {
@@ -71,18 +73,53 @@ internal partial class Program : IPresentationHost
     private void ConfigDiagnostics(List<string> notes)
     {
         if (!File.Exists(ConfigPath)) { notes.Add("configuration file is missing; defaults loaded"); return; }
+        string text = File.ReadAllText(ConfigPath);
+        var recognized = new HashSet<string>(StringComparer.Ordinal);
+        TerminalConfig.Parse(text, recognized);
         var seen = new HashSet<string>(); int lineNumber = 0;
-        foreach (string raw in File.ReadLines(ConfigPath))
+        foreach (string raw in text.Split('\n'))
         {
             lineNumber++; string line = raw.Trim(); if (line.Length == 0 || line.StartsWith('#')) continue;
             int eq = line.IndexOf('='); if (eq <= 0) { notes.Add($"line {lineNumber}: expected key = value"); continue; }
             string key = line[..eq].Trim().ToLowerInvariant(), value = line[(eq+1)..].Trim();
             if (!seen.Add(key)) notes.Add($"line {lineNumber}: duplicate {key}; last parsed value wins");
-            if (ValidateConfigValue(key,value) is { } error) { notes.Add($"line {lineNumber}: {error}"); continue; }
+            if (!recognized.Contains(key)) { notes.Add($"line {lineNumber}: unknown key '{key}'"); continue; }
+            bool editable = Array.IndexOf(ConfigKeys, key) >= 0;
+            if (editable && ValidateConfigValue(key,value) is { } error) { notes.Add($"line {lineNumber}: {error}"); continue; }
             if (key is "theme" or "theme-light" or "theme-dark" && value.Length > 0 && !_allThemes.Any(t => t.Name.Equals(value,StringComparison.OrdinalIgnoreCase)))
                 notes.Add($"line {lineNumber}: unknown theme '{value}'; native theme fallback applies");
-            string effective = ConfigValue(key);
-            if (!string.Equals(value,effective,StringComparison.OrdinalIgnoreCase)) notes.Add($"line {lineNumber}: {key} effective value is '{effective}' (input normalized or rejected by parser)");
+            string? effective = key switch { "bell" => _config.Bell, "conpty" => _config.Conpty, _ => editable ? ConfigValue(key) : null };
+            if (effective is not null && !string.Equals(value,effective,StringComparison.OrdinalIgnoreCase)) notes.Add($"line {lineNumber}: {key} effective value is '{effective}' (input normalized or rejected by parser)");
         }
+    }
+
+    private static Dictionary<string, string> ReservedKeyBehavior()
+    {
+        var result = new Dictionary<string, string>
+        {
+            ["f1"] = "application help, including alternate-screen terminals, before leader and normal bindings",
+            ["f6"] = "accessibility focus-zone navigation in library windows before leader and normal bindings",
+            ["ctrl+shift+d"] = "dashboard toggle in library windows before leader and normal bindings",
+            ["shift+pageup"] = "scroll older when a terminal surface exists; after leader handling, before normal bindings",
+            ["shift+pagedown"] = "scroll newer when a terminal surface exists; after leader handling, before normal bindings",
+            ["shift+home"] = "oldest scrollback when a terminal surface exists; after leader handling, before normal bindings",
+            ["shift+end"] = "live scrollback bottom when a terminal surface exists; after leader handling, before normal bindings",
+            ["ctrl+c"] = "copy before normal bindings only with an active surface, copy-on-ctrl-c enabled and a successfully copied live selection",
+            ["ctrl+shift+c"] = "explicit copy; consumed whenever an active surface exists, before normal bindings",
+            ["ctrl+v"] = "paste whenever an active surface exists, before normal bindings",
+            ["ctrl+shift+v"] = "paste whenever an active surface exists, before normal bindings",
+            ["ctrl+tab"] = "MRU walk in library windows only while bound to a session-cycle action; unmap/rebind is respected",
+            ["ctrl+shift+tab"] = "reverse MRU walk in library windows only while bound to a session-cycle action; unmap/rebind is respected",
+            ["f10"] = "menu-bar fallback only when unbound and not a leader, with a usable menu bar and no alternate-screen/mouse-reporting terminal",
+            ["alt"] = "an unchorded Alt tap focuses the usable menu bar; menu modes handle their own keys"
+        };
+        foreach (string modifier in new[] { "ctrl+", "ctrl+shift+" })
+        {
+            foreach (string key in new[] { "equals", "numpad-plus" }) result[modifier + key] = "increase font size after leader handling, before normal bindings";
+            foreach (string key in new[] { "minus", "numpad-minus" }) result[modifier + key] = "decrease font size after leader handling, before normal bindings";
+            foreach (string key in new[] { "0", "numpad-0" }) result[modifier + key] = "reset font size after leader handling, before normal bindings";
+            result[modifier + "backtick"] = "toggle quick terminal after leader handling, before normal bindings";
+        }
+        return result;
     }
 }

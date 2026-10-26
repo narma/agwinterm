@@ -35,10 +35,15 @@ agwintermctl app version --json
 
 All three accept `--window` for the native host. `keymap list` exposes resolved normal and
 leader bindings, reserved key behavior and parsing diagnostics; `command list` remains the
-separate custom-command list. Reload applies the same live path as the UI, returning changed
+separate custom-command list. `reserved` describes fixed shortcuts and their conditions,
+including dashboard, scrolling, zoom, clipboard, MRU and menu behavior. `precedence` explains
+which modal/leader paths can consume keys before normal bindings; a listed configured
+binding does not override those earlier handlers. Reload applies the same live path as the UI, returning changed
 keys, effectiveTheme and diagnostics for malformed/unknown/invalid or normalized entries.
 It never rewrites the configuration file or executes commands. Existing new-session-only
-settings retain that lifecycle. A diagnostic does not imply an all-or-nothing reload.
+settings retain that lifecycle. File-key recognition comes from the configuration parser,
+including `bell` and `conpty`, independently of the smaller live Settings list.
+A diagnostic does not imply an all-or-nothing reload.
 
 `app version` reports running, path, channel, onDisk, availability, comparison and source.
 The source is the executable path backing the running process, including a portable executable;

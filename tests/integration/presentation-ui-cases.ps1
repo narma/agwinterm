@@ -47,10 +47,12 @@ $null=Rpc 'session.close' @{} $session
 $entry=@((Rpc 'recent.list' @{} -NoTarget -Window '').entries)[0]
 $opened=Rpc 'recent.open' @{id=$entry.id} -NoTarget -Window ''
 Check 'recent recovery retains pane-owned presentation' ($opened.outcome-eq 'completed' -and (Appearance $right).overrides.StatusShape-eq 'square')
-@('map f5 = toggle_sidebar','unmap ctrl+t','leader = f9','map leader x = toggle_flag')|Add-Content (Join-Path $appDir 'keymap.conf')
+@('map f5 = toggle_sidebar','unmap ctrl+t','leader = f9','map leader x = toggle_flag','map ctrl+shift+d = toggle_sidebar','map ctrl+v = toggle_sidebar')|Add-Content (Join-Path $appDir 'keymap.conf')
 $null=Rpc 'keymap.reload' @{} -NoTarget
 Check 'effective keymap includes overrides and omits unmaps' (PWait {$map=Rpc 'keymap.list' @{} -NoTarget;$map.bindings.f5-eq 'toggle_sidebar' -and $null-eq $map.bindings.'ctrl+t' -and $map.leader-eq 'f9' -and $map.leaderBindings.x-eq 'toggle_flag'})
 Check 'keymap readback exposes reserved behavior separately' ((Rpc 'keymap.list' @{} -NoTarget).reserved.f6.Length-gt 0)
+$keymap=Rpc 'keymap.list' @{} -NoTarget
+Check 'keymap readback identifies fixed shortcuts overriding configured bindings' ($keymap.bindings.'ctrl+shift+d'-eq 'toggle_sidebar' -and $keymap.reserved.'ctrl+shift+d'-match 'dashboard' -and $keymap.reserved.'ctrl+v'-match 'paste' -and $keymap.reserved.'ctrl+equals'-match 'font size' -and $keymap.reserved.'shift+home'-match 'scrollback' -and $keymap.precedence.Count-gt 0)
 $null=Rpc 'config.set' @{key='theme';value='Solarized Light'}
 $null=Rpc 'config.set' @{key='theme-follow-system';value='false'}
 Check 'manual theme is effective in readback' ((Appearance $right).effectiveTheme-eq 'Solarized Light')
@@ -65,9 +67,10 @@ $proc=[Diagnostics.Process]::GetProcessById($job.Pid);$proc.Refresh();$hwnd=$pro
 $null=Rpc 'window.resize' @{w=1086;h=700} -NoTarget
 Start-Sleep -Milliseconds 400
 $null=Shot 'c8-light-theme-recovered-pane'
-@('','cursor-style = invalid','c8-unknown-key = true')|Add-Content (Join-Path $appDir 'agwinterm.conf')
+@('','cursor-style = invalid','c8-unknown-key = true','bell = none','conpty = inbox')|Add-Content (Join-Path $appDir 'agwinterm.conf')
 $reload=Rpc 'config.reload' @{} -NoTarget
 Check 'reload returns visible invalid and unknown entry diagnostics' (($reload.diagnostics -join ' ')-match 'cursor-style' -and ($reload.diagnostics -join ' ')-match 'unknown key')
+Check 'valid file-only bell and conpty settings do not produce false diagnostics' (@($reload.diagnostics|Where-Object {$_-match '\b(bell|conpty)\b'}).Count-eq 0)
 $version=Rpc 'app.version' @{} -NoTarget
 ($version|ConvertTo-Json -Depth 5)|Set-Content (Join-Path $artifact 'version.json')
 Check 'version reports explicit metadata availability and comparison' ($version.running -and $version.path -and $version.source-eq 'running-executable-path' -and $version.comparison-in @('match','different','unknown') -and $version.availability-in @('available','missing-file','metadata-unavailable'))

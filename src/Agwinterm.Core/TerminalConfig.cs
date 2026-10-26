@@ -435,7 +435,10 @@ public sealed class TerminalConfig
         status-color-completed = #3CC85A
         """;
 
-    public static TerminalConfig Parse(string text)
+    public static TerminalConfig Parse(string text) => Parse(text, null);
+
+    /// <summary>Optionally record file keys recognized by the parser, including keys whose values are rejected.</summary>
+    public static TerminalConfig Parse(string text, ISet<string>? recognizedKeys)
     {
         var cfg = new TerminalConfig();
         foreach (var raw in text.Split('\n'))
@@ -528,7 +531,9 @@ public sealed class TerminalConfig
                 case "status-color-active": if (val.Length > 0) cfg.StatusColorActive = val; break;
                 case "status-color-blocked": if (val.Length > 0) cfg.StatusColorBlocked = val; break;
                 case "status-color-completed": if (val.Length > 0) cfg.StatusColorCompleted = val; break;
+                default: continue;
             }
+            recognizedKeys?.Add(key);
         }
         return cfg;
     }
