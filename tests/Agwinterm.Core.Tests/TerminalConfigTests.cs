@@ -5,6 +5,17 @@ namespace Agwinterm.Core.Tests;
 public class TerminalConfigTests
 {
     [Fact]
+    public void RecognizedFileKeysIncludeNonSettingsKeysAndRejectedValues()
+    {
+        var recognized = new HashSet<string>(StringComparer.Ordinal);
+        var config = TerminalConfig.Parse("bell = none\nconpty = inbox\nfont-size = invalid\nunknown-option = true", recognized);
+        Assert.Equal("none", config.Bell);
+        Assert.Equal("inbox", config.Conpty);
+        Assert.Equal(new[] { "bell", "conpty", "font-size" }, recognized.OrderBy(k => k));
+        Assert.Equal(new TerminalConfig().FontSize, config.FontSize);
+    }
+
+    [Fact]
     public void Defaults_WhenEmpty()
     {
         var c = TerminalConfig.Parse("");

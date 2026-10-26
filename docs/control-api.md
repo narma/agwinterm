@@ -573,3 +573,7 @@ relative placement, explicit batch outcomes and the additive `workingSet` readba
 ## Native window operations
 
 See [Native window controls](window-controls.md) for C7 commands, physical geometry, monitor selection and targeted Windows/WSL directory Reveal.
+
+## Pane appearance and runtime diagnostics
+
+See [Presentation and diagnostics](presentation-diagnostics.md) for C8 appearance inheritance, effective bindings, live reload and executable version metadata.

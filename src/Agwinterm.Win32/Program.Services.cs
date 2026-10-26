@@ -665,9 +665,7 @@ internal partial class Program
     /// Called at startup, on WM_SETTINGCHANGE (ImmersiveColorSet), and when any theme key changes.</summary>
     private void ApplySystemTheme()
     {
-        if (!_config.ThemeFollowSystem) { ApplyTheme(FindTheme(_config.Theme)); return; }
-        string want = WindowsPrefersLightTheme() ? _config.ThemeLight : _config.ThemeDark;
-        if (!string.IsNullOrWhiteSpace(want)) ApplyTheme(FindTheme(want));  // unset side → leave current
+        ApplyTheme(FindTheme(SystemThemeChoice.Select(_config.Theme, _config.ThemeFollowSystem, WindowsPrefersLightTheme(), _config.ThemeLight, _config.ThemeDark)));
     }
 
     /// <summary>True when Windows apps are set to light mode (HKCU …Personalize\AppsUseLightTheme=1).
@@ -1064,10 +1062,9 @@ internal partial class Program
         _ => "",
     };
 
-    /// <summary>Persist + apply a config key live. Runs on the UI thread. Returns an ack string.</summary>
-    private string ConfigSetInternal(string key, string value)
+    /// <summary>Strict live-edit checks, also reported by file reload diagnostics.</summary>
+    private static string? ValidateConfigValue(string key, string value)
     {
-        key = key.Trim().ToLowerInvariant();
         if (Array.IndexOf(ConfigKeys, key) < 0) return "error: unknown key '" + key + "'";
         if (key == "cursor-style" && value.Trim().ToLowerInvariant() is not ("bar" or "beam" or "line" or "block" or "box" or "underline" or "underscore"))
             return "error: cursor-style must be bar, block or underline";
@@ -1077,6 +1074,14 @@ internal partial class Program
             return "error: cursor-blink-ms must be a positive integer";
         if (key == "quick-terminal-size" && (!int.TryParse(value.Trim(), out int qs) || qs is < 40 or > 90))
             return "error: quick-terminal-size must be an integer from 40 through 90";
+        return null;
+    }
+
+    /// <summary>Persist + apply a config key live. Runs on the UI thread. Returns an ack string.</summary>
+    private string ConfigSetInternal(string key, string value)
+    {
+        key = key.Trim().ToLowerInvariant();
+        if (ValidateConfigValue(key, value) is { } refusal) return refusal;
         if (key == "quick-terminal-hotkey")
         {
             if (SetQuickHotkey(value.Trim(), () => WriteConfigKey(key, value.Trim())) is { } error) return error;
@@ -1118,6 +1123,7 @@ internal partial class Program
             changed.Remove("quick-terminal-hotkey");
             if (report) notes.Add(hotkeyError);
         }
+        ConfigDiagnostics(notes);
         ApplyConfigKeys(changed, notes);
         return changed;
     }
@@ -1716,7 +1722,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = p.Ratio, Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Buffer = buf, BufferBlob = blob });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = p.Ratio, Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -1874,6 +1880,7 @@ internal partial class Program
                     {
                         for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
                         {
+                            ApplyPaneAppearance(ses.Panes[i], PaneAppearance.Restore(pl[i].Appearance));
                             ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
                             ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
                             ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;

@@ -1,7 +1,7 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu')][string]$Suite='Hud')
+      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu')][string]$Suite='Hud')
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -227,6 +227,7 @@ public sealed class HudOwnedJob {
     elseif($Suite-eq 'Recent') { . "$PSScriptRoot/recent-ui-cases.ps1" }
     elseif($Suite-eq 'WorkingSets') { . "$PSScriptRoot/working-sets-ui-cases.ps1" }
     elseif($Suite-eq 'Windows') { . "$PSScriptRoot/window-controls-ui-cases.ps1" }
+    elseif($Suite-eq 'Presentation') { . "$PSScriptRoot/presentation-ui-cases.ps1" }
     elseif($Suite-eq 'Menu') { . "$PSScriptRoot/menu-bar-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {
