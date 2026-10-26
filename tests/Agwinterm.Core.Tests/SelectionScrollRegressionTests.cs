@@ -219,12 +219,29 @@ public class SelectionScrollRegressionTests
         object[] args = method switch
         {
             "MarkModeKey" => new object[] { 0x27, false },
-            "BeginSelect" => new object[] { f.Pane, 2, 9, true },
+            "BeginSelect" => new object[] { f.Pane, 2, 9, true, false },
             _ => new object[] { f.Pane, 2, 9 }
         };
-        ProgramType.GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(program, args);
+        var result = ProgramType.GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(program, args);
+        if (method == "BeginSelect") Assert.Equal(false, result);
+        Assert.True((bool)PaneType.GetField("BlockSel")!.GetValue(f.Pane)!);
         Assert.Equal(selected, f.Text());
         Assert.Equal(up ? -1 : 4, f.Line);
+    }
+
+    [Fact]
+    public void NewDragCanReanchorAfterBlankStartingCellChanges()
+    {
+        using var f = new Fixture(alt: true);
+        var program = RuntimeHelpers.GetUninitializedObject(ProgramType);
+        ProgramType.GetMethod("BeginSelect", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(program, new object[] { f.Pane, 2, 29, false, false });
+        f.Feed("\x1b[6;1H\x1b[2Kstatus updated");
+        var update = ProgramType.GetMethod("UpdateSelect", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        update.Invoke(program, new object[] { f.Pane, 2, 0 });
+        update.Invoke(program, new object[] { f.Pane, 2, 7 });
+        Assert.Equal("MARKER02", f.Text());
+        Assert.True(f.Visible);
     }
 
     [Fact]

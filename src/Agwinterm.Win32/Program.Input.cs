@@ -992,16 +992,18 @@ internal partial class Program
         }
     }
 
-    private void BeginSelect(Pane p, int line, int col, bool extend)
+    private bool BeginSelect(Pane p, int line, int col, bool extend, bool block)
     {
         lock (p.S.SyncRoot)
         {
             if (extend && HasLiveSel(p))
             {
-                if (!CanExtendSelection(p)) return;
+                if (!CanExtendSelection(p)) return false;
+                p.BlockSel = block;
                 p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampSel(p);
             }
-            else { p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
+            else { p.BlockSel = block; p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
+            return true;
         }
     }
 
@@ -1012,8 +1014,8 @@ internal partial class Program
             // Reconcile before adding a focus in today's coordinates. Preserve cached hidden
             // rows until they return; only an invalidated selection starts a new drag segment.
             bool reconciled = ReconcileSel(p);
-            if (reconciled && !CanExtendSelection(p)) return;
-            if (!reconciled)
+            if (p.HasSel && reconciled && !CanExtendSelection(p)) return;
+            if (!reconciled || !p.SelContentVisible)
             {
                 p.SelAncLine = line; p.SelAncCol = col;
             }

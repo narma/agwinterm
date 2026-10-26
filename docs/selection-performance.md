@@ -52,7 +52,7 @@ case. See [the benchmark instructions](../tools/selection-bench/README.md) for m
 Validation on the final implementation:
 
 - 18,000 differential checks passed (linear/block selection, scrolling, edits and clears).
-- All 509 Core tests passed, including managed/Rust selection regressions.
+- All 510 Core tests passed, including managed/Rust selection regressions.
 - New regression tests check zero allocations after capture on changing repeated text, lazy Unicode
   copying, negative-cache recovery, resize invalidation and equal spans at different columns.
 
