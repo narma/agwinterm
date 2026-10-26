@@ -1394,9 +1394,9 @@ internal partial class Program
     }
 
     /// <summary>Create a Program instance for a library entry and boot its window (UI thread). Seeds if no tree file exists.</summary>
-    private static Program CreateWindowInstance(WinMeta m)
+    private static Program CreateWindowInstance(WinMeta m, bool minimized = false)
     {
-        var win = new Program { Id = m.Id, WinName = m.Name };
+        var win = new Program { Id = m.Id, WinName = m.Name, _startMinimized = minimized };
         if (m.W > 0 && m.H > 0) { win._geoX = m.X; win._geoY = m.Y; win._geoW = m.W; win._geoH = m.H; win._geoMax = m.Max; win._geoValid = true; }
         lock (_windowIndex) { _byId[m.Id] = win; if (!_windowIndex.Any(x => x.Id == m.Id)) _windowIndex.Add(m); m.IsOpen = true; }
         win.Boot(_hInstance);
@@ -1754,7 +1754,8 @@ internal partial class Program
     private bool _fullscreen;
     private WINDOWPLACEMENT _fsPrev;
 
-    private void ToggleFullscreen()
+    private void ToggleFullscreen() => ToggleFullscreen(false);
+    private void ToggleFullscreen(bool noActivate)
     {
         long style = (long)GetWindowLongPtrW(_hwnd, GWL_STYLE);
         if (!_fullscreen)
@@ -1766,14 +1767,17 @@ internal partial class Program
             SetWindowLongPtrW(_hwnd, GWL_STYLE, (IntPtr)((style & ~(long)WS_OVERLAPPEDWINDOW) | WS_POPUP));
             SetWindowPos(_hwnd, IntPtr.Zero, mi.rcMonitor.left, mi.rcMonitor.top,
                 mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
-                SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOZORDER);
+                SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOZORDER | (noActivate ? SWP_NOACTIVATE : 0));
             _fullscreen = true;
         }
         else
         {
             SetWindowLongPtrW(_hwnd, GWL_STYLE, (IntPtr)((style & ~(long)WS_POPUP) | WS_OVERLAPPEDWINDOW));
-            SetWindowPlacement(_hwnd, ref _fsPrev);
-            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            var restore = _fsPrev;
+            if (noActivate && restore.showCmd == SW_SHOW) restore.showCmd = SW_SHOWNOACTIVATE;
+            if (noActivate && restore.showCmd == 1) restore.showCmd = SW_SHOWNOACTIVATE;
+            SetWindowPlacement(_hwnd, ref restore);
+            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | (noActivate ? SWP_NOACTIVATE : 0));
             _fullscreen = false;
         }
         RequestRedraw();

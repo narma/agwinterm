@@ -106,6 +106,8 @@ public static class AgentSkill
           the user last clicked, which moves under you: a script from an unrelated shell, a pane that has since been closed,
           or a pane in ANOTHER WINDOW (with no `--window`, the frontmost window answers, and its host knows only its own
           panes — pass `--window` to reach yours, see "Windows").
+        - `agwintermctl window new --minimized --name NAME` creates background work and returns effective geometry. `window next|previous|minimize|restore|geometry --target WINDOW` and `window fullscreen on|off|toggle --target WINDOW` control open library windows. `window monitors` lists device IDs; `window move --target WINDOW --monitor primary|DEVICE` bounds placement to its work area. Geometry is physical pixels. Minimize/restore do not request focus; next/previous do.
+        - `agwintermctl session reveal --target PANE --window WINDOW` selects that pane's current directory in Explorer, converting WSL using its own profile. `--path-only` validates and returns the path without opening Explorer. Missing/ambiguous targets and unresolved directories refuse.
         - `agwintermctl session duplicate [ID]` — clone a session (same cwd + shell profile) as a new session (default: active).
         - `agwintermctl session restore "<command>" --target PANE` — pin a command to re-run on every restart for that pane; `none` clears.
           The target is mandatory (no active-pane default: a pin outlives whatever is active now; inside a session `AGWINTERM_SESSION_ID`

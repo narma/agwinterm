@@ -7,7 +7,7 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed", "minimized", "path-only" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
@@ -61,9 +61,11 @@ public static class CtlArguments
         ["sidebar"] = "window", ["quick"] = "window", ["broadcast"] = "window",
         ["notify"] = "window target title category", ["font inc"] = "window target", ["font dec"] = "window target",
         ["font reset"] = "window target", ["dashboard"] = "window close font-size auto-size",
-        ["window new"] = "name", ["window list"] = "", ["window state"] = "",
+        ["window new"] = "name minimized", ["window list"] = "", ["window state"] = "",
+        ["window next"] = "target", ["window previous"] = "target", ["window minimize"] = "target", ["window restore"] = "target",
+        ["window fullscreen"] = "target", ["window monitors"] = "", ["window geometry"] = "target", ["session reveal"] = "window target path-only",
         ["window select"] = "target", ["window close"] = "target", ["window delete"] = "target",
-        ["window zoom"] = "target", ["window rename"] = "", ["window resize"] = "w h", ["window move"] = "x y",
+        ["window zoom"] = "target", ["window rename"] = "", ["window resize"] = "w h", ["window move"] = "x y monitor target",
         ["image show"] = "window target row col id", ["image sixel"] = "window target row col",
         ["image frameshm"] = "window target images " + string.Join(' ', FrameShmCli.NumericFields),
     };

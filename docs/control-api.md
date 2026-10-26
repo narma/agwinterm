@@ -569,3 +569,7 @@ See [recent work](recent-work.md) for `recent.list`, `recent.open` and `recent.c
 
 [Working-set organization](working-sets.md) defines workspace flagging, collapsed creation,
 relative placement, explicit batch outcomes and the additive `workingSet` readback.
+
+## Native window operations
+
+See [Native window controls](window-controls.md) for C7 commands, physical geometry, monitor selection and targeted Windows/WSL directory Reveal.
