@@ -564,3 +564,8 @@ geometry; lifecycle events report expiry and anchor identity. See
 ## Recently closed work (C5)
 
 See [recent work](recent-work.md) for `recent.list`, `recent.open` and `recent.clear`, exact entry IDs, destination rules, partial outcomes and bounded persistence. These app-wide operations are independent of live restore checkpoints.
+
+## Working sets (C6)
+
+[Working-set organization](working-sets.md) defines workspace flagging, collapsed creation,
+relative placement, explicit batch outcomes and the additive `workingSet` readback.

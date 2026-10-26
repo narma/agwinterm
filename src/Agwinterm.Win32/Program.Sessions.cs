@@ -614,6 +614,8 @@ internal partial class Program
         // Modal selectors and queued callbacks may outlive the object they captured.
         if (!OwnsSession(ses)) return;
         _workspaceTarget = null;
+        if (!_restoring && _sidebarMode != SidebarMode.Flagged && FocusFilterActive && !_focusedWorkspaceIds.Contains(ses.Ws.Id))
+            _workspaceFilterEnabled = false;
         // Navigating to a session outside the multi-selection drops the selection (single-select again).
         if (!_selectedIds.Contains(ses.Id)) _selectedIds.Clear();
         var previousSession = _active;
@@ -1805,10 +1807,10 @@ internal partial class Program
 
     private void CycleSession(int dir)
     {
-        var all = AllSessions();
-        if (all.Count < 2) return;
-        int i = _active is null ? 0 : all.IndexOf(_active);
-        SetActive(all[((i + dir) % all.Count + all.Count) % all.Count]);
+        var all = VisibleSessions();
+        if (all.Count == 0) return;
+        int i = _active is null ? -1 : all.IndexOf(_active);
+        SetActive(all[i < 0 ? (dir > 0 ? 0 : all.Count - 1) : ((i + dir) % all.Count + all.Count) % all.Count]);
     }
 
     // ---- Wave A1 internal helpers (called on the UI thread via Host/Post) ----
@@ -1819,8 +1821,8 @@ internal partial class Program
         {
             case "next": CycleSession(1); break;
             case "prev": case "previous": CycleSession(-1); break;
-            case "first": { var f = AllSessions().FirstOrDefault(); if (f is not null) SetActive(f); break; }
-            case "last": { var l = AllSessions().LastOrDefault(); if (l is not null) SetActive(l); break; }
+            case "first": { var f = VisibleSessions().FirstOrDefault(); if (f is not null) SetActive(f); break; }
+            case "last": { var l = VisibleSessions().LastOrDefault(); if (l is not null) SetActive(l); break; }
             case "next-attention": GoToNextAttention(1); break;
             case "prev-attention": case "previous-attention": GoToNextAttention(-1); break;
         }
@@ -2010,21 +2012,18 @@ internal partial class Program
     }
 
     /// <summary>Focus a single workspace (the active one) or clear focus: op = on|off|toggle. Tree mode only.</summary>
-    private void WorkspaceFocusOp(string op) => WorkspaceFocusOp(op, ActiveWorkspace().Id);
+    private void WorkspaceFocusOp(string op)
+    {
+        if (op == "clear") { ClearWorkspaceFocus(); return; }
+        if (op == "off" || op == "toggle" && _workspaceFilterEnabled) { DisableWorkspaceFilter(); return; }
+        _focusedWorkspaceIds.Clear(); _focusedWorkspaceIds.Add(ActiveWorkspace().Id);
+        _workspaceFilterEnabled = true; RequestRedraw(); SaveState(); EmitEvent("tree");
+    }
 
     private void WorkspaceFocusOp(string op, string? wsId)
     {
-        _focusedWorkspaceId = op switch
-        {
-            "on" => wsId,
-            "off" => null,
-            _ => _focusedWorkspaceId is not null ? null : wsId, // toggle
-        };
-        if (_workspaceTarget is { } target && _focusedWorkspaceId is not null && _focusedWorkspaceId != target.Id)
-            _workspaceTarget = null;
-        RequestRedraw(); SaveState();
+        if (wsId is not null) SetWorkspaceMembership(op, wsId);
     }
-
     /// <summary>
     /// Resolve a session-only control target: id (exact), then id prefix, then NAME.
     /// </summary>

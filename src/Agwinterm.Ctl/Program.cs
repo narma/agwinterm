@@ -90,6 +90,7 @@ switch (area)
                 cmd = "workspace.new";
                 if (Opt("name") is { } wsname) cargs["name"] = wsname;
                 else if (rest.Count > 0) cargs["name"] = rest[0];
+                if (options.ContainsKey("collapsed")) cargs["collapsed"] = true;
                 target = null;
                 break;
             case "rename":
@@ -110,9 +111,16 @@ switch (area)
             case "collapse": cmd = "workspace.collapse"; if (rest.Count > 0) target = rest[0]; break;
             case "expand": cmd = "workspace.expand"; if (rest.Count > 0) target = rest[0]; break;
             case "focus":
+                if (rest.Count > 1) { Console.Error.WriteLine("workspace focus accepts one mode"); return 2; }
                 cmd = "workspace.focus";
                 cargs["op"] = rest.Count > 0 ? rest[0] : "toggle"; // on|off|toggle (focuses the active workspace)
-                target = null;
+                target = Opt("target");
+                break;
+            case "filter":
+            case "flag":
+                if (rest.Count > 1) { Console.Error.WriteLine("workspace operation accepts one mode"); return 2; }
+                cmd = "workspace." + sub; cargs["op"] = rest.FirstOrDefault() ?? "toggle";
+                if (sub == "filter") target = null;
                 break;
             case "move":
                 cmd = "workspace.move";
@@ -561,6 +569,11 @@ switch (area)
         break;
     case "sidebar":
         cmd = "sidebar";
+        if (sub == "flagged-layout")
+        {
+            if (rest.Count > 1) { Console.Error.WriteLine("flagged-layout accepts one layout"); return 2; }
+            cmd = "sidebar.flagged-layout"; cargs["layout"] = rest.FirstOrDefault() ?? "toggle"; break;
+        }
         // `sidebar width [N]` reads (no N) or sets the width; `sidebar mode tree|flagged|toggle`
         // switches the view mode; otherwise show|hide|toggle|expand|collapse (on/off = show/hide).
         if (sub == "width")
@@ -682,6 +695,25 @@ switch (area)
 
 // install.skill is a self-contained file-write (writes SKILL.md to ~/.claude & ~/.codex); run it
 // locally so it works with no running app / pipe (e.g. from the installer, incl. silent installs).
+foreach (var key in new[] { "before", "after" }) if (Opt(key) is { } anchor) cargs[key] = anchor;
+if (Opt("targets") is { } batch)
+{
+    if (options.ContainsKey("target") || cmd == "session.close" && rest.Count > 0)
+    { Console.Error.WriteLine("choose --targets or a single target"); return 2; }
+    cargs["targets"] = batch.Split(','); target = null;
+}
+if (cmd == "session.move" && (cargs.ContainsKey("targets") || cargs.ContainsKey("before") || cargs.ContainsKey("after")))
+{
+    if (options.ContainsKey("to") || rest.Count > 1) { Console.Error.WriteLine("anchored/batch move needs a workspace or anchor, not a direction"); return 2; }
+    cargs.Remove("dir");
+}
+try
+{
+    var workingArgs = JsonSerializer.SerializeToElement(cargs);
+    if (WorkingSetRequest.Applies(cmd, workingArgs)) WorkingSetRequest.Validate(cmd, workingArgs, target);
+}
+catch (ArgumentException e) { Console.Error.WriteLine(e.Message + ". Nothing sent."); return 2; }
+
 if (cmd == "install.skill" && target is null && Opt("window") is null)
 {
     Console.WriteLine(Agwinterm.Pty.AgentSkill.Install());

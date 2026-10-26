@@ -147,6 +147,15 @@ public static class CtlUsage
           agwintermctl recent list                         (app-wide durable closed session/workspace history)
           agwintermctl recent open ENTRY-ID [--window ID]   (open in a live library window; partial workspace outcomes are explicit)
           agwintermctl recent clear [ENTRY-ID]              (history only; does not change live sessions or restore checkpoints)
+          agwintermctl workspace new [--name NAME] [--collapsed]
+          agwintermctl workspace flag on|off|toggle [--target WORKSPACE]
+          agwintermctl workspace focus on|off|toggle|clear [--target WORKSPACE]
+          agwintermctl workspace filter on|off|toggle        (retain focused membership)
+          agwintermctl sidebar flagged-layout plain|flat|tree|toggle
+          agwintermctl session new --before SESSION|--after SESSION [ordinary new options]
+          agwintermctl session move --target SESSION --before ANCHOR|--after ANCHOR
+          agwintermctl session close --targets ID1,ID2       (explicit batch; inspect per-item errors)
+          agwintermctl session move [WORKSPACE] --targets ID1,ID2 [--before ANCHOR|--after ANCHOR]
           agwintermctl session copy [--target ID]           (returns the selection text)
           agwintermctl session paste <text...> [--target ID] (pastes text; clipboard if omitted)
           agwintermctl selection all|copy|clear|finalize [--target ID]

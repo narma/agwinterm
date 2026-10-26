@@ -1,7 +1,7 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('Hud','HudAdvanced','Recent','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu')][string]$Suite='Hud')
+      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu')][string]$Suite='Hud')
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -137,6 +137,7 @@ public sealed class HudOwnedJob {
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
     @('session-host = in-process','claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
     'map f12 = close_pane'|Set-Content (Join-Path $appDir 'keymap.conf')
+    if($Suite-eq 'WorkingSets'){'map f8 = toggle_workspace_filter'|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'Quick'){
         @('map f7 = toggle_search','map f8 = command:QuickProbe',
           ('command [send] QuickProbe = echo {AGW_PANE}>"'+(Join-Path $artifact 'keymap-send.txt')+'"'))|Add-Content (Join-Path $appDir 'keymap.conf')
@@ -224,6 +225,7 @@ public sealed class HudOwnedJob {
     elseif($Suite-eq 'Ask') { . "$PSScriptRoot/ask-ui-cases.ps1" }
     elseif($Suite-eq 'HudAdvanced') { . "$PSScriptRoot/hud-advanced-ui-cases.ps1" }
     elseif($Suite-eq 'Recent') { . "$PSScriptRoot/recent-ui-cases.ps1" }
+    elseif($Suite-eq 'WorkingSets') { . "$PSScriptRoot/working-sets-ui-cases.ps1" }
     elseif($Suite-eq 'Menu') { . "$PSScriptRoot/menu-bar-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {

@@ -354,7 +354,8 @@ internal partial class Program
         "toggle_workspace_collapse" => CurrentWorkspace() is { Expanded: false },
         "toggle_flagged_view" => _sidebarMode == SidebarMode.Flagged,
         "toggle_flag" => _active is { Flagged: true },
-        "focus_workspace" => _focusedWorkspaceId is not null,
+        "focus_workspace" => _workspaceFilterEnabled,
+        "toggle_workspace_filter" => _workspaceFilterEnabled,
         "toggle_scratch" => _coverKind == 1,
         "focus_left" or "focus_right" => _active is { Axis: SplitAxes.Horizontal },
         _ => false,
@@ -420,6 +421,8 @@ internal partial class Program
             case "toggle_flag": if (_active is not null) FlagOp(_active, "toggle"); break;
             case "clear_flagged": FlagOp(null, "clear"); break;
             case "focus_workspace": WorkspaceFocusOp("toggle"); break;
+            case "toggle_workspace_filter": SetWorkspaceFilter(!_workspaceFilterEnabled); break;
+            case "clear_workspace_focus": ClearWorkspaceFocus(); break;
             case "toggle_split_v": SplitOp("toggle", _active, SplitAxes.Vertical); break;
             case "toggle_split_h": SplitOp("toggle", _active, SplitAxes.Horizontal); break;
             case "swap_panes": if (_active is not null) SwapPanes(_active); break;

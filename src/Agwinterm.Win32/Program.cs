@@ -173,7 +173,10 @@ internal partial class Program : ISessionHost, IWindowHost
     // shows just one workspace. The two are independent and both persist.
     private enum SidebarMode { Tree, Flagged }
     private SidebarMode _sidebarMode = SidebarMode.Tree;
-    private string? _focusedWorkspaceId;               // when set (tree mode), render only this workspace
+    private readonly HashSet<string> _focusedWorkspaceIds = new(StringComparer.Ordinal);
+    private bool _workspaceFilterEnabled;
+    private string _flaggedLayout = "plain";
+    private string? _focusedWorkspaceId => _workspaceFilterEnabled && _focusedWorkspaceIds.Count == 1 ? _focusedWorkspaceIds.First() : null;
     private static readonly object _showAllMarker = new();    // sidebar row sentinel: click clears workspace focus
 
     private float ContentX => _sidebarW + PadX;        // terminal's left origin

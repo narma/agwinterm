@@ -37,6 +37,7 @@ public class MenuModelTests
             "Increase Font Size", "Decrease Font Size", "Actual Size", "Select Theme…", "-",
             "Hide Sidebar", "Expand Workspaces", "Collapse Workspaces", "Collapse Workspace",
             "Show Flagged Sessions", "Flag Session", "Clear Flagged", "Focus Workspace",
+            "Filter Focused Workspaces", "Clear Workspace Focus",
             "Toggle Vertical Split", "Toggle Horizontal Split", "Swap Panes", "Show Scratch", "Find…", "Quick Terminal", "-",
             "Toggle Fullscreen",
         }, MenuModel.Menus[1].Items.Select(i => i.Label));

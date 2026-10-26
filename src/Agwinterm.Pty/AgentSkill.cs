@@ -509,6 +509,13 @@ public static class AgentSkill
           restore-commands, blocked-sound, omp-theme. Changing the theme retints the WHOLE window (sidebar/title/status), not just the terminal.
 
         ## Config / restore
+        - Working sets: `workspace flag on|off|toggle --target W` includes hidden members; `workspace new --collapsed` starts folded.
+        - `session new/move --before S|--after S` uses an unambiguous session anchor; explicit workspace must agree. IDs survive moves.
+        - `session close --targets A,B` / `session move [WORKSPACE] --targets A,B [--before C|--after C]` are explicit bounded batches.
+          Repeated --target still refuses. Inspect `outcome` and each item's `changed/error`: exit 0 can contain partial errors.
+        - `workspace focus on|off|toggle --target W` edits membership; `workspace filter on|off|toggle` retains it; focus clear removes it.
+        - `sidebar flagged-layout plain|flat|tree|toggle` is per-window; plain preserves the local names-only default. Tree/window state
+          expose `workingSet` with focusedWorkspaceIds, workspaceFilterEnabled, sidebarFlaggedLayout and visibleSessionIds.
         - `agwintermctl recent list` — newest-first durable closed sessions/workspaces with exact entry IDs, source window and remaining count.
         - `agwintermctl recent open ENTRY-ID [--window ID]` — restore into an open library window (default active), without forcing OS focus.
           Preserves split IDs/layout, profile/cwd, context, flags and restore pins. Pins are retained, not replayed. Inspect `outcome`,

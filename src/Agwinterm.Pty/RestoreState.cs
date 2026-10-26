@@ -94,6 +94,9 @@ public sealed class AppState
     public string? FocusedWorkspaceId { get; set; }
     // Ctrl+Tab MRU session order (most recent first); restored on relaunch.
     public List<string> Mru { get; set; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<string>? FocusedWorkspaceIds { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? WorkspaceFilterEnabled { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? FlaggedLayout { get; set; }
 }
 
 /// <summary>The serializer for the restore file (and the one the host shares with the window-library

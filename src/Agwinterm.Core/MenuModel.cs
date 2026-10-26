@@ -87,6 +87,8 @@ public static class MenuModel
             new MenuItemDef("toggle_flag", "Flag Session", "toggle_flag", AltLabel: "Unflag Session", Term: "session"),
             new MenuItemDef("clear_flagged", "Clear Flagged", Term: "anyflag"),
             new MenuItemDef("focus_workspace", "Focus Workspace", "focus_workspace", AltLabel: "Unfocus Workspace", Term: "tree"),
+            new MenuItemDef("toggle_workspace_filter", "Filter Focused Workspaces", "toggle_workspace_filter", Term: "tree"),
+            new MenuItemDef("clear_workspace_focus", "Clear Workspace Focus", "clear_workspace_focus", Term: "tree"),
             new MenuItemDef("toggle_split_v", "Toggle Vertical Split", "split_pane", Term: "session"),
             new MenuItemDef("toggle_split_h", "Toggle Horizontal Split", Term: "session"),
             new MenuItemDef("swap_panes", "Swap Panes", Term: "split"),
