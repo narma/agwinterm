@@ -745,6 +745,8 @@ internal partial class Program
                     // snapshot's last chance before the process goes. Bounded: on the #294 machine a
                     // worker held in the filter past this loses what it was holding.
                     _stateWriter.Shutdown(TimeSpan.FromSeconds(15));
+                    try { _recentWriter?.ReadAsync().Wait(TimeSpan.FromSeconds(15)); }
+                    catch (Exception e) { System.Diagnostics.Debug.WriteLine("recent history shutdown: " + e.Message); }
                     DestroyQuickHost(); PostQuitMessage(0);
                 }
                 return IntPtr.Zero;

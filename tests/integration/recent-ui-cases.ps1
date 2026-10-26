@@ -71,7 +71,12 @@ $json=(& $ctl recent list --pipe $pipe --json)|ConvertFrom-Json
 Check 'actual CLI lists the same stable entry' ($LASTEXITCODE-eq 0 -and @($json.result.entries|Where-Object id -eq $entry.id).Count-eq 1)
 $savedHistory=Get-Content (Join-Path $appDir 'recent.json') -Raw
 $firstOpen=RecentOpen $entry.id $dest
-Start-Sleep -Milliseconds 400
+$savedLive = RecentWait {
+    try { @((Get-Content (Join-Path $appDir "windows/$dest.json") -Raw | ConvertFrom-Json).Workspaces.Sessions |
+        Where-Object Id -eq $firstOpen.members[0].sessionId).Count-eq 1 } catch { $false }
+}
+Check 'live restore snapshot contains recovered session before restart' $savedLive
+if (-not $savedLive) { throw 'Refuse to restart before the expected live snapshot is on disk' }
 $job.Finish()
 [IO.File]::WriteAllText((Join-Path $appDir 'recent.json'),$savedHistory)
 $job=[HudOwnedJob]::new()
@@ -84,4 +89,33 @@ $entry=@((RecentList).entries)[0]
 $null=& $ctl recent clear $entry.id --pipe $pipe --json
 Check 'actual CLI clear is isolated from live sessions' ($LASTEXITCODE-eq 0 -and @((RecentList).entries|Where-Object id -eq $entry.id).Count-eq 0 -and @((Rpc 'tree' @{} -NoTarget -Window $dest).workspaces.sessions).Count-gt 0)
 $null=Rpc 'recent.clear' @{} -NoTarget -Window ''
-Check 'clear is persisted independently of restore state' (((Get-Content (Join-Path $appDir 'recent.json') -Raw|ConvertFrom-Json).Sessions.Count)-eq 0 -and (Test-Path (Join-Path $appDir 'windows')))
+Check 'clear is persisted independently of restore state' (RecentWait {
+    try { ((Get-Content (Join-Path $appDir 'recent.json') -Raw|ConvertFrom-Json).Sessions.Count)-eq 0 -and (Test-Path (Join-Path $appDir 'windows')) } catch { $false }
+})
+# A second actual app process uses the same history identity and a different control pipe.
+$peerPipe=$pipe+'-recent-peer'; $peerJob=[HudOwnedJob]::new()
+function PeerRecentCtl([string[]]$arguments) {
+    $reply=((& $ctl @arguments --pipe $peerPipe --json)-join "`n")|ConvertFrom-Json
+    if(-not $reply.ok){throw "Peer CLI failed: $($reply|ConvertTo-Json -Compress)"}
+    $reply.result
+}
+try {
+    $peerJob.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $peerPipe --no-restore --default-session-host inprocess",$root)
+    if(-not (RecentWait {try{$null=PeerRecentCtl @('tree');$true}catch{$false}})){throw 'Recent peer did not start'}
+    $null=PeerRecentCtl @('recent','list') # Cache an empty baseline before the other process adds.
+    $primary=[string](Rpc 'session.new' @{name='primary-history-member'} -Window $dest)
+    $null=Rpc 'session.close' @{} $primary -Window $dest
+    $null=RecentList # Drain the primary mutation before exercising the peer's stale baseline.
+    $peer=[string](PeerRecentCtl @('session','new','--name','peer-history-member'))
+    $null=PeerRecentCtl @('session','close',$peer)
+    $null=PeerRecentCtl @('recent','list')
+    $shared=(RecentList).entries
+    Check 'separate app processes retain each others recent additions' (@($shared|Where-Object name -eq 'primary-history-member').Count-eq 1 -and @($shared|Where-Object name -eq 'peer-history-member').Count-eq 1)
+    $null=Rpc 'recent.clear' @{} -NoTarget -Window ''
+    $null=RecentList
+    $newPeer=[string](PeerRecentCtl @('session','new','--name','peer-after-clear'))
+    $null=PeerRecentCtl @('session','close',$newPeer)
+    $null=PeerRecentCtl @('recent','list')
+    $shared=@((RecentList).entries)
+    Check 'stale peer cannot resurrect history cleared by another process' ($shared.Count-eq 1 -and $shared[0].name-eq 'peer-after-clear')
+} finally { $peerJob.Finish() }

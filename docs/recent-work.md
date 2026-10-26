@@ -37,4 +37,11 @@ whole entries are evicted; surviving workspaces are never silently truncated. In
 history is preserved as `.bad` with a readback warning and empty history. Writes replace
 the file atomically; a failure is visible while in-memory history survives. A crash before
 a write can leave a stale recoverable entry; reopening still checks live identities.
-The file can contain directories and pin text; `recent clear` removes stored history.
+History mutations are queued to an ordered background writer; normal close/reopen/clear
+does not wait for disk I/O on the UI thread. Each write takes a cross-process file lock,
+loads the current history, and applies only its changes. An unchanged stale entry cannot
+resurrect an entry cleared by another process. Control commands refresh through the writer
+before inspecting history; menus show the latest local snapshot. Save failures are reported
+in readback and a toast, and pending mutations are retained for the next attempt. Graceful
+last-window shutdown allows up to 15 seconds to drain; a forced kill can lose pending writes.
+The file can contain directories and pin text; `recent clear` queues removal of stored history.

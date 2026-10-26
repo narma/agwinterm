@@ -38,17 +38,34 @@ public sealed class RecentHistory
     private void EvictSession() { Sessions.RemoveAt(0); Warning = "Oldest recent entries evicted to keep history bounded"; }
     private void EvictWorkspace() { Workspaces.RemoveAt(0); Warning = "Oldest recent entries evicted to keep history bounded"; }
     public static bool ValidId(string? id) => id is { Length: > 0 and <= 256 } && !id.Any(char.IsWhiteSpace) && !id.Any(char.IsControl);
-    private static bool Text(string? value, int max = 4096) => value is null || value.Length <= max && !value.Contains('\0');
+    // Captured names and restore pins can exceed display-input limits. The serialized file
+    // already has an 8 MiB bound; do not invent narrower limits that reject our own saves.
+    private static bool Text(string? value) => value is null || value.Length <= MaxBytes;
     private static bool Valid(ClosedSession s) => s is not null && Guid.TryParse(s.EntryId, out _) &&
         ValidId(s.SessionId) && ValidId(s.WorkspaceId) && ValidId(s.SourceWindowId) && s.Seq >= 0 && s.Seq < long.MaxValue &&
         Text(s.CustomName) && Text(s.ProfileName) && Text(s.Cwd) && Text(s.WorkspaceName) && Text(s.Display) && Text(s.Name) &&
         Text(s.Context) && s.State is { } state && state.Id == s.SessionId && Text(state.Name) && Text(state.CustomName) &&
         Text(state.Profile) && Text(state.Context) && state.Panes is { Count: >= 1 and <= 2 } &&
-        state.Panes.All(p => p is not null && ValidId(p.Id) && Text(p.Cwd) && Text(p.RestoreCommand, 16384) &&
-            float.IsFinite(p.FontSize) && p.FontSize >= 0 && p.FontSize <= 256 && float.IsFinite(p.Ratio) && p.Ratio > 0 && p.Ratio <= 1000) &&
+        state.Panes.All(p => p is not null && ValidId(p.Id) && p.Cwd is not null && Text(p.Cwd) && Text(p.RestoreCommand) &&
+            float.IsFinite(p.FontSize) && p.FontSize >= 0 && float.IsFinite(p.Ratio) && p.Ratio > 0) &&
         state.Panes.Select(p => p.Id).Distinct().Count() == state.Panes.Count;
 
-    public static RecentHistory Load(string path)
+    public RecentHistory Copy() => JsonSerializer.Deserialize<RecentHistory>(JsonSerializer.Serialize(this))!;
+
+    private static void Validate(RecentHistory h)
+    {
+        if (h.Sessions is null || h.Workspaces is null || h.Sessions.Count > 25 || h.Workspaces.Count > 25 ||
+            h.Sessions.Any(s => !Valid(s)) || h.Workspaces.Any(w => w is null || !Guid.TryParse(w.EntryId, out _) ||
+                !ValidId(w.WorkspaceId) || !ValidId(w.SourceWindowId) || !Text(w.Name) || w.Seq < 0 || w.Seq == long.MaxValue ||
+                w.Sessions is null || w.Sessions.Count > 1024 || w.Sessions.Any(s => !Valid(s)) ||
+                (w.DestinationWindowId is null) != (w.DestinationWorkspaceId is null) ||
+                w.DestinationWindowId is not null && (!ValidId(w.DestinationWindowId) || !ValidId(w.DestinationWorkspaceId))))
+            throw new FormatException("invalid history values");
+        var ids = h.Sessions.Select(s => s.EntryId).Concat(h.Workspaces.Select(w => w.EntryId)).ToList();
+        if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Count) throw new FormatException("duplicate entry IDs");
+    }
+
+    public static RecentHistory Load(string path, bool throwOnIo = false)
     {
         if (!File.Exists(path)) return new();
         try
@@ -56,19 +73,12 @@ public sealed class RecentHistory
             using var stream = File.OpenRead(path);
             if (stream.Length > MaxBytes) throw new FormatException("history exceeds 8 MiB");
             var h = JsonSerializer.Deserialize<RecentHistory>(stream) ?? throw new FormatException("empty history");
-            if (h.Sessions is null || h.Workspaces is null || h.Sessions.Count > 25 || h.Workspaces.Count > 25 ||
-                h.Sessions.Any(s => !Valid(s)) || h.Workspaces.Any(w => w is null || !Guid.TryParse(w.EntryId, out _) ||
-                    !ValidId(w.WorkspaceId) || !ValidId(w.SourceWindowId) || !Text(w.Name) || w.Seq < 0 || w.Seq == long.MaxValue ||
-                    w.Sessions is null || w.Sessions.Count > 1024 || w.Sessions.Any(s => !Valid(s)) ||
-                    (w.DestinationWindowId is null) != (w.DestinationWorkspaceId is null) ||
-                    w.DestinationWindowId is not null && (!ValidId(w.DestinationWindowId) || !ValidId(w.DestinationWorkspaceId))))
-                throw new FormatException("invalid history values");
-            var ids = h.Sessions.Select(s => s.EntryId).Concat(h.Workspaces.Select(w => w.EntryId)).ToList();
-            if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Count) throw new FormatException("duplicate entry IDs");
+            Validate(h);
             h.Bound(); return h;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or FormatException)
         {
+            if (throwOnIo && e is IOException or UnauthorizedAccessException) throw;
             try { File.Move(path, path + ".bad", true); } catch { }
             return new() { Warning = "Recent history unavailable: " + e.Message };
         }
@@ -80,13 +90,14 @@ public sealed class RecentHistory
         try
         {
             Bound();
+            Validate(this);
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             File.WriteAllText(temporary, JsonSerializer.Serialize(this), new UTF8Encoding(false));
             File.Move(temporary, path, true);
             if (Warning?.StartsWith("Recent history not saved:", StringComparison.Ordinal) == true) Warning = null;
             return true;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or FormatException)
         { Warning = "Recent history not saved: " + e.Message; return false; }
         finally { try { File.Delete(temporary); } catch { } }
     }

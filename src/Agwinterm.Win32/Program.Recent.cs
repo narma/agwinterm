@@ -6,13 +6,68 @@ namespace Agwinterm.Win32;
 internal partial class Program : IRecentHost
 {
     private static RecentHistory? _recent;
+    private static RecentHistory _recentBaseline = new();
+    private static RecentHistoryWriter? _recentWriter;
+    private static long _recentRevision;
     private static string RecentPath => Path.Combine(AppDir, "recent.json");
-    private static RecentHistory Recent => _recent ??= RecentHistory.Load(RecentPath);
+    private static RecentHistory Recent
+    {
+        get
+        {
+            if (_recent is not null) return _recent;
+            _recent = new();
+            _recentWriter = new(RecentPath);
+            ObserveRecentWrite(_recentWriter.ReadAsync(), _recentRevision);
+            return _recent;
+        }
+    }
     private static List<ClosedSession> _closedSessions => Recent.Sessions;
     private static List<ClosedWorkspace> _closedWorkspaces => Recent.Workspaces;
-    private void SaveRecent()
+    private static void ObserveRecentWrite(Task<RecentHistory> task, long revision)
     {
-        if (!Recent.Save(RecentPath)) ShowToast(Recent.Warning ?? "Recent history not saved");
+        _ = task.ContinueWith(done =>
+        {
+            var error = done.Exception?.GetBaseException().Message;
+            try { LiveWindow().Post(() =>
+            {
+                if (error is not null) { Recent.Warning = "Recent history not saved: " + error; LiveWindow().ShowToast(Recent.Warning); }
+                else if (_recentRevision == revision)
+                {
+                    _recent = done.Result; _recentBaseline = _recent.Copy();
+                    foreach (var window in _byId.Values) window.RequestRedraw();
+                }
+            }); }
+            catch { System.Diagnostics.Debug.WriteLine(error); }
+        }, TaskScheduler.Default);
+    }
+
+    private void SaveRecent(bool clearAll = false)
+    {
+        Recent.Bound();
+        var snapshot = Recent.Copy();
+        ObserveRecentWrite(_recentWriter!.Enqueue(_recentBaseline, snapshot, clearAll), ++_recentRevision);
+        _recentBaseline = snapshot;
+    }
+
+    // Called on control-pipe threads: wait for earlier queued operations and read fresh shared
+    // history without making the UI thread wait for locks, file filters, or disk writes.
+    private static void RefreshRecent()
+    {
+        var owner = LiveWindow();
+        long revision = owner.InvokeOnUiQueued(() => { _ = Recent; return ++_recentRevision; });
+        try
+        {
+            var snapshot = _recentWriter!.ReadAsync().GetAwaiter().GetResult();
+            owner.InvokeOnUiQueued(() =>
+            {
+                if (_recentRevision == revision) { _recent = snapshot; _recentBaseline = snapshot.Copy(); }
+                return true;
+            });
+        }
+        catch (Exception e)
+        {
+            owner.InvokeOnUiQueued(() => { Recent.Warning = "Recent history not saved: " + e.Message; return true; });
+        }
     }
 
     private ClosedSession CaptureClosedSessionData(Ses s)
@@ -47,17 +102,25 @@ internal partial class Program : IRecentHost
         catch (Exception e) { ShowToast("Recent capture failed: " + e.Message); }
     }
 
-    public object RecentList() => LiveWindow().InvokeOnUiQueued<object>(() => new
+    public object RecentList()
     {
-        entries = _closedSessions.Select(s => new { id = s.EntryId, kind = "session", name = s.Display,
-            sourceWindowId = s.SourceWindowId, sessionCount = 1, sequence = s.Seq, destinationWindowId = (string?)null, destinationWorkspaceId = (string?)null })
-            .Concat(_closedWorkspaces.Select(w => new { id = w.EntryId, kind = "workspace", name = w.Name,
-                sourceWindowId = w.SourceWindowId, sessionCount = w.Sessions.Count, sequence = w.Seq,
-                destinationWindowId = w.DestinationWindowId, destinationWorkspaceId = w.DestinationWorkspaceId }))
-            .OrderByDescending(e => e.sequence).ToArray(), warning = Recent.Warning
-    });
+        RefreshRecent();
+        return LiveWindow().InvokeOnUiQueued<object>(() => new
+        {
+            entries = _closedSessions.Select(s => new { id = s.EntryId, kind = "session", name = s.Display,
+                sourceWindowId = s.SourceWindowId, sessionCount = 1, sequence = s.Seq, destinationWindowId = (string?)null, destinationWorkspaceId = (string?)null })
+                .Concat(_closedWorkspaces.Select(w => new { id = w.EntryId, kind = "workspace", name = w.Name,
+                    sourceWindowId = w.SourceWindowId, sessionCount = w.Sessions.Count, sequence = w.Seq,
+                    destinationWindowId = w.DestinationWindowId, destinationWorkspaceId = w.DestinationWorkspaceId }))
+                .OrderByDescending(e => e.sequence).ToArray(), warning = Recent.Warning
+        });
+    }
 
-    public object RecentClear(string? entryId) => LiveWindow().InvokeOnUiQueued(() => ClearRecentCore(entryId));
+    public object RecentClear(string? entryId)
+    {
+        RefreshRecent();
+        return LiveWindow().InvokeOnUiQueued(() => ClearRecentCore(entryId));
+    }
     private object ClearRecentCore(string? entryId)
     {
         int before = _closedSessions.Count + _closedWorkspaces.Count;
@@ -65,22 +128,26 @@ internal partial class Program : IRecentHost
         else if (_closedSessions.RemoveAll(s => s.EntryId == entryId) + _closedWorkspaces.RemoveAll(w => w.EntryId == entryId) == 0)
             throw new ArgumentException("recent entry not found");
         int removed = before - _closedSessions.Count - _closedWorkspaces.Count;
-        SaveRecent(); return new { cleared = removed, warning = Recent.Warning };
+        SaveRecent(clearAll: entryId is null); return new { cleared = removed, warning = Recent.Warning };
     }
-    public object RecentOpen(string entryId, string? window) => LiveWindow().InvokeOnUiQueued(() =>
+    public object RecentOpen(string entryId, string? window)
     {
-        Program destination;
-        if (window is null or "active") destination = Frontmost;
-        else
+        RefreshRecent();
+        return LiveWindow().InvokeOnUiQueued(() =>
         {
-            var matches = _byId.Values.Where(w => !w._uiGone.IsCancellationRequested &&
-                (w.Id == window || w.Id.StartsWith(window, StringComparison.Ordinal))).ToArray();
-            destination = matches.FirstOrDefault(w => w.Id == window) ??
-                (matches.Length == 1 ? matches[0] : throw new ArgumentException("unknown or ambiguous destination window"));
-        }
-        if (destination._isQuickWindow || destination._uiGone.IsCancellationRequested) throw new ArgumentException("destination must be an open library window");
-        return destination.OpenRecentCore(entryId);
-    });
+            Program destination;
+            if (window is null or "active") destination = Frontmost;
+            else
+            {
+                var matches = _byId.Values.Where(w => !w._uiGone.IsCancellationRequested &&
+                    (w.Id == window || w.Id.StartsWith(window, StringComparison.Ordinal))).ToArray();
+                destination = matches.FirstOrDefault(w => w.Id == window) ??
+                    (matches.Length == 1 ? matches[0] : throw new ArgumentException("unknown or ambiguous destination window"));
+            }
+            if (destination._isQuickWindow || destination._uiGone.IsCancellationRequested) throw new ArgumentException("destination must be an open library window");
+            return destination.OpenRecentCore(entryId);
+        });
+    }
 
     private sealed record RecentMember(string originalId, string? sessionId, string[] paneIds, string? error);
     private object OpenRecentCore(string entryId)

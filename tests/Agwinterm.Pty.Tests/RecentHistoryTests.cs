@@ -26,6 +26,66 @@ public class RecentHistoryTests : IDisposable
         var h = new RecentHistory(); for (int i = 0; i < 30; i++) h.Sessions.Add(Item(i));
         h.Bound(); Assert.Equal(25, h.Sessions.Count); Assert.Equal(5, h.Sessions[0].Seq); Assert.NotNull(h.Warning);
     }
+    [Theory][InlineData(16384)][InlineData(16385)][InlineData(65536)]
+    public void SupportedLongPinsAndNamesRoundTripWithoutQuarantiningOtherEntries(int length)
+    {
+        var item = Item() with { Name = new string('n', 4097), Display = new string('n', 4097) };
+        item.State.Name = item.Name;
+        item.State.Panes[0].RestoreCommand = new string('p', length) + "\0opaque";
+        var history = new RecentHistory(); history.Sessions.AddRange([Item(), item]);
+        Assert.True(history.Save(FilePath), history.Warning);
+        var loaded = RecentHistory.Load(FilePath);
+        Assert.Null(loaded.Warning); Assert.Equal(2, loaded.Sessions.Count);
+        Assert.Equal(item.State.Panes[0].RestoreCommand, loaded.Sessions.Single(s => s.EntryId == item.EntryId).State.Panes[0].RestoreCommand);
+        Assert.False(File.Exists(FilePath + ".bad"));
+    }
+    [Fact] public void SaveRejectsValuesThatLoadWouldRejectWithoutReplacingGoodHistory()
+    {
+        var history = new RecentHistory(); history.Sessions.Add(Item()); Assert.True(history.Save(FilePath));
+        string previous = File.ReadAllText(FilePath);
+        history.Sessions[0].State.Panes[0].Ratio = -1;
+        Assert.False(history.Save(FilePath)); Assert.Equal(previous, File.ReadAllText(FilePath));
+    }
+    [Fact] public async Task IndependentWritersMergeAddsAndDoNotResurrectClearedEntries()
+    {
+        var first = new RecentHistoryWriter(FilePath); var second = new RecentHistoryWriter(FilePath);
+        var a = new RecentHistory(); a.Sessions.Add(Item());
+        var b = new RecentHistory(); b.Sessions.Add(Item());
+        await Task.WhenAll(first.Enqueue(new(), a), second.Enqueue(new(), b));
+        var stale = await second.ReadAsync(); Assert.Equal(2, stale.Sessions.Count);
+        Assert.Equal(2, stale.Sessions.Select(s => s.Seq).Distinct().Count());
+        await first.Enqueue(stale, new(), clearAll: true);
+        var next = stale.Copy(); var added = Item(); next.Sessions.Add(added);
+        await second.Enqueue(stale, next);
+        var result = await first.ReadAsync(); Assert.Equal(added.EntryId, Assert.Single(result.Sessions).EntryId);
+    }
+    [Fact] public async Task QueuedWritesReturnWhileFileLockIsHeldAndKeepMutationOrder()
+    {
+        var writer = new RecentHistoryWriter(FilePath);
+        var a = new RecentHistory(); a.Sessions.Add(Item());
+        Task<RecentHistory> add, clear;
+        using (var held = new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            add = writer.Enqueue(new(), a);
+            clear = writer.Enqueue(a, new(), clearAll: true);
+            Assert.False(add.IsCompleted); Assert.False(clear.IsCompleted);
+        }
+        await Task.WhenAll(add, clear).WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Empty((await writer.ReadAsync()).Sessions);
+    }
+    [Fact] public async Task FailedBackgroundMutationIsRetriedWithoutLosingItsEntry()
+    {
+        Directory.CreateDirectory(FilePath); // Force atomic replacement to fail.
+        var writer = new RecentHistoryWriter(FilePath);
+        var a = new RecentHistory(); a.Sessions.Add(Item());
+        await Assert.ThrowsAsync<IOException>(() => writer.Enqueue(new(), a));
+        Assert.Contains("not saved", writer.Warning);
+        Directory.Delete(FilePath);
+        var b = a.Copy(); b.Sessions.Add(Item());
+        var result = await writer.Enqueue(a, b);
+        Assert.Equal(2, result.Sessions.Count); Assert.Null(writer.Warning);
+        Assert.Equal(2, RecentHistory.Load(FilePath).Sessions.Count);
+    }
     [Fact] public void MemberBoundDoesNotTruncateSurvivingWorkspace()
     {
         var h = new RecentHistory();
