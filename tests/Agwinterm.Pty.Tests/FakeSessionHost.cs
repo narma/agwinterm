@@ -500,6 +500,12 @@ internal sealed class FakeSessionHost : ISessionHost
         {
             if (s.Overlay) return ISessionHost.RefusePrefix + "hud: a program overlay occupies the slot";
             if (action == "update" && s.Hud is null) return ISessionHost.RefusePrefix + "hud: no HUD to update";
+            if (spec?.Pane is { } pane)
+            {
+                var anchor = SessionHuds.ResolvePane(pane, s.PaneIds, s.FocusedPane);
+                if (anchor is null) return ISessionHost.RefusePrefix + "hud: pane not found in the selected session";
+                spec = spec with { AnchorPaneId = anchor };
+            }
             s.Hud = action == "update" ? spec! with { BackgroundColor = s.Hud!.BackgroundColor } : spec;
         }
         return SessionHuds.Reply(s.Id, s.Hud);

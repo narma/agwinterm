@@ -7,7 +7,7 @@ public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
-      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow" };
+      "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
@@ -46,8 +46,8 @@ public static class CtlArguments
         ["session overlay copy"] = "window target pane", ["session overlay text"] = "window target pane all lines",
         ["session overlay resize"] = "window target size-percent width height full pane",
         ["session overlay hide"] = "window target pane", ["session overlay show"] = "window target pane", ["session overlay toggle"] = "window target pane",
-        ["session hud open"] = "window target detail spinner spinner-style position size-percent background-color text-color",
-        ["session hud update"] = "window target detail spinner spinner-style position size-percent background-color text-color",
+        ["session hud open"] = "window target detail spinner spinner-style position size-percent background-color text-color hide-after font-size sticky no-frame markdown pane file",
+        ["session hud update"] = "window target detail spinner spinner-style position size-percent background-color text-color hide-after font-size sticky no-frame markdown pane file",
         ["session hud close"] = "window target",
         ["command run"] = "window target command mode", ["command list"] = "window", ["command leader"] = "window",
         ["claude adopt"] = "window", ["claude yolo"] = "window target", ["claude update"] = "window",
@@ -95,10 +95,6 @@ public static class CtlArguments
             { error = $"--{key} is empty. Nothing sent."; return false; }
             if (key == "json") json = true;
             if (key == "timeout" && !CtlRequest.TryResolveTimeout(value, false, out _, out error)) return false;
-            if ((Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
-                !(key is "seq" or "since" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
-                    int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
-            { error = $"--{key} needs a whole number. Nothing sent."; return false; }
             if (key == "split-ratio" && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double n) || !double.IsFinite(n)))
             { error = "--split-ratio needs a finite number. Nothing sent."; return false; }
         }
@@ -124,6 +120,15 @@ public static class CtlArguments
                 error = $"{operation}: unsupported option --{key}. Nothing sent."; return false;
             }
         options.Remove("json"); valued.Remove("json"); bare.Remove("json");
+        // Command-specific number rules need the parsed command, independent of option order.
+        foreach (var (key, value) in options)
+        {
+            bool hudFont = key == "font-size" && operation is "session hud open" or "session hud update";
+            if (!hudFont && (Integers.Contains(key) || FrameShmCli.NumericFields.Contains(key)) &&
+                !(key is "seq" or "since" ? long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) :
+                    int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+            { error = $"--{key} needs a whole number. Nothing sent."; return false; }
+        }
         // Positionals and options must not specify two different sources for the same value.
         bool positionalTarget = operation is "session select" or "session close" or "session duplicate" or "session metrics"
             or "workspace collapse" or "workspace expand" or "window select" or "window close" or "window delete" or "window zoom";

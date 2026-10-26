@@ -135,11 +135,11 @@ switch (area)
             {
                 string action = rest.Count > 0 && rest[0] is "open" or "update" or "close" ? rest[0] : "open";
                 if (rest.Count > 0 && rest[0] is "open" or "update" or "close") rest.RemoveAt(0);
-                string[] allowed = ["target", "window", "pipe", "socket", "timeout", "detail", "spinner", "spinner-style", "position", "size-percent", "background-color", "text-color"];
+                string[] allowed = ["target", "window", "pipe", "socket", "timeout", "detail", "spinner", "spinner-style", "position", "size-percent", "background-color", "text-color", "hide-after", "font-size", "sticky", "no-frame", "markdown", "pane", "file"];
                 foreach (var key in options.Keys)
                 {
                     if (!allowed.Contains(key, StringComparer.OrdinalIgnoreCase)) { Console.Error.WriteLine("hud: unknown option --" + key); return 2; }
-                    if (!key.Equals("spinner", StringComparison.OrdinalIgnoreCase) && bareLast.Contains(key)) { Console.Error.WriteLine("hud: --" + key + " needs a value"); return 2; }
+                    if (!new[] { "spinner", "sticky", "no-frame", "markdown" }.Contains(key, StringComparer.OrdinalIgnoreCase) && bareLast.Contains(key)) { Console.Error.WriteLine("hud: --" + key + " needs a value"); return 2; }
                     if ((key.Equals("target", StringComparison.OrdinalIgnoreCase) || key.Equals("window", StringComparison.OrdinalIgnoreCase)) && options[key].Length == 0)
                     { Console.Error.WriteLine("hud: --" + key + " must not be empty"); return 2; }
                 }
@@ -148,8 +148,25 @@ switch (area)
                 if (action != "close")
                 {
                     cargs["message"] = string.Join(' ', rest);
-                    foreach (var key in new[] { "detail", "position", "text-color" })
+                    if (Opt("file") is { } file)
+                    {
+                        if (rest.Count > 0) { Console.Error.WriteLine("hud: choose a message or --file"); return 2; }
+                        try { cargs["message"] = Agwinterm.Ctl.HudCliInput.ReadFile(file); }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                        { Console.Error.WriteLine("hud: " + ex.Message); return 2; }
+                    }
+                    foreach (var key in new[] { "detail", "position", "text-color", "pane" })
                         if (Opt(key) is { } value) cargs[key] = value;
+                    foreach (var key in new[] { "hide-after", "font-size" })
+                        if (Opt(key) is { } value)
+                        {
+                            if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double number) || !double.IsFinite(number))
+                            { Console.Error.WriteLine("hud: " + key + " must be a finite number"); return 2; }
+                            cargs[key] = number;
+                        }
+                    if (options.ContainsKey("sticky")) cargs["sticky"] = true;
+                    if (options.ContainsKey("no-frame")) cargs["frame"] = false;
+                    if (options.ContainsKey("markdown")) cargs["markdown"] = true;
                     if (Opt("size-percent") is { } width)
                     {
                         if (!int.TryParse(width, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int n))

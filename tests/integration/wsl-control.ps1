@@ -238,6 +238,13 @@ try {
     Check (((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).active) 'C2 follow selects the WSL owner explicitly'
     $null = Ctl @('session','overlay','close','--target',$copy)
     $null = Ctl @('session', 'bind', 'none', '--target', $copy)
+    $c4File = 'printf ''# Linux HUD\n\n**Ready** from a file with spaces\n'' > "$HOME/hud message.md"; agwintermctl session hud --file "$(wslpath -w "$HOME/hud message.md")" --markdown --sticky --no-frame --position top --size-percent 100 --font-size 18 --json > "$HOME/c4-hud.json"; printf "%s" "$?" > "$HOME/c4-hud.code"'
+    $null = Ctl @('session','type',($c4File + [char]13),'--target',$copy)
+    Start-Sleep -Seconds 1
+    $c4Code = ((& wsl @selectors --exec cat "$linuxHome/c4-hud.code") -join '').Trim()
+    $c4Hud = ((Ctl @('tree')).workspaces.sessions | Where-Object id -eq $copy).hud
+    Check ($c4Code -eq '0' -and $c4Hud.markdown -and $c4Hud.message.Contains('Linux HUD') -and $c4Hud.fontSize -eq 18 -and $c4Hud.sticky -and -not $c4Hud.frame) 'C4 WSL explicit file conversion preserves UTF-8 Markdown and paths with spaces'
+    $null = Ctl @('session','hud','close','--target',$copy)
     $null = Ctl @('config', 'set', 'restore-commands', 'true')
     $null = Ctl @('session', 'type', ('sleep 15' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1

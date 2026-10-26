@@ -552,3 +552,11 @@ See [native questions](native-questions.md) for the `ask open/result/cancel` sch
 exact-ID outcomes, limits, cancellation and transport uncertainty. See
 [native picker](native-picker.md) for `--selected-id` and optional item status markers.
 These use owned native controls and share the window's modal input slot.
+
+## Passive HUD presentation (C4)
+
+HUD open/update additionally accept elapsed `hide-after`, sticky/frameless placement,
+native DIP font size, stable pane anchoring and bounded Markdown. CLI `--file` reads
+strict UTF-8 before transport. Tree/replies expose effective style and client-pixel
+geometry; lifecycle events report expiry and anchor identity. See
+[passive session HUD](session-hud.md) for precise limits, defaults and compatibility.
