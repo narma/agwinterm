@@ -104,9 +104,11 @@ try {
     if(-not (RecentWait {try{$null=PeerRecentCtl @('tree');$true}catch{$false}})){throw 'Recent peer did not start'}
     $null=PeerRecentCtl @('recent','list') # Cache an empty baseline before the other process adds.
     $primary=[string](Rpc 'session.new' @{name='primary-history-member'} -Window $dest)
+    if(-not (RecentWait {@((Rpc 'tree' @{} -NoTarget -Window $dest).workspaces.sessions|Where-Object id -eq $primary).Count-eq 1})){throw 'Primary history session did not appear'}
     $null=Rpc 'session.close' @{} $primary -Window $dest
     $null=RecentList # Drain the primary mutation before exercising the peer's stale baseline.
     $peer=[string](PeerRecentCtl @('session','new','--name','peer-history-member'))
+    if(-not (RecentWait {@((PeerRecentCtl @('tree')).workspaces.sessions|Where-Object id -eq $peer).Count-eq 1})){throw 'Peer history session did not appear'}
     $null=PeerRecentCtl @('session','close',$peer)
     $null=PeerRecentCtl @('recent','list')
     $shared=(RecentList).entries
@@ -114,6 +116,7 @@ try {
     $null=Rpc 'recent.clear' @{} -NoTarget -Window ''
     $null=RecentList
     $newPeer=[string](PeerRecentCtl @('session','new','--name','peer-after-clear'))
+    if(-not (RecentWait {@((PeerRecentCtl @('tree')).workspaces.sessions|Where-Object id -eq $newPeer).Count-eq 1})){throw 'Peer session after clear did not appear'}
     $null=PeerRecentCtl @('session','close',$newPeer)
     $null=PeerRecentCtl @('recent','list')
     $shared=@((RecentList).entries)
