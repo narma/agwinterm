@@ -19,6 +19,25 @@ namespace Agwinterm.Pty.Tests;
 /// </summary>
 public class RestoreStateTests
 {
+    [Fact]
+    public void HiddenSplit_RoundTripsBothPanePoliciesAndLayout()
+    {
+        var state = new AppState { Workspaces = [new WorkspaceState { Sessions = [new SessionState
+        {
+            Id = "session", SplitHidden = true, Axis = "horizontal", Active = 1,
+            Panes = [new PaneState { Id = "left", Ratio = .3f },
+                     new PaneState { Id = "right", Ratio = .7f, RestoreCommand = "resume", Buffer = ["history"] }]
+        }] }] };
+        Assert.True(RestoreState.TryDeserialize(RestoreState.Serialize(state), out var restored));
+        var session = restored!.Workspaces[0].Sessions[0];
+        Assert.True(session.SplitHidden);
+        Assert.Equal("horizontal", session.Axis);
+        Assert.Equal(1, session.Active);
+        Assert.Equal("right", session.Panes[1].Id);
+        Assert.Equal(.7f, session.Panes[1].Ratio);
+        Assert.Equal("resume", session.Panes[1].RestoreCommand);
+        Assert.Equal("history", Assert.Single(session.Panes[1].Buffer!));
+    }
     /// <summary>Exactly what a 0.17.11 build saves for one workspace with one single-pane session — with the
     /// platform newline (WriteIndented indents with Environment.NewLine, so the file is CRLF on Windows).</summary>
     private static readonly string PreP3File = N(PreP3Literal);

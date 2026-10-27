@@ -352,16 +352,28 @@ The API spelling is `session.rename` with `args: {"clear": true}`. A name togeth
 asked for is addressable from the reply: `on` on an already-split session answers the existing split
 pane's id and changes nothing, `off` answers the survivor's.
 
-**To get a pane, use `on`.** The bare form is a toggle: on a session that is already split it closes
-the split and answers the survivor's id — the session's own shell — so a script that asks twice ends
-up addressing the pane it runs in.
+**To get a pane, use `on`.** The bare form is a toggle: on a session that is already split it hides
+the split and answers the maximized pane's id. Repeating a toggle is not an idempotent way to obtain
+a secondary terminal.
+
+`off` and toggle-off maximize the focused pane and keep the other terminal alive. Opening the
+split again restores the same shells, original order, focus and divider ratio. Hidden panes remain
+in the saved session state, including their IDs, directories, buffers (when enabled), appearance,
+agent bindings and restore commands. On application restore the primary pane receives focus;
+server-hosted shells are reattached when available. Use `split close` to end either pane explicitly,
+including a hidden pane.
+Hidden terminals and their overlays still accept exact pane IDs for status updates and content
+operations; they do not participate in prefix matching. Their notifications retain their owning
+session and contribute to its unread badge.
+Appearance and restore commands work on hidden panes. Existing hidden overlays can be read or
+closed by their exact ID or logical pane selector; a new overlay requires its pane to be visible.
 
 - `--axis vertical|horizontal` picks the arrangement in agterm's words — vertical is left/right
   panes, horizontal is top/bottom. It is remembered for the life of the session, through `off`, and
-  across a restart only while the session is still split (a collapsed session writes no axis key);
+  across a restart while the session has a split, shown or hidden;
   `tree --json` carries it as `axis` on a split session.
-- `session split close --target <pane>` closes **either** pane and answers the survivor's id (`off`
-  can only keep pane 0); a one-pane session is refused, because `session close` is that verb.
+- `session split close --target <pane>` closes **either** pane and answers the survivor's id; a
+  session without a second terminal is refused, because `session close` is that verb.
 - `session swap` exchanges the two panes and keeps the axis, the divider position, the focus's pane
   and **every id**: a swap moves panes, never ids, so a handle you hold keeps reaching the same shell
   on the other side. Its reply `{session, paneIds, focusedPane, axis}` is the tree's split block after

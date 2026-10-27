@@ -174,6 +174,12 @@ jobs:
         timeout-minutes: 5
         run: ./tests/integration/control-events-and-wait.ps1
 
+      - name: Split terminal retention integration
+        if: matrix.suite == 'control'
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./tests/integration/split-retention.ps1
+
       - name: Program overlay controls integration
         if: matrix.suite == 'ui'
         shell: pwsh

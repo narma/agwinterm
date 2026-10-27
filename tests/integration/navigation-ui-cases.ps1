@@ -292,6 +292,7 @@ $null=Rpc 'workspace.select' @{} $first
 Check 'live shell name appears per pane and primary alias' (NavWait {(Node $session).foregroundShell-eq 'cmd' -and (Node $session).foregroundShells[0]-eq 'cmd'})
 $split=[string](Rpc 'session.split' @{op='on'} $session)
 Check 'split shell names follow pane order' (NavWait {(Node $session).splitForegroundShell-eq 'cmd' -and (Node $session).foregroundShells.Count-eq 2})
+$null=Rpc 'session.focus' @{dir='left'} $session # off maximizes the focused pane; following checks type into the primary
 $null=Rpc 'session.split' @{op='off'} $session
 $childDone=Join-Path $artifact 'child-done.txt'
 $null=Rpc 'session.type' @{text="powershell.exe -NoProfile -Command Start-Sleep 2 & echo done>`"$childDone`"`r"} $session

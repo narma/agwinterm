@@ -16,7 +16,7 @@ internal partial class Program
             ses.Axis, ses.Panes.Select(p => p.Ratio).ToArray());
         _observedLayouts.TryGetValue(ses.Id, out var before);
         _observedLayouts[ses.Id] = now;
-        Observation.SetMembership(ses.Id, now.Panes);
+        Observation.SetMembership(ses.Id, ses.AllPanes.Select(p => p.Id).ToArray());
         if (before is null) return;
         if (before.Focus != now.Focus)
             Observation.Publish("focus", new Dictionary<string, object?>

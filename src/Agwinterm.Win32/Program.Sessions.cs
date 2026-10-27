@@ -1394,7 +1394,22 @@ internal partial class Program
     private (Pane pane, Ses? ses, bool cover)? FindPaneById(string id)
     {
         // Pane-only commands (bind/restore) still accept exact ids and prefixes.
-        return FindPaneBy(p => p.Id == id) ?? FindPaneBy(p => p.Id.StartsWith(id, StringComparison.Ordinal));
+        return FindPaneBy(p => p.Id == id) ?? FindHiddenPaneByExactId(id)
+            ?? FindPaneBy(p => p.Id.StartsWith(id, StringComparison.Ordinal));
+    }
+
+    // Hidden terminals stay addressable by their own IDs for agent hooks and content operations.
+    // They do not participate in visible layout, prefix matching or active-surface selection.
+    private (Pane pane, Ses? ses, bool cover)? FindHiddenPaneByExactId(string id)
+    {
+        lock (_workspaces)
+            foreach (var s in _workspaces.SelectMany(w => w.Sessions))
+                if (s.HiddenSplit is { } p)
+                {
+                    if (p.Id == id) return (p, s, false);
+                    if (p.Overlay.Term is { } overlay && overlay.Id == id) return (overlay, s, true);
+                }
+        return null;
     }
 
     /// <summary>
@@ -1408,6 +1423,7 @@ internal partial class Program
     private (Pane pane, Ses? ses, bool cover)? FindControlPane(string target)
     {
         if (FindPaneBy(p => p.Id == target) is { } exactPane) return exactPane;
+        if (FindHiddenPaneByExactId(target) is { } hiddenPane) return hiddenPane;
         if (FindSessionByExactId(target) is { } exactSession)
             return (exactSession.ActivePane, exactSession, false);
         if (FindPaneBy(p => p.Id.StartsWith(target, StringComparison.Ordinal)) is { } panePrefix)
@@ -1423,6 +1439,7 @@ internal partial class Program
     {
         if (string.IsNullOrWhiteSpace(target)) return null;
         if (FindPaneBy(p => p.Id == target) is { } exact) return exact;
+        if (FindHiddenPaneByExactId(target) is { } hidden) return hidden;
         if (FindSessionByExactId(target) is { } session) return (session.ActivePane, session, false);
         var matches = new List<Pane>();
         FindPaneBy(p =>
@@ -1498,13 +1515,21 @@ internal partial class Program
         if (ses.Panes.Count >= 2) return;   // agterm model: strictly primary + one split (no 3+ panes)
         var cur = ses.ActivePane;
         string cwd = PaneCwd(cur);
-        var np = CreatePane(Guid.NewGuid().ToString(), ses.Ws, cwd.Length > 0 ? cwd : null, cur.FontSize, profileName: ses.ProfileName);
-        np.FontZoomed = cur.FontZoomed;
-        float half = cur.Ratio / 2f;
-        cur.Ratio = half; np.Ratio = half;
-        int idx = ses.Panes.IndexOf(cur);
-        lock (_workspaces) ses.Panes.Insert(idx + 1, np);   // exclude the control-pipe reader mid-enumeration (issue #85)
-        ses.Active = idx + 1;            // focus the new pane, within its session
+        var np = ses.HiddenSplit;
+        bool restoringHidden = np is not null;
+        if (np is null)
+        {
+            np = CreatePane(Guid.NewGuid().ToString(), ses.Ws, cwd.Length > 0 ? cwd : null, cur.FontSize, profileName: ses.ProfileName);
+            np.FontZoomed = cur.FontZoomed;
+            np.Ratio = .5f;
+        }
+        lock (_workspaces)
+        {
+            ses.HiddenSplit = null;
+            cur.Ratio = 1f - np.Ratio;
+            ses.Panes.Insert(restoringHidden ? ses.HiddenSplitIndex : 1, np);
+            ses.Active = restoringHidden ? ses.Panes.IndexOf(cur) : 1;
+        }
         // Only the active session's focused pane is the window's focused surface. Pointing
         // `_session` at a pane of some other session would leave the window focused on a
         // surface that is not on screen. SyncSession: the new pane's surface, under a cover if one is up.
@@ -1535,14 +1560,13 @@ internal partial class Program
     {
         var ses = _active;
         if (ses is null) return;
-        if (ses.Panes.Count <= 1) { if (ConfirmCloseOk()) CloseSessionInternal(ses); return; }
+        if (ses.Panes.Count <= 1 && ses.HiddenSplit is null) { if (ConfirmCloseOk()) CloseSessionInternal(ses); return; }
         ClosePane(ses, ses.ActivePane);
     }
 
     /// <summary>Close ONE pane of a split session — either side — and promote the survivor (P4). The one
-    /// primitive behind Ctrl+Shift+W (<see cref="CloseActivePane"/>: the focused pane), <c>session split
-    /// off</c> (<see cref="CollapseToSinglePane"/>: pane 1 goes, so pane 0 survives — agterm's <c>off</c>
-    /// minus the hide), <c>session split close</c> (the host: the TARGETED pane, either side) and a split
+    /// primitive behind Ctrl+Shift+W (<see cref="CloseActivePane"/>: the focused pane),
+    /// <c>session split close</c> (the host: the TARGETED pane, either side) and a split
     /// shell's exit (<see cref="OnPaneProcessExited"/>). Before P4 no control verb could close pane 0 of
     /// two: <c>off</c> hard-coded <c>Panes[0]</c> as the survivor, and the keyboard was the only path to
     /// the other side. Removes the pane from the list first (under the workspaces lock, so the control-pipe
@@ -1559,6 +1583,13 @@ internal partial class Program
     /// the queue) is a no-op, not a second dispose.</summary>
     private void ClosePane(Ses ses, Pane pane)
     {
+        if (ses.HiddenSplit is { } hidden && ses.AllPanes.Contains(pane))
+            lock (_workspaces)
+            {
+                ses.Panes[0].Ratio = 1f - hidden.Ratio;
+                ses.Panes.Insert(ses.HiddenSplitIndex, hidden);
+                ses.HiddenSplit = null;
+            }
         if (ses.Panes.Count <= 1) return;
         int idx = ses.Panes.IndexOf(pane);
         if (idx < 0) return;
@@ -1567,7 +1598,7 @@ internal partial class Program
         foreach (var q in ses.Panes) q.Ratio += freed;   // the survivor grows to fill the freed share of the axis
         if (ses.Panes.Count == 1) ses.Panes[0].Ratio = 1f;   // exactly the full width or height, whatever the shares summed to
         ses.Active = Math.Clamp(idx, 0, ses.Panes.Count - 1);
-        // The pane's overlay dies with the pane (P5: split close, split off, the shell exiting — every
+        // The pane's overlay dies with the pane (P5: split close, the shell exiting — every
         // path ends here); the survivor keeps its own, regridded to the new box below.
         ClosePaneOverlay(ses, pane, "owner-removed");
         Observation.RemovePane(pane.Id);
@@ -1594,8 +1625,10 @@ internal partial class Program
             p.S.Dispose(); return;
         }
         Ses? ses;
+        lock (_workspaces) ses = _workspaces.SelectMany(w => w.Sessions).FirstOrDefault(s => ReferenceEquals(s.HiddenSplit, p));
+        if (ses is not null) { ClosePane(ses, p); return; }
         lock (_workspaces) ses = _workspaces.SelectMany(w => w.Sessions).FirstOrDefault(s => s.Panes.Contains(p));
-        if (ses is null || ses.Panes.Count <= 1) return;   // not a live split pane → leave the shell as-is
+        if (ses is null || (ses.Panes.Count <= 1 && ses.HiddenSplit is null)) return;
         ClosePane(ses, p);
     }
 
@@ -1648,7 +1681,7 @@ internal partial class Program
     private string StableSessionId(string? preferred)
         => !string.IsNullOrEmpty(preferred) && !SessionIdInUse(preferred!) ? preferred! : Guid.NewGuid().ToString();
     /// <summary>True if any live pane (in any session) currently uses this id.</summary>
-    private bool PaneIdInUse(string id) { lock (_workspaces) return _workspaces.Any(w => w.Sessions.Any(s => s.Panes.Any(p => p.Id == id))); }
+    private bool PaneIdInUse(string id) { lock (_workspaces) return _workspaces.Any(w => w.Sessions.Any(s => s.AllPanes.Any(p => p.Id == id))); }
     /// <summary>The id a restored pane keeps (P4: ids are durable — a restore uses the saved ids verbatim,
     /// so a swapped-then-saved session comes back with the session id on the pane that carried it, which
     /// may be slot 1). Three folds only: an EMPTY saved id mints one (pane 0: the session id, what a
@@ -1709,6 +1742,7 @@ internal partial class Program
         Observation.RemoveSession(ses.Id);
         _observedLayouts.Remove(ses.Id);
         foreach (var p in ses.Panes) { ClosePaneOverlay(ses, p, "owner-removed"); Observation.RemovePane(p.Id); try { p.S.Dispose(); } catch { } }   // each pane's overlay (P5) dies with its pane
+        DisposeHiddenSplit(ses);
         // Dismiss + dispose this session's scratch cover if it belongs here.
         if (ses.Scratch is not null) { if (_coverKind == 1 && ReferenceEquals(_cover, ses.Scratch)) HideCover(); SurfaceEvent("scratch", "closed", ses, ses.Scratch); Observation.RemovePane(ses.Scratch.Id); try { ses.Scratch.S.Dispose(); } catch { } ses.Scratch = null; }
         CloseOverlayOf(ses, "owner-removed"); // dismiss + dispose this session's session-wide overlay (a no-op on an empty slot)
@@ -1890,13 +1924,34 @@ internal partial class Program
         EmitEvent("tree");   // control-API event log (#273): the split block's `axis` changed
     }
 
-    /// <summary>Collapse <paramref name="ses"/> to its primary pane (dispose the rest). The axis is
-    /// kept for the next split. agterm: collapsing the split keeps the primary (left / top) pane, not
-    /// whichever is focused — so `session split off` closes pane 1, and `session split close` is the
-    /// verb for closing pane 0 (both through <see cref="ClosePane"/>).</summary>
+    /// <summary>Maximize the focused pane without ending the other shell. Split on restores
+    /// the original order, focus, buffers, overlays, fonts and divider shares.</summary>
     private void CollapseToSinglePane(Ses ses)
     {
-        while (ses.Panes.Count > 1) ClosePane(ses, ses.Panes[^1]);
+        if (ses.Panes.Count != 2) return;
+        if (ReferenceEquals(ses, _active) && _divDragging) { _divDragging = false; ReleaseCapture(); }
+        lock (_workspaces)
+        {
+            ses.HiddenSplitIndex = ses.Active == 0 ? 1 : 0;
+            ses.HiddenSplit = ses.Panes[ses.HiddenSplitIndex];
+            ses.Panes.RemoveAt(ses.HiddenSplitIndex);
+            ses.Panes[0].Ratio = 1f;
+            ses.Active = 0;
+        }
+        if (ReferenceEquals(ses, _active)) SyncSession();
+        RegridSession(ses);
+        RequestRedraw();
+        SaveState();
+        EmitEvent("tree");
+    }
+
+    private void DisposeHiddenSplit(Ses ses)
+    {
+        if (ses.HiddenSplit is not { } pane) return;
+        ses.HiddenSplit = null;
+        ClosePaneOverlay(ses, pane, "owner-removed");
+        Observation.RemovePane(pane.Id);
+        try { pane.S.Dispose(); } catch { }
     }
 
     /// <summary>Exchange the two panes of <paramref name="ses"/> (<c>session swap</c>, P4): the order is

@@ -31,13 +31,31 @@ internal partial class Program
         }
         string reply = InvokeOnUiQueued(() =>
         {
+            // Overlay commands give an exact session ID precedence over the pane carrying it.
+            // That primary pane may be hidden while the right pane is maximized.
+            var hiddenTarget = target is null || FindSessionByExactId(target) is not null
+                ? null : FindHiddenPaneByExactId(target);
+            if (hiddenTarget is not null && action == "open")
+                return ISessionHost.RefusePrefix + "cannot open an overlay on a hidden pane; show the pane first";
             // The shipped session-wide result is window-wide even when no session resolves.
-            if (action == "result" && pane is null && PaneOverlayIndexOf(target) < 0) return _lastOverlayExit;
+            if (hiddenTarget is null && action == "result" && pane is null && PaneOverlayIndexOf(target) < 0) return _lastOverlayExit;
             if (target is not (null or "active") && FindStrictControlPane(target) is null)
                 return NoSessionRefusal + "; unknown or ambiguous overlay target";
             Ses? session; Pane? owner = null;
             int index = PaneOverlayIndexOf(target);
-            if (pane is not null || index >= 0)
+            if (hiddenTarget is { ses: { } hiddenSession })
+            {
+                session = hiddenSession;
+                owner = hiddenSession.HiddenSplit!;
+                index = hiddenSession.HiddenSplitIndex;
+                if (pane is not null)
+                {
+                    if (!OverlayPanes.TryParse(pane, out int requested, out var error)) return ISessionHost.RefusePrefix + error;
+                    if (requested != index) return ISessionHost.RefusePrefix + OverlayPanes.Disagree(target!, index, requested);
+                }
+                if (action == "resize") return ISessionHost.RefusePrefix + OverlayPanes.ResizeWithPaneRefusal;
+            }
+            else if (pane is not null || index >= 0)
             {
                 if (pane is not null && !OverlayPanes.TryParse(pane, out index, out var error)) return ISessionHost.RefusePrefix + error;
                 var located = LocatePaneSlot(target, index, bareCloseOk: action == "close", inferred: pane is null);
@@ -71,6 +89,8 @@ internal partial class Program
             }
             if (action == "open")
             {
+                if (owner is not null && !session.Panes.Contains(owner))
+                    return ISessionHost.RefusePrefix + "cannot open an overlay on a hidden pane; show the pane first";
                 if (string.IsNullOrWhiteSpace(command)) return ISessionHost.RefusePrefix + "overlay open needs a command; nothing opened";
                 if (cwdSession is not null && (!ReferenceEquals(session, cwdSession) || !ReferenceEquals(ResolveProfile(session.ProfileName), cwdProfile)))
                     return ISessionHost.RefusePrefix + "overlay target or profile changed while checking cwd; nothing replaced";

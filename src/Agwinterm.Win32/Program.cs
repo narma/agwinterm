@@ -402,6 +402,13 @@ internal partial class Program : ISessionHost, IWindowHost
         }
         public required Workspace Ws;
         public readonly List<Pane> Panes = new();
+        // Panes contains the rendered layout. Hiding maximizes the focused pane;
+        // the other pane keeps its original slot and divider share here.
+        public Pane? HiddenSplit;
+        public int HiddenSplitIndex = 1;
+        public IEnumerable<Pane> AllPanes => HiddenSplit is not { } hidden ? Panes
+            : HiddenSplitIndex == 0 ? new[] { hidden, Panes[0] } : new[] { Panes[0], hidden };
+        public float StoredRatio(Pane pane) => HiddenSplit is { } hidden && !ReferenceEquals(pane, hidden) ? 1f - hidden.Ratio : pane.Ratio;
         public int Active;         // index of the focused pane
         // The split's orientation, one of SplitAxes' words: vertical = left/right panes (the default of
         // a session never split), horizontal = top/bottom. PER SESSION (agterm's model; a per-pane axis

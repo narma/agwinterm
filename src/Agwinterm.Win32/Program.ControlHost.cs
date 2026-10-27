@@ -611,13 +611,13 @@ internal partial class Program
         {
             var a = _active;
             if (a is null) { refusal = SplitCloseReply.NoActiveSession; return null; }
-            if (a.Panes.Count <= 1) { refusal = SplitCloseReply.SinglePane(a.Id); return null; }
+            if (a.Panes.Count <= 1 && a.HiddenSplit is null) { refusal = SplitCloseReply.SinglePane(a.Id); return null; }
             return (a.ActivePane, a);
         }
         var hit = FindControlPane(target);   // the content verbs' resolver: exact pane, exact session, pane prefix, session prefix / name
         if (hit is null) { refusal = SplitCloseReply.UnknownTarget(target); return null; }
         if (hit.Value.cover || hit.Value.ses is null) { refusal = SplitCloseReply.CoverPane(hit.Value.pane.Id); return null; }
-        if (hit.Value.ses.Panes.Count <= 1) { refusal = SplitCloseReply.SinglePane(hit.Value.ses.Id); return null; }
+        if (hit.Value.ses.Panes.Count <= 1 && hit.Value.ses.HiddenSplit is null) { refusal = SplitCloseReply.SinglePane(hit.Value.ses.Id); return null; }
         return (hit.Value.pane, hit.Value.ses);
     }
 
@@ -964,28 +964,29 @@ internal partial class Program
     {
         bool named = !string.IsNullOrEmpty(target) && target != "active";
         var s = FindSesForTarget(target);
+        var panes = s?.AllPanes.ToList() ?? new List<Pane>();
         if (inferred)
         {
             if (s is not null)
-                for (int i = 0; i < s.Panes.Count; i++)
-                    if (s.Panes[i].Overlay.Term is { } po && (po.Id == target || po.Id.StartsWith(target!, StringComparison.Ordinal)))
-                        return (s, s.Panes[i], null);
+                for (int i = 0; i < panes.Count; i++)
+                    if (panes[i].Overlay.Term is { } po && (po.Id == target || po.Id.StartsWith(target!, StringComparison.Ordinal)))
+                        return (s, panes[i], null);
             return (s, null, ISessionHost.RefusePrefix + OverlayPanes.OverlayIdGoneRefusal(target!));
         }
         if (s is null) return (null, null, bareCloseOk && !named ? OverlayPanes.NoOverlay : NoSessionRefusal);
         if (named && !(s.Id == target || s.Id.StartsWith(target!, StringComparison.Ordinal)))
-            for (int i = 0; i < s.Panes.Count; i++)
+            for (int i = 0; i < panes.Count; i++)
             {
                 // The pane's id, then its overlay's own id (which starts with the pane's, so a prefix
                 // of the pane id matched above; a longer prefix, or the whole id, lands here): either
                 // on the other side than --pane is the caller naming two panes.
-                if ((s.Panes[i].Id == target || s.Panes[i].Id.StartsWith(target!, StringComparison.Ordinal)) && i != index)
+                if ((panes[i].Id == target || panes[i].Id.StartsWith(target!, StringComparison.Ordinal)) && i != index)
                     return (s, null, ISessionHost.RefusePrefix + OverlayPanes.Disagree(target!, i, index));
-                if (s.Panes[i].Overlay.Term is { } po && (po.Id == target || po.Id.StartsWith(target!, StringComparison.Ordinal)) && i != index)
+                if (panes[i].Overlay.Term is { } po && (po.Id == target || po.Id.StartsWith(target!, StringComparison.Ordinal)) && i != index)
                     return (s, null, ISessionHost.RefusePrefix + OverlayPanes.Disagree(target!, i, index, overlay: true));
             }
-        if (index >= s.Panes.Count) return (s, null, ISessionHost.RefusePrefix + OverlayPanes.NotVisibleRefusal(s.Id));
-        return (s, s.Panes[index], null);
+        if (index >= panes.Count) return (s, null, ISessionHost.RefusePrefix + OverlayPanes.NotVisibleRefusal(s.Id));
+        return (s, panes[index], null);
     }
 
     /// <summary>The pane whose OPEN overlay <paramref name="target"/> names (its id, or a prefix of it
@@ -999,8 +1000,11 @@ internal partial class Program
         if (string.IsNullOrEmpty(target) || target == "active") return -1;
         if (FindControlPane(target) is not { cover: true, ses: { } s } hit) return -1;
         lock (_workspaces)
-            for (int i = 0; i < s.Panes.Count; i++)
-                if (ReferenceEquals(s.Panes[i].Overlay.Term, hit.pane)) return i;
+        {
+            var panes = s.AllPanes.ToList();
+            for (int i = 0; i < panes.Count; i++)
+                if (ReferenceEquals(panes[i].Overlay.Term, hit.pane)) return i;
+        }
         return -1;
     }
 
@@ -1029,6 +1033,11 @@ internal partial class Program
 
     public bool Notify(string? target, string? title, string body, NotificationCategory category)
     {
+        if (target is not null && FindHiddenPaneByExactId(target) is { } hidden)
+        {
+            PostVerb(() => OnNotified(hidden.pane, title ?? "", body, category));
+            return true;
+        }
         var ses = FindSesForTarget(target);
         if (ses is null) return false;
         PostVerb(() => OnNotified(ses.ActivePane, title ?? "", body, category));
@@ -1204,7 +1213,7 @@ internal partial class Program
         {
             lock (_workspaces)
                 foreach (var s in _workspaces.SelectMany(w => w.Sessions))
-                    foreach (var p in s.Panes) snap.Add((p, s, p.S.ChildProcessId ?? 0));
+                    foreach (var p in s.AllPanes) snap.Add((p, s, p.S.ChildProcessId ?? 0));
         }
         else if (target == "active")
         {
@@ -1229,7 +1238,7 @@ internal partial class Program
             lock (_workspaces)
                 foreach (var (pane, ses, pid) in snap)
                 {
-                    if (!_workspaces.Contains(ses.Ws) || !ses.Ws.Sessions.Contains(ses) || !ses.Panes.Contains(pane)) continue;   // closed since the snapshot
+                    if (!_workspaces.Contains(ses.Ws) || !ses.Ws.Sessions.Contains(ses) || !ses.AllPanes.Contains(pane)) continue;
                     pane.CapturedCommand = pid > 0 && byPid.TryGetValue(pid, out var cmd) ? cmd : null;
                     landed.Add(new CapturedPane(pane.Id, ses.Id, pane.CapturedCommand));
                 }

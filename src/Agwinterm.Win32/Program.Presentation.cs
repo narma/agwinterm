@@ -38,7 +38,7 @@ internal partial class Program : IPresentationHost
         var pane = AppearancePane(target);
         string op = PresentationRequest.String(args, "op") ?? "get";
         if (op != "get") { ApplyPaneAppearance(pane, op == "clear" ? null : value); SaveState(); RequestRedraw(); EmitEvent("tree", pane.Id, "appearance"); }
-        var owner = AllSessions().First(s => s.Panes.Contains(pane));
+        var owner = AllSessions().First(s => s.AllPanes.Contains(pane));
         uint dynamic = pane.S.Emulator.DynamicBg;
         var bg = dynamic != 0 ? new Color((byte)(dynamic >> 16), (byte)(dynamic >> 8), (byte)dynamic) : pane.DefaultBackground ?? _theme.DefaultBackground;
         return new { paneId = pane.Id, overrides = pane.Appearance, effectiveBackground = $"#{bg.R:X2}{bg.G:X2}{bg.B:X2}", inheritedImage = pane.Appearance?.HideImage == true ? null : owner.BgPath, effectiveTheme = _theme.Name };

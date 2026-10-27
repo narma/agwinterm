@@ -55,7 +55,8 @@ public static class CtlUsage
               name in effect. Blank is refused; so is a target that belongs to no session)
           agwintermctl session split [on|off|toggle] [--axis vertical|horizontal] [--target ID]
               (replies with a PANE ID: on/toggle-on = the split pane's, also when the session was already split;
-              off/toggle-off = the survivor's. Default op = toggle. The axis names the ARRANGEMENT, agterm's words:
+              off/toggle-off = the maximized focused pane's. Hide/show keeps both shells, order and focus.
+              Default op = toggle. The axis names the ARRANGEMENT, agterm's words:
               vertical = left/right panes (the default of a session never split), horizontal = top/bottom panes.
               Omitted = keep the session's orientation; given on an already-split session = re-orient it live)
           agwintermctl session split close [--target ID]   (close ONE pane, EITHER side: a pane id = that pane; a session
@@ -129,7 +130,7 @@ public static class CtlUsage
               that overlay's slot - the same as passing its --pane word - for as long as the id resolves (an
               overlay that closed is reached by --pane only); with --pane naming the other side it is refused.
               The slot moves with its pane (a swap, a split close of the other pane) and dies with it (split
-              close, split off, the shell exiting when that removes the pane - a single-pane session keeps an
+              close, the shell exiting when that removes the pane - a single-pane session keeps an
               exited shell on screen, and its overlay with it - session close, the window closing).)
           agwintermctl session type <text...> [--allow-control] [--target ID]   (control bytes refused unless allowed)
           agwintermctl session type --stdin [--allow-control] [--target ID]     (text = stdin, as bytes: how quotes,
