@@ -35,9 +35,15 @@ Check 'modifier down preserves selection in Win32 input mode' ((Rpc 'session.cop
 Check 'modifier up preserves selection in Win32 input mode' ((Rpc 'session.copy' @{} $session)-ceq $selectedBefore)
 $null=Rpc 'selection.clear' @{} $session
 $null=Rpc 'session.write' @{text=($esc+'[?9001l'+$esc+'[?1049hALT-HELP-PROBE')} $session
-# A single delayed capture can race pending terminal output or a redraw. Establish
-# a quiet baseline, then require consecutive matching frames without sending F1
-# again during retries (which could hide a broken toggle).
+# The whole window can change independently of help (sidebar, hover, chrome).
+# Use the owned window's actual UIA document state and terminal contents as the
+# close oracle; retain pixel differences as diagnostics, not a false failure.
+$uiaAssemblies=if($PSVersionTable.PSEdition-eq 'Core'){$PSHOME}else{"$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/WPF"}
+Add-Type -Path "$uiaAssemblies/UIAutomationTypes.dll"
+Add-Type -Path "$uiaAssemblies/UIAutomationClient.dll"
+$helpRoot=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+$helpDocumentCondition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Document)
+$helpTerminalText=[string](Rpc 'session.text' @{} $session)
 function WaitHelpFrame([string]$name,[string]$phase,$reference){
     $watch=[Diagnostics.Stopwatch]::StartNew();$streak=0;$samples=[Collections.Generic.List[string]]::new()
     $previous=$reference;$frame=$null
@@ -45,12 +51,15 @@ function WaitHelpFrame([string]$name,[string]$phase,$reference){
         $frame=NavPixels $name
         $sameSize=$frame.width-eq $previous.width -and $frame.height-eq $previous.height
         $difference=if($sameSize){PixelDifference $previous $frame}else{-1}
+        $document=$helpRoot.FindFirst([System.Windows.Automation.TreeScope]::Children,$helpDocumentCondition)
+        $documentKind=if($null-ne $document){$document.Current.LocalizedControlType}else{'missing'}
+        $textUnchanged=([string](Rpc 'session.text' @{} $session))-ceq $helpTerminalText
         $matches=$sameSize -and $(switch($phase){
-            'baseline' {$difference-eq 0}
-            'open' {$difference-gt 1000}
-            'closed' {$difference-lt 250}
+            'baseline' {$documentKind-eq 'terminal' -and $textUnchanged}
+            'open' {$documentKind-eq 'help' -and $difference-gt 1000 -and $textUnchanged}
+            'closed' {$documentKind-eq 'terminal' -and $textUnchanged}
         })
-        $samples.Add("$($watch.ElapsedMilliseconds)ms:${difference}px:$($frame.width)x$($frame.height)")
+        $samples.Add("$($watch.ElapsedMilliseconds)ms:${difference}px:$($frame.width)x$($frame.height):document=${documentKind}:textUnchanged=$textUnchanged")
         if($matches){$streak++}else{$streak=0}
         if($phase-eq 'baseline'){$previous=$frame}
     }while($streak-lt 3 -and $watch.ElapsedMilliseconds-lt 6000)
