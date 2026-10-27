@@ -10,3 +10,8 @@ Implemented `recent-closed-work` after archived C0–C4.
 Evidence: ignored `artifacts/c5-build.log`, `c5-regression.log`, `c5-recent-tests.log`, `c5-recent-ui.log`, `c5-win32-regression.log`, `c5-wsl.log`. Native evidence under `.revmux/recent-ui-20261025T230505-d97226`.
 
 Limits: history recovery starts shells using existing profile launch behavior; it does not certify later child-process success or replay pins/foreground commands. Partial workspace failures are accepted structured outcomes with member errors; failed single-session opens refuse and retain their entry. No release/live installation. Unrelated ConPTY edits are excluded.
+
+Historical local acceptance record: the exact tested application commit was not recorded.
+Raw logs and screenshots remain local and are intentionally not versioned; the paths above
+identify original runs, not a permanent archive available after cloning. These checks were
+not rerun as part of repository cleanup.

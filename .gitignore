@@ -8,11 +8,23 @@ installer/stage-lite/
 installer/stage-portable/
 installer/Output/
 
+# Local installer build and installation transcripts.
+/installer/*.log
+
+# Nested local checkout used for code review.
+/.review-worktree/
+
+# OpenSpec skills are shared; the selected agent target is local setup state.
+/.agents/skills/.openspec-target
+
 # ralphex progress logs
 .ralphex/progress/
 
 # revmux project configuration is trackable; generated review rounds are not.
 .revmux/tasks/
+
+# Native UI acceptance runs (screenshots, transcripts and probe output).
+/.revmux/*-ui-*/
 
 # throwaway UI mock-ups: vendored FLTK, cmake/ninja trees and their build output (~1 GB),
 # none of which belongs in the repo — one `git add -A` away from being committed.
