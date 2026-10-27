@@ -363,6 +363,8 @@ after an app restart. Use `split close` to end a visible pane explicitly.
 Hidden terminals and their overlays still accept exact pane IDs for status updates and content
 operations; they do not participate in prefix matching. Their notifications retain their owning
 session and contribute to its unread badge.
+Overlay operations, appearance commands and restore pins refuse hidden targets without changing
+anything. Reopen the split before using those commands.
 
 - `--axis vertical|horizontal` picks the arrangement in agterm's words — vertical is left/right
   panes, horizontal is top/bottom. It is remembered for the life of the session, through `off`, and

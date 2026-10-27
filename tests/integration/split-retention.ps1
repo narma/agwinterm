@@ -17,6 +17,10 @@ function Check([bool]$ok, [string]$message) {
     if (-not $ok) { throw $message }
     "PASS $message"
 }
+function RefusesHidden([string[]]$a) {
+    $r = ((& $ctl @a --pipe $id --json) -join "`n") | ConvertFrom-Json
+    Check (-not $r.ok -and $r.error -match 'hidden') "Hidden target refused: $a"
+}
 function AwaitText([string]$pane, [string]$marker) {
     for ($i = 0; $i -lt 60; $i++) {
         if ((Ctl @('session','text','--all','--target',$pane)).Contains($marker)) { return }
@@ -42,10 +46,28 @@ try {
     Check (-not (Ctl @('session','text','--target',$pane)).Contains('BEFORE-HIDE')) 'History marker has left the visible screen before hiding'
     AwaitText $pane 'BEFORE-HIDE'
     $null = Ctl @('session','resize','--split-ratio','0.3','--target',$session)
-    $overlay = Ctl @('session','overlay','open','--pane','right','--command','cmd.exe /d /k','--target',$session)
+    $null = Ctl @('session','appearance','set','--color','#123456','--target',$pane)
+    $appearanceBefore = Ctl @('session','appearance','get','--target',$pane)
+    $null = Ctl @('session','restore','echo original-pin','--target',$pane)
+    $overlay = Ctl @('session','overlay','open','--pane','right','--command','echo PANE-OVERLAY-ALIVE & cmd.exe /d /k','--target',$session)
     $done = Join-Path $state 'hidden-output.txt'
     $null = Ctl @('command','run',"ping -n 3 127.0.0.1 >nul & echo HIDDEN-DONE & echo done> `"$done`"",'--mode','send','--target',$pane)
     Check ((Ctl @('session','split','toggle','--target',$session)) -eq $session) 'Toggle hides secondary and focuses primary'
+    $sessionOverlay = Ctl @('session','overlay','open','--command','echo SESSION-OVERLAY-ALIVE & cmd.exe /d /k','--target',$session)
+    foreach ($hiddenTarget in @($pane, $overlay)) {
+        foreach ($action in @('close','text','result')) {
+            RefusesHidden @('session','overlay',$action,'--target',$hiddenTarget)
+        }
+    }
+    AwaitText $sessionOverlay 'SESSION-OVERLAY-ALIVE'
+    AwaitText $overlay 'PANE-OVERLAY-ALIVE'
+    'PASS Refused hidden overlay operations preserve both overlay processes'
+    $null = Ctl @('session','overlay','close','--target',$session)
+    RefusesHidden @('session','appearance','get','--target',$pane)
+    RefusesHidden @('session','appearance','set','--color','#abcdef','--target',$pane)
+    RefusesHidden @('session','appearance','clear','--target',$pane)
+    RefusesHidden @('session','restore','echo lost-pin','--target',$pane)
+    RefusesHidden @('session','restore','none','--target',$pane)
     $null = Ctl @('session','status','blocked','--target',$pane)
     $null = Ctl @('notify','Hidden split notification','--target',$pane)
     $null = Ctl @('notify','Hidden overlay notification','--target',$overlay)
@@ -60,6 +82,9 @@ try {
     Check ((Ctl @('session','split','toggle','--target',$session)) -eq $pane) 'Toggle reuses the exact pane'
     $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
     Check ($node.status -eq 'blocked') 'Agent status written while hidden survives reopening'
+    Check ($node.restoreCommands.$pane -eq 'echo original-pin') 'Refused hidden restore commands leave the existing pin unchanged'
+    $appearanceAfter = Ctl @('session','appearance','get','--target',$pane)
+    Check (($appearanceAfter | ConvertTo-Json -Depth 10 -Compress) -eq ($appearanceBefore | ConvertTo-Json -Depth 10 -Compress)) 'Refused appearance commands do not mutate the pane'
     AwaitText $pane 'HIDDEN-DONE'
     $null = Ctl @('command','run','echo VALUE=%RETAINED_VALUE%','--mode','send','--target',$pane)
     AwaitText $pane 'VALUE=still-here'

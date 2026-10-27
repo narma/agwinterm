@@ -1170,6 +1170,9 @@ internal partial class Program
         {
             var hit = FindControlPane(target);
             if (hit is null) return null;
+            if (ReferenceEquals(hit.Value.ses?.HiddenSplit, hit.Value.pane))
+                return new RestorePinTarget(hit.Value.pane.Id, hit.Value.ses!.Id,
+                    Refusal: "hidden split panes are not restored; reopen the split before pinning a restore command. Nothing pinned.");
             // A scratch / overlay / quick cover is not in the saved tree, so a pin on one would answer
             // ok and then vanish at the next restart — the exact "succeeded, did nothing" this batch
             // exists to end. Refuse it with the pane named, and pin nothing.

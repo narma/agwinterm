@@ -15,6 +15,8 @@ internal partial class Program : IPresentationHost
     private Pane AppearancePane(string? target)
     {
         if (target is null or "active") return _active?.ActivePane ?? throw new ArgumentException("no active pane");
+        if (FindHiddenPaneByExactId(target) is not null)
+            throw new ArgumentException("appearance target belongs to a hidden split; reopen the split first. Nothing changed.");
         return FindStrictControlPane(target) is { cover: false, ses: not null } hit ? hit.pane
             : throw new ArgumentException("unknown, ambiguous or auxiliary session/pane");
     }

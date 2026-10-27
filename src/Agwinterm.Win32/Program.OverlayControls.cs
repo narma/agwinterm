@@ -31,6 +31,9 @@ internal partial class Program
         }
         string reply = InvokeOnUiQueued(() =>
         {
+            // Hidden pane IDs must never fall through to the session-wide overlay slot.
+            if (target is not null && FindHiddenPaneByExactId(target) is not null)
+                return ISessionHost.RefusePrefix + "overlay target belongs to a hidden split; reopen the split before changing or reading its overlay. Nothing changed.";
             // The shipped session-wide result is window-wide even when no session resolves.
             if (action == "result" && pane is null && PaneOverlayIndexOf(target) < 0) return _lastOverlayExit;
             if (target is not (null or "active") && FindStrictControlPane(target) is null)
