@@ -57,7 +57,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [core, control, ui]
+        # Balance measured integration times; each group owns a separate desktop.
+        include:
+          - suite: core
+            cache: core
+          - suite: control
+            cache: control
+          - suite: host
+            cache: control
+          - suite: ui
+            cache: ui
+          - suite: workspace
+            cache: ui
     steps:
       - uses: actions/checkout@v6
 
@@ -96,7 +107,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: native -> target
-          key: ${{ matrix.suite }}
+          # New groups reuse the already warm dependency caches.
+          key: ${{ matrix.cache }}
 
       - name: Build Rust core (arms the parity oracle)
         # RustParityTests skip silently when the crate dll is absent; building it here makes
@@ -139,7 +151,7 @@ jobs:
         run: ./tests/integration/paste-sink.tests.ps1
 
       - name: Win32 control-host integration
-        if: matrix.suite == 'control'
+        if: matrix.suite == 'host'
         shell: pwsh
         timeout-minutes: 10
         run: ./tests/integration/win32-control.ps1 -Strict
@@ -163,7 +175,7 @@ jobs:
         run: ./tests/integration/control-events-and-wait.ps1
 
       - name: Program overlay controls integration
-        if: matrix.suite == 'control'
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/program-overlay-controls.ps1 -Dpi 144
@@ -205,31 +217,31 @@ jobs:
         run: ./tests/integration/hud-ui.ps1 -Suite HudAdvanced -Strict
 
       - name: Recent work integration
-        if: matrix.suite == 'ui'
+        if: matrix.suite == 'workspace'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Recent -Strict
 
       - name: Menu bar integration
-        if: matrix.suite == 'ui'
+        if: matrix.suite == 'workspace'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Menu -Strict
 
       - name: Working sets integration
-        if: matrix.suite == 'ui'
+        if: matrix.suite == 'workspace'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite WorkingSets -Strict
 
       - name: Native window controls integration
-        if: matrix.suite == 'ui'
+        if: matrix.suite == 'workspace'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Windows -Strict
 
       - name: Pane presentation and diagnostics integration
-        if: matrix.suite == 'ui'
+        if: matrix.suite == 'workspace'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Presentation -Strict
