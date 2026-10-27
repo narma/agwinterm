@@ -265,7 +265,7 @@ public static class AgentSkill
           that overlay's slot - the same as passing its --pane word - for as long as the id resolves (an
           overlay that closed is reached by --pane only); with --pane naming the other side it is refused.
           The slot moves with its pane (a swap, a split close of the other pane) and dies with it (split
-          close, split off, the shell exiting when that removes the pane - a single-pane session keeps an
+          close, the shell exiting when that removes the pane - a single-pane session keeps an
           exited shell on screen, and its overlay with it - session close, the window closing).
         - `agwintermctl session hud [open] "message" [--detail "text"] [--spinner] [--position top-right] [--target <session id>]`
           — passive session-wide text; shell input, mouse, history and dimensions are unchanged. Nine anchors:
@@ -450,14 +450,16 @@ public static class AgentSkill
         RULE, by condition and not by verb: a session id names the pane that carries it while one does — pane 0 of a fresh or
         reopened session; after a `swap`, either side (a restore keeps the order it saved) — and names the session's FOCUSED
         pane while none does. None does once
-        the carrier was closed, however it was closed: `split close` on it, Ctrl+Shift+W on it, `split off` after a `swap`
-        (that collapses onto the other pane), or its shell exiting. A later `split` mints a fresh id, so the state persists
+        the carrier was closed: `split close` on it, Ctrl+Shift+W on it, or its shell exiting. Hiding the carrier with
+        `split off` after a `swap` temporarily uses the focused pane until `on` restores the carrier. After a close, a later `split` mints a fresh id, so the state persists
         until the session is closed and reopened (a reopened session's pane 0 carries the id again). In a split session,
         address panes by their own ids. The split verbs take `--target <id>` as a
         session or either of its panes and act on THAT session, not the active one; `focus` and `resize` act on the active session.
-        - TO GET A PANE, USE `session split on`. The bare form is `toggle`: on a session that is already split it CLOSES the split
+        - TO GET A PANE, USE `session split on`. The bare form is `toggle`: on a session that is already split it HIDES the split
           and answers the SURVIVOR's id — the session's own shell, the pane you may be typing in — so a launcher that calls it
           twice types its second command into itself (seen in the field). `on` answers the split pane's id every time, split or not.
+          Hidden splits keep their shell, scrollback and divider ratio until shown again or the session/window closes.
+          They are absent from the visible tree and are not restored after an app restart. Use `split close` to end a pane.
         - `agwintermctl session split [on|off|toggle] [--axis vertical|horizontal] [--target <id>]` — REPLIES WITH A PANE ID, a bare
           string: `on` = the split pane's id — ALSO when the session was already split (nothing changes; a caller that does not
           know whether it split gets something addressable either way); `off` = the survivor's id (pane 0), also when already

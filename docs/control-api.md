@@ -352,9 +352,14 @@ The API spelling is `session.rename` with `args: {"clear": true}`. A name togeth
 asked for is addressable from the reply: `on` on an already-split session answers the existing split
 pane's id and changes nothing, `off` answers the survivor's.
 
-**To get a pane, use `on`.** The bare form is a toggle: on a session that is already split it closes
+**To get a pane, use `on`.** The bare form is a toggle: on a session that is already split it hides
 the split and answers the survivor's id — the session's own shell — so a script that asks twice ends
 up addressing the pane it runs in.
+
+`off` and toggle-off keep the secondary terminal alive for the session's lifetime. Opening the
+split again restores the same shell, scrollback and divider ratio. Hidden panes are absent from
+the visible tree and are disposed when the session or window closes; hidden splits are not restored
+after an app restart. Use `split close` to end a visible pane explicitly.
 
 - `--axis vertical|horizontal` picks the arrangement in agterm's words — vertical is left/right
   panes, horizontal is top/bottom. It is remembered for the life of the session, through `off`, and

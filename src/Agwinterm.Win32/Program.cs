@@ -402,6 +402,9 @@ internal partial class Program : ISessionHost, IWindowHost
         }
         public required Workspace Ws;
         public readonly List<Pane> Panes = new();
+        // Split off hides the secondary terminal for this session's lifetime.
+        // Panes contains only the visible layout; hidden terminals are never persisted.
+        public Pane? HiddenSplit;
         public int Active;         // index of the focused pane
         // The split's orientation, one of SplitAxes' words: vertical = left/right panes (the default of
         // a session never split), horizontal = top/bottom. PER SESSION (agterm's model; a per-pane axis
