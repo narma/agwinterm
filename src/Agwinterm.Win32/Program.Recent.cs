@@ -73,13 +73,15 @@ internal partial class Program : IRecentHost
     private ClosedSession CaptureClosedSessionData(Ses s)
     {
         var state = new SessionState { Id = s.Id, Name = s.Name, CustomName = s.CustomName, Profile = s.ProfileName,
-            Context = s.Context, Active = s.Active, Flagged = s.Flagged, Axis = RestoreState.StoreAxis(s.Panes.Count, s.Axis) };
-        foreach (var p in s.Panes)
+            Context = s.Context, Active = s.HiddenSplit is null ? s.Active : 1 - s.HiddenSplitIndex,
+            SplitHidden = s.HiddenSplit is null ? null : true,
+            Flagged = s.Flagged, Axis = RestoreState.StoreAxis(s.AllPanes.Count(), s.Axis) };
+        foreach (var p in s.AllPanes)
         {
             string cwd = PrettyCwd(SafeCwd(p));
             if (string.IsNullOrEmpty(cwd)) cwd = p.StartCwd ?? "";
             state.Panes.Add(new() { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed,
-                Ratio = p.Ratio, Appearance = p.Appearance, RestoreCommand = p.RestoreCommand });
+                Ratio = s.StoredRatio(p), Appearance = p.Appearance, RestoreCommand = p.RestoreCommand });
         }
         return new(s.CustomName, s.ProfileName, state.Panes[0].Cwd, s.Ws.Id, s.Ws.Name, s.Flagged,
             s.CustomName ?? s.Name, s.Name, s.Id, Recent.NextSequence(), s.Context, state, Id, Guid.NewGuid().ToString());
@@ -197,7 +199,7 @@ internal partial class Program : IRecentHost
     private static string RecentFreeId(string wanted)
     {
         bool used = _byId.Values.Any(w => w._workspaces.Any(ws => ws.Id == wanted || ws.Sessions.Any(s =>
-            s.Id == wanted || s.Panes.Any(p => p.Id == wanted))));
+            s.Id == wanted || s.AllPanes.Any(p => p.Id == wanted))));
         return used ? Guid.NewGuid().ToString() : wanted;
     }
     private Ses RestoreRecentSession(ClosedSession item, Workspace ws)
@@ -235,6 +237,7 @@ internal partial class Program : IRecentHost
             }
             s.Active = Math.Clamp(state.Active, 0, s.Panes.Count - 1);
             s.CustomName = state.CustomName; s.Flagged = state.Flagged; s.Context = RestoreState.LoadContext(state.Context);
+            if (state.SplitHidden == true) CollapseToSinglePane(s);
             RegridSession(s); ObserveLayout(s); return s;
         }
         catch

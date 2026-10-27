@@ -456,20 +456,21 @@ public static class AgentSkill
         address panes by their own ids. The split verbs take `--target <id>` as a
         session or either of its panes and act on THAT session, not the active one; `focus` and `resize` act on the active session.
         - TO GET A PANE, USE `session split on`. The bare form is `toggle`: on a session that is already split it HIDES the split
-          and answers the SURVIVOR's id — the session's own shell, the pane you may be typing in — so a launcher that calls it
+          and answers the MAXIMIZED pane's id — the focused shell — so a launcher that calls it
           twice types its second command into itself (seen in the field). `on` answers the split pane's id every time, split or not.
-          Hidden splits keep their shell, scrollback and divider ratio until shown again or the session/window closes.
-          They are absent from the visible tree and are not restored after an app restart. Use `split close` to end a pane.
+          Hiding maximizes the focused pane; showing restores the same order, focus and divider ratio.
+          Hidden panes retain their saved state across app restart (focus then resets to primary). Appearance and restore
+          commands work while hidden. Existing overlays can be read/closed; opening one requires a visible pane.
+          Use `split close` to end a pane, including a hidden one.
         - `agwintermctl session split [on|off|toggle] [--axis vertical|horizontal] [--target <id>]` — REPLIES WITH A PANE ID, a bare
           string: `on` = the split pane's id — ALSO when the session was already split (nothing changes; a caller that does not
-          know whether it split gets something addressable either way); `off` = the survivor's id (pane 0), also when already
+          know whether it split gets something addressable either way); `off` = the maximized pane's id, also when already
           single; `toggle` = whichever it produced. Default op = toggle. The axis names the ARRANGEMENT, agterm's words: vertical = left/right panes (the default of a session never split), horizontal = top/bottom panes.
           Omitted = keep the session's orientation — remembered for the life of the session, through `off`, and across a
-          restart only while the session is still split (a collapsed session writes no axis, so after a restart it is
-          vertical again; pass `--axis` if it matters); given on an
+          restart while the split exists, shown or hidden; given on an
           already-split session = re-orient it live. Anything but the two words is refused and nothing is split. `tree --json`
           reports `axis` beside `paneIds` / `focusedPane` / `splitRatios` whenever `paneCount` > 1.
-        - `agwintermctl session split close [--target <id>]` — close ONE pane, EITHER side (`off` can only keep pane 0): a pane id
+        - `agwintermctl session split close [--target <id>]` — close ONE pane, EITHER side (even hidden): a pane id
           closes that pane; a session name or no target closes the session's focused pane (what Ctrl+Shift+W does); from your
           own pane, your pane. Replies with the SURVIVOR's id, which becomes pane 0 with the whole area and the focus. A one-pane
           session is REFUSED — `session close` is the verb that closes a session. Closing the pane that carries the session

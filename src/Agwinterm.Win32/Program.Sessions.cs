@@ -1516,17 +1516,20 @@ internal partial class Program
         var cur = ses.ActivePane;
         string cwd = PaneCwd(cur);
         var np = ses.HiddenSplit;
+        bool restoringHidden = np is not null;
         if (np is null)
         {
             np = CreatePane(Guid.NewGuid().ToString(), ses.Ws, cwd.Length > 0 ? cwd : null, cur.FontSize, profileName: ses.ProfileName);
             np.FontZoomed = cur.FontZoomed;
             np.Ratio = .5f;
         }
-        ses.HiddenSplit = null;
-        cur.Ratio = 1f - np.Ratio;
-        int idx = ses.Panes.IndexOf(cur);
-        lock (_workspaces) ses.Panes.Insert(idx + 1, np);   // exclude the control-pipe reader mid-enumeration (issue #85)
-        ses.Active = idx + 1;            // focus the new pane, within its session
+        lock (_workspaces)
+        {
+            ses.HiddenSplit = null;
+            cur.Ratio = 1f - np.Ratio;
+            ses.Panes.Insert(restoringHidden ? ses.HiddenSplitIndex : 1, np);
+            ses.Active = restoringHidden ? ses.Panes.IndexOf(cur) : 1;
+        }
         // Only the active session's focused pane is the window's focused surface. Pointing
         // `_session` at a pane of some other session would leave the window focused on a
         // surface that is not on screen. SyncSession: the new pane's surface, under a cover if one is up.
@@ -1557,7 +1560,7 @@ internal partial class Program
     {
         var ses = _active;
         if (ses is null) return;
-        if (ses.Panes.Count <= 1) { if (ConfirmCloseOk()) CloseSessionInternal(ses); return; }
+        if (ses.Panes.Count <= 1 && ses.HiddenSplit is null) { if (ConfirmCloseOk()) CloseSessionInternal(ses); return; }
         ClosePane(ses, ses.ActivePane);
     }
 
@@ -1580,6 +1583,13 @@ internal partial class Program
     /// the queue) is a no-op, not a second dispose.</summary>
     private void ClosePane(Ses ses, Pane pane)
     {
+        if (ses.HiddenSplit is { } hidden && ses.AllPanes.Contains(pane))
+            lock (_workspaces)
+            {
+                ses.Panes[0].Ratio = 1f - hidden.Ratio;
+                ses.Panes.Insert(ses.HiddenSplitIndex, hidden);
+                ses.HiddenSplit = null;
+            }
         if (ses.Panes.Count <= 1) return;
         int idx = ses.Panes.IndexOf(pane);
         if (idx < 0) return;
@@ -1616,9 +1626,9 @@ internal partial class Program
         }
         Ses? ses;
         lock (_workspaces) ses = _workspaces.SelectMany(w => w.Sessions).FirstOrDefault(s => ReferenceEquals(s.HiddenSplit, p));
-        if (ses is not null) { DisposeHiddenSplit(ses); return; }
+        if (ses is not null) { ClosePane(ses, p); return; }
         lock (_workspaces) ses = _workspaces.SelectMany(w => w.Sessions).FirstOrDefault(s => s.Panes.Contains(p));
-        if (ses is null || ses.Panes.Count <= 1) return;   // not a live split pane → leave the shell as-is
+        if (ses is null || (ses.Panes.Count <= 1 && ses.HiddenSplit is null)) return;
         ClosePane(ses, p);
     }
 
@@ -1671,7 +1681,7 @@ internal partial class Program
     private string StableSessionId(string? preferred)
         => !string.IsNullOrEmpty(preferred) && !SessionIdInUse(preferred!) ? preferred! : Guid.NewGuid().ToString();
     /// <summary>True if any live pane (in any session) currently uses this id.</summary>
-    private bool PaneIdInUse(string id) { lock (_workspaces) return _workspaces.Any(w => w.Sessions.Any(s => s.Panes.Any(p => p.Id == id))); }
+    private bool PaneIdInUse(string id) { lock (_workspaces) return _workspaces.Any(w => w.Sessions.Any(s => s.AllPanes.Any(p => p.Id == id))); }
     /// <summary>The id a restored pane keeps (P4: ids are durable — a restore uses the saved ids verbatim,
     /// so a swapped-then-saved session comes back with the session id on the pane that carried it, which
     /// may be slot 1). Three folds only: an EMPTY saved id mints one (pane 0: the session id, what a
@@ -1914,16 +1924,17 @@ internal partial class Program
         EmitEvent("tree");   // control-API event log (#273): the split block's `axis` changed
     }
 
-    /// <summary>Hide the secondary pane without ending its shell. Split on restores this same
-    /// terminal, including its buffer, overlay, font and divider share.</summary>
+    /// <summary>Maximize the focused pane without ending the other shell. Split on restores
+    /// the original order, focus, buffers, overlays, fonts and divider shares.</summary>
     private void CollapseToSinglePane(Ses ses)
     {
         if (ses.Panes.Count != 2) return;
         if (ReferenceEquals(ses, _active) && _divDragging) { _divDragging = false; ReleaseCapture(); }
         lock (_workspaces)
         {
-            ses.HiddenSplit = ses.Panes[1];
-            ses.Panes.RemoveAt(1);
+            ses.HiddenSplitIndex = ses.Active == 0 ? 1 : 0;
+            ses.HiddenSplit = ses.Panes[ses.HiddenSplitIndex];
+            ses.Panes.RemoveAt(ses.HiddenSplitIndex);
             ses.Panes[0].Ratio = 1f;
             ses.Active = 0;
         }

@@ -148,19 +148,19 @@ internal partial class Program
 
     /// <summary>Session status for display: the most attention-worthy status across ALL panes
     /// (Blocked &gt; Completed &gt; Active &gt; Idle) — a background pane's state must not be invisible.</summary>
-    private static AgentStatus AggStatus(Ses s) => StatusAggregate.Winner(s.Panes.Select(p => p.S));
+    private static AgentStatus AggStatus(Ses s) => StatusAggregate.Winner(s.AllPanes.Select(p => p.S));
 
     /// <summary><see cref="AggStatus"/> together with the epoch seconds of the last status write on
     /// the pane that won it, from one pass — so the tree's age describes the status the tree actually
     /// reports, not some other pane's, even when a hook writes between the two reads. Where several
     /// panes tie at the winning severity the most recent wins.</summary>
     private static (AgentStatus Status, long ChangedAt) AggStatusAndAt(Ses s)
-        => StatusAggregate.WinnerAndChangedAt(s.Panes.Select(p => p.S));
+        => StatusAggregate.WinnerAndChangedAt(s.AllPanes.Select(p => p.S));
 
     /// <summary>True if any pane of the session has an attention-worthy status with blink set.</summary>
     private static bool AggBlink(Ses s)
     {
-        foreach (var p in s.Panes)
+        foreach (var p in s.AllPanes)
             if (p.S.Blink && p.S.Status is AgentStatus.Blocked or AgentStatus.Active or AgentStatus.Completed) return true;
         return false;
     }
@@ -1423,7 +1423,7 @@ internal partial class Program
         return win;
     }
 
-    private List<Pane> PanesOf(Ses s) { lock (_workspaces) return s.Panes.ToList(); }
+    private List<Pane> PanesOf(Ses s) { lock (_workspaces) return s.AllPanes.ToList(); }
 
     /// <summary>Whether a pane reconnected to a surviving pty-host session on this restore
     /// (see <see cref="ServerSession.Adopted"/>) — such panes' shells are LIVE, not fresh.</summary>
@@ -1715,7 +1715,9 @@ internal partial class Program
                         BgMode = s.BgMode
                     };
                     List<Pane> panes;
-                    lock (_workspaces) panes = s.Panes.ToList();
+                    lock (_workspaces) panes = s.AllPanes.ToList();
+                    ss.SplitHidden = s.HiddenSplit is null ? null : true;
+                    ss.Active = s.HiddenSplit is null ? s.Active : 1 - s.HiddenSplitIndex;
                     foreach (var p in panes)
                     {
                         string live = PrettyCwd(SafeCwd(p));                       // OSC 7 cwd if the shell reports it
@@ -1736,7 +1738,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = p.Ratio, Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -1848,6 +1850,7 @@ internal partial class Program
                 // Recreate every saved workspace, including empty ones (agterm keeps empty workspaces).
                 // StableWorkspaceId folds any duplicate id already restored this pass onto a fresh one.
                 var ws = CreateWorkspace(StableWorkspaceId(w.Id), w.Name);
+                var hiddenRestores = new List<Ses>();
                 foreach (var s in w.Sessions ?? new List<SessionState>())
                 {
                     // Back-compat: a pre-splits session has no Panes — synthesize one from its Cwd/FontSize.
@@ -1876,6 +1879,7 @@ internal partial class Program
                         fontSize: PaneFontSize.Restore(first.FontSize, (float)_config.FontSize, first.FontZoomed).Size,
                         profileName: string.IsNullOrWhiteSpace(s.Profile) ? null : s.Profile,
                         paneId: StablePaneId(first.Id, s.Id, sid, first: true));
+                    if (s.SplitHidden == true) hiddenRestores.Add(ses);
                     // The axis BEFORE the second pane exists (P4). Every pty is spawned at the full content
                     // grid (CreatePane → GridSizeFor) and then RegridSession below sizes each one from
                     // PaneLayout, which reads ses.Axis: a horizontal session must get its rows halved, not
@@ -2001,6 +2005,14 @@ internal partial class Program
                         }
                     }
                 }
+                // Restore hidden layout after every pane has received its buffer and replay state.
+                // As in agterm, application restore starts on the primary pane.
+                foreach (var hidden in hiddenRestores)
+                    if (hidden.Panes.Count == 2)
+                    {
+                        hidden.Active = 0;
+                        CollapseToSinglePane(hidden);
+                    }
                 lock (_workspaces) ws.Expanded = w.Expanded; // CreateSession forces Expanded=true; restore the saved state
             }
         }

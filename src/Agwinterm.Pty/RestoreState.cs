@@ -75,6 +75,9 @@ public sealed class SessionState
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Axis { get; set; }
+    /// <summary>The split exists but is maximized onto one pane. Missing means shown.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? SplitHidden { get; set; }
 }
 public sealed class WorkspaceState { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public bool Expanded { get; set; } = true; public List<SessionState> Sessions { get; set; } = new(); }
 public sealed class AppState

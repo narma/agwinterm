@@ -15,8 +15,6 @@ internal partial class Program : IPresentationHost
     private Pane AppearancePane(string? target)
     {
         if (target is null or "active") return _active?.ActivePane ?? throw new ArgumentException("no active pane");
-        if (FindHiddenPaneByExactId(target) is not null)
-            throw new ArgumentException("appearance target belongs to a hidden split; reopen the split first. Nothing changed.");
         return FindStrictControlPane(target) is { cover: false, ses: not null } hit ? hit.pane
             : throw new ArgumentException("unknown, ambiguous or auxiliary session/pane");
     }
@@ -40,7 +38,7 @@ internal partial class Program : IPresentationHost
         var pane = AppearancePane(target);
         string op = PresentationRequest.String(args, "op") ?? "get";
         if (op != "get") { ApplyPaneAppearance(pane, op == "clear" ? null : value); SaveState(); RequestRedraw(); EmitEvent("tree", pane.Id, "appearance"); }
-        var owner = AllSessions().First(s => s.Panes.Contains(pane));
+        var owner = AllSessions().First(s => s.AllPanes.Contains(pane));
         uint dynamic = pane.S.Emulator.DynamicBg;
         var bg = dynamic != 0 ? new Color((byte)(dynamic >> 16), (byte)(dynamic >> 8), (byte)dynamic) : pane.DefaultBackground ?? _theme.DefaultBackground;
         return new { paneId = pane.Id, overrides = pane.Appearance, effectiveBackground = $"#{bg.R:X2}{bg.G:X2}{bg.B:X2}", inheritedImage = pane.Appearance?.HideImage == true ? null : owner.BgPath, effectiveTheme = _theme.Name };

@@ -30,6 +30,7 @@ function AwaitText([string]$pane, [string]$marker) {
 }
 try {
     New-Item -ItemType Directory -Path $state | Out-Null
+    'restore-buffer = true' | Set-Content -LiteralPath (Join-Path $state 'agwinterm.conf')
     @{default='Retention cmd'; profiles=@(@{name='Retention cmd';command='cmd.exe';args=@('/d');cwd=$state})} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $state 'profiles.json')
     $process = Start-Process $exe -ArgumentList @('--app-id',$id,'--pipe',$id,'--no-restore','--default-session-host','inprocess') -WindowStyle Hidden -PassThru
@@ -52,22 +53,19 @@ try {
     $overlay = Ctl @('session','overlay','open','--pane','right','--command','echo PANE-OVERLAY-ALIVE & cmd.exe /d /k','--target',$session)
     $done = Join-Path $state 'hidden-output.txt'
     $null = Ctl @('command','run',"ping -n 3 127.0.0.1 >nul & echo HIDDEN-DONE & echo done> `"$done`"",'--mode','send','--target',$pane)
-    Check ((Ctl @('session','split','toggle','--target',$session)) -eq $session) 'Toggle hides secondary and focuses primary'
+    $null = Ctl @('session','focus','left','--target',$session)
+    Check ((Ctl @('session','split','toggle','--target',$session)) -eq $session) 'Toggle maximizes focused primary'
     $sessionOverlay = Ctl @('session','overlay','open','--command','echo SESSION-OVERLAY-ALIVE & cmd.exe /d /k','--target',$session)
-    foreach ($hiddenTarget in @($pane, $overlay)) {
-        foreach ($action in @('close','text','result')) {
-            RefusesHidden @('session','overlay',$action,'--target',$hiddenTarget)
-        }
-    }
+    RefusesHidden @('session','overlay','open','--command','echo forbidden','--target',$pane)
+    AwaitText $overlay 'PANE-OVERLAY-ALIVE'
+    Check ((Ctl @('session','overlay','text','--target',$overlay)).text.Contains('PANE-OVERLAY-ALIVE')) 'Hidden overlay text reaches its own slot'
     AwaitText $sessionOverlay 'SESSION-OVERLAY-ALIVE'
     AwaitText $overlay 'PANE-OVERLAY-ALIVE'
-    'PASS Refused hidden overlay operations preserve both overlay processes'
-    $null = Ctl @('session','overlay','close','--target',$session)
-    RefusesHidden @('session','appearance','get','--target',$pane)
-    RefusesHidden @('session','appearance','set','--color','#abcdef','--target',$pane)
-    RefusesHidden @('session','appearance','clear','--target',$pane)
-    RefusesHidden @('session','restore','echo lost-pin','--target',$pane)
-    RefusesHidden @('session','restore','none','--target',$pane)
+    $null = Ctl @('session','appearance','clear','--target',$pane)
+    $null = Ctl @('session','appearance','set','--color','#abcdef','--target',$pane)
+    Check ((Ctl @('session','appearance','get','--target',$pane)).overrides.color -eq '#abcdef') 'Hidden appearance get/set/clear succeeds'
+    $null = Ctl @('session','restore','none','--target',$pane)
+    $null = Ctl @('session','restore','echo retained-pin','--target',$pane)
     $null = Ctl @('session','status','blocked','--target',$pane)
     $null = Ctl @('notify','Hidden split notification','--target',$pane)
     $null = Ctl @('notify','Hidden overlay notification','--target',$overlay)
@@ -77,14 +75,24 @@ try {
     $null = Ctl @('session','select',$session)
     $hiddenNode = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
     Check (-not $hiddenNode.notifications) 'Visiting owner clears hidden notifications'
+    $null = Ctl @('session','overlay','close','--target',$overlay)
+    AwaitText $sessionOverlay 'SESSION-OVERLAY-ALIVE'
+    'PASS Closing hidden pane overlay preserves session-wide overlay'
+    $null = Ctl @('session','overlay','close','--target',$session)
     for ($i = 0; $i -lt 60 -and -not (Test-Path -LiteralPath $done); $i++) { Start-Sleep -Milliseconds 100 }
     Check (Test-Path -LiteralPath $done) 'Command keeps running while hidden'
     Check ((Ctl @('session','split','toggle','--target',$session)) -eq $pane) 'Toggle reuses the exact pane'
     $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
     Check ($node.status -eq 'blocked') 'Agent status written while hidden survives reopening'
-    Check ($node.restoreCommands.$pane -eq 'echo original-pin') 'Refused hidden restore commands leave the existing pin unchanged'
+    Check ($node.restoreCommands.$pane -eq 'echo retained-pin') 'Hidden restore pin survives reopening'
     $appearanceAfter = Ctl @('session','appearance','get','--target',$pane)
-    Check (($appearanceAfter | ConvertTo-Json -Depth 10 -Compress) -eq ($appearanceBefore | ConvertTo-Json -Depth 10 -Compress)) 'Refused appearance commands do not mutate the pane'
+    Check ($appearanceAfter.overrides.color -eq '#abcdef') 'Hidden appearance survives reopening'
+    Check ($node.focusedPane -eq 0) 'Reopening keeps primary focus'
+    $null = Ctl @('session','focus','right','--target',$session)
+    Check ((Ctl @('session','split','off','--target',$session)) -eq $pane) 'Hiding with right focus maximizes right pane'
+    Check ((Ctl @('session','split','on','--target',$session)) -eq $pane) 'Reopening preserves original pane order'
+    $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    Check ($node.focusedPane -eq 1) 'Reopening keeps right focus'
     AwaitText $pane 'HIDDEN-DONE'
     $null = Ctl @('command','run','echo VALUE=%RETAINED_VALUE%','--mode','send','--target',$pane)
     AwaitText $pane 'VALUE=still-here'
@@ -103,6 +111,41 @@ try {
     $null = Ctl @('session','split','off','--target',$session)
     $null = Ctl @('session','close',$session)
     'PASS Session closes with a hidden split'
+
+    $restored = Ctl @('session','new','--profile','Retention cmd')
+    $retained = Ctl @('session','split','on','--axis','horizontal','--target',$restored)
+    $null = Ctl @('session','resize','--split-ratio','0.35','--target',$restored)
+    $null = Ctl @('session','appearance','set','--color','#234567','--target',$retained)
+    $null = Ctl @('command','run','echo RESTORE-HIDDEN-HISTORY','--mode','send','--target',$retained)
+    AwaitText $retained 'RESTORE-HIDDEN-HISTORY'
+    Check ((Ctl @('session','split','off','--target',$restored)) -eq $retained) 'Right pane remains maximized before restart'
+    $null = Ctl @('session','restore','echo RESTORED-HIDDEN-PIN','--target',$restored)
+    $null = Ctl @('window','close')
+    Check ($process.WaitForExit(20000)) 'Fixture closes cleanly and saves both panes'
+    $savedSessions = @(Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { (Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json).Workspaces.Sessions })
+    $savedSession = $savedSessions | Where-Object Id -eq $restored
+    if (-not $savedSession.SplitHidden -or $savedSession.Panes.Count -ne 2) {
+        Get-ChildItem -LiteralPath $state -Recurse -File | Select-Object FullName,Length | ConvertTo-Json | Write-Output
+        Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -TotalCount 12 }
+    }
+    Check ($savedSession.SplitHidden -eq $true -and $savedSession.Panes.Count -eq 2) 'Saved file retains both panes and hidden layout'
+    $process = Start-Process $exe -ArgumentList @('--app-id',$id,'--pipe',$id,'--default-session-host','inprocess') -WindowStyle Hidden -PassThru
+    for ($i = 0; $i -lt 60; $i++) {
+        try { $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $restored; if ($node) { break } } catch { }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $node -or $node.paneCount -gt 1) { Ctl @('tree') | ConvertTo-Json -Depth 8 | Write-Output }
+    Check ([bool]$node -and $node.paneCount -le 1) 'Restart preserves collapsed layout'
+    AwaitText $retained 'RESTORE-HIDDEN-HISTORY'
+    AwaitText $restored 'RESTORED-HIDDEN-PIN'
+    Check ((Ctl @('session','appearance','get','--target',$retained)).overrides.color -eq '#234567') 'Hidden appearance survives restart'
+    Check ((Ctl @('session','split','on','--target',$restored)) -eq $retained) 'Hidden pane identity survives restart'
+    $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $restored
+    Check ($node.axis -eq 'horizontal' -and [Math]::Abs($node.splitRatios[0] - 0.35) -lt 0.01) 'Hidden axis and divider survive restart'
+    Check ($node.focusedPane -eq 0) 'Application restore resets focus to primary like agterm'
+    $null = Ctl @('session','split','off','--target',$restored)
+    Check ((Ctl @('session','split','close','--target',$retained)) -eq $restored) 'Explicit close disposes a hidden pane without closing the survivor'
+    $null = Ctl @('session','close',$restored)
 }
 finally {
     if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force; $process.WaitForExit() }

@@ -714,8 +714,7 @@ internal partial class Program
                 // the LAST library window closes, when DestroyQuickHost disposes it too.
                 foreach (var s in AllSessions())
                 {
-                    DisposeHiddenSplit(s); // hidden splits are runtime-only, like scratch terminals
-                    foreach (var p in s.Panes)
+                    foreach (var p in s.AllPanes)
                     {
                         try { p.Overlay.Term?.S.Dispose(); } catch { }   // a pane overlay (P5) is never restored either
                         try { if (quitting) p.S.Detach(); else p.S.Dispose(); } catch { }
