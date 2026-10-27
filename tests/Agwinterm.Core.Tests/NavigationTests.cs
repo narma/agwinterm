@@ -98,6 +98,39 @@ public class NavigationTests
         => Assert.Equal("insert", Keymap.ChordFor(0x2D, false, false, false));
 
     [Theory]
+    [InlineData("pageup", 0x21, "pageup", "PgUp")]
+    [InlineData("pgup", 0x21, "pageup", "PgUp")]
+    [InlineData("pagedown", 0x22, "pagedown", "PgDown")]
+    [InlineData("pgdown", 0x22, "pagedown", "PgDown")]
+    [InlineData("PgUp", 0x21, "pageup", "PgUp")]
+    [InlineData("PgDown", 0x22, "pagedown", "PgDown")]
+    public void PageChordsMatchLiveKeysWithEveryModifierCombination(string token, int vk, string canonical, string display)
+    {
+        foreach (bool ctrl in new[] { false, true })
+        foreach (bool alt in new[] { false, true })
+        foreach (bool shift in new[] { false, true })
+        {
+            string prefix = (ctrl ? "ctrl+" : "") + (alt ? "alt+" : "") + (shift ? "shift+" : "");
+            Assert.Equal(prefix + canonical, Keymap.Canonicalize(prefix + token));
+            Assert.Equal(prefix + canonical, Keymap.ChordFor(vk, ctrl, alt, shift));
+        }
+        Assert.Equal("Ctrl+Shift+" + display, Keymap.DisplayChord("ctrl+shift+" + canonical));
+    }
+
+    [Fact] public void PageAliasesBindAndUnmapTheSameLiveSessionChords()
+    {
+        var result = Keymap.Parse("map ctrl+shift+pgup = previous_session\nmap ctrl+shift+pgdown = next_session");
+        Assert.Empty(result.Diagnostics);
+        Assert.Equal("previous_session", result.Bindings[Keymap.ChordFor(0x21, true, false, true)!]);
+        Assert.Equal("next_session", result.Bindings[Keymap.ChordFor(0x22, true, false, true)!]);
+
+        result = Keymap.Parse("map ctrl+shift+pageup = previous_session\nmap ctrl+shift+pagedown = next_session\nunmap ctrl+shift+pgup | ctrl+shift+pgdown");
+        Assert.Empty(result.Diagnostics);
+        Assert.False(result.Bindings.ContainsKey("ctrl+shift+pageup"));
+        Assert.False(result.Bindings.ContainsKey("ctrl+shift+pagedown"));
+    }
+
+    [Theory]
     [InlineData("", "ctrl+tab", true)]
     [InlineData("", "ctrl+shift+tab", true)]
     [InlineData("unmap ctrl+tab", "ctrl+tab", false)]
