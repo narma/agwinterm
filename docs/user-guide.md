@@ -175,6 +175,10 @@ bar when nothing else bound it), **Ctrl+Shift+D** (dashboard), **Ctrl+`** (quick
   to `next_session` or `previous_session`; after `unmap ctrl+tab` MRU does not run and the chord
   follows the normal keymap / terminal path. Use `unmap ctrl+d` for one chord, or `unmap a | b` for
   several. Reload with **File → Reload Keymap** or `agwintermctl keymap reload`.
+  **PageUp** / **PageDown** can be bound as `pageup` / `pagedown` or `pgup` / `pgdown`.
+  For session switching, add `map ctrl+shift+pgup = previous_session` and
+  `map ctrl+shift+pgdown = next_session`. Plain **Shift+PageUp** / **Shift+PageDown**
+  retain their fixed scrollback behavior.
 - `show-menu-bar = false` hides the title-bar menu bar (File ▸ Edit agwinterm.conf… opens the file).
 - Themes: the bundled set ships with the app; drop extra ghostty-format `*.conf` files in
   `%LOCALAPPDATA%\agwinterm\themes\`.

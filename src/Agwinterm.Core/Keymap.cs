@@ -15,7 +15,8 @@ namespace Agwinterm.Core;
 ///   unmap &lt;chord&gt;[|&lt;chord&gt;...]            drop binding(s); each | adds another chord on the same line
 ///   '#' starts a comment; blank lines ignored.
 /// A canonical chord is "[ctrl+][alt+][shift+]&lt;key&gt;" where key ∈ a–z, 0–9, f1–f12,
-/// tab, enter, escape, space, up, down, left, right, insert, delete (aliases ins/del), or an OEM punctuation name
+/// tab, enter, escape, space, up, down, left, right, pageup, pagedown (aliases pgup/pgdown),
+/// insert, delete (aliases ins/del), or an OEM punctuation name
 /// (comma, period, slash, semicolon, quote, backtick, minus, equals, lbracket, rbracket, backslash) —
 /// so shifted-symbol chords bind via shift+&lt;base&gt; (e.g. shift+slash for '?', shift+semicolon for ':').
 /// The command &lt;text&gt; may contain {AGW_*} tokens (expanded from the active session) and the
@@ -92,6 +93,7 @@ public static class Keymap
         #
         # chords: ctrl+ alt+ shift+ then a key — a-z, 0-9, f1-f12,
         #         tab enter escape space up down left right, insert delete (ins/del),
+        #         pageup pagedown (pgup/pgdown),
         #         comma period slash semicolon quote backtick minus equals
         #         lbracket rbracket backslash (US layout).  e.g. shift+comma, ctrl+shift+g
         #
@@ -114,6 +116,8 @@ public static class Keymap
         # map ctrl+g | alt+g = next_workspace   # pipe = more chords on the same line, not a second operand
         # unmap ctrl+d                    # drop default split on Ctrl+D (^D reaches the shell)
         # map ctrl+alt+d = split_pane
+        # map ctrl+shift+pgup = previous_session
+        # map ctrl+shift+pgdown = next_session
         # map ctrl+insert = copy_selection
         # map shift+insert = paste        # pair with copy-on-ctrl-c = false in agwinterm.conf for ^C interrupt
         # map ctrl+shift+g = command:Greet
@@ -259,7 +263,7 @@ public static class Keymap
         if (t.Length == 1 && char.IsLetterOrDigit(t[0])) return true;
         if (t.Length is 2 or 3 && t[0] == 'f' && int.TryParse(t[1..], out int n) && n is >= 1 and <= 12) return true;
         return t is "tab" or "enter" or "escape" or "space" or "up" or "down" or "left" or "right"
-            or "insert" or "delete"
+            or "insert" or "delete" or "pageup" or "pagedown"
             // OEM punctuation (US layout), so symbol chords like shift+comma ('<') bind too.
             or "comma" or "period" or "slash" or "semicolon" or "quote" or "backtick"
             or "minus" or "equals" or "lbracket" or "rbracket" or "backslash";
@@ -283,6 +287,7 @@ public static class Keymap
                 "tab" => "Tab", "enter" => "Enter", "escape" => "Esc", "space" => "Space",
                 "up" => "Up", "down" => "Down", "left" => "Left", "right" => "Right",
                 "insert" => "Insert", "delete" => "Delete",
+                "pageup" => "PgUp", "pagedown" => "PgDown",
                 "comma" => ",", "period" => ".", "slash" => "/", "semicolon" => ";", "quote" => "'",
                 "backtick" => "`", "minus" => "-", "equals" => "=", "lbracket" => "[", "rbracket" => "]", "backslash" => "\\",
                 _ when p.Length >= 2 && p[0] == 'f' && char.IsDigit(p[1]) => "F" + p[1..],
@@ -300,6 +305,8 @@ public static class Keymap
             "esc" => "escape",
             "ins" => "insert",
             "del" => "delete",
+            "pgup" => "pageup",
+            "pgdown" => "pagedown",
             _ => t,
         };
     }
@@ -323,6 +330,8 @@ public static class Keymap
             0x0D => "enter",
             0x1B => "escape",
             0x20 => "space",
+            0x21 => "pageup",
+            0x22 => "pagedown",
             0x26 => "up",
             0x28 => "down",
             0x25 => "left",

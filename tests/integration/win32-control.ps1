@@ -228,7 +228,9 @@ $sessionId = $null
 $scId = $null
 try {
     New-Item -ItemType Directory -Path $testAppDir -Force | Out-Null
-    'map f10 = reopen_session' | Set-Content -LiteralPath (Join-Path $testAppDir 'keymap.conf') -Encoding utf8
+    @('map f10 = reopen_session', 'map ctrl+shift+pgup = previous_session',
+      'map ctrl+shift+pgdown = next_session') |
+        Set-Content -LiteralPath (Join-Path $testAppDir 'keymap.conf') -Encoding utf8
     $process = Start-Process $Exe -ArgumentList @('--app-id', $appId, '--pipe', $pipe, '--no-restore') -PassThru
     $up = $false
     for ($i = 0; $i -lt 40; $i++) {
@@ -249,6 +251,24 @@ try {
     Check 'the Win32 instance did not fall back to the environment app-id' `
         (-not (Test-Path -LiteralPath $envAppDir)) "--app-id was ignored; state went to $envAppDir"
     if (-not $appDataAdopted) { throw 'isolated instance did not seed its dedicated app-data directory' }
+
+    $pageKeymap = Invoke-Ctl @('keymap', 'list')
+    Check 'PgUp/PgDown aliases load as effective session bindings without diagnostics' `
+        ($pageKeymap.ok -and @($pageKeymap.result.diagnostics).Count -eq 0 -and
+         $pageKeymap.result.bindings.'ctrl+shift+pageup' -eq 'previous_session' -and
+         $pageKeymap.result.bindings.'ctrl+shift+pagedown' -eq 'next_session')
+    $pageFirst = Invoke-Ctl @('session', 'new', '--name', 'page-first', '--command-mode', 'direct', '--command', 'cmd.exe /d')
+    $pageSecond = Invoke-Ctl @('session', 'new', '--name', 'page-second', '--command-mode', 'direct', '--command', 'cmd.exe /d')
+    if (-not $pageFirst.ok -or -not $pageSecond.ok) { throw 'Page key session fixtures could not be created' }
+    $process.Refresh()
+    [Agwinterm.Win32ControlTest.NativeMethods]::Chord($process.MainWindowHandle, 0x21, $true)
+    Check 'Ctrl+Shift+PgUp selects the previous session through live key dispatch' `
+        ((Get-ActiveSessionSnapshot).id -eq [string]$pageFirst.result)
+    [Agwinterm.Win32ControlTest.NativeMethods]::Chord($process.MainWindowHandle, 0x22, $true)
+    Check 'Ctrl+Shift+PgDown selects the next session through live key dispatch' `
+        ((Get-ActiveSessionSnapshot).id -eq [string]$pageSecond.result)
+    Invoke-Ctl @('session', 'close', [string]$pageSecond.result) | Out-Null
+    Invoke-Ctl @('session', 'close', [string]$pageFirst.result) | Out-Null
 
     # Reproduce the collision from the review: the initial pane shares the session id; a hidden
     # scratch id begins with that id. Once the initial side of a split exits, only the exact session
