@@ -61,6 +61,9 @@ try {
     # window.list is an object with windows on some serving versions.
     if (-not $winA) { $winA = @($windows.windows)[0].id }
     $a = Ctl @('session','new','--name','C0 background','--cwd',$cwdA,'--profile','C0 cmd','--window',$winA)
+    # Session creation is queued: wait for this exact ID, never retry the creation itself.
+    for ($i = 0; $i -lt 60 -and -not (Node $a $winA); $i++) { Start-Sleep -Milliseconds 100 }
+    Check ([bool](Node $a $winA)) 'New background session is ready before splitting'
     $pane = Ctl @('session','split','on','--target',$a,'--window',$winA)
     $recent = Ctl @('session','new','--name','C0 recent','--window',$winA)
     $b = Ctl @('session','new','--name','C0 visible','--cwd',$cwdB,'--window',$winA)

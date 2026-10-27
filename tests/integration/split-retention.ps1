@@ -26,7 +26,8 @@ function AwaitText([string]$pane, [string]$marker) {
         if ((Ctl @('session','text','--all','--target',$pane)).Contains($marker)) { return }
         Start-Sleep -Milliseconds 100
     }
-    throw "Missing output: $marker"
+    $lastText = Ctl @('session','text','--all','--target',$pane)
+    throw "Missing output: $marker; pane=$pane; last text: $lastText"
 }
 try {
     New-Item -ItemType Directory -Path $state | Out-Null
@@ -89,7 +90,19 @@ try {
     Check ($appearanceAfter.overrides.color -eq '#abcdef') 'Hidden appearance survives reopening'
     Check ($node.focusedPane -eq 0) 'Reopening keeps primary focus'
     $null = Ctl @('session','focus','right','--target',$session)
+    $primaryOverlay = Ctl @('session','overlay','open','--pane','left','--command','echo LEFT-OK & cmd.exe /d /k','--target',$session)
+    AwaitText $primaryOverlay 'LEFT-OK'
     Check ((Ctl @('session','split','off','--target',$session)) -eq $pane) 'Hiding with right focus maximizes right pane'
+    $wholeOverlay = Ctl @('session','overlay','open','--command','echo WHOLE-OVERLAY-ALIVE & cmd.exe /d /k','--target',$session)
+    AwaitText $primaryOverlay 'LEFT-OK'
+    $null = Ctl @('session','overlay','close','--target',$session)
+    AwaitText $primaryOverlay 'LEFT-OK'
+    Check ((Ctl @('session','overlay','text','--pane','left','--target',$session)).text.Contains('LEFT-OK')) 'Session ID with pane selector reaches the hidden primary slot'
+    $wholeOverlay = Ctl @('session','overlay','open','--command','echo WHOLE-OVERLAY-ALIVE & cmd.exe /d /k','--target',$session)
+    $null = Ctl @('session','overlay','close','--pane','left','--target',$session)
+    AwaitText $wholeOverlay 'WHOLE-OVERLAY-ALIVE'
+    $null = Ctl @('session','overlay','close','--target',$session)
+    'PASS Session overlay commands retain precedence over the hidden primary ID'
     Check ((Ctl @('session','split','on','--target',$session)) -eq $pane) 'Reopening preserves original pane order'
     $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
     Check ($node.focusedPane -eq 1) 'Reopening keeps right focus'

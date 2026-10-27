@@ -31,7 +31,10 @@ internal partial class Program
         }
         string reply = InvokeOnUiQueued(() =>
         {
-            var hiddenTarget = target is null ? null : FindHiddenPaneByExactId(target);
+            // Overlay commands give an exact session ID precedence over the pane carrying it.
+            // That primary pane may be hidden while the right pane is maximized.
+            var hiddenTarget = target is null || FindSessionByExactId(target) is not null
+                ? null : FindHiddenPaneByExactId(target);
             if (hiddenTarget is not null && action == "open")
                 return ISessionHost.RefusePrefix + "cannot open an overlay on a hidden pane; show the pane first";
             // The shipped session-wide result is window-wide even when no session resolves.
