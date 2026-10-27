@@ -360,6 +360,9 @@ up addressing the pane it runs in.
 split again restores the same shell, scrollback and divider ratio. Hidden panes are absent from
 the visible tree and are disposed when the session or window closes; hidden splits are not restored
 after an app restart. Use `split close` to end a visible pane explicitly.
+Hidden terminals and their overlays still accept exact pane IDs for status updates and content
+operations; they do not participate in prefix matching. Their notifications retain their owning
+session and contribute to its unread badge.
 
 - `--axis vertical|horizontal` picks the arrangement in agterm's words — vertical is left/right
   panes, horizontal is top/bottom. It is remembered for the life of the session, through `off`, and

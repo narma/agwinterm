@@ -61,6 +61,7 @@ internal partial class Program
                 foreach (var s in w.Sessions)
                 {
                     if (ReferenceEquals(s.Scratch, p) || ReferenceEquals(s.Overlay.Term, p)) return s;
+                    if (s.HiddenSplit is { } hidden && (ReferenceEquals(hidden, p) || ReferenceEquals(hidden.Overlay.Term, p))) return s;
                     foreach (var q in s.Panes)
                         if (ReferenceEquals(q, p) || ReferenceEquals(q.Overlay.Term, p)) return s;
                 }
@@ -121,12 +122,26 @@ internal partial class Program
     }
 
     /// <summary>Total unread notifications across a session's panes (for the sidebar badge).</summary>
-    private static int UnreadOf(Ses s) { int n = 0; foreach (var p in s.Panes) n += p.Unread; return n; }
+    private static IEnumerable<Pane> NotificationPanes(Ses s)
+    {
+        foreach (var p in s.Panes)
+        {
+            yield return p;
+            if (p.Overlay.Term is { } overlay) yield return overlay;
+        }
+        if (s.HiddenSplit is { } hidden)
+        {
+            yield return hidden;
+            if (hidden.Overlay.Term is { } overlay) yield return overlay;
+        }
+    }
+
+    private static int UnreadOf(Ses s) => NotificationPanes(s).Sum(p => p.Unread);
 
     private static NotificationCategory UnreadCategoryOf(Ses s)
     {
         var category = NotificationCategory.Ok;
-        foreach (var p in s.Panes)
+        foreach (var p in NotificationPanes(s))
             if (p.Unread > 0) category = NotificationCategories.Highest(category, p.UnreadCategory);
         return category;
     }
@@ -150,11 +165,10 @@ internal partial class Program
         return false;
     }
 
-    // Visiting a session clears every surface it shows: each pane, each pane's overlay term (P5 — like the
-    // session-wide overlay, counted on the term and cleared here, not summed into UnreadOf), scratch, overlay.
+    // Visiting a session acknowledges its notifications, including retained hidden panes.
     private static void ClearUnread(Ses s)
     {
-        foreach (var p in s.Panes)
+        foreach (var p in NotificationPanes(s))
         {
             p.Unread = 0;
             p.UnreadCategory = NotificationCategory.Ok;

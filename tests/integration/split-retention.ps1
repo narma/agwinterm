@@ -37,13 +37,29 @@ try {
     $null = Ctl @('command','run','set RETAINED_VALUE=still-here','--mode','send','--target',$pane)
     $null = Ctl @('command','run','echo BEFORE-HIDE','--mode','send','--target',$pane)
     AwaitText $pane 'BEFORE-HIDE'
+    $null = Ctl @('command','run','for /L %i in (1,1,300) do @echo HISTORY-FILL-%i','--mode','send','--target',$pane)
+    AwaitText $pane 'HISTORY-FILL-300'
+    Check (-not (Ctl @('session','text','--target',$pane)).Contains('BEFORE-HIDE')) 'History marker has left the visible screen before hiding'
+    AwaitText $pane 'BEFORE-HIDE'
     $null = Ctl @('session','resize','--split-ratio','0.3','--target',$session)
+    $overlay = Ctl @('session','overlay','open','--pane','right','--command','cmd.exe /d /k','--target',$session)
     $done = Join-Path $state 'hidden-output.txt'
     $null = Ctl @('command','run',"ping -n 3 127.0.0.1 >nul & echo HIDDEN-DONE & echo done> `"$done`"",'--mode','send','--target',$pane)
     Check ((Ctl @('session','split','toggle','--target',$session)) -eq $session) 'Toggle hides secondary and focuses primary'
+    $null = Ctl @('session','status','blocked','--target',$pane)
+    $null = Ctl @('notify','Hidden split notification','--target',$pane)
+    $null = Ctl @('notify','Hidden overlay notification','--target',$overlay)
+    $hiddenNode = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    Check ($hiddenNode.paneCount -le 1 -and $pane -notin $hiddenNode.paneIds) 'Hidden pane stays out of visible tree'
+    Check ($hiddenNode.notifications -eq 2) 'Hidden shell and overlay notifications are counted against their owning session'
+    $null = Ctl @('session','select',$session)
+    $hiddenNode = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    Check (-not $hiddenNode.notifications) 'Visiting owner clears hidden notifications'
     for ($i = 0; $i -lt 60 -and -not (Test-Path -LiteralPath $done); $i++) { Start-Sleep -Milliseconds 100 }
     Check (Test-Path -LiteralPath $done) 'Command keeps running while hidden'
     Check ((Ctl @('session','split','toggle','--target',$session)) -eq $pane) 'Toggle reuses the exact pane'
+    $node = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
+    Check ($node.status -eq 'blocked') 'Agent status written while hidden survives reopening'
     AwaitText $pane 'HIDDEN-DONE'
     $null = Ctl @('command','run','echo VALUE=%RETAINED_VALUE%','--mode','send','--target',$pane)
     AwaitText $pane 'VALUE=still-here'

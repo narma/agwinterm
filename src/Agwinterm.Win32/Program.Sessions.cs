@@ -1394,7 +1394,22 @@ internal partial class Program
     private (Pane pane, Ses? ses, bool cover)? FindPaneById(string id)
     {
         // Pane-only commands (bind/restore) still accept exact ids and prefixes.
-        return FindPaneBy(p => p.Id == id) ?? FindPaneBy(p => p.Id.StartsWith(id, StringComparison.Ordinal));
+        return FindPaneBy(p => p.Id == id) ?? FindHiddenPaneByExactId(id)
+            ?? FindPaneBy(p => p.Id.StartsWith(id, StringComparison.Ordinal));
+    }
+
+    // Hidden terminals stay addressable by their own IDs for agent hooks and content operations.
+    // They do not participate in visible layout, prefix matching or active-surface selection.
+    private (Pane pane, Ses? ses, bool cover)? FindHiddenPaneByExactId(string id)
+    {
+        lock (_workspaces)
+            foreach (var s in _workspaces.SelectMany(w => w.Sessions))
+                if (s.HiddenSplit is { } p)
+                {
+                    if (p.Id == id) return (p, s, false);
+                    if (p.Overlay.Term is { } overlay && overlay.Id == id) return (overlay, s, true);
+                }
+        return null;
     }
 
     /// <summary>
@@ -1408,6 +1423,7 @@ internal partial class Program
     private (Pane pane, Ses? ses, bool cover)? FindControlPane(string target)
     {
         if (FindPaneBy(p => p.Id == target) is { } exactPane) return exactPane;
+        if (FindHiddenPaneByExactId(target) is { } hiddenPane) return hiddenPane;
         if (FindSessionByExactId(target) is { } exactSession)
             return (exactSession.ActivePane, exactSession, false);
         if (FindPaneBy(p => p.Id.StartsWith(target, StringComparison.Ordinal)) is { } panePrefix)
@@ -1423,6 +1439,7 @@ internal partial class Program
     {
         if (string.IsNullOrWhiteSpace(target)) return null;
         if (FindPaneBy(p => p.Id == target) is { } exact) return exact;
+        if (FindHiddenPaneByExactId(target) is { } hidden) return hidden;
         if (FindSessionByExactId(target) is { } session) return (session.ActivePane, session, false);
         var matches = new List<Pane>();
         FindPaneBy(p =>

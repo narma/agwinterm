@@ -1029,6 +1029,11 @@ internal partial class Program
 
     public bool Notify(string? target, string? title, string body, NotificationCategory category)
     {
+        if (target is not null && FindHiddenPaneByExactId(target) is { } hidden)
+        {
+            PostVerb(() => OnNotified(hidden.pane, title ?? "", body, category));
+            return true;
+        }
         var ses = FindSesForTarget(target);
         if (ses is null) return false;
         PostVerb(() => OnNotified(ses.ActivePane, title ?? "", body, category));

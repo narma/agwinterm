@@ -451,7 +451,7 @@ public static class AgentSkill
         reopened session; after a `swap`, either side (a restore keeps the order it saved) — and names the session's FOCUSED
         pane while none does. None does once
         the carrier was closed: `split close` on it, Ctrl+Shift+W on it, or its shell exiting. Hiding the carrier with
-        `split off` after a `swap` temporarily uses the focused pane until `on` restores the carrier. After a close, a later `split` mints a fresh id, so the state persists
+        `split off` after a `swap` retains the carrier: its exact id still targets that hidden shell. After a close, a later `split` mints a fresh id, so the state persists
         until the session is closed and reopened (a reopened session's pane 0 carries the id again). In a split session,
         address panes by their own ids. The split verbs take `--target <id>` as a
         session or either of its panes and act on THAT session, not the active one; `focus` and `resize` act on the active session.
