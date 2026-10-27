@@ -1414,7 +1414,9 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
              (-not $renGhost.ok) -and ("$($renGhost.error)" -match 'session not found') -and
              $renNode2.name -eq 'p287-from-the-pane') `
             "blank=$($renBlank.error) ghost=$($renGhost.error) name=$($renNode2.name)"
-        Invoke-Ctl @('session', 'split', 'off', '--target', $sessionId) | Out-Null
+        # This temporary pane is only for the rename case. Close it explicitly: split off
+        # now maximizes the focused pane and would hide the survivor used by later checks.
+        Invoke-Ctl @('session', 'split', 'close', '--target', $renPaneId) | Out-Null
         Start-Sleep -Milliseconds 500
         Invoke-Ctl @('session', 'rename', 'p3-renamed', '--target', $sessionId) | Out-Null
         Start-Sleep -Milliseconds 300
