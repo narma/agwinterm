@@ -25,16 +25,16 @@ jobs:
     needs: wsl-hook
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: wsl-hook-*
           merge-multiple: true
           path: artifacts/wsl-hook
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -110,7 +110,7 @@ jobs:
       # those bytes, and attesting them here would claim provenance this workflow cannot vouch for.
       # Its attestation is the one v0.17.4 produced, which still verifies.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
             installer/Output/agwinterm-setup-*.exe
@@ -121,7 +121,7 @@ jobs:
             installer/Output/agwinterm-core-abi.json
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             installer/Output/agwinterm-setup-*.exe
@@ -246,7 +246,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Pack and push to Chocolatey
         shell: pwsh
         env:

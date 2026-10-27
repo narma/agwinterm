@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Supersede only runs for the same PR/ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
@@ -19,15 +24,26 @@ jobs:
     needs: wsl-hook
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - uses: actions/download-artifact@v4
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/download-artifact@v7
         with:
           pattern: wsl-hook-*
           merge-multiple: true
           path: artifacts/wsl-hook
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native -> target
       - name: Build portable with both Linux architectures
         shell: pwsh
         run: ./installer/build-portable.ps1
@@ -35,40 +51,30 @@ jobs:
         shell: pwsh
         run: ./tests/integration/portable-tools.ps1
 
-  build-test:
-    name: build + test (windows)
+  windows-tests:
+    name: windows (${{ matrix.suite }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [core, control, ui]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Go for Ralphex bridge fixtures
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.x'
-          cache: false
-
-      - name: Install pinned Ralphex
-        shell: pwsh
-        run: |
-          $bin = Join-Path $env:RUNNER_TEMP 'ralphex-bin'
-          New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          $env:GOBIN = $bin
-          # The command is the module path plus the main package, which lives under
-          # cmd/ - the module root holds no package, so the bare module path fails with
-          # "found, but does not contain package".
-          go install github.com/umputun/ralphex/cmd/ralphex@v1.6.1
-          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Ralphex-Revmux bridge fixtures
-        shell: bash
-        run: ./tools/test-ralphex-revmux.sh
+      - uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
 
       - name: UI evidence export fixtures
+        if: matrix.suite == 'core'
         shell: pwsh
         run: ./tools/export-ui-evidence.tests.ps1
 
@@ -79,26 +85,35 @@ jobs:
         run: dotnet build Agwinterm.slnx -c Release --no-restore
 
       - name: Check agwinterm-core ABI agreement
+        if: matrix.suite == 'core'
         # The C ABI is declared three times (Rust const, C# RequiredAbi, lite kRequiredAbi) and a
         # drift is otherwise only caught at load, by whoever runs the mismatched pair. Cheap to
         # check, and it becomes the cross-repo gate once agliteterm ships from its own repository.
         shell: pwsh
         run: ./tools/check-abi.ps1
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native -> target
+          key: ${{ matrix.suite }}
+
       - name: Build Rust core (arms the parity oracle)
         # RustParityTests skip silently when the crate dll is absent; building it here makes
         # the C#↔Rust differential oracles (wcwidth, screen, parser, emulator, images) a
         # hard merge gate.
-        run: cargo build --release --manifest-path native/Cargo.toml
+        run: cargo build --locked --release --manifest-path native/Cargo.toml
 
       - name: Host resize transaction regressions (no child processes)
-        run: cargo test --manifest-path native/agwinterm-ptyhost/Cargo.toml resize::tests
+        if: matrix.suite == 'core'
+        run: cargo test --locked --manifest-path native/agwinterm-ptyhost/Cargo.toml resize::tests
 
       # The control API is a cross-product contract now: agliteterm ships from its own repository
       # promising to speak this dialect, and its CI runs THIS spec against its own client. Running
       # it here too is what makes "same control API" a gate rather than a claim — a verb reshaped
       # in the full app fails the other product's build, and vice versa.
       - name: Control-API conformance
+        if: matrix.suite == 'control'
         shell: pwsh
         timeout-minutes: 15
         run: |
@@ -110,6 +125,7 @@ jobs:
       # fake clipboard: every state it can leave the clipboard in, including the ones a real run
       # cannot provoke (a partial put, a copy racing the sentinel).
       - name: Clipboard guard (fake)
+        if: matrix.suite == 'core'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/clipboard-guard.tests.ps1
@@ -117,91 +133,109 @@ jobs:
       # The process the integration suite pastes into (a sink the control API starts directly, no
       # shell underneath) and the readiness test that gates the pastes, on synthetic pane text.
       - name: Paste sink (synthetic)
+        if: matrix.suite == 'core'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/paste-sink.tests.ps1
 
       - name: Win32 control-host integration
+        if: matrix.suite == 'control'
         shell: pwsh
         timeout-minutes: 10
         run: ./tests/integration/win32-control.ps1 -Strict
 
       - name: Session command parity integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Command -Strict
 
       - name: Control CLI reliability integration
+        if: matrix.suite == 'control'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/control-cli-reliability.ps1
 
       - name: Control events and status wait integration
+        if: matrix.suite == 'control'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/control-events-and-wait.ps1
 
       - name: Program overlay controls integration
+        if: matrix.suite == 'control'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/program-overlay-controls.ps1 -Dpi 144
 
       - name: Passive HUD integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Strict
 
       - name: Detached quick terminal integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Quick -Strict
 
       - name: Workspace navigation and sidebar integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Navigation -Strict
 
       - name: Native picker integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Picker -Strict
 
       - name: Native question integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Ask -Strict
 
       - name: Advanced passive HUD integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite HudAdvanced -Strict
 
       - name: Recent work integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Recent -Strict
 
       - name: Menu bar integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Menu -Strict
 
       - name: Working sets integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite WorkingSets -Strict
 
       - name: Native window controls integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Windows -Strict
 
       - name: Pane presentation and diagnostics integration
+        if: matrix.suite == 'ui'
         shell: pwsh
         timeout-minutes: 5
         run: ./tests/integration/hud-ui.ps1 -Suite Presentation -Strict
 
       - name: Test (Core + Pty)
+        if: matrix.suite == 'core'
         # One retry for the known .NET 10 test-host #118 pathology under named-pipe churn, which
         # manifests two ways: a native CRASH ("Test Run Aborted") OR a DEADLOCK that hangs the run
         # forever (a pipe teardown that never completes — no crash, no output). The crash-only retry
@@ -241,10 +275,63 @@ jobs:
 
       - name: Retain native UI acceptance outcomes
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: native-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-ui-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           # Numeric summaries only; raw logs, screenshots and state stay local.
           path: artifacts/native-ui/index.json
           if-no-files-found: ignore
           retention-days: 30
+
+  bridge-fixtures:
+    name: Ralphex bridge fixtures
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go for Ralphex bridge fixtures
+        id: go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+
+      - name: Cache pinned Ralphex
+        id: ralphex
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/ralphex-bin
+          key: ralphex-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-v1.6.1
+
+      - name: Install pinned Ralphex
+        if: steps.ralphex.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $bin = Join-Path $env:RUNNER_TEMP 'ralphex-bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          $env:GOBIN = $bin
+          # The command is the module path plus the main package, which lives under
+          # cmd/ - the module root holds no package, so the bare module path fails with
+          # "found, but does not contain package".
+          go install github.com/umputun/ralphex/cmd/ralphex@v1.6.1
+
+      - name: Add Ralphex to PATH
+        shell: pwsh
+        run: Join-Path $env:RUNNER_TEMP 'ralphex-bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Ralphex-Revmux bridge fixtures
+        shell: bash
+        run: ./tools/test-ralphex-revmux.sh
+
+
+  # Preserve the required check name; skipped/cancelled jobs must not pass it.
+  build-test:
+    name: build + test (windows)
+    if: ${{ always() }}
+    needs: [windows-tests, bridge-fixtures, portable]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all CI suites
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
