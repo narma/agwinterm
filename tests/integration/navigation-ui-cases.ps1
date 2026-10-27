@@ -5,6 +5,8 @@ function NavWait([scriptblock]$condition){for($i=0;$i-lt 60;$i++){if(& $conditio
 function NavKey([int]$key){[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]$key,[IntPtr]1)}
 function NavPixels([string]$name){
     Start-Sleep -Milliseconds 180
+    $oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
+    try {
     $rc=[HudOwnedJob+RECT]::new();[void][HudOwnedJob]::GetClientRect($hwnd,[ref]$rc)
     $bitmap=[Drawing.Bitmap]::new($rc.right,$rc.bottom);$g=[Drawing.Graphics]::FromImage($bitmap)
     try{
@@ -14,6 +16,7 @@ function NavPixels([string]$name){
         try{$pixels=[int[]]::new($bitmap.Width*$bitmap.Height);[Runtime.InteropServices.Marshal]::Copy($bits.Scan0,$pixels,0,$pixels.Length);return @{pixels=$pixels;width=$bitmap.Width;height=$bitmap.Height}}
         finally{$bitmap.UnlockBits($bits)}
     }finally{$g.Dispose();$bitmap.Dispose()}
+    }finally{[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
 }
 function PixelDifference($a,$b,[int]$x=0,[int]$y=0,[int]$w=0,[int]$h=0){
     if($a.width-ne $b.width -or $a.height-ne $b.height){throw 'Unexpected image resize'}
@@ -21,6 +24,26 @@ function PixelDifference($a,$b,[int]$x=0,[int]$y=0,[int]$w=0,[int]$h=0){
     for($row=$y;$row-lt [Math]::Min($a.height,$y+$h);$row++){for($col=$x;$col-lt [Math]::Min($a.width,$x+$w);$col++){
         $index=$row*$a.width+$col;if($a.pixels[$index]-ne $b.pixels[$index]){$different++}
     }};return $different
+}
+function NavStablePixels([string]$name,[int[]]$region){
+    $watch=[Diagnostics.Stopwatch]::StartNew();$previous=NavPixels $name;$streak=0;$samples=@()
+    if($region.Count-ne 4 -or $region[0]-lt 0 -or $region[1]-lt 0 -or $region[2]-le 0 -or $region[3]-le 0 -or
+        $region[0]+$region[2]-gt $previous.width -or $region[1]+$region[3]-gt $previous.height){throw "Invalid capture region for ${name}: [$($region -join ',')] image=$($previous.width)x$($previous.height)"}
+    do {
+        $frame=NavPixels $name
+        $difference=PixelDifference $previous $frame $region[0] $region[1] $region[2] $region[3]
+        $samples+=$difference
+        if($difference-eq 0){$streak++}else{$streak=0}
+        $previous=$frame
+    }while($streak-lt 2 -and $watch.ElapsedMilliseconds-lt 6000)
+    Write-Host "Render settle: $name region=[$($region -join ',')] elapsedMs=$($watch.ElapsedMilliseconds) differences=[$($samples -join ',')]"
+    if($streak-lt 2){throw "Render did not settle: $name"}
+    return $frame
+}
+function NavRegionDifference($a,$b,[int[]]$region,[string]$name){
+    $difference=PixelDifference $a $b $region[0] $region[1] $region[2] $region[3]
+    Write-Host "Pixel check: $name region=[$($region -join ',')] differences=$difference image=$($a.width)x$($a.height)"
+    return $difference
 }
 $first=[string](CurrentWs);$beforeText=Rpc 'session.text' @{} $session
 . "$PSScriptRoot/workspace-teardown-cases.ps1"
@@ -278,30 +301,46 @@ foreach($pair in @(@('cursor-style','nonsense'),@('cursor-blink','perhaps'),@('c
     $old=Rpc 'config.get' @{key=$pair[0]}
     Check "invalid $($pair[0]) refuses and preserves value" (-not (Rpc 'config.set' @{key=$pair[0];value=$pair[1]} -AllowError).ok -and (Rpc 'config.get' @{key=$pair[0]})-eq $old)
 }
-$null=Rpc 'config.set' @{key='cursor-blink';value='off'}
+$null=Rpc 'config.set' @{key='cursor-blink';value='false'} # canonical spelling avoids a normalization toast
 $null=Rpc 'config.set' @{key='cursor-blink-ms';value='60000'} # manual timer messages below, no clock-dependent samples
 $null=Rpc 'session.type' @{text="echo P15-READY`r"} $session
 Check 'shell output settled before cursor paint checks' (NavWait {([string](Rpc 'session.text' @{} $session))-match '(?m)^P15-READY\s*$'})
+# The echo marker precedes cmd's next prompt. Wait for stable text before placing
+# the cursor, otherwise late ConPTY output moves it after we sample the caret.
+$cursorText=[string](Rpc 'session.text' @{} $session);$cursorQuiet=0
+Check 'shell prompt settles before cursor placement' (NavWait {
+    $next=[string](Rpc 'session.text' @{} $session)
+    if($next-ceq $script:cursorText){$script:cursorQuiet++}else{$script:cursorQuiet=0}
+    $script:cursorText=$next
+    $script:cursorQuiet-ge 5
+})
 $null=Rpc 'session.write' @{text=([string][char]27+'[10;10H'+[char]27+'[0 q')} $session
 [void][HudOwnedJob]::SendMessageW($hwnd,7,[IntPtr]::Zero,[IntPtr]::Zero)
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class NavDpi { [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h); }'
+$dpiScale=if($env:AGWINTERM_DPI_OVERRIDE){[double]$env:AGWINTERM_DPI_OVERRIDE/96.0}else{[NavDpi]::GetDpiForWindow($hwnd)/96.0}
+$null=NavPixels 'cursor-position' # paint updates the hidden accessibility caret
 $caret=[HudOwnedJob]::CaretRect($hwnd);$metrics=Rpc 'session.metrics' @{} $session
-$null=Rpc 'config.set' @{key='cursor-style';value='bar'};$bar=NavPixels 'cursor-bar'
-$null=Rpc 'config.set' @{key='cursor-style';value='block'};$block=NavPixels 'cursor-block'
-Check 'cursor style changes rendered cell without resizing' ((PixelDifference $bar $block $caret.left $caret.top ($metrics.cellWidth+2) ($metrics.cellHeight+2))-gt 5 -and (Rpc 'session.metrics' @{} $session).cols-eq $metrics.cols)
-$null=Rpc 'config.set' @{key='cursor-style';value='underline'};$under=NavPixels 'cursor-underline'
-Check 'underline differs from block cursor' ((PixelDifference $block $under $caret.left $caret.top ($metrics.cellWidth+2) ($metrics.cellHeight+2))-gt 5)
-[void][HudOwnedJob]::SendMessageW($hwnd,0x113,[IntPtr]1,[IntPtr]::Zero);$steady=NavPixels 'cursor-steady'
-Check 'disabled blinking keeps cursor stable' ((PixelDifference $under $steady $caret.left $caret.top ($metrics.cellWidth+2) ($metrics.cellHeight+2))-eq 0)
+# The app positions its hidden system caret in layout DIPs; captures and metrics
+# use device pixels. Mixing those units samples an unrelated cell at 150% DPI.
+$cursorRegion=@([int][Math]::Floor($caret.left*$dpiScale),[int][Math]::Floor($caret.top*$dpiScale),($metrics.cellWidth+3),($metrics.cellHeight+3))
+Write-Host "Cursor geometry: dpiScale=$dpiScale caretDip=$($caret.left),$($caret.top) region=[$($cursorRegion -join ',')]"
+$null=Rpc 'config.set' @{key='cursor-style';value='bar'};$bar=NavStablePixels 'cursor-bar' $cursorRegion
+$null=Rpc 'config.set' @{key='cursor-style';value='block'};$block=NavStablePixels 'cursor-block' $cursorRegion
+Check 'cursor style changes rendered cell without resizing' ((NavRegionDifference $bar $block $cursorRegion 'bar/block')-gt 5 -and (Rpc 'session.metrics' @{} $session).cols-eq $metrics.cols)
+$null=Rpc 'config.set' @{key='cursor-style';value='underline'};$under=NavStablePixels 'cursor-underline' $cursorRegion
+Check 'underline differs from block cursor' ((NavRegionDifference $block $under $cursorRegion 'block/underline')-gt 5)
+[void][HudOwnedJob]::SendMessageW($hwnd,0x113,[IntPtr]1,[IntPtr]::Zero);$steady=NavStablePixels 'cursor-steady' $cursorRegion
+Check 'disabled blinking keeps cursor stable' ((NavRegionDifference $under $steady $cursorRegion 'steady')-eq 0)
 $null=Rpc 'config.set' @{key='cursor-blink';value='true'}
-$a=NavPixels 'cursor-blink-a';[void][HudOwnedJob]::SendMessageW($hwnd,0x113,[IntPtr]1,[IntPtr]::Zero);$b=NavPixels 'cursor-blink-b'
-Check 'enabled blinking changes rendered cursor' ((PixelDifference $a $b $caret.left $caret.top ($metrics.cellWidth+2) ($metrics.cellHeight+2))-gt 0)
+$a=NavStablePixels 'cursor-blink-a' $cursorRegion;[void][HudOwnedJob]::SendMessageW($hwnd,0x113,[IntPtr]1,[IntPtr]::Zero);$b=NavStablePixels 'cursor-blink-b' $cursorRegion
+Check 'enabled blinking changes rendered cursor' ((NavRegionDifference $a $b $cursorRegion 'blink')-gt 0)
 $null=Rpc 'session.write' @{text=([string][char]27+'[2 q')} $session # steady block overrides both config fields
 $null=Rpc 'config.set' @{key='cursor-style';value='bar'}
-$override=NavPixels 'cursor-decscusr-block'
-Check 'DECSCUSR block overrides configured bar' ((PixelDifference $block $override $caret.left $caret.top ($metrics.cellWidth+2) ($metrics.cellHeight+2))-eq 0)
+$override=NavStablePixels 'cursor-decscusr-block' $cursorRegion
+Check 'DECSCUSR block overrides configured bar' ((NavRegionDifference $block $override $cursorRegion 'DECSCUSR block')-eq 0)
 [void][HudOwnedJob]::SendMessageW($hwnd,0x113,[IntPtr]1,[IntPtr]::Zero)
-$overrideTick=NavPixels 'cursor-decscusr-steady'
-Check 'DECSCUSR steady overrides enabled configured blinking' ((PixelDifference $override $overrideTick $caret.left $caret.top ($metrics.cellWidth+2) ($metrics.cellHeight+2))-eq 0)
+$overrideTick=NavStablePixels 'cursor-decscusr-steady' $cursorRegion
+Check 'DECSCUSR steady overrides enabled configured blinking' ((NavRegionDifference $override $overrideTick $cursorRegion 'DECSCUSR steady')-eq 0)
 $null=Rpc 'session.write' @{text=([string][char]27+'[0 q')} $session
 $null=Rpc 'config.set' @{key='cursor-blink';value='false'}
 [void][HudOwnedJob]::SendMessageW($hwnd,8,[IntPtr]::Zero,[IntPtr]::Zero)
@@ -318,30 +357,37 @@ public static class NavHover {
     [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd,uint flags);
     [DllImport("user32.dll")] static extern IntPtr SendMessageW(IntPtr hwnd,uint message,IntPtr wParam,IntPtr lParam);
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     public static RECT Place(IntPtr hwnd) {
-        POINT pointer,client=new POINT(); RECT old;
-        if(!GetCursorPos(out pointer) || !GetWindowRect(hwnd,out old) || !ClientToScreen(hwnd,ref client))throw new Exception("Cannot position owned hover window");
-        if(!SetWindowPos(hwnd,(IntPtr)(-1),pointer.x-(client.x-old.left)-200,pointer.y-(client.y-old.top)-200,0,0,0x51))throw new Exception("Cannot move owned hover window");
-        if(GetAncestor(WindowFromPoint(pointer),2)!=hwnd)throw new Exception("Owned hover window is not under the pointer");
+        RECT old;
+        if(!GetWindowRect(hwnd,out old))throw new Exception("Cannot save owned hover window position");
         return old;
     }
     public static void Restore(IntPtr hwnd,RECT old) {
         if(!SetWindowPos(hwnd,(IntPtr)(-2),old.left,old.top,0,0,0x51))throw new Exception("Cannot restore owned hover window");
     }
     public static void Move(IntPtr hwnd,int x,int y) {
-        var position=(IntPtr)((y << 16) | (x & 0xffff));
-        SendMessageW(hwnd,0x200,IntPtr.Zero,position);
+        var dpi=SetThreadDpiAwarenessContext((IntPtr)(-4));
+        try {
+            // Keep real and synthetic hover coordinates in agreement. Otherwise
+            // a real WM_MOUSEMOVE can replace the synthetic row during dwell.
+            POINT pointer,client=new POINT(); RECT old;
+            if(!GetCursorPos(out pointer) || !GetWindowRect(hwnd,out old) || !ClientToScreen(hwnd,ref client))throw new Exception("Cannot read owned hover coordinates");
+            if(!SetWindowPos(hwnd,(IntPtr)(-1),old.left+pointer.x-client.x-x,old.top+pointer.y-client.y-y,0,0,0x51))throw new Exception("Cannot align owned hover window");
+            if(GetAncestor(WindowFromPoint(pointer),2)!=hwnd)throw new Exception($"Owned hover window is not under pointer ({pointer.x},{pointer.y}), target client ({x},{y})");
+            var position=(IntPtr)((y << 16) | (x & 0xffff));
+            SendMessageW(hwnd,0x200,IntPtr.Zero,position);
+        } finally {SetThreadDpiAwarenessContext(dpi);}
     }
 }
 '@
-$hoverWindow=[NavHover]::Place($hwnd)
+$oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
+try{$hoverWindow=[NavHover]::Place($hwnd)}finally{[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
 $long='P15 workspace full truncated name — alpha beta gamma delta epsilon zeta eta theta'
 $null=Rpc 'workspace.rename' @{name=$long} $first
 $null=Rpc 'sidebar' @{op='width';width=160}
 Start-Sleep -Milliseconds 100
 $baseline=NavPixels 'tooltip-before'
-Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class NavDpi { [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h); }'
-$dpiScale=[NavDpi]::GetDpiForWindow($hwnd)/96.0
 $x=[int](40*$dpiScale);$y=[int](50*$dpiScale)
 [NavHover]::Move($hwnd,$x,$y)
 Start-Sleep -Milliseconds 650
@@ -367,12 +413,18 @@ $sy=[int]((50+$rowDip)*$dpiScale)
 Start-Sleep -Milliseconds 650
 $sessionTip=NavPixels 'tooltip-session-flagged'
 Check 'flagged session truncated name paints tooltip' ((PixelDifference $sessionBefore $sessionTip)-gt 150)
+# Compare the tooltip's extension into the terminal, below the hovered row.
+# The title changes on rename and WM_MOUSELEAVE also changes chrome hover paint;
+# neither is evidence that the old sidebar-name tooltip survived the rename.
+$tipRegion=@([int](170*$dpiScale),[int]($sy+$rowDip*$dpiScale),[int]([Math]::Min(400*$dpiScale,$sessionTip.width-180*$dpiScale)),[int](80*$dpiScale))
+Check 'session tooltip is visible in the comparison region' ((NavRegionDifference $sessionBefore $sessionTip $tipRegion 'tooltip present')-gt 150)
 $null=Rpc 'session.rename' @{name='short session'} $session
-$renamed=NavPixels 'tooltip-session-renamed'
+$renamed=NavStablePixels 'tooltip-session-renamed' $tipRegion
 [void][HudOwnedJob]::SendMessageW($hwnd,0x2a3,[IntPtr]::Zero,[IntPtr]::Zero)
-$renamedLeft=NavPixels 'tooltip-session-renamed-left'
-Check 'renaming hovered row invalidates tooltip without a move' ((PixelDifference $renamed $renamedLeft)-eq 0)
-[NavHover]::Restore($hwnd,$hoverWindow)
+$renamedLeft=NavStablePixels 'tooltip-session-renamed-left' $tipRegion
+Check 'renaming hovered row invalidates tooltip without a move' ((NavRegionDifference $renamed $renamedLeft $tipRegion 'tooltip rename/leave')-eq 0)
+$oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
+try{[NavHover]::Restore($hwnd,$hoverWindow)}finally{[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
 $null=Rpc 'sidebar' @{op='mode:tree'}
 $null=Rpc 'session.type' @{text="exit`r"} $session
 Check 'exited shell does not retain shell-name hint' (NavWait {$null-eq (Node $session).foregroundShell})
