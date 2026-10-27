@@ -35,12 +35,40 @@ Check 'modifier down preserves selection in Win32 input mode' ((Rpc 'session.cop
 Check 'modifier up preserves selection in Win32 input mode' ((Rpc 'session.copy' @{} $session)-ceq $selectedBefore)
 $null=Rpc 'selection.clear' @{} $session
 $null=Rpc 'session.write' @{text=($esc+'[?9001l'+$esc+'[?1049hALT-HELP-PROBE')} $session
-$helpBefore=NavPixels 'alt-help-before';NavKey 112
-$helpShown=NavPixels 'alt-help-shown'
-Check 'F1 opens app help while alternate screen is active' ((PixelDifference $helpBefore $helpShown)-gt 1000)
-NavKey 112
-$helpClosed=NavPixels 'alt-help-closed'
-Check 'F1 closes app help without forwarding it to the terminal' ((PixelDifference $helpBefore $helpClosed)-lt 250)
+# A single delayed capture can race pending terminal output or a redraw. Establish
+# a quiet baseline, then require consecutive matching frames without sending F1
+# again during retries (which could hide a broken toggle).
+function WaitHelpFrame([string]$name,[string]$phase,$reference){
+    $watch=[Diagnostics.Stopwatch]::StartNew();$streak=0;$samples=[Collections.Generic.List[string]]::new()
+    $previous=$reference;$frame=$null
+    do {
+        $frame=NavPixels $name
+        $sameSize=$frame.width-eq $previous.width -and $frame.height-eq $previous.height
+        $difference=if($sameSize){PixelDifference $previous $frame}else{-1}
+        $matches=$sameSize -and $(switch($phase){
+            'baseline' {$difference-eq 0}
+            'open' {$difference-gt 1000}
+            'closed' {$difference-lt 250}
+        })
+        $samples.Add("$($watch.ElapsedMilliseconds)ms:${difference}px:$($frame.width)x$($frame.height)")
+        if($matches){$streak++}else{$streak=0}
+        if($phase-eq 'baseline'){$previous=$frame}
+    }while($streak-lt 3 -and $watch.ElapsedMilliseconds-lt 6000)
+    $detail="phase=$phase elapsedMs=$($watch.ElapsedMilliseconds) consecutive=$streak/3 samples=[$($samples -join ', ')] capture=$name.png"
+    Write-Host "F1 render wait: $detail"
+    return @{ok=($streak-ge 3);frame=$frame;detail=$detail}
+}
+$helpReady=WaitHelpFrame 'alt-help-before' 'baseline' (NavPixels 'alt-help-before')
+Check 'F1 baseline settles before opening help' $helpReady.ok $helpReady.detail
+if($helpReady.ok){
+    $helpBefore=$helpReady.frame
+    NavKey 112
+    $helpShown=WaitHelpFrame 'alt-help-shown' 'open' $helpBefore
+    Check 'F1 opens app help while alternate screen is active' $helpShown.ok $helpShown.detail
+    NavKey 112
+    $helpClosed=WaitHelpFrame 'alt-help-closed' 'closed' $helpBefore
+    Check 'F1 closes app help without forwarding it to the terminal' $helpClosed.ok $helpClosed.detail
+}
 $null=Rpc 'session.write' @{text=($esc+'[?1049l')} $session
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
