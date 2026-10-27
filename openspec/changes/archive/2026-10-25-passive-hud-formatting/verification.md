@@ -14,3 +14,8 @@ Evidence: ignored `artifacts/c4-build.log`, `c4-regression.log`, `c4-hud-ui.log`
 Limits: DPI override exercises native scaling without moving the user's windows across physical monitors. Markdown is the documented bounded subset, not CommonMark/HTML. UI-thread congestion may delay expiry, never advance it. No release or live installation performed; unrelated ConPTY edits are excluded from this stage.
 
 Post-archive audit: corrected generic CLI integer validation to allow fractional HUD font-size as specified, while retaining dashboard integer validation. All 16 HudPresentationTests passed (artifacts/c4-font-fix.log).
+
+Historical local acceptance record: the exact tested application commit was not recorded.
+Raw logs and screenshots remain local and are intentionally not versioned; the paths above
+identify original runs, not a permanent archive available after cloning. These checks were
+not rerun as part of repository cleanup.

@@ -66,6 +66,27 @@ agwintermctl tree                                  # (default pipe) drives the r
 
 Inside any session, `AGWINTERM_PIPE` is already set, so a bare `agwintermctl` auto-targets the instance it is running in. Force a specific identity with `--app-id <name>` or `AGWINTERM_APP_ID` (handy for a second throwaway instance). Dev builds also skip registering as the default-terminal COM server, so they never intercept the release's console handoffs.
 
+### Test results and generated files
+
+Keep test scripts, brief verification reports and known limitations in Git.
+Logs, screenshots and run-state files are disposable output: keep local runs in
+ignored `artifacts/` or `.revmux/*-ui-*/` directories, rather than committing an
+archive. Commit an image only when documentation or an automated test needs it.
+Historical reports should distinguish passing checks from failures and state
+when the tested commit is unknown; local artifact paths are provenance, not
+permanent download links.
+
+The Windows CI job retains only numeric UI outcomes and workflow/commit IDs in
+`native-ui-<run-id>-<attempt>` artifacts for 30 days, including after a failed
+step. `tools/export-ui-evidence.ps1` produces the same summary locally. Missing
+summaries have null outcomes; raw logs, screenshots and private state are not
+uploaded automatically. These artifacts expire and do not replace test coverage.
+
+Review configuration (`.revmux/profile.md`, `.ralphex/config`, prompts and bridge
+code) and the shared OpenSpec skills are versioned. Generated review rounds,
+the local OpenSpec target marker, installer logs and nested review checkouts
+stay ignored. Do not ignore `.revmux/` or `.agents/` wholesale.
+
 ## AI-assisted contributions
 
 AI-assisted development is welcome. The expectations for those PRs are specific.

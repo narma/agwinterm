@@ -68,6 +68,10 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: UI evidence export fixtures
+        shell: pwsh
+        run: ./tools/export-ui-evidence.tests.ps1
+
       - name: Restore
         run: dotnet restore Agwinterm.slnx
 
@@ -229,3 +233,18 @@ jobs:
           if ($r -eq 'fail') { exit 1 }
           Write-Host '::warning::retrying the test suite once (issue #118)'
           if ((Invoke-Tests) -eq 'ok') { exit 0 } else { exit 1 }
+
+      - name: Prepare native UI acceptance outcomes
+        if: ${{ always() }}
+        shell: pwsh
+        run: ./tools/export-ui-evidence.ps1
+
+      - name: Retain native UI acceptance outcomes
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          # Numeric summaries only; raw logs, screenshots and state stay local.
+          path: artifacts/native-ui/index.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -13,3 +13,8 @@ Verified locally on 2026-10-25 without changing the live installation or monitor
 Each native-window-control scenario maps to NativeWindowRequestTests, WindowPlacementTests or the owned Windows fixture; WSL Reveal has real distribution/user conversion coverage. Monitor enumeration/placement ran on the available display. Negative work-area and oversized geometry are pure tests; no claim is made of physically testing hotplug or mixed-DPI movement across multiple monitors. Native replies read actual OS state rather than echoing requested coordinates.
 
 An initial native test caught an unsupported event-kind name after creation. It now emits the existing C1 tree invalidation with operation info, avoiding a post-mutation error. Existing UI fullscreen entry points retain their default behavior; new control paths use the nonactivating variant. The broader UIA/cursor/hover limitations recorded in C6 remain outside this change.
+
+Historical local acceptance record: the exact tested application commit was not recorded.
+Raw logs and screenshots remain local and are intentionally not versioned; the paths above
+identify original runs, not a permanent archive available after cloning. These checks were
+not rerun as part of repository cleanup.
