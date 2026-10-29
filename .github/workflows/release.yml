@@ -60,7 +60,7 @@ jobs:
       - name: Carry the frozen handover asset forward
         shell: pwsh
         run: |
-          $url = 'https://github.com/${{ github.repository }}/releases/download/v0.17.4/agwinterm-lite-setup-0.17.4.exe'
+          $url = 'https://github.com/yeroo/agwinterm/releases/download/v0.17.4/agwinterm-lite-setup-0.17.4.exe'
           $out = 'installer/Output/agwinterm-lite-setup-0.17.4.exe'
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
           # The digest a pre-handover updater verifies against is the one the release API publishes for
