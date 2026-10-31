@@ -147,13 +147,26 @@ try {
     'C0 Win32 acceptance passed'
 }
 finally {
-    if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force; $process.WaitForExit() }
-    $parent = [IO.Path]::GetFullPath([Environment]::GetFolderPath('LocalApplicationData'))
-    foreach ($dir in @($state, $state+'-fallback')) {
-        $full = [IO.Path]::GetFullPath($dir)
-        if ([IO.Path]::GetDirectoryName($full) -eq $parent -and [IO.Path]::GetFileName($full) -match '^agwinterm-c0-[a-f0-9]{32}(-fallback)?$') {
-            if (Test-Path -LiteralPath $full) { Remove-Item -LiteralPath $full -Recurse -Force }
+    try {
+        if ($process -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+        $parent = [IO.Path]::GetFullPath([Environment]::GetFolderPath('LocalApplicationData'))
+        foreach ($dir in @($state, $state+'-fallback')) {
+            $full = [IO.Path]::GetFullPath($dir)
+            if ([IO.Path]::GetDirectoryName($full) -eq $parent -and [IO.Path]::GetFileName($full) -match '^agwinterm-c0-[a-f0-9]{32}(-fallback)?$') {
+                # Kill(true) waits for the app, but descendant shells can still be
+                # releasing their cwd handles. Retry cleanup, never the test commands.
+                for ($attempt = 0; $attempt -lt 30; $attempt++) {
+                    try {
+                        if (Test-Path -LiteralPath $full) { Remove-Item -LiteralPath $full -Recurse -Force }
+                        break
+                    } catch {
+                        if ($attempt -eq 29) { throw }
+                        Start-Sleep -Milliseconds 100
+                    }
+                }
+            }
         }
+    } finally {
+        foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name,$saved[$name]) }
     }
-    foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name,$saved[$name]) }
 }
