@@ -173,7 +173,7 @@ setTimeout(() => {
     if (-not $NavigationOnly) {
     $busyCommand = 'for /L %i in (1,1,20000) do @echo WEB_BUSY_%i'
     # Earlier keyboard routing checks can leave characters on cmd.exe's input line.
-    Require ((Call @('session','type',("`e"+$busyCommand+"`r"),'--target',$owner)).ok) 'busy terminal output starts under dashboard'
+    Require ((Call @('session','type',("`e"+$busyCommand+"`r"),'--allow-control','--target',$owner)).ok) 'busy terminal output starts under dashboard'
     $responseWatch = [Diagnostics.Stopwatch]::StartNew()
     Web-Invoke 'Run Report'
     for ($i=0; $i -lt 50 -and (Invoke-RestMethod ($url+'state')).jobs.report.runs -lt 2; $i++) { Start-Sleep -Milliseconds 100 }
@@ -199,6 +199,7 @@ setTimeout(() => {
     $linkClipboard = [System.Windows.Forms.Clipboard]::GetDataObject()
     try {
         Web-Invoke 'Copy link'
+        for ($i=0; $i -lt 50 -and (Get-Clipboard -Raw) -ne ($url+'next'); $i++) { Start-Sleep -Milliseconds 100 }
         Require ((Get-Clipboard -Raw) -eq ($url+'next')) 'native Copy link copies the current page address'
     } finally {
         if ($linkClipboard) { [System.Windows.Forms.Clipboard]::SetDataObject($linkClipboard,$true) }
@@ -218,7 +219,7 @@ setTimeout(() => {
     Wait-WebUrl $crossOriginUrl
     Require ($redirected.id -eq $beforeRedirect) 'cross-origin redirect retains page identity'
     Require $redirected.browse 'tree reports explicit browse mode'
-    [void](Web-Element ($crossOriginUrl.TrimEnd('/') + ' — ' + $redirected.title))
+    [void](Web-Element ($crossOriginUrl + '  ·  ' + $redirected.title))
     [void](Call @('session','overlay','navigate','back','--target',$owner))
     Wait-WebUrl ($url+'next')
     [void](Call @('session','overlay','reload','--current','--target',$owner))

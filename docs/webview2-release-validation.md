@@ -31,6 +31,12 @@ buttons yield space in narrow panes. The focused UI Automation checks verify the
 compact controls and their ordering; the local screenshot is
 `artifacts/web-overlay-toolbar.png`.
 
+The native host/cookbook run passed the host and review cases; cookbook retry
+passed the busy-terminal workload (146 ms dashboard response), and the focused
+navigation run passed Copy link, history, redirects, confirmation and snapshot
+actions. The test clears cmd.exe's residual input explicitly and waits for the
+asynchronous UI Automation Copy action before checking the clipboard.
+
 ## Local parity extension — published-build evidence (2026-11-01)
 
 Remote display/replication was explicitly deferred on 2026-10-31 to a future
