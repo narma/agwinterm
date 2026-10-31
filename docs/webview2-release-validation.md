@@ -10,7 +10,7 @@ use browser-provided frame IDs and opaque child origins (including separate rend
 targets), pane-specific defaults, companion rollback, execution-time mutation guards,
 and initialization-safe reload.
 
-Release build and 583 Core / 1,562 PTY tests pass. The new
+Release build and 583 Core / 1,564 PTY tests pass. The new
 `web-overlay-parity.ps1 -ReviewOnly` run verifies external child scripts, same-URL
 children, srcdoc refusal, right-pane typing, swap, companion pane targeting and early
 reload. A deterministic queued-command test invalidates the document while paused
@@ -44,6 +44,12 @@ passed the busy-terminal workload (146 ms dashboard response), and the focused
 navigation run passed Copy link, history, redirects, confirmation and snapshot
 actions. The test clears cmd.exe's residual input explicitly and waits for the
 asynchronous UI Automation Copy action before checking the clipboard.
+
+CI also caught a companion guard querying the UI before filtering the command,
+which broke workspace creation while the UI thread was intentionally suspended.
+The guard now looks up companions only for commands that need that restriction.
+Two dispatcher regressions verify asynchronous workspace creation avoids the
+lookup while pane commands still reject companions.
 
 ## Local parity extension — published-build evidence (2026-11-01)
 

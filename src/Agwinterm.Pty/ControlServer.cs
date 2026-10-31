@@ -366,14 +366,16 @@ public sealed partial class ControlServer : IDisposable
             if (windowSel is not null && _windows is not null && _windows.ResolveWindow(windowSel) is null)
                 return Err("window not found: " + windowSel);
 
-            if (host.IsPageCompanion(target) &&
-                (cmd is "session.type" or "session.write" or "session.text" or "session.copy" or "session.paste" or "session.search" or
+            // Only pane operations need the UI-owned companion lookup. In particular,
+            // workspace.new must retain its asynchronous acknowledgement contract.
+            if ((cmd is "session.type" or "session.write" or "session.text" or "session.copy" or "session.paste" or "session.search" or
                     "session.background" or "session.swap" or "session.focus" or "session.resize" or "session.split" or "session.split.close" or
                     "session.scratch" or "session.restore" or "session.duplicate" or "session.hud" or "surface.cursor" or "surface.zoom" or
                     "session.context" or "session.bind" or "restore.capture" ||
                  cmd.StartsWith("image.", StringComparison.Ordinal) || cmd.StartsWith("selection.", StringComparison.Ordinal) ||
                  cmd == "ask.open" && !GetBool(args, "gui") ||
-                 cmd == "session.overlay" && GetString(args, "action") is null or "open" && !GetBool(args, "companion")))
+                 cmd == "session.overlay" && GetString(args, "action") is null or "open" && !GetBool(args, "companion")) &&
+                host.IsPageCompanion(target))
                 return Err(cmd + ": not available on a page companion");
 
             if (PresentationRequest.Applies(cmd))

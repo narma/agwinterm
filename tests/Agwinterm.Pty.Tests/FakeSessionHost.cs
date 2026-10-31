@@ -9,6 +9,8 @@ namespace Agwinterm.Pty.Tests;
 /// asserted end-to-end. Peripheral verbs return sensible constants.</summary>
 internal sealed class FakeSessionHost : ISessionHost
 {
+    public Func<string?, bool>? PageCompanionLookup { get; set; }
+    public bool IsPageCompanion(string? target) => PageCompanionLookup?.Invoke(target) ?? false;
     public WebOverlayRequest? LastWebRequest { get; private set; }
     public WebOverlayCommand? LastWebCommand { get; private set; }
     public string? LastWebTarget { get; private set; }

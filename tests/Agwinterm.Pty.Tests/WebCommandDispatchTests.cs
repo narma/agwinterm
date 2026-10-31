@@ -5,6 +5,25 @@ namespace Agwinterm.Pty.Tests;
 
 public class WebCommandDispatchTests
 {
+    [Fact]
+    public void WorkspaceCreationDoesNotWaitForCompanionLookup()
+    {
+        var host = new FakeSessionHost { PageCompanionLookup = _ => throw new TimeoutException("UI lookup must not run") };
+        using var server = new ControlServer(host);
+        using var reply = JsonDocument.Parse(server.Dispatch("""{"cmd":"workspace.new","args":{"name":"queued"}}"""));
+        Assert.True(reply.RootElement.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public void PaneCommandsStillRefuseCompanionTargets()
+    {
+        var host = new FakeSessionHost { PageCompanionLookup = _ => true };
+        using var server = new ControlServer(host);
+        using var reply = JsonDocument.Parse(server.Dispatch("""{"cmd":"session.type","args":{"text":"must not type"}}"""));
+        Assert.False(reply.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Contains("not available on a page companion", reply.RootElement.GetProperty("error").GetString());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
