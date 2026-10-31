@@ -117,7 +117,11 @@ canonical directory containing that document and rejects filesystem/home roots.
 Retain handle-based Windows/WSL escape checks. Block native file selection, external
 drops and file paste; browser permissions alone do not enforce these restrictions.
 
-Unless chromeless, expose native identity/title/close; --navigation adds history,
+Unless chromeless, expose a single compact themed native row with centered
+identity/title and right-aligned minimize/close icons, matching agterm's chrome.
+Icon buttons retain accessible names, hover tooltips and visual-order keyboard
+traversal. Optional navigation actions yield space in narrow panes.
+--navigation adds history,
 current reload, browser, copy-link/reveal and hide. Add corresponding readback.
 Web focus routes font actions to a shared saved zoom value. Preserve review drafts
 during theme changes, documenting this compatibility choice; provide default local

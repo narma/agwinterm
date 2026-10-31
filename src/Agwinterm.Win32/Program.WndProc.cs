@@ -98,6 +98,10 @@ internal partial class Program
                     break;
                 }
 
+            case 0x002B: // WM_DRAWITEM: accessible native web toolbar controls
+                if (DrawWebChrome(lParam)) return (IntPtr)1;
+                break;
+
             case WM_COMMAND:
                 if (HiWord(wParam) == 0 && WebNavigationClick(lParam)) return IntPtr.Zero;
                 if (LoWord(wParam) == EDIT_ID && HiWord(wParam) == EN_KILLFOCUS) CommitRename();

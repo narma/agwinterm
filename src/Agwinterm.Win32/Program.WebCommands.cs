@@ -160,8 +160,9 @@ internal partial class Program
             if (action == "reload" && !args.ContainsKey("current")) args["current"] = true;
         }
         bool global = command.StartsWith("browser.", StringComparison.Ordinal) || command is "recent.list" or "recent.clear" || command.StartsWith("hooks.", StringComparison.Ordinal);
-        if (target is null && window is null && (command.StartsWith("session.", StringComparison.Ordinal) && command is not ("session.new" or "session.go") || command is "notify" or "font" || command.StartsWith("font.", StringComparison.Ordinal))) target = page.Owner.Id;
-        if (request.Target is null && request.Window is null && page.Pane is not null && WebBridgeRequest.TargetsPane(command)) target = page.Pane.Id;
+        if (target is null && window is null && (WebBridgeRequest.TargetsPane(command) ||
+            command.StartsWith("session.", StringComparison.Ordinal) && command is not ("session.new" or "session.go")))
+            target = WebBridgeRequest.TargetsPane(command) && page.Pane is not null ? page.Pane.Id : page.Owner.Id;
         if (target is null && command.StartsWith("window.", StringComparison.Ordinal) && command is not ("window.new" or "window.list")) target = window ?? Id;
         if (!global && request.Target is null && window is null && !command.StartsWith("window.", StringComparison.Ordinal)) window = Id;
         var envelope = new Dictionary<string, object?> { ["cmd"] = command, ["args"] = args };

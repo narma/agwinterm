@@ -8,7 +8,7 @@ public sealed record WebBridgeRequest(string Id, string Method, string? Target, 
 {
     public static bool TargetsPane(string command) => command is
         "session.type" or "session.write" or "session.text" or "session.copy" or "session.paste" or "session.search" or
-        "session.status" or "session.metrics" or "session.output" or "session.readonly" or "session.agent-resume" or
+        "session.status" or "session.metrics" or "session.output" or "session.readonly" or "session.agent-resume" or "session.restore" or
         "surface.cursor" or "font" or "notify" or "command.run" ||
         command.StartsWith("font.", StringComparison.Ordinal) || command.StartsWith("image.", StringComparison.Ordinal) ||
         command.StartsWith("selection.", StringComparison.Ordinal);

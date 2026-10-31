@@ -74,4 +74,57 @@ $early=Call @('session','overlay','open','--html',"$directory/page.html",'--targ
 Require $early.ok 'early reload fixture opens'
 Require ((Call @('session','overlay','reload','--target',$owner)).ok) 'reload during controller initialization is coalesced'
 Wait-Pages 1
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class ChromeTestWindow {
+    private delegate bool Visitor(IntPtr hwnd, IntPtr arg);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(Visitor visitor, IntPtr arg);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetClassNameW(IntPtr hwnd, StringBuilder name, int count);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr hwnd, StringBuilder name, int count);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    public static IntPtr Find(int pid) {
+        IntPtr result=IntPtr.Zero;
+        EnumWindows((hwnd,arg)=>{GetWindowThreadProcessId(hwnd,out uint owner);var name=new StringBuilder(256);GetClassNameW(hwnd,name,256);var title=new StringBuilder(256);GetWindowTextW(hwnd,title,256);
+            if(owner==pid && name.ToString()=="AgwintermWin32" && title.ToString()!="agwinterm quick terminal"){result=hwnd;return false;}return true;},IntPtr.Zero);
+        return result;
+    }
+}
+'@
+$chromeWindow = [ChromeTestWindow]::Find($process.Id)
+[void][ChromeTestWindow]::ShowWindow($chromeWindow,9)
+[void][ChromeTestWindow]::SetForegroundWindow($chromeWindow)
+Start-Sleep -Milliseconds 500
+$chromeRoot = [System.Windows.Automation.AutomationElement]::FromHandle($chromeWindow)
+$closeCondition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Close')
+$closeButton = $chromeRoot.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$closeCondition)
+Require ($null -ne $closeButton -and $closeButton.Current.BoundingRectangle.Width -le 64) 'toolbar Close remains accessible and compact'
+$hideCondition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Hide')
+$hideButton = $chromeRoot.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$hideCondition)
+Require ($hideButton.Current.BoundingRectangle.Right -le $closeButton.Current.BoundingRectangle.Left) 'toolbar places Hide immediately before Close'
+$screenRect = $chromeRoot.Current.BoundingRectangle
+$capture = [Drawing.Bitmap]::new([int]$screenRect.Width,[int]$screenRect.Height)
+$graphics = [Drawing.Graphics]::FromImage($capture)
+try {
+    $graphics.CopyFromScreen([int]$screenRect.Left,[int]$screenRect.Top,0,0,$capture.Size)
+    $capture.Save([IO.Path]::GetFullPath("$PSScriptRoot/../../artifacts/web-overlay-toolbar.png"))
+} finally { $graphics.Dispose(); $capture.Dispose() }
 [void](Call @('session','overlay','close','--target',$owner))
+
+# Closing through the document bridge invalidates that document's mutation guard.
+# Host-owned grace-period cleanup must still dispose its terminal process.
+$shells = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($process.Id) AND Name='cmd.exe'")
+Require ($shells.Count -gt 0) 'private terminal processes found for bridge-close cleanup'
+$closeScript=Join-Path $directory 'bridge-close.html'
+'<!doctype html><script>setTimeout(()=>agterm.request("session.close",{args:{undoable:true}}),300)</script>' | Set-Content $closeScript
+Require ((Call @('session','overlay','open','--html',$closeScript,'--js','--target',$owner)).ok) 'bridge undoable close fixture opens'
+for ($i=0; $i -lt 100; $i++) {
+    if (-not (Session) -and @($shells | Where-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }).Count -eq 0) { break }
+    Start-Sleep -Milliseconds 100
+}
+Require (-not (Session)) 'bridge close removes its session from the tree'
+Require (@($shells | Where-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }).Count -eq 0) 'bridge close disposes retained terminal processes after undo grace'

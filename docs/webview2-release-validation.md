@@ -19,6 +19,18 @@ parity runs also pass for the initial fixes; final child-renderer handling is ch
 by the focused regression run. Local logs are `artifacts/webview2-greptile-*.log`.
 The installed/published measurements below precede these review fixes.
 
+The second review fixes host-owned undo-expiry cleanup (which must outlive the
+closing document's guard) and keeps integration installer waits off the UI thread.
+The focused regression now closes a session through its page bridge and verifies
+that its retained terminal processes exit after the grace period.
+
+Native page chrome uses one 36-DIP themed row with a centered URL/file and title,
+compact icon buttons, accessible action names, hover tooltips and visual-order
+keyboard traversal. Hide and Close stay at the right edge; optional navigation
+buttons yield space in narrow panes. The focused UI Automation checks verify the
+compact controls and their ordering; the local screenshot is
+`artifacts/web-overlay-toolbar.png`.
+
 ## Local parity extension — published-build evidence (2026-11-01)
 
 Remote display/replication was explicitly deferred on 2026-10-31 to a future

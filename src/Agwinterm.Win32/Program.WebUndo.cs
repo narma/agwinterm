@@ -77,7 +77,9 @@ internal partial class Program
         }
         RefreshHudTimer(); UpdateWebPresentation(); RequestRedraw(); SaveRecent(); SaveState(); EmitEvent("tree");
         ShowToast("Closed — Reopen Last Closed Item restores it for 3 seconds", 3000);
-        _ = Task.Delay(3000).ContinueWith(_ => PostVerb(() => FinalizeSoftWebClose(close)));
+        // Accepted-close cleanup belongs to the host, not to the originating document.
+        // PostVerb would inherit its now-stale bridge guard and leak the parked session.
+        _ = Task.Delay(3000).ContinueWith(_ => Post(() => FinalizeSoftWebClose(close)));
         return true;
     }
 

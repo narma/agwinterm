@@ -172,7 +172,8 @@ setTimeout(() => {
     # Scoped terminal output while the dashboard owns the visible session surface.
     if (-not $NavigationOnly) {
     $busyCommand = 'for /L %i in (1,1,20000) do @echo WEB_BUSY_%i'
-    Require ((Call @('session','type',($busyCommand+"`r"),'--target',$owner)).ok) 'busy terminal output starts under dashboard'
+    # Earlier keyboard routing checks can leave characters on cmd.exe's input line.
+    Require ((Call @('session','type',("`e"+$busyCommand+"`r"),'--target',$owner)).ok) 'busy terminal output starts under dashboard'
     $responseWatch = [Diagnostics.Stopwatch]::StartNew()
     Web-Invoke 'Run Report'
     for ($i=0; $i -lt 50 -and (Invoke-RestMethod ($url+'state')).jobs.report.runs -lt 2; $i++) { Start-Sleep -Milliseconds 100 }

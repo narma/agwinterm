@@ -22,6 +22,8 @@ internal partial class Program
         public LocalWebSource? Resources;
         public string? ReloadUrl;
         public IntPtr[] NavigationButtons = [];
+        public IntPtr Tooltip;
+        public readonly List<IntPtr> TooltipText = [];
         public Theme? AppliedTheme;
         public IntPtr ErrorLabel;
         public Rectangle? NativeBounds;
@@ -164,7 +166,8 @@ internal partial class Program
         {
             if (!IsCurrent() || page.NavigationButtons.Length == 0) return;
             e.Handled = true;
-            Win32.SetFocus(e.Reason == CoreWebView2MoveFocusReason.Previous ? page.NavigationButtons[^1] : page.NavigationButtons[0]);
+            var order = WebNavigationOrder(page).ToArray();
+            if (order.Length != 0) Win32.SetFocus(e.Reason == CoreWebView2MoveFocusReason.Previous ? order[^1] : order[0]);
         };
         // Keep the HUD until successful controller initialization commits presentation.
         _ = host.RunAsync(async () =>
@@ -337,6 +340,7 @@ internal partial class Program
         CancelWebExternal(page);
         CompleteWebOutcome(page, null);
         page.Cancellation.Cancel();
+        DestroyWebTooltips(page);
         foreach (var button in page.NavigationButtons) Win32.DestroyWindow(button);
         if (page.ErrorLabel != IntPtr.Zero) Win32.DestroyWindow(page.ErrorLabel);
         if (page.OriginLabel != IntPtr.Zero) Win32.DestroyWindow(page.OriginLabel);

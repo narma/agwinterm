@@ -422,8 +422,10 @@ public sealed partial class ControlServer : IDisposable
 
             if (cmd is "install.hooks" or "install.skill" or "install.shell" or "install.cli")
             {
-                string Install() => Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
-                return _sessionCommandExecutor is null ? Install() : _sessionCommandExecutor(Install);
+                // IntegrationProfile performs the guarded UI hop before work starts.
+                // Keep WSL helper/process waits on this dispatch thread.
+                var profile = host.IntegrationProfile(target);
+                return Ok(WslIntegration.Install(profile, cmd[8..], GetBool(args, "remove")));
             }
 
             if (host.IsQuickSurface && cmd is not ("quick" or "window.state" or "tree"

@@ -20,13 +20,11 @@ internal partial class Program
             if (key == 13) { WebNavigationClick(message.hwnd); return true; }
             if (key != 9) return false;
             bool previous = (Win32.GetKeyState(0x10) & 0x8000) != 0;
-            int next = index + (previous ? -1 : 1);
-            while (next >= 0 && next < page.NavigationButtons.Length &&
-                (page.Request.Navigation && (next == 0 && !page.CanGoBack || next == 1 && !page.CanGoForward) ||
-                 page.Owner.PageParentId is not null && next == (page.Request.Navigation ? 5 : 1))) next += previous ? -1 : 1;
-            if (next < 0 || next >= page.NavigationButtons.Length)
+            var order = WebNavigationOrder(page).ToArray();
+            int next = Array.IndexOf(order, message.hwnd) + (previous ? -1 : 1);
+            if (next < 0 || next >= order.Length)
                 page.Host.Focus(previous ? Microsoft.Web.WebView2.Core.CoreWebView2MoveFocusReason.Previous : Microsoft.Web.WebView2.Core.CoreWebView2MoveFocusReason.Next);
-            else Win32.SetFocus(page.NavigationButtons[next]);
+            else Win32.SetFocus(order[next]);
             return true;
         }
         return false;
@@ -35,7 +33,7 @@ internal partial class Program
     private void CreateWebNavigation(WebPage page)
     {
         if (!page.Request.Chromeless && page.OriginLabel == IntPtr.Zero)
-            page.OriginLabel = Win32.CreateWindowExW(0, "STATIC", "", Win32.WS_CHILD | 0x80,
+            page.OriginLabel = Win32.CreateWindowExW(0, "STATIC", "", Win32.WS_CHILD | 0x04000000 | 0xD /* SS_OWNERDRAW | WS_CLIPSIBLINGS */,
                 0, 0, 1, 1, _hwnd, IntPtr.Zero, Win32.GetModuleHandleW(null), IntPtr.Zero);
         if (page.ErrorLabel == IntPtr.Zero)
             page.ErrorLabel = Win32.CreateWindowExW(0, "STATIC", "", Win32.WS_CHILD | 0x80 /* SS_NOPREFIX */,
@@ -46,25 +44,26 @@ internal partial class Program
             : ["Close", "Hide"];
         page.NavigationButtons = labels
             .Select((label, index) => Win32.CreateWindowExW(0, "BUTTON", label,
-                Win32.WS_CHILD | Win32.WS_VISIBLE | Win32.WS_TABSTOP, 0, 0, 1, 1, _hwnd,
+                Win32.WS_CHILD | Win32.WS_VISIBLE | Win32.WS_TABSTOP | 0xB /* BS_OWNERDRAW */, 0, 0, 1, 1, _hwnd,
                 (IntPtr)(7100 + index), Win32.GetModuleHandleW(null), IntPtr.Zero)).ToArray();
+        CreateWebTooltips(page, labels);
     }
 
     private Rectangle PresentWebNavigation(WebPage page)
     {
         var bounds = page.Bounds;
         bool moved = page.NativeBounds != bounds;
-        int height = page.NavigationButtons.Length == 0 ? 0 : Math.Min(bounds.Height, (int)Math.Ceiling(32 * Scale));
-        int originHeight = page.OriginLabel == IntPtr.Zero ? 0 : Math.Min(Math.Max(0, bounds.Height - height), (int)Math.Ceiling(24 * Scale));
+        int height = page.NavigationButtons.Length == 0 ? 0 : Math.Min(bounds.Height, (int)Math.Ceiling(36 * Scale));
+        int buttonWidth = (int)Math.Ceiling(32 * Scale);
         if (page.OriginLabel != IntPtr.Zero)
         {
             var shown = new Uri(page.CommittedUrl ?? OriginalWebUrl(page));
             string identity = page.Resources is not null ? Path.GetFileName(page.Resources.ExternalPath) :
-                shown.Scheme == "about" ? shown.AbsoluteUri : shown.GetLeftPart(UriPartial.Authority);
-            string origin = string.IsNullOrWhiteSpace(page.Title) ? identity : identity + " — " + page.Title;
+                shown.AbsoluteUri;
+            string origin = string.IsNullOrWhiteSpace(page.Title) ? identity : identity + "  ·  " + page.Title;
             if (page.PresentedOrigin != origin) Win32.SetWindowTextW(page.OriginLabel, origin);
             page.PresentedOrigin = origin;
-            if (moved) Win32.SetWindowPos(page.OriginLabel, IntPtr.Zero, bounds.Left, bounds.Top + height, bounds.Width, originHeight, 0x0014);
+            if (moved) Win32.SetWindowPos(page.OriginLabel, IntPtr.Zero, bounds.Left, bounds.Top, bounds.Width, height, 0x0014);
             if (page.NavigationVisible != page.Visible) Win32.ShowWindow(page.OriginLabel, page.Visible ? 4 : 0);
         }
         for (int i = 0; i < page.NavigationButtons.Length; i++)
@@ -72,13 +71,20 @@ internal partial class Program
             if (page.Request.Navigation && i < 2) EnableWindow(page.NavigationButtons[i], i == 0 ? page.CanGoBack : page.CanGoForward);
             if (page.Request.Navigation && i == 2) EnableWindow(page.NavigationButtons[i], page.Host.IsReady || page.RecreateHost);
             if (page.Owner.PageParentId is not null && i == (page.Request.Navigation ? 5 : 1)) { Win32.ShowWindow(page.NavigationButtons[i], 0); continue; }
-            int left = bounds.Left + bounds.Width * i / page.NavigationButtons.Length;
-            int right = bounds.Left + bounds.Width * (i + 1) / page.NavigationButtons.Length;
+            int action = page.Request.Navigation ? i : i + 4;
+            int left = action switch
+            {
+                4 => bounds.Right - buttonWidth,
+                5 => bounds.Right - 2 * buttonWidth,
+                6 => bounds.Left + 4 * buttonWidth,
+                _ => bounds.Left + action * buttonWidth
+            };
             if (moved) Win32.SetWindowPos(page.NavigationButtons[i], IntPtr.Zero, left, bounds.Top,
-                right - left, height, 0x0014 /* NOACTIVATE | NOZORDER */);
-            if (page.NavigationVisible != page.Visible) Win32.ShowWindow(page.NavigationButtons[i], page.Visible ? 4 : 0);
+                buttonWidth, height, 0x0014 /* NOACTIVATE | NOZORDER */);
+            bool visible = page.Visible && (action is 4 or 5 || left + buttonWidth <= bounds.Right - 2 * buttonWidth);
+            Win32.ShowWindow(page.NavigationButtons[i], visible ? 4 : 0);
         }
-        var document = new Rectangle(bounds.Left, bounds.Top + height + originHeight, bounds.Width, Math.Max(0, bounds.Height - height - originHeight));
+        var document = new Rectangle(bounds.Left, bounds.Top + height, bounds.Width, Math.Max(0, bounds.Height - height));
         if (page.ErrorLabel != IntPtr.Zero)
         {
             string error = page.Error ?? "Page unavailable";
@@ -142,6 +148,8 @@ internal partial class Program
             for (int i = 0; i < 16; i++) variables[prefix + "color-" + i] = Css(_theme.Palette[i]);
         }
         page.AppliedTheme = _theme;
+        if (page.OriginLabel != IntPtr.Zero) Win32.InvalidateRect(page.OriginLabel, IntPtr.Zero, false);
+        foreach (var button in page.NavigationButtons) Win32.InvalidateRect(button, IntPtr.Zero, false);
         string colorScheme = (_theme.DefaultBackground.R * 299 + _theme.DefaultBackground.G * 587 + _theme.DefaultBackground.B * 114) >= 128000 ? "light" : "dark";
         _ = page.Host.RunAsync(async () =>
         {
