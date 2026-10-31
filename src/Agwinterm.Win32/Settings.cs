@@ -103,7 +103,11 @@ internal partial class Program
         Tog(0, "right-click-paste", "Right-click pastes clipboard");
         Tog(0, "copy-on-select", "Copy selection automatically");
         Tog(0, "copy-on-ctrl-c", "Ctrl+C copies the selection (else interrupts)");
+        Drop(0, "browser-links", "Open links in",
+            ["System browser", "Web overlay (full)", "Web overlay (95%)", "Web overlay (75%)", "Web overlay (50%)"],
+            ["browser", "overlay", "overlay95", "overlay75", "overlay50"]);
         Sec(0, "Sessions");
+        Drop(0, "browser-undo-close", "Undo closing sessions with web pages", ["Enabled (3 seconds)", "Disabled"], ["true", "false"]);
         Drop(0, "new-session-dir-mode", "New sessions open in",
             new[] { "Home directory", "Current session's dir", "Custom directory" }, new[] { "home", "current", "custom" });
         _setRows.Add(new SetRow { Kind = SW.Path, Tab = 0, Key = "new-session-dir", Label = "Custom directory" });
@@ -570,6 +574,11 @@ internal partial class Program
                 if (wav is not null) { ConfigSetInternal("blocked-sound", wav); PlayStatusSound(wav); }
             }
             else { ConfigSetInternal("blocked-sound", val == "None" ? "" : val); if (val != "None") PlayStatusSound(val); }
+        }
+        else if (r.Key is "browser-links" or "browser-undo-close")
+        {
+            try { SaveWebPreferences(r.Key == "browser-links" ? BrowserPreferences with { LinkOpenMode = val } : BrowserPreferences with { UndoClose = val == "true" }); }
+            catch (Exception ex) { ShowToast("Could not save browser preferences: " + ex.Message); }
         }
         else ConfigSetInternal(r.Key, val);
         _uia.Announce($"{r.Label}, {r.Opts[_ddFiltered[filteredIdx]]}");

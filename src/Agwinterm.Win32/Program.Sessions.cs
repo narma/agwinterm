@@ -937,6 +937,8 @@ internal partial class Program
         string id;
         if (pane is null)
         {
+            if (_webPages.ContainsKey(ses))
+                return ISessionHost.RefusePrefix + "a web overlay occupies this slot";
             CloseOverlayOf(ses, "replaced");        // one session-wide overlay per session; replace any existing one
             slot = ses.Overlay;
             id = ses.Id + ":overlay:" + Guid.NewGuid().ToString("N")[..6];
@@ -944,6 +946,7 @@ internal partial class Program
         else
         {
             slot = pane.Overlay;
+            if (_webPages.ContainsKey(pane)) return ISessionHost.RefusePrefix + "a web overlay occupies this pane slot";
             if (slot.Term is not null)
                 return ISessionHost.RefusePrefix + OverlayPanes.AlreadyOpenRefusal(Math.Max(0, ses.Panes.IndexOf(pane)));
             sizePercent = 0;                         // a pane overlay is always full-pane (refused upstream; pinned here)
@@ -990,6 +993,7 @@ internal partial class Program
     /// The pane slots are <see cref="ClosePaneOverlay"/>'s.</summary>
     private void CloseOverlayOf(Ses ses, string reason = "closed")
     {
+        CloseWebPage(ses);
         ClearHud(ses, reason);
         var slot = ses.Overlay;
         var term = slot.Term;
@@ -1013,6 +1017,7 @@ internal partial class Program
     /// slot.</summary>
     private void ClosePaneOverlay(Ses ses, Pane pane, string reason = "closed")
     {
+        CloseWebPage(ses, pane);
         var slot = pane.Overlay;
         var term = slot.Term;
         if (term is null) return;
@@ -1524,6 +1529,7 @@ internal partial class Program
 
     private void ChangeFontSize(int delta)
     {
+        if (_webPages.Any(pair => pair.Value.Visible && pair.Value.Host.HasFocus)) { ChangeWebZoom(delta); return; }
         if (_cover is not null) { ChangeFontSizeOfPane(_cover, delta); RegridCover(); RequestRedraw(); }
         // The focused pane's overlay (P5) is that pane's surface: it zooms alone, like a cover, and
         // its size is not persisted (overlays never are) — so no SaveState, unlike the pane's own zoom.
@@ -1739,7 +1745,7 @@ internal partial class Program
 
     /// <summary>Release every surface and UI reference owned by a session, without creating a
     /// replacement or recording a second closed-history item. Used by both session and workspace close.</summary>
-    private void DisposeSessionResources(Ses ses)
+    private void DetachSessionUi(Ses ses)
     {
         InvalidateSessionSelectors();
         if (_mruSnapshot.Contains(ses))
@@ -1762,6 +1768,12 @@ internal partial class Program
         {
             _dragging = false; _sbPress = false; _dragItem = null; _pressItem = null; ReleaseCapture();
         }
+    }
+
+    private void DisposeSessionResources(Ses ses)
+    {
+        DetachSessionUi(ses);
+        FinalizeParkedWebCompanions(ses.Id);
         _retiredObservationSessions.GetOrCreateValue(ses);
         Observation.RemoveSession(ses.Id);
         _observedLayouts.Remove(ses.Id);
@@ -1775,8 +1787,13 @@ internal partial class Program
         EvictWatermark(ses.BgPath); SweepBackground(ses.Id); // drop the session's watermark file + texture
     }
 
-    private void CloseSessionInternal(Ses ses)
+    private void CloseSessionInternal(Ses ses, bool undoable = true)
     {
+        if (ses.Closing) return;
+        if (undoable && TrySoftCloseWebSession(ses)) return;
+        FinalizeParkedWebCompanions(ses.Id);
+        ses.Closing = true;
+        foreach (var child in AllSessions().Where(s => s.PageParentId == ses.Id).ToArray()) CloseSessionInternal(child, undoable: false);
         CaptureClosedSession(ses);   // remember it so Reopen Closed Session can bring it back
         bool wasActive = ReferenceEquals(_active, ses);
         DisposeSessionResources(ses);
@@ -1920,6 +1937,7 @@ internal partial class Program
     private void SplitOp(string op, Ses? ses, string? axis)
     {
         if (ses is null) return;
+        if (ses.PageParentId is not null) { ShowToast("A page companion cannot be split"); return; }
         int panes = ses.Panes.Count;
         switch (op)
         {
@@ -2171,6 +2189,12 @@ internal partial class Program
     /// WM_DESTROY answered ok with the action stranded.</summary>
     private void PostVerb(Action a)
     {
+        if (WebCommandGuard.Value is not null)
+        {
+            // Bridge callers need the guarded mutation's result, not merely a queued ack.
+            InvokeOnUiQueued(() => { a(); return true; });
+            return;
+        }
         if (!Post(a)) throw new InvalidOperationException(NothingApplied());
     }
     /// <summary>Why a post was withdrawn, as far as this side can tell: the window is closing
@@ -2197,10 +2221,12 @@ internal partial class Program
     private static readonly TimeSpan UiQueuedTimeout = TimeSpan.FromSeconds(15);
     private T InvokeOnUiQueued<T>(Func<T> fn)
     {
+        var guard = WebCommandGuard.Value;
+        if (GetCurrentThreadId() == GetWindowThreadProcessId(_hwnd, out _)) return GuardWebCommand(guard, fn);
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         bool posted = Post(() =>
         {
-            try { tcs.TrySetResult(fn()); }
+            try { tcs.TrySetResult(GuardWebCommand(guard, fn)); }
             catch (Exception ex) { tcs.TrySetException(ex); }
         });
         if (!posted) throw new InvalidOperationException(NothingApplied());
@@ -2222,6 +2248,7 @@ internal partial class Program
     private readonly object _syncLock = new();
     private string InvokeOnUi(Func<string> fn)
     {
+        if (WebCommandGuard.Value is not null) return InvokeOnUiQueued(fn);
         lock (_syncLock)
         {
             _syncFn = fn;

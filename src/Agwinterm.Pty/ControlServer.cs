@@ -66,19 +66,23 @@ public sealed partial class ControlServer : IDisposable
         _acceptedSharedFrameSequences = new();
     private long _sharedFrameRequestGeneration;
 
-    public ControlServer(ISessionHost host, string pipeName = "agwinterm")
+    public ControlServer(ISessionHost host, string pipeName = "agwinterm", Func<Func<string>, string>? sessionCommandExecutor = null)
     {
         _host = host;
         _pipeName = pipeName;
+        _sessionCommandExecutor = sessionCommandExecutor;
     }
 
     /// <summary>Multi-window server: content verbs resolve through <paramref name="windows"/> (--window), window.* act on it.</summary>
-    public ControlServer(ISessionHost host, IWindowHost windows, string pipeName = "agwinterm")
+    public ControlServer(ISessionHost host, IWindowHost windows, string pipeName = "agwinterm", Func<Func<string>, string>? sessionCommandExecutor = null)
     {
         _host = host;
         _windows = windows;
         _pipeName = pipeName;
+        _sessionCommandExecutor = sessionCommandExecutor;
     }
+
+    private readonly Func<Func<string>, string>? _sessionCommandExecutor;
 
     /// <summary>Convenience: serve a single fixed session (tests / simple hosts).</summary>
     public ControlServer(ISession session, string pipeName = "agwinterm")
@@ -201,6 +205,15 @@ public sealed partial class ControlServer : IDisposable
             JsonElement args = root.TryGetProperty("args", out var a) ? a : default;
             // --window <id|prefix|active>: content verbs act on the resolved window (default = frontmost).
             string? windowSel = root.TryGetProperty("window", out var wv) && wv.ValueKind == JsonValueKind.String ? wv.GetString() : null;
+            bool webOverlayRequest = cmd == "session.companion.page" || cmd == "session.overlay" &&
+                (WebOverlayRequest.IsWeb(args) || WebOverlayCommand.Applies(GetString(args, "action") ?? "open", args));
+            if (webOverlayRequest)
+            {
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var property in root.EnumerateObject())
+                    if (!names.Add(property.Name) || property.Name is not ("cmd" or "args" or "target" or "window"))
+                        return Err("unknown or duplicate web request field");
+            }
             if (cmd is "ask.open" or "ask.result" or "ask.cancel")
             {
                 if ((root.TryGetProperty("window", out var aw) && aw.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) || windowSel == "")
@@ -258,7 +271,7 @@ public sealed partial class ControlServer : IDisposable
                 if (windowSel is not null && _windows is null) return Err("hud: window routing is unavailable in this host");
             }
 
-            if (cmd is "session.focus" or "session.resize" or "command.run")
+            if (webOverlayRequest || cmd is "session.focus" or "session.resize" or "command.run")
             {
                 foreach (string selectorName in new[] { "target", "window" })
                     if (root.TryGetProperty(selectorName, out var value) &&
@@ -322,6 +335,18 @@ public sealed partial class ControlServer : IDisposable
             // App-level, window-agnostic verbs first.
             switch (cmd)
             {
+                case "browser.clear": case "browser.links":
+                    if (target is not null || windowSel is not null) return Err("browser commands are app-global and refuse target/window");
+                    var browserFields = new HashSet<string>();
+                    foreach (var field in root.EnumerateObject())
+                        if (!browserFields.Add(field.Name) || field.Name is not ("cmd" or "args")) return Err("unsupported or duplicate browser request field");
+                    var browserArgs = new HashSet<string>();
+                    if (args.ValueKind is not (JsonValueKind.Object or JsonValueKind.Undefined)) return Err("browser args must be an object");
+                    if (args.ValueKind == JsonValueKind.Object)
+                        foreach (var field in args.EnumerateObject())
+                            if (!browserArgs.Add(field.Name) || cmd != "browser.links" || field.Name != "mode" || field.Value.ValueKind != JsonValueKind.String)
+                                return Err("unsupported browser argument");
+                    return OkRaw(JsonSerializer.Serialize(_host.BrowserCommand(cmd, GetString(args, "mode"))));
                 case "ping": return Ok("agwinterm " + AppVersion());
                 case "omp.list": return Ok(string.Join("\n", OmpThemes.List().Select(t => t.Name)));
                 // ---- Wave F1b: window management (target = the window selector) ----
@@ -340,6 +365,16 @@ public sealed partial class ControlServer : IDisposable
             ISessionHost host = _windows is null ? _host : (_windows.ResolveWindow(windowSel) ?? _host);
             if (windowSel is not null && _windows is not null && _windows.ResolveWindow(windowSel) is null)
                 return Err("window not found: " + windowSel);
+
+            if (host.IsPageCompanion(target) &&
+                (cmd is "session.type" or "session.write" or "session.text" or "session.copy" or "session.paste" or "session.search" or
+                    "session.background" or "session.swap" or "session.focus" or "session.resize" or "session.split" or "session.split.close" or
+                    "session.scratch" or "session.restore" or "session.duplicate" or "session.hud" or "surface.cursor" or "surface.zoom" or
+                    "session.context" or "session.bind" or "restore.capture" ||
+                 cmd.StartsWith("image.", StringComparison.Ordinal) || cmd.StartsWith("selection.", StringComparison.Ordinal) ||
+                 cmd == "ask.open" && !GetBool(args, "gui") ||
+                 cmd == "session.overlay" && GetString(args, "action") is null or "open" && !GetBool(args, "companion")))
+                return Err(cmd + ": not available on a page companion");
 
             if (PresentationRequest.Applies(cmd))
             {
@@ -380,13 +415,16 @@ public sealed partial class ControlServer : IDisposable
             }
 
             var auxiliary = host.AuxiliaryTarget(target);
-            if (windowSel is not null && cmd is "session.focus" or "session.resize" or "command.run" &&
+            if (windowSel is not null && (webOverlayRequest || cmd is "session.focus" or "session.resize" or "command.run") &&
                 auxiliary is not null && !ReferenceEquals(auxiliary, host))
                 return Err("target is outside the selected window");
             host = auxiliary ?? host;
 
             if (cmd is "install.hooks" or "install.skill" or "install.shell" or "install.cli")
-                return Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
+            {
+                string Install() => Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
+                return _sessionCommandExecutor is null ? Install() : _sessionCommandExecutor(Install);
+            }
 
             if (host.IsQuickSurface && cmd is not ("quick" or "window.state" or "tree"
                 or "session.write" or "session.type" or "session.text" or "session.copy" or "session.status"
@@ -559,6 +597,11 @@ public sealed partial class ControlServer : IDisposable
                         if (op is not ("on" or "off" or "toggle")) return Err("quick: op must be on, off or toggle");
                         host.Quick(op); return Ok("quick");
                     }
+                case "session.companion.page":
+                    var companionArgs = args.EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value.Clone());
+                    if (companionArgs.ContainsKey("companion")) return Err("companion is implicit in session.companion.page");
+                    companionArgs["companion"] = true;
+                    return OkRaw(JsonSerializer.Serialize(host.OpenWebOverlay(target, WebOverlayRequest.Parse(JsonSerializer.SerializeToElement(companionArgs)))));
                 case "session.overlay": return HandleSessionOverlay(host, target, args);   // the guards and their order: see the method
                 case "notify":
                     {
@@ -621,42 +664,46 @@ public sealed partial class ControlServer : IDisposable
             }
 
             // Session-targeted commands.
-            var s = host.Resolve(target);
-            if (s is null) return Err("no session");
-            return cmd switch
+            string ExecuteSessionCommand()
             {
-                "session.write" => HandleWrite(s, args),
-                "session.type" => HandleType(s, args),
-                "session.text" => HandleText(s, args),
-                // The selection's text, "" when the pane has none — and a target that resolves to no
-                // pane is the read verbs' refusal above (it answered ok:true "" — a missing pane and an
-                // empty selection were the same reply). Not HostReply: the reply IS the selection, and
-                // a selection may begin with anything, RefusePrefix included.
-                "session.copy" => Ok(host.SessionCopy(target)),
-                "session.status" => HandleStatus(s, args),
-                "session.metrics" => HandleSessionMetrics(host, s, target),
-                // surface.cursor — the caret COLUMN as a bare integer (agterm's shape, so a script
-                // written against either product reads the same reply; a JSON object here would
-                // diverge for no caller we have, and the row is not what "is the composer empty"
-                // asks). Targeting follows Resolve, exactly as session.text/session.type do, so the
-                // pane you CHECK is the pane you then type into: a pane id reports that pane, and a
-                // session NAME reports its focused pane — a cursor is a per-pane thing, and focus is
-                // the only non-arbitrary answer for a session-wide target. The session-id rule, by
-                // condition (P4): while a pane carries the session's id — pane 0 of a fresh session,
-                // either side after a session.swap, a restore keeping the order it saved — the id
-                // reports THAT pane wherever it sits,
-                // regardless of focus (Resolve's exact-pane-first order); while none does — the
-                // carrier was closed, by split.close, Ctrl+Shift+W, split off after a swap, or its
-                // shell exiting — the id falls through to the exact-session arm and reports the
-                // FOCUSED pane, like a name (verified in qa/control-read.md).
-                "surface.cursor" => OkRaw(s.SnapshotCursor().Col.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                "image.show" => HandleImageShow(s, args),
-                "image.sixel" => HandleImageSixel(s, args),
-                "image.clear" => HandleImageClear(s),
-                "image.frame" => HandleImageFrame(s, args),
-                "image.frameshm" => HandleImageFrameShm(s, args),
-                _ => Err($"unknown command '{cmd}'"),
-            };
+                var s = host.Resolve(target);
+                if (s is null) return Err("no session");
+                return cmd switch
+                {
+                    "session.write" => HandleWrite(s, args),
+                    "session.type" => HandleType(s, args),
+                    "session.text" => HandleText(s, args),
+                    // The selection's text, "" when the pane has none — and a target that resolves to no
+                    // pane is the read verbs' refusal above (it answered ok:true "" — a missing pane and an
+                    // empty selection were the same reply). Not HostReply: the reply IS the selection, and
+                    // a selection may begin with anything, RefusePrefix included.
+                    "session.copy" => Ok(host.SessionCopy(target)),
+                    "session.status" => HandleStatus(s, args),
+                    "session.metrics" => HandleSessionMetrics(host, s, target),
+                    // surface.cursor — the caret COLUMN as a bare integer (agterm's shape, so a script
+                    // written against either product reads the same reply; a JSON object here would
+                    // diverge for no caller we have, and the row is not what "is the composer empty"
+                    // asks). Targeting follows Resolve, exactly as session.text/session.type do, so the
+                    // pane you CHECK is the pane you then type into: a pane id reports that pane, and a
+                    // session NAME reports its focused pane — a cursor is a per-pane thing, and focus is
+                    // the only non-arbitrary answer for a session-wide target. The session-id rule, by
+                    // condition (P4): while a pane carries the session's id — pane 0 of a fresh session,
+                    // either side after a session.swap, a restore keeping the order it saved — the id
+                    // reports THAT pane wherever it sits,
+                    // regardless of focus (Resolve's exact-pane-first order); while none does — the
+                    // carrier was closed, by split.close, Ctrl+Shift+W, split off after a swap, or its
+                    // shell exiting — the id falls through to the exact-session arm and reports the
+                    // FOCUSED pane, like a name (verified in qa/control-read.md).
+                    "surface.cursor" => OkRaw(s.SnapshotCursor().Col.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    "image.show" => HandleImageShow(s, args),
+                    "image.sixel" => HandleImageSixel(s, args),
+                    "image.clear" => HandleImageClear(s),
+                    "image.frame" => HandleImageFrame(s, args),
+                    "image.frameshm" => HandleImageFrameShm(s, args),
+                    _ => Err($"unknown command '{cmd}'"),
+                };
+            }
+            return _sessionCommandExecutor is null ? ExecuteSessionCommand() : _sessionCommandExecutor(ExecuteSessionCommand);
         }
         catch (ObservationException ex) { return ex.ToJson(); }
         catch (JsonException ex) { return Err("invalid json: " + ex.Message); }
@@ -735,6 +782,16 @@ public sealed partial class ControlServer : IDisposable
                 // context: the session.context read-back, emitted only when one is set — absent is
                 // "none", the same spelling the flags above use for "no" (P3).
                 if (n.Context is not null) sb.Append(",\"").Append(SessionContexts.Key).Append("\":").Append(JsonSerializer.Serialize(n.Context));
+                if (n.HtmlOverlays is { Count: > 0 } pages)
+                    sb.Append(",\"htmlOverlays\":").Append(JsonSerializer.Serialize(pages.Select(p => new {
+                        id = p.Id, pane = p.Pane, file = p.File, url = p.Url, image = p.Image, currentUrl = p.CurrentUrl,
+                        state = p.State, error = p.Error, hidden = p.Hidden, visible = p.Visible, zoom = p.Zoom, browse = p.Browse,
+                        title = p.Title, page = p.CurrentUrl, canGoBack = p.CanGoBack, canGoForward = p.CanGoForward,
+                        navigation = p.Navigation, javascript = p.JavaScript, chromeless = p.Chromeless, persistent = p.Persistent, cwd = p.Cwd,
+                        geometry = new { x = p.X, y = p.Y, width = p.Width, height = p.Height }
+                    })));
+                if (n.PageParentId is not null)
+                    sb.Append(",\"parent\":").Append(JsonSerializer.Serialize(n.PageParentId)).Append(",\"content\":\"page\"");
                 AppendPaneMap(sb, "restoreCommands", n.RestoreCommands, n.PaneIds);
                 // capturedCommands: the restore.capture read-back, same spelling — emitted only when
                 // any pane's slot holds a capture (P3).
@@ -777,6 +834,7 @@ public sealed partial class ControlServer : IDisposable
             sb.Append("]}");
         }
         sb.Append(']');
+        if (host.BrowserLinkOpenMode() is { } linkMode) sb.Append(",\"linkOpenMode\":").Append(JsonSerializer.Serialize(linkMode));
         if (host is IWorkingSetHost working) sb.Append(",\"workingSet\":").Append(JsonSerializer.Serialize(working.WorkingSetState()));
         sb.Append('}');
         return OkRaw(sb.ToString());
@@ -872,6 +930,17 @@ public sealed partial class ControlServer : IDisposable
     /// </summary>
     private static string HandleSessionOverlay(ISessionHost host, string? target, JsonElement args)
     {
+        string webAction = GetString(args, "action") ?? "open";
+        if (WebOverlayCommand.Applies(webAction, args))
+        {
+            try { return OkRaw(JsonSerializer.Serialize(host.WebOverlayOperation(target, WebOverlayCommand.Parse(webAction, args)))); }
+            catch (ArgumentException ex) { return Err(ex.Message); }
+        }
+        if (WebOverlayRequest.IsWeb(args))
+        {
+            try { return OkRaw(JsonSerializer.Serialize(host.OpenWebOverlay(target, WebOverlayRequest.Parse(args)))); }
+            catch (ArgumentException ex) { return Err(ex.Message); }
+        }
         string action = GetString(args, "action") ?? "open";
         string? pane = null;
         if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty(OverlayPanes.Key, out var pv))

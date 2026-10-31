@@ -251,6 +251,51 @@ public static class AgentSkill
         - `agwintermctl quick on|off|toggle` — one app-level detached shell (home dir; stays alive when hidden; not restored). API shows stay pinned without taking focus; human toggles dismiss on blur. `--window quick --target active` addresses its surface. `quick-terminal-size` is 40–90% of the pointer monitor's work area; `quick-terminal-hotkey` is opt-in, empty by default. See `docs/quick-terminal.md`.
 
         ## Overlays (run a program over a session — or over ONE pane of it — ephemerally)
+
+        Web pages share session-wide and independent pane slots with program overlays. Use an exact SESSION_ID;
+        --pane left|right selects a full-pane slot. Program commands and --wait are unsupported for web opens.
+        `agwintermctl session overlay open --html "C:\\path\\page.html" --navigation --target SESSION_ID --json`
+        opens a local document; use --url for HTTP(S), including localhost. JavaScript is off
+        unless --js is supplied. --navigation and --chromeless conflict. --follow selects the
+        owner; without it opening a background owner preserves selection. --width/--height
+        are DIPs; --size-percent uses the session content area. Existing program/web slots,
+        including hidden ones, refuse a new web open; validated successful web opens replace HUDs.
+        The result.pageID identifies the page. tree adds htmlOverlays with id, file/url,
+        currentUrl, state/error, hidden/visible, geometry and zoom. close/hide/show/toggle/resize
+        act on the web page by session target. reload preserves page ID and temporary storage.
+        navigate back|forward|browser provides history or explicit external handoff.
+        Local HTML is self-contained by default; --cwd DIRECTORY grants canonical sibling resources,
+        refusing home/filesystem roots and escaping links. Top-level remote navigation
+        stays on the initial origin by default. Pass --browse with --url for HTTP(S) redirects/links
+        across sites (for example --url https://google.com --js --browse). Browse is reported in tree,
+        shows the current site, conflicts with --chromeless, and does not imply --js. Local documents stay within their grant.
+        Remote pages never receive local-file access or a review bridge. Missing runtime refuses without disturbing the slot;
+        `agwintermctl install webview2` is the explicit optional runtime installation command.
+
+        Trusted local HTML supports data-agterm declarative buttons/forms even without --js.
+        With --js it exposes the asynchronous agwinterm.request API (agterm alias), inheriting
+        live owner context and accepting explicit target/window. It refuses zmx.present/reset,
+        session.overlay.job.run/page.serve and session.companion.page.attach. URL/image pages
+        and subframes have no host bridge. Explicit --js --bridge review selects a narrower API.
+        The review API accepts session.overlay.submit with
+        {args:{value:"text"}} (up to 1 MiB UTF-8, empty string valid), or session.overlay.close
+        with {}. No target, window or other commands are allowed. `session overlay result
+        --page PAGE_ID --json` returns result.pageOutcome with pageID and outcome pending,
+        submitted (plus value), or dismissed. First completion wins; closing the owner
+        dismisses pending reviews. The latest 32 finished results are retained instance-wide;
+        pending pages are not evicted. Keep a separate backup file for restart/timeout recovery.
+        Ordinary CLI success/refusal/argument exit codes remain 0/1/2; a review adapter must
+        interpret dismissed itself. Do not assume a transport timeout cancelled a page.
+        Local HTML --block waits for the exact page and exits 0 on submit, 2 on dismissal,
+        1 on failure. Bare reload uses the original source; --current/toolbar Reload uses the
+        current document. URL-only --persistent shares saved browser storage; browser clear
+        requires all persistent pages closed, including Undo-retained pages. browser links
+        browser|overlay|overlay95|overlay75|overlay50 selects terminal-link opening policy.
+        --image FILE accepts PNG/JPEG/GIF/WebP up to 64 MiB/100 million pixels without scripts.
+        --companion opens HTML/URL in an independent shell-less child session (no terminal
+        commands, hide or split). Closing its page removes it; closing its parent closes children.
+        session close --undoable retains a live web document for three seconds for Reopen.
+        Remote display/replication is deferred to a separate change.
         The rule, quoted from `ISessionHost.SessionOverlay` (the CLI header quotes it too):
           A session has three overlay slots: one session-wide and one per pane. A session-wide overlay
           covers the whole session (every pane, and any pane overlay under it), as today. A pane overlay

@@ -6,7 +6,7 @@ public static class WorkingSetRequest
 {
     public static bool Applies(string cmd, JsonElement args) => cmd is "workspace.flag" or "workspace.filter" or "workspace.focus" or "sidebar.flagged-layout" ||
         args.ValueKind == JsonValueKind.Object && (cmd == "workspace.new" && args.TryGetProperty("collapsed", out _) ||
-        cmd is "session.new" or "session.move" or "session.close" && args.EnumerateObject().Any(p => p.Name is "before" or "after" or "targets"));
+        cmd is "session.new" or "session.move" or "session.close" && args.EnumerateObject().Any(p => p.Name is "before" or "after" or "targets" or "undoable"));
     public static string? String(JsonElement args, string key) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var v) ? v.GetString() : null;
     public static bool Bool(JsonElement args, string key) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var v) && v.GetBoolean();
     public static string[]? Targets(JsonElement args) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty("targets", out var v) ? v.EnumerateArray().Select(x => x.GetString()!).ToArray() : null;
@@ -15,7 +15,7 @@ public static class WorkingSetRequest
         string fields = cmd switch
         {
             "workspace.new" => "name collapsed defaultDir default-dir", "workspace.flag" or "workspace.focus" or "workspace.filter" => "op",
-            "sidebar.flagged-layout" => "layout", "session.close" => "targets",
+            "sidebar.flagged-layout" => "layout", "session.close" => "targets undoable",
             "session.move" => "targets before after workspace",
             "session.new" => "name cwd workspace workspace-name create-workspace profile command command-mode no-select wait caller before after",
             _ => throw new ArgumentException("unsupported working-set operation")
@@ -35,7 +35,7 @@ public static class WorkingSetRequest
                         p.Value.EnumerateArray().Any(v => v.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(v.GetString()) || v.GetString()!.Length > 4096))
                         throw new ArgumentException("targets must contain 1..128 nonempty selectors");
                 }
-                else if (p.Name is "collapsed" or "no-select" or "wait" or "create-workspace")
+                else if (p.Name is "collapsed" or "no-select" or "wait" or "create-workspace" or "undoable")
                 { if (p.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new ArgumentException(p.Name + " must be boolean"); }
                 else if (p.Value.ValueKind != JsonValueKind.String || p.Value.GetString()!.Length > 16384)
                     throw new ArgumentException(p.Name + " must be bounded text");

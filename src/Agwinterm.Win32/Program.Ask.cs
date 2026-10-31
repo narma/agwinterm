@@ -37,7 +37,7 @@ internal partial class Program : IAskHost
         if (_nativeAsk?.Request.Id == id) { var ui = _nativeAsk; _nativeAsk = null; ui.Dispose(); RequestRedraw(); }
     }
 
-    private string OpenAskCore(AskSpec spec, bool follow, Func<bool> wanted)
+    private string OpenAskCore(AskSpec spec, bool follow, Func<bool> wanted, Action<AskOutcome>? completed = null)
     {
         if (!wanted()) throw new InvalidOperationException("question open was withdrawn");
         if (NativeDialogOpen) throw new InvalidOperationException("ask already pending");
@@ -53,6 +53,7 @@ internal partial class Program : IAskHost
                 if (initialized) Asks.Resolve(request.Id, outcome); else Asks.Abort(request.Id);
                 var ui = _nativeAsk;
                 if (ui?.Request.Id == request.Id) { _nativeAsk = null; ui.Dispose(); }
+                if (initialized) completed?.Invoke(outcome);
                 RequestRedraw();
             }, () => { Frontmost = this; _frontmostId = Id; }, Perf);
             if (!wanted()) throw new InvalidOperationException("question open was withdrawn");

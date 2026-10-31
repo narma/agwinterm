@@ -21,7 +21,9 @@ if (-not $iscc) {
 if (-not $iscc) { throw "ISCC (Inno Setup compiler) not found. Install Inno Setup 6 (winget install JRSoftware.InnoSetup)." }
 
 Write-Host "== clean stage ==" -ForegroundColor Cyan
-if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+$stage = [IO.Path]::GetFullPath($stage)
+if ($stage -ne [IO.Path]::GetFullPath((Join-Path $root 'installer/stage'))) { throw 'Unexpected installer stage path' }
+if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
 # version = the installer's AppVersion define (stamped into the assemblies so `ping` reports it).
@@ -54,8 +56,10 @@ Copy-Item $ptyExe  $stage -Force
 # shared file has no business living inside a component that was about to be deleted.
 Copy-Item (Join-Path $root "assets\fonts\MesloLGLDZNerdFont-Regular.ttf") $stage -Force
 Copy-Item (Join-Path $root "assets\fonts\FONT-LICENSE.txt") $stage -Force
+Copy-Item (Join-Path $here 'install-webview2.cmd') $stage -Force
 
 # sanity: required payload present
+if (-not (Test-Path (Join-Path $stage 'WebView2Loader.dll'))) { throw 'stage missing WebView2Loader.dll' }
 foreach ($f in @("Agwinterm.Win32.exe","agwintermctl.exe","agwinterm_core.dll","agwinterm-ptyhost.exe","agwinterm-hook.exe","agwinterm-hook-linux-x64","agwinterm-hook-linux-arm64","conpty.dll","x64\OpenConsole.exe","MesloLGLDZNerdFont-Regular.ttf","assets\agwinterm.ico")) {
   if (-not (Test-Path (Join-Path $stage $f))) { throw "stage missing $f" }
 }

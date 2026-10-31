@@ -31,6 +31,24 @@ internal partial class Program
         }
         string reply = InvokeOnUiQueued(() =>
         {
+            if (pane is null && action is "hide" or "show" or "toggle" && FindSesForTarget(target) is { } allOwner &&
+                (target is null or "active" || target == allOwner.Id) && allOwner.PageParentId is null &&
+                _webPages.Any(pair => ReferenceEquals(pair.Value.Owner, allOwner)))
+            {
+                var pages = _webPages.Select(pair => pair.Value).Where(page => ReferenceEquals(page.Owner, allOwner)).ToArray();
+                var slots = allOwner.AllPanes.Select(p => p.Overlay).Append(allOwner.Overlay).Where(slot => slot.Term is not null).ToArray();
+                bool hide = action == "hide" || action == "toggle" && (pages.Any(page => !page.Hidden) || slots.Any(slot => !slot.Hidden));
+                foreach (var page in pages) page.Hidden = hide;
+                foreach (var programSlot in slots) { programSlot.Hidden = hide; if (hide) CancelOverlaySelection(programSlot.Term!); }
+                if (ReferenceEquals(allOwner, _active) && allOwner.Overlay.Term is { } term)
+                { if (hide && ReferenceEquals(_cover, term)) { _ovlOwner = null; HideCover(); } else if (!hide) { _ovlOwner = allOwner; ShowCover(term, 3); } }
+                UpdateWebPresentation(); RequestRedraw(); return hide ? "hidden" : "shown";
+            }
+            if (pane is null && target is not (null or "active") && FindSessionByExactId(target) is null)
+            {
+                var addressedWeb = _webPages.Select(pair => pair.Value).FirstOrDefault(page => page.Pane?.Id == target);
+                if (addressedWeb?.Pane is { } webPane) pane = OverlayPanes.Word(addressedWeb.Owner.AllPanes.ToList().IndexOf(webPane));
+            }
             // Overlay commands give an exact session ID precedence over the pane carrying it.
             // That primary pane may be hidden while the right pane is maximized.
             var hiddenTarget = target is null || FindSessionByExactId(target) is not null
@@ -71,7 +89,29 @@ internal partial class Program
                 session = FindSesForTarget(target);
             }
             if (session is null) return action == "close" && target is null or "active" ? "no overlay" : NoSessionRefusal;
+            if (session.PageParentId is not null)
+            {
+                if (action is "hide" or "toggle") return ISessionHost.RefusePrefix + "no overlay";
+                if (action == "show") return "shown";
+                if (action == "resize") return ISessionHost.RefusePrefix + "session.overlay.resize: not available on a page companion";
+            }
             var slot = owner?.Overlay ?? session.Overlay;
+            if (_webPages.TryGetValue((object?)owner ?? session, out var web))
+            {
+                if (action == "open") return ISessionHost.RefusePrefix + "a web overlay occupies this slot; close it first";
+                if (action == "close") { CloseWebPage(session, owner); return "closed"; }
+                if (action == "resize")
+                {
+                    web.Geometry = web.Geometry.Resize(options.Percent, options.Width, options.Height, options.Full || !options.HasSize);
+                    UpdateWebPresentation(); RequestRedraw(); return "resized";
+                }
+                if (action is "hide" or "show" or "toggle")
+                {
+                    web.Hidden = action == "hide" || action == "toggle" && !web.Hidden;
+                    UpdateWebPresentation(); RequestRedraw(); return web.Hidden ? "hidden" : "shown";
+                }
+                return ISessionHost.RefusePrefix + "operation is not available for this web overlay";
+            }
             if (action == "close")
             {
                 if (slot.Term is null && (owner is not null || session.Hud is null)) return "no overlay";
