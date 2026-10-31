@@ -13,6 +13,9 @@ Check 'anchored creation inserts in deterministic order' (((WSSessions $a).id -j
 $bad=Rpc 'session.new' @{before=$a1;after=$a2} -NoTarget -AllowError
 Check 'two anchors refuse before creating anything' (-not $bad.ok -and (WSSessions $a).Count-eq 3)
 $b=[string](Rpc 'workspace.new' @{name='Beta'} -NoTarget)
+# Plain workspace.new acknowledges a queued UI action. Wait for its target to be
+# published before session.new resolves --workspace on the control-pipe thread.
+if(-not (WSWait {@((Rpc 'tree').workspaces|Where-Object id -eq $b).Count-eq 1})){throw 'Destination workspace did not appear'}
 $b1=[string](Rpc 'session.new' @{workspace=$b;name='B one';'no-select'=$true})
 if(-not (WSWait {@(WSSessions $b|Where-Object id -eq $b1).Count-eq 1})){throw 'Destination anchor session did not appear'}
 $bad=Rpc 'session.move' @{before=$b1;workspace=$a} $a0 -AllowError
