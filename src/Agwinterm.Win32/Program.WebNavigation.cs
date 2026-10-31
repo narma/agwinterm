@@ -54,7 +54,8 @@ internal partial class Program
         var bounds = page.Bounds;
         bool moved = page.NativeBounds != bounds;
         int height = page.NavigationButtons.Length == 0 ? 0 : Math.Min(bounds.Height, (int)Math.Ceiling(36 * Scale));
-        int buttonWidth = (int)Math.Ceiling(32 * Scale);
+        var layout = Agwinterm.Core.WebChromeLayout.Fit(bounds.Width, Scale, page.Request.Navigation, page.Owner.PageParentId is not null);
+        int buttonWidth = layout.ButtonWidth;
         if (page.OriginLabel != IntPtr.Zero)
         {
             var shown = new Uri(page.CommittedUrl ?? OriginalWebUrl(page));
@@ -70,7 +71,6 @@ internal partial class Program
         {
             if (page.Request.Navigation && i < 2) EnableWindow(page.NavigationButtons[i], i == 0 ? page.CanGoBack : page.CanGoForward);
             if (page.Request.Navigation && i == 2) EnableWindow(page.NavigationButtons[i], page.Host.IsReady || page.RecreateHost);
-            if (page.Owner.PageParentId is not null && i == (page.Request.Navigation ? 5 : 1)) { Win32.ShowWindow(page.NavigationButtons[i], 0); continue; }
             int action = page.Request.Navigation ? i : i + 4;
             int left = action switch
             {
@@ -81,7 +81,9 @@ internal partial class Program
             };
             if (moved) Win32.SetWindowPos(page.NavigationButtons[i], IntPtr.Zero, left, bounds.Top,
                 buttonWidth, height, 0x0014 /* NOACTIVATE | NOZORDER */);
-            bool visible = page.Visible && (action is 4 or 5 || left + buttonWidth <= bounds.Right - 2 * buttonWidth);
+            int navigationIndex = action == 6 ? 4 : action;
+            bool visible = page.Visible && (action == 4 || action == 5 && layout.ShowHide ||
+                action is not (4 or 5) && navigationIndex < layout.NavigationCount);
             Win32.ShowWindow(page.NavigationButtons[i], visible ? 4 : 0);
         }
         var document = new Rectangle(bounds.Left, bounds.Top + height, bounds.Width, Math.Max(0, bounds.Height - height));

@@ -78,12 +78,9 @@ internal partial class Program
             if (title)
             {
                 text = page.PresentedOrigin ?? "";
-                int width = (int)Math.Ceiling(32 * Scale);
-                int leftButtons = page.Request.Navigation ? Math.Min(5, Math.Max(0, page.Bounds.Width / width - 2)) : 0;
-                // Symmetric margins keep the caption centered in the page, as in agterm.
-                int margin = Math.Max(leftButtons, page.Owner.PageParentId is null ? 2 : 1) * width + (int)Math.Ceiling(8 * Scale);
-                rect.left += margin;
-                rect.right -= margin;
+                var layout = Agwinterm.Core.WebChromeLayout.Fit(page.Bounds.Width, Scale, page.Request.Navigation, page.Owner.PageParentId is not null);
+                rect.left += layout.TitleLeft;
+                rect.right = draw.Bounds.left + layout.TitleRight;
             }
             else
             {

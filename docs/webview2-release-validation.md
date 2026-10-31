@@ -10,7 +10,7 @@ use browser-provided frame IDs and opaque child origins (including separate rend
 targets), pane-specific defaults, companion rollback, execution-time mutation guards,
 and initialization-safe reload.
 
-Release build and 577 Core / 1,562 PTY tests pass. The new
+Release build and 583 Core / 1,562 PTY tests pass. The new
 `web-overlay-parity.ps1 -ReviewOnly` run verifies external child scripts, same-URL
 children, srcdoc refusal, right-pane typing, swap, companion pane targeting and early
 reload. A deterministic queued-command test invalidates the document while paused
@@ -30,6 +30,14 @@ keyboard traversal. Hide and Close stay at the right edge; optional navigation
 buttons yield space in narrow panes. The focused UI Automation checks verify the
 compact controls and their ordering; the local screenshot is
 `artifacts/web-overlay-toolbar.png`.
+
+The narrow-width review fix shares one layout calculation between buttons and
+caption drawing. It reserves identity space before optional navigation actions,
+keeps full-page centering where it fits, and uses the remaining space on smaller
+pages. Six layout tests cover 320 DIP at 100/150/200% and 96/160/200-DIP widths.
+A native Google-page capture confirms the caption remains visible at 320 DIP.
+The complete parity run also passes split/companion, Undo, image and persistent
+storage scenarios (`artifacts/webview2-greptile-parity.log`).
 
 The native host/cookbook run passed the host and review cases; cookbook retry
 passed the busy-terminal workload (146 ms dashboard response), and the focused
