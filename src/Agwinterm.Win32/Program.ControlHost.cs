@@ -221,7 +221,7 @@ internal partial class Program
                         CustomName: s.CustomName,
                         PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf), OverlayDetails: overlays.GetValueOrDefault(s.Id));
                 }).ToList()
-            , Collapsed: !w.Expanded)).ToList();
+            , Collapsed: !w.Expanded, DefaultDir: w.DefaultDir)).ToList();
     }
 
     // Read-back snapshot: plain field reads + a Win32 query, safe from the pipe thread (worst case slightly stale).
@@ -393,11 +393,28 @@ internal partial class Program
         return true;
     }
 
-    public string NewWorkspace(string? name)
+    public string NewWorkspace(string? name, string? defaultDir = null)
     {
         string id = Guid.NewGuid().ToString();
-        PostVerb(() => CreateWorkspace(id, name));
+        // ControlServer already validated and normalized this setting. Preserve it even
+        // if the directory disappears before the queued action runs; spawn handles fallback.
+        PostVerb(() => CreateWorkspace(id, name, defaultDir));
         return id;
+    }
+
+    public string WorkspaceDefaultDir(string? target, string? dir)
+    {
+        return InvokeOnUiQueued(() =>
+        {
+            var ws = string.IsNullOrEmpty(target) || target == "active" ? ActiveWorkspace() : FindWs(target);
+            if (ws is null) return ISessionHost.RefusePrefix + WorkspaceDefaultDirs.NoWorkspace;
+            if (!TrySetWorkspaceDefaultDir(ws, dir, out string? refuse))
+                return ISessionHost.RefusePrefix + refuse!;
+            RequestRedraw();
+            SaveState();
+            EmitEvent("tree");
+            return WorkspaceDefaultDirs.Reply(ws.Id, ws.DefaultDir);
+        });
     }
 
     public bool SetFontSize(string? target, string op)

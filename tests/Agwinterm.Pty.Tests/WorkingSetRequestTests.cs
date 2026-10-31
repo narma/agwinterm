@@ -17,6 +17,15 @@ public class WorkingSetRequestTests
     [InlineData("sidebar.flagged-layout", "{\"layout\":\"other\"}")]
     public void InvalidRequestsRefuseBeforeMutation(string command, string json)
     { using var d = JsonDocument.Parse(json); Assert.Throws<ArgumentException>(() => WorkingSetRequest.Validate(command, d.RootElement, null)); }
+    [Theory][InlineData("defaultDir")][InlineData("default-dir")]
+    public void CollapsedWorkspaceAcceptsDefaultDirectoryAndRefusesMissingPath(string key)
+    {
+        var args = JsonSerializer.SerializeToElement(new Dictionary<string, object> { ["collapsed"] = true, [key] = Environment.CurrentDirectory });
+        Assert.True(WorkingSetRequest.Applies("workspace.new", args));
+        WorkingSetRequest.Validate("workspace.new", args, null);
+        args = JsonSerializer.SerializeToElement(new Dictionary<string, object> { ["collapsed"] = true, [key] = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()) });
+        Assert.Throws<ArgumentException>(() => WorkingSetRequest.Validate("workspace.new", args, null));
+    }
     [Fact] public void BatchSingleTargetConflictAndLimitAreRejected()
     {
         var args = JsonSerializer.SerializeToElement(new { targets = new[] { "a" } });

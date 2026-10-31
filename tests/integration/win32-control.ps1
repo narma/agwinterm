@@ -269,6 +269,7 @@ try {
         ((Get-ActiveSessionSnapshot).id -eq [string]$pageSecond.result)
     Invoke-Ctl @('session', 'close', [string]$pageSecond.result) | Out-Null
     Invoke-Ctl @('session', 'close', [string]$pageFirst.result) | Out-Null
+    . (Join-Path $PSScriptRoot 'workspace-default-dir-cases.ps1')
 
     # Reproduce the collision from the review: the initial pane shares the session id; a hidden
     # scratch id begins with that id. Once the initial side of a split exits, only the exact session

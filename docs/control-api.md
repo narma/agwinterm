@@ -589,3 +589,27 @@ See [Native window controls](window-controls.md) for C7 commands, physical geome
 ## Pane appearance and runtime diagnostics
 
 See [Presentation and diagnostics](presentation-diagnostics.md) for C8 appearance inheritance, effective bindings, live reload and executable version metadata.
+
+## Workspace default session directory
+
+Each workspace can store a default directory for new sessions:
+
+```powershell
+agwintermctl workspace new --name project --default-dir 'D:\Projects\my app'
+agwintermctl workspace default-dir set 'D:\Projects\my app' --target <workspace-id>
+agwintermctl workspace default-dir clear --target <workspace-id>
+```
+
+`workspace.new` accepts `args.defaultDir` (alias `default-dir`), including with
+`collapsed: true`. `workspace.default-dir` accepts `args.defaultDir` (alias `dir`)
+or `args.clear: true`, and an optional workspace `target` (omitted or `active` means
+the current workspace). Set requires an existing directory and normalizes it to a full path;
+blank/missing paths and a path combined with clear are refused without changing state.
+The reply is `{workspace, defaultDir}`, with null after clear. `tree` includes
+`defaultDir` on workspace nodes only when set.
+
+New-session directory priority is explicit/restored `cwd`, existing workspace default,
+profile directory, then global `new-session-dir-mode`. An unavailable workspace default
+falls through without deleting the stored setting. WSL profiles retain their profile-directory
+and Linux-home fallback behavior. The setting survives app restart and reopening a deleted
+workspace from recent history. A partial reopen retry retains the destination's current setting.

@@ -21,6 +21,16 @@ public class RecentHistoryTests : IDisposable
         Assert.Equal("right", read.State.Panes[0].Id); Assert.Equal("echo pinned", read.State.Panes[0].RestoreCommand);
         Assert.Null(copy.Warning); Assert.Equal(2, copy.NextSequence());
     }
+    [Theory][InlineData(null)][InlineData("C:\\work")]
+    public void WorkspaceDefaultDirectorySurvivesHistoryRestart(string? defaultDir)
+    {
+        var history = new RecentHistory();
+        history.Workspaces.Add(new("project", [Item()], 2, "ws", "window", Guid.NewGuid().ToString(), DefaultDir: defaultDir));
+        Assert.True(history.Save(FilePath));
+        var loaded = RecentHistory.Load(FilePath);
+        Assert.Null(loaded.Warning);
+        Assert.Equal(defaultDir, Assert.Single(loaded.Workspaces).DefaultDir);
+    }
     [Fact] public void EntryBoundEvictsOldestWholeItems()
     {
         var h = new RecentHistory(); for (int i = 0; i < 30; i++) h.Sessions.Add(Item(i));

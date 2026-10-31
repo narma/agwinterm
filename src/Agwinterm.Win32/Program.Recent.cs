@@ -98,7 +98,7 @@ internal partial class Program : IRecentHost
         try
         {
             _closedWorkspaces.Add(new(ws.Name, sessions.Select(CaptureClosedSessionData).ToList(), Recent.NextSequence(),
-                ws.Id, Id, Guid.NewGuid().ToString(), ws.Expanded));
+                ws.Id, Id, Guid.NewGuid().ToString(), ws.Expanded, DefaultDir: ws.DefaultDir));
             SaveRecent();
         }
         catch (Exception e) { ShowToast("Recent capture failed: " + e.Message); }
@@ -166,7 +166,11 @@ internal partial class Program : IRecentHost
                 ws = _workspaces.FirstOrDefault(w => w.Id == group.DestinationWorkspaceId)
                     ?? throw new ArgumentException("partial destination workspace no longer exists; clear the entry explicitly");
             }
-            else ws = CreateWorkspace(RecentFreeId(group.WorkspaceId), group.Name);
+            else
+            {
+                ws = CreateWorkspace(RecentFreeId(group.WorkspaceId), group.Name);
+                ws.DefaultDir = group.DefaultDir;
+            }
         }
         else ws = _workspaces.FirstOrDefault(w => w.Id == single!.WorkspaceId) ?? ActiveWorkspace();
         var members = new List<RecentMember>();

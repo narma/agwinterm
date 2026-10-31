@@ -14,12 +14,14 @@ public static class WorkingSetRequest
     {
         string fields = cmd switch
         {
-            "workspace.new" => "name collapsed", "workspace.flag" or "workspace.focus" or "workspace.filter" => "op",
+            "workspace.new" => "name collapsed defaultDir default-dir", "workspace.flag" or "workspace.focus" or "workspace.filter" => "op",
             "sidebar.flagged-layout" => "layout", "session.close" => "targets",
             "session.move" => "targets before after workspace",
             "session.new" => "name cwd workspace workspace-name create-workspace profile command command-mode no-select wait caller before after",
             _ => throw new ArgumentException("unsupported working-set operation")
         };
+        if (cmd == "workspace.new" && (String(args, WorkspaceDefaultDirs.Key) ?? String(args, "default-dir")) is { } defaultDir &&
+            WorkspaceDefaultDirs.ValidateSet(defaultDir) is { } defaultDirError) throw new ArgumentException(defaultDirError);
         var allowed = fields.Split(' ').ToHashSet(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         if (args.ValueKind is not (JsonValueKind.Object or JsonValueKind.Undefined or JsonValueKind.Null)) throw new ArgumentException("args must be an object");

@@ -22,7 +22,7 @@ public static class CtlArguments
         ["install hooks"] = "window target", ["install skill"] = "window target",
         ["install shell"] = "window target", ["install cli"] = "window target remove",
         ["omp list"] = "", ["omp set"] = "window persist",
-        ["workspace new"] = "window name collapsed", ["workspace rename"] = "window target",
+        ["workspace new"] = "window name collapsed default-dir", ["workspace default-dir"] = "window target", ["workspace rename"] = "window target",
         ["workspace delete"] = "window target", ["workspace select"] = "window target",
         ["workspace go"] = "window to", ["workspace collapse"] = "window target",
         ["workspace expand"] = "window target", ["workspace focus"] = "window target", ["workspace filter"] = "window", ["workspace flag"] = "window target",
