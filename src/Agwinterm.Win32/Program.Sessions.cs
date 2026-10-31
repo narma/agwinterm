@@ -34,12 +34,12 @@ internal partial class Program
         }
     }
 
-    private Workspace CreateWorkspace(string id, string? name)
+    private Workspace CreateWorkspace(string id, string? name, string? defaultDir = null)
     {
         Workspace ws;
         lock (_workspaces)
         {
-            ws = new Workspace { Id = id, Name = name ?? $"workspace {_workspaces.Count + 1}" };
+            ws = new Workspace { Id = id, Name = name ?? $"workspace {_workspaces.Count + 1}", DefaultDir = defaultDir };
             _workspaces.Add(ws);
         }
         RequestRedraw();

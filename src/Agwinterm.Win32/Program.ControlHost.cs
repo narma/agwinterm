@@ -396,18 +396,9 @@ internal partial class Program
     public string NewWorkspace(string? name, string? defaultDir = null)
     {
         string id = Guid.NewGuid().ToString();
-        PostVerb(() =>
-        {
-            var ws = CreateWorkspace(id, name);
-            if (!string.IsNullOrEmpty(defaultDir))
-            {
-                if (TrySetWorkspaceDefaultDir(ws, defaultDir, out _))
-                {
-                    SaveState();
-                    EmitEvent("tree");
-                }
-            }
-        });
+        // ControlServer already validated and normalized this setting. Preserve it even
+        // if the directory disappears before the queued action runs; spawn handles fallback.
+        PostVerb(() => CreateWorkspace(id, name, defaultDir));
         return id;
     }
 

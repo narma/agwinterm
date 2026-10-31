@@ -41,6 +41,34 @@ function WsDefault-DeleteWorkspace([string]$wsId) {
     try { Invoke-Ctl @('workspace', 'delete', '--target', $wsId) | Out-Null } catch { }
 }
 
+# Pause only this suite instance's UI thread to make queued creation deterministic.
+# Always resume it before any readback or cleanup.
+if (-not ('WsDefaultQueuedCreation' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class WsDefaultQueuedCreation {
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenThread(uint access, bool inherit, uint id);
+    [DllImport("kernel32.dll", SetLastError=true)] static extern uint SuspendThread(IntPtr thread);
+    [DllImport("kernel32.dll")] static extern uint ResumeThread(IntPtr thread);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    public static IntPtr Pause(IntPtr window, uint expectedPid) {
+        uint pid; uint id = GetWindowThreadProcessId(window, out pid);
+        if (id == 0 || pid != expectedPid) throw new InvalidOperationException("not the suite window");
+        IntPtr thread = OpenThread(2, false, id);
+        if (thread == IntPtr.Zero) throw new Win32Exception();
+        if (SuspendThread(thread) == uint.MaxValue) { CloseHandle(thread); throw new Win32Exception(); }
+        return thread;
+    }
+    public static void Resume(IntPtr thread) { ResumeThread(thread); CloseHandle(thread); }
+}
+'@
+}
+
+$wsRace = $null
+$sesRace = $null
 $wsNew = $null
 $wsSet = $null
 $sesDefault = $null
@@ -90,7 +118,30 @@ try {
     $reopened = Invoke-Ctl @('recent', 'open', [string]$entry.id)
     Check 'recent reopen restores workspace default directory' ($reopened.ok -and [string](WsDefault-TreeWorkspace $wsNew).defaultDir -eq $wsDefaultRootFull)
 
+    $raceDir = Join-Path $testAppDir 'workspace-default-queued'
+    New-Item -ItemType Directory -Path $raceDir -Force | Out-Null
+    $process.Refresh()
+    $pausedUi = [WsDefaultQueuedCreation]::Pause($process.MainWindowHandle, [uint32]$process.Id)
+    try {
+        $queued = Invoke-Ctl @('workspace', 'new', 'ws-default-queued', '--default-dir', $raceDir)
+        $wsRace = [string]$queued.result
+        Check 'workspace creation acknowledges while UI action is queued' $queued.ok
+        Remove-Item -LiteralPath $raceDir -Force
+    } finally { [WsDefaultQueuedCreation]::Resume($pausedUi) }
+    $raceNode = $null
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        $raceNode = WsDefault-TreeWorkspace $wsRace
+        if ($null -ne $raceNode) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    Check 'queued creation retains the validated default after directory disappears' ($null -ne $raceNode -and [string]$raceNode.defaultDir -eq $raceDir)
+    New-Item -ItemType Directory -Path $raceDir -Force | Out-Null
+
     $cmd = 'cmd.exe /d /c cd && echo CWD=%CD%'
+    $raceSession = Invoke-Ctl @('session', 'new', '--workspace', $wsRace, '--no-select', '--command-mode', 'direct', '--command', $cmd)
+    $sesRace = [string]$raceSession.result
+    $raceText = WsDefault-WaitText $sesRace 'CWD='
+    Check 'reappeared directory is used by sessions in the queued workspace' ($raceSession.ok -and (WsDefault-TextReportsCwd $raceText $raceDir)) $raceText
     $newSes = Invoke-Ctl @('session', 'new', '--workspace', $wsNew, '--no-select', '--command-mode', 'direct', '--command', $cmd)
     Check 'session new in workspace with default-dir succeeds' $newSes.ok
     $sesDefault = [string]$newSes.result
@@ -109,9 +160,10 @@ try {
     Check 'explicit cwd overrides workspace default' (WsDefault-TextReportsCwd $text2 $otherFull) $text2
 }
 finally {
-    foreach ($sid in @($sesDefault, $sesExplicit)) {
+    foreach ($sid in @($sesDefault, $sesExplicit, $sesRace)) {
         if ($sid) { try { Invoke-Ctl @('session', 'close', '--target', $sid) | Out-Null } catch { } }
     }
+    WsDefault-DeleteWorkspace $wsRace
     WsDefault-DeleteWorkspace $wsNew
     WsDefault-DeleteWorkspace $wsSet
 }
