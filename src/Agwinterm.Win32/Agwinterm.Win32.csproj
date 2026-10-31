@@ -14,10 +14,16 @@
     <ApplicationIcon>assets\agwinterm.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+  <Target Name="UseWebView2CoreOnly" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
+    </ItemGroup>
+  </Target>
   <ItemGroup Condition="'$(PortableToolsArchive)' != ''">
     <EmbeddedResource Include="$(PortableToolsArchive)" LogicalName="agwinterm.tools.zip" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.9" />
     <!-- Microsoft's ConPTY (conpty.dll + x64\OpenConsole.exe beside the exe): unlike the inbox conhost it

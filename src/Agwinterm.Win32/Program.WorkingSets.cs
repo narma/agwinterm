@@ -120,6 +120,11 @@ internal partial class Program : IWorkingSetHost
         if (anchor is not null && known.Contains(anchor)) throw new ArgumentException("anchor cannot be moved in its own batch");
         if (command == "session.move" && destination is null) throw new ArgumentException("missing destination workspace");
         var outcomes = new List<object>(); bool partial = false;
+        bool undoable = command == "session.close" &&
+            (args.TryGetProperty("undoable", out _) ? B("undoable") : WorkingSetRequest.Targets(args) is not null) &&
+            TrySoftCloseWebSessions(known);
+        var closed = command == "session.close" ? AllSessions().Where(s => known.Contains(s) || known.Any(p => s.PageParentId == p.Id)).Select(s => s.Id)
+            .Concat(undoable ? _softWebCloses.Last().Members.Select(m => m.Session.Id) : []).Distinct().ToArray() : [];
         int insertion = anchor is null ? destination?.Sessions.Count ?? 0 : destination!.Sessions.IndexOf(anchor) + (S("after") is null ? 0 : 1);
         if (command == "session.move")
         {
@@ -134,7 +139,7 @@ internal partial class Program : IWorkingSetHost
         {
             var s = resolved[i];
             if (s is null) { partial = true; outcomes.Add(new { target = requested[i], sessionId = (string?)null, changed = false, error = "unknown, ambiguous or unsupported session" }); continue; }
-            if (command == "session.close") CloseSessionInternal(s);
+            if (command == "session.close") { if (!undoable) CloseSessionInternal(s, undoable: false); }
             else
             {
                 s.Ws = destination!;
@@ -144,6 +149,6 @@ internal partial class Program : IWorkingSetHost
             outcomes.Add(new { target = requested[i], sessionId = s.Id, changed, error = (string?)null });
         }
         SaveState(); RequestRedraw(); EmitEvent("tree");
-        return new { outcome = partial ? "partial" : "completed", items = outcomes };
+        return new { outcome = partial ? "partial" : "completed", items = outcomes, undoable, closed };
     });
 }

@@ -5,6 +5,21 @@ namespace Agwinterm.Ctl;
 /// <summary>Ordinary replies: output format never determines success.</summary>
 public static class CtlReply
 {
+    public static int PrintPageOutcome(string response, bool json, TextWriter output, TextWriter error)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(response);
+            if (!doc.RootElement.GetProperty("ok").GetBoolean()) return Print(response, json, false, output, error);
+            var outcome = doc.RootElement.GetProperty("result").GetProperty("pageOutcome");
+            string? state = outcome.GetProperty("outcome").GetString();
+            if (state is not ("submitted" or "dismissed")) throw new JsonException("page has no final outcome");
+            output.WriteLine(json ? response : outcome.GetRawText());
+            return state == "submitted" ? 0 : 2;
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        { error.WriteLine("invalid page outcome: " + ex.Message); return 1; }
+    }
     public static int Print(string response, bool json, bool textField, TextWriter output, TextWriter error)
     {
         try

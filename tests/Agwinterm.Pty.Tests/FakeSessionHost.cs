@@ -9,6 +9,19 @@ namespace Agwinterm.Pty.Tests;
 /// asserted end-to-end. Peripheral verbs return sensible constants.</summary>
 internal sealed class FakeSessionHost : ISessionHost
 {
+    public WebOverlayRequest? LastWebRequest { get; private set; }
+    public WebOverlayCommand? LastWebCommand { get; private set; }
+    public string? LastWebTarget { get; private set; }
+    public object OpenWebOverlay(string? target, WebOverlayRequest request)
+    {
+        LastWebTarget = target; LastWebRequest = request;
+        return new { pageID = "test-web-page" };
+    }
+    public object WebOverlayOperation(string? target, WebOverlayCommand request)
+    {
+        LastWebTarget = target; LastWebCommand = request;
+        return new { pageID = "test-web-page" };
+    }
     public bool IsQuickSurface { get; set; }
     public ControlObservation? Observation { get; set; }
     public Task<StatusWaitResult> WaitStatusAsync(string? target, StatusWaitQuery query, CancellationToken cancellationToken)

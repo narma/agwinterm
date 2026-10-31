@@ -195,6 +195,16 @@ internal partial class Program
         var shells = ReadForegroundShells(panes);
         var overlays = InvokeOnUiQueued(() => AllSessions().ToDictionary(s => s.Id, OverlayDetails));
         var huds = InvokeOnUiQueued(() => AllSessions().ToDictionary(s => s.Id, ProjectHud));
+        var webs = InvokeOnUiQueued(() =>
+        {
+            UpdateWebPresentation();
+            return _webPages.Select(pair => pair.Value).GroupBy(page => page.Owner.Id).ToDictionary(group => group.Key,
+                group => group.Select(page => new WebOverlaySnapshot(page.Id, page.Request.Html, page.Request.Url, page.CurrentUrl,
+                    page.State, page.Error, page.Hidden, page.Visible,
+                    page.Bounds.X, page.Bounds.Y, page.Bounds.Width, page.Bounds.Height, page.Zoom, page.Request.Browse,
+                    page.Pane is null ? null : OverlayPanes.Word(page.Owner.AllPanes.ToList().IndexOf(page.Pane)),
+                    page.Title, page.CanGoBack, page.CanGoForward, page.Request.Navigation, page.Request.JavaScript, page.Request.Chromeless, page.Request.Persistent, page.Request.Cwd, page.Request.Image)).ToArray());
+        });
         lock (_workspaces)
             return _workspaces.Select(w => new WorkspaceSnapshot(
                 w.Id, w.Name, ReferenceEquals(CurrentWorkspace(), w),
@@ -202,7 +212,7 @@ internal partial class Program
                 {
                     var (status, statusChangedAt) = AggStatusAndAt(s);
                     return new SessionSnapshot(s.Id, s.Name, ReferenceEquals(s, _active), status,
-                        s.Overlay.Term is not null, UnreadOf(s), s.Flagged, s.BgPath is not null,
+                        s.Overlay.Term is not null || webs.ContainsKey(s.Id), UnreadOf(s), s.Flagged, s.BgPath is not null,
                         FocusedPane: Math.Clamp(s.Active, 0, Math.Max(0, s.Panes.Count - 1)), PaneCount: s.Panes.Count,
                         StatusBlink: AggBlink(s), OverlaySize: s.Overlay.SizePercent,
                         SplitRatios: s.Panes.Select(p => (double)p.Ratio).ToList(),
@@ -219,7 +229,7 @@ internal partial class Program
                                              .Select(t => OverlayPanes.Word(t.i)).ToList(), Hud: huds.GetValueOrDefault(s.Id),
                         ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList(),
                         CustomName: s.CustomName,
-                        PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf), OverlayDetails: overlays.GetValueOrDefault(s.Id));
+                        PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf), OverlayDetails: overlays.GetValueOrDefault(s.Id), HtmlOverlays: webs.GetValueOrDefault(s.Id), PageParentId: s.PageParentId);
                 }).ToList()
             , Collapsed: !w.Expanded, DefaultDir: w.DefaultDir)).ToList();
     }
@@ -389,7 +399,7 @@ internal partial class Program
     {
         var ses = Find(target);
         if (ses is null) return false;
-        PostVerb(() => CloseSessionInternal(ses));
+        PostVerb(() => CloseSessionInternal(ses, undoable: false));
         return true;
     }
 
@@ -420,6 +430,13 @@ internal partial class Program
     public bool SetFontSize(string? target, string op)
     {
         int delta = op switch { "inc" => 1, "dec" => -1, _ => 0 }; // reset otherwise
+        if (InvokeOnUiQueued(() =>
+        {
+            var page = _webPages.Select(pair => pair.Value).FirstOrDefault(p => p.Visible &&
+                (target is null or "active" ? p.Host.HasFocus : p.Owner.Id == target || p.Pane?.Id == target));
+            if (page is null) return false;
+            ChangeWebZoom(delta); return true;
+        })) return true;
         if (string.IsNullOrEmpty(target) || target == "active")
         {
             return InvokeOnUiQueued(() =>

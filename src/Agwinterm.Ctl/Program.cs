@@ -75,6 +75,18 @@ switch (area)
     case "install" when sub == "skill": cmd = "install.skill"; target = DefaultTarget(); break;
     case "install" when sub == "shell": cmd = "install.shell"; target = DefaultTarget(); break;
     case "install" when sub == "cli": cmd = "install.cli"; target = DefaultTarget(); if (options.ContainsKey("remove")) cargs["remove"] = true; break;
+    case "install" when sub == "webview2":
+        if (rest.Count != 0) { Console.Error.WriteLine("install webview2 takes no arguments"); return 2; }
+        cmd = "install.webview2"; break;
+    case "browser" when sub is "clear" or "links":
+        if (rest.Count > (sub == "links" ? 1 : 0)) { Console.Error.WriteLine("unexpected browser argument"); return 2; }
+        cmd = "browser." + sub; target = null;
+        if (rest.Count == 1)
+        {
+            if (rest[0] is not ("browser" or "overlay" or "overlay95" or "overlay75" or "overlay50")) { Console.Error.WriteLine("invalid browser links mode"); return 2; }
+            cargs["mode"] = rest[0];
+        }
+        break;
     case "omp" when sub == "list": cmd = "omp.list"; break;
     case "omp" when sub == "set":
         cmd = "omp.set";
@@ -241,6 +253,7 @@ switch (area)
             case "close":
             case "duplicate":
                 target = rest.Count > 0 ? rest[0] : (Opt("target") ?? "active");
+                if (sub == "close" && options.ContainsKey("undoable")) cargs["undoable"] = true;
                 break;
             case "rename": // session rename <new-name...> [--target ID]
                 if (options.ContainsKey("clear"))
@@ -421,6 +434,19 @@ switch (area)
             case "overlay": // overlay open <command> [--size-percent N] [--wait|--block] [--pane left|right] | overlay close|result|copy [--pane P] | overlay text [--all|--lines N] [--pane P] | overlay resize --size-percent N
                 cargs["action"] = rest.Count > 0 ? rest[0] : "open";
                 string ovAction = (string)cargs["action"]!;
+                if (ovAction is "reload" or "navigate" || ovAction == "result" && options.ContainsKey("page"))
+                {
+                    if (ovAction == "navigate" && rest.Count == 2) cargs["direction"] = rest[1];
+                    else if (rest.Count > 1) { Console.Error.WriteLine("unexpected web operation argument"); return 2; }
+                    if (Opt("page") is { } pageId) { cargs["page"] = pageId; if (Opt("target") is null) target = null; }
+                    if (options.ContainsKey("current")) cargs["current"] = true;
+                    if (Opt("pane") is { } webPane) cargs["pane"] = webPane;
+                    foreach (var key in options.Keys.Where(k => k is not ("pipe" or "socket" or "timeout" or "json" or "window" or "target" or "page" or "current" or "pane")))
+                    { Console.Error.WriteLine("unsupported web operation option: " + key); return 2; }
+                    try { WebOverlayCommand.Parse(ovAction, JsonSerializer.SerializeToElement(cargs)); }
+                    catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+                    break;
+                }
                 if (rest.Count > 1) cargs["command"] = string.Join(' ', rest.Skip(1));
                 else if (Opt("command") is { } ovcmd) cargs["command"] = ovcmd;
                 // --pane (P5) is passed through as the string typed: the server validates the word (left|right)
@@ -471,7 +497,14 @@ switch (area)
                     }
                 foreach (string key in new[] { "cwd", "background-color" }) if (Opt(key) is { } value) cargs[key] = value;
                 foreach (string key in new[] { "full", "follow" }) if (options.ContainsKey(key)) cargs[key] = true;
-                try { Agwinterm.Pty.OverlayOptions.Parse(ovAction, JsonSerializer.SerializeToElement(cargs)); }
+                foreach (string key in new[] { "html", "url", "image", "bridge" }) if (Opt(key) is { } source) cargs[key] = source;
+                foreach (string key in new[] { "js", "navigation", "chromeless", "browse", "persistent", "companion" }) if (options.ContainsKey(key)) cargs[key] = true;
+                try
+                {
+                    var overlayArgs = JsonSerializer.SerializeToElement(cargs);
+                    if (WebOverlayRequest.IsWeb(overlayArgs)) WebOverlayRequest.Parse(overlayArgs);
+                    else Agwinterm.Pty.OverlayOptions.Parse(ovAction, overlayArgs);
+                }
                 catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message + ". Nothing sent."); return 2; }
                 break;
             case "focus": target = Opt("target"); cargs["dir"] = rest.Count > 0 ? rest[0] : "other"; break;
@@ -768,6 +801,22 @@ if (cmd == "install.skill" && target is null && Opt("window") is null)
     Console.WriteLine(Agwinterm.Pty.AgentSkill.Install());
     return 0;
 }
+if (cmd == "install.webview2")
+{
+    try
+    {
+        var installer = new System.Diagnostics.ProcessStartInfo("winget.exe") { UseShellExecute = false };
+        foreach (var argument in new[] { "install", "--id", "Microsoft.EdgeWebView2Runtime", "--exact", "--source", "winget" }) installer.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(installer) ?? throw new IOException("Could not start winget");
+        process.WaitForExit();
+        return process.ExitCode == 0 ? 0 : 1;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine("WebView2 installation could not start: " + ex.Message + ". Download the Evergreen Standalone Installer for offline installation from https://developer.microsoft.com/microsoft-edge/webview2/");
+        return 1;
+    }
+}
 // install.cli (PATH edit) and omp.list (file enumeration) are self-contained too — run locally.
 if (cmd == "install.cli" && target is null && Opt("window") is null)
 {
@@ -821,6 +870,9 @@ try
 {
     string? response = Agwinterm.Ctl.CtlRequest.Exchange(pipeName, requestJson, replyTimeout);
     if (response is null) { Console.Error.WriteLine("no response"); return 1; }
+
+    if (cmd == "session.overlay" && cargs.ContainsKey("html") && cargs.ContainsKey("block"))
+        return Agwinterm.Ctl.CtlReply.PrintPageOutcome(response, jsonOut, Console.Out, Console.Error);
 
     return Agwinterm.Ctl.CtlReply.Print(response, jsonOut, printTextField, Console.Out, Console.Error);
 }

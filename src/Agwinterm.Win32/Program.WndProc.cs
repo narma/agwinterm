@@ -99,6 +99,7 @@ internal partial class Program
                 }
 
             case WM_COMMAND:
+                if (HiWord(wParam) == 0 && WebNavigationClick(lParam)) return IntPtr.Zero;
                 if (LoWord(wParam) == EDIT_ID && HiWord(wParam) == EN_KILLFOCUS) CommitRename();
                 return IntPtr.Zero;
 
@@ -482,7 +483,7 @@ internal partial class Program
                     if (di >= 0) { _divDragging = true; _divLeft = di; SetCapture(hwnd); return IntPtr.Zero; }
                     if (_cover is null) FocusPaneAt(mx, my); // covers capture the whole content region
                     // Ctrl+click on a hovered link opens it (never starts a selection or reaches the app).
-                    if (KeyDown(VK_CONTROL) && _linkUrl is { } lurl) { OpenLink(lurl); return IntPtr.Zero; }
+                    if (KeyDown(VK_CONTROL) && UpdateLinkHover(mx, my) && _linkUrl is { } lurl) { OpenLink(lurl); return IntPtr.Zero; }
                     bool shiftDn = KeyDown(VK_SHIFT);
                     var em0 = _session?.Emulator;
                     if (em0 is not null && em0.MouseReporting && !shiftDn) { SendMousePx(0, lParam, true); SetCapture(hwnd); return IntPtr.Zero; }
@@ -696,6 +697,8 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_DESTROY:
+                foreach (var pending in _softWebCloses.ToArray()) FinalizeSoftWebClose(pending);
+                foreach (var (_, page) in _webPages) CloseWebPage(page.Owner, page.Pane);
                 _uia.Dispose();
                 CloseWindowPicker();
                 _uiGone.Cancel();                 // release any pipe thread waiting in InvokeOnUiQueued

@@ -11,6 +11,149 @@ Related pages: [launching a session command](session-commands.md), [session HUD]
 [native picker](native-picker.md), [`image frameshm`](specs/image-frameshm.md). The subset agliteterm
 shares is canonical in [`tests/conformance/control-api.json`](../tests/conformance/control-api.json).
 
+## Optional web overlays
+
+WebView2 pages occupy a session-wide or independent pane overlay slot. An existing program or web
+overlay in that slot, even hidden, refuses a new web open. A valid session-wide web open replaces a HUD only
+after its controller is ready. Missing runtime, invalid source and failed validation
+leave existing surfaces intact. Install the optional runtime explicitly with
+`agwintermctl install webview2`; terminal-only operation does not require it.
+
+Use the exact session ID returned by `tree --json` in these examples:
+
+```powershell
+agwintermctl session overlay open --html "C:\docs\index.html" --navigation --target SESSION_ID --json
+agwintermctl tree --json
+agwintermctl session overlay reload --target SESSION_ID
+agwintermctl session overlay close --target SESSION_ID
+```
+
+The open reply is `{"ok":true,"result":{"pageID":"..."}}`; loading continues
+asynchronously. Each session adds `htmlOverlays` (session-wide and independent pane slots) containing
+`id`, `file`, `url`, `currentUrl`, `state` (`loading`, `loaded`, `failed`), `error`,
+`hidden`, effective `visible`, `pane` (null or pane identity), `geometry:{x,y,width,height}` in physical
+pixels, `zoom`, `browse`, `title`, `canGoBack`, `canGoForward`, `navigation`, `javascript`,
+`chromeless`, `persistent`, `cwd` and `image`. Background readback does not select the owner. Existing program
+`overlayDetails` and `result` replies retain their shapes.
+
+The wire method is `session.overlay` with args `{action:"open",html:"..."}` or
+`{action:"open",url:"http://localhost:8080/"}`. Optional fields are `js`, `follow`,
+`navigation`, `chromeless`, `browse`, `persistent`, `block`, `companion` (booleans),
+`cwd` (directory string), `pane` (`"left"` or `"right"`), `bridge` (`"review"`), `size-percent` (1–100),
+`width`, `height` (1–16384 DIPs). Exactly one source is required. JavaScript defaults
+off. `navigation` adds native Back/Forward/Reload/Open in browser/Close controls;
+`chromeless` omits them. They are mutually exclusive. `follow` selects the owner;
+`browse` requires a URL, defaults off and conflicts with `chromeless`. A chromeless
+URL must use exactly `localhost`, `127.0.0.1` or `::1`; its frames stay on that origin.
+otherwise background opening preserves selection. Normal host close shortcuts work
+in chromeless mode. Requests reject unknown fields, duplicate fields, wrong JSON
+types, program commands, `--wait` and mismatched window selectors. `--pane left|right`
+opens an independent full-pane page, without floating dimensions. Swapping panes
+moves their pages; hiding a split preserves its page. A session-wide page can cover
+both pane pages. Hidden program/web slots still refuse replacement.
+
+| Operation | Web page behavior |
+| --- | --- |
+| `close`, `hide`, `show`, `toggle`, `resize` | Operate on the page at the session target; hidden pages retain their DOM |
+| `reload` | Reload the original source; `--current` and toolbar Reload reload the current document, retaining page ID and storage |
+| `navigate back\|forward\|browser\|finder` | History, explicit external handoff or reveal a local file; wire args use `action:"navigate",direction:"back"` etc. |
+| `result --page PAGE_ID` | Read the instance-wide page outcome without selecting an owner |
+| `result` without `--page` | Existing program result, never a page result |
+| `text`, `copy`, program open over web | Refused; web pages are not terminal text surfaces |
+
+Local paths resolve in the target Windows/WSL context. Assets are served from a
+per-page HTTPS origin. Without `--cwd`, only the entry file is readable. Explicit
+`--cwd DIRECTORY` grants that canonical directory, including symlink checks; the
+entry must be inside it and filesystem/home roots are refused. Remote sources receive no local file grant or host bridge.
+Like agterm, a URL page defaults to its original origin (scheme, host and effective
+port). Add `--browse` to allow HTTP(S) redirects and links across origins, including
+`https://google.com` to `https://www.google.com`. Browse mode shows the current site
+in a native strip, and does not enable JavaScript or persistent storage by itself.
+For example: `agwintermctl session overlay open --url https://google.com --js --browse`.
+Local documents stay
+within their granted origin/root, and review pages stay bound to their original
+document. Clicked external links and user-initiated popups require a native
+confirmation; Cancel is the default and declining silences further page prompts
+until real user input in that browser (synthetic DOM events do not reset it).
+Automatic popups are suppressed. Hiding/closing the page dismisses its prompt.
+The toolbar/CLI browser action is already an explicit handoff. Non-HTTP(S) main-frame
+destinations other than `about:` and embedded URL credentials are refused. A blocked first navigation
+explains the restriction; a blocked navigation from an already loaded page leaves
+that document visible.
+Downloads and permission grants are denied. Local documents
+receive live `--agwinterm-background`, `--agwinterm-foreground`, `--agwinterm-color-0`
+through `-15` CSS variables and equivalent `--agterm-*` aliases, without reloading.
+
+URL-only `--persistent` uses shared application browser storage. `browser clear`
+clears cookies, localStorage and IndexedDB after all persistent pages have closed
+(including pages retained for Undo). Temporary pages remain isolated. `browser links`
+reads the terminal-link preference; add `browser|overlay|overlay95|overlay75|overlay50`
+to change it, or use Settings → General → Open links in. Overlay link modes enable browse, JS, navigation and persistence,
+with external-browser fallback. Tree reports `linkOpenMode`. Web zoom is shared and
+saved separately from terminal font sizes.
+
+`--image FILE` accepts PNG/JPEG/GIF/WebP by content, up to 64 MiB and 100 million
+pixels. Images have no script/bridge grant. `--companion` on HTML/URL opens an
+independent shell-less child session; reply adds `id` and `parent`. Raw
+`session.companion.page` accepts the same HTML/URL arguments with companion implied.
+It cannot hide
+its only page or accept terminal commands. Closing its page removes the child;
+closing its parent closes the children. Neither live pages nor companions restore
+after application restart. `session close --undoable` retains a web owner's live
+document for three seconds; its reply reports `undoable` and the `closed` session IDs.
+Reopen Last Closed Item restores it within that interval. Batch close restores the
+whole group from any member's Recent entry; workspace close also retains its layout,
+focus membership and selected session. Settings → General → Undo closing sessions
+with web pages disables this grace period. An explicit `undoable:false` request
+always closes immediately. Once the grace period expires, Recent can restore the
+terminal layout but cannot restore a live web document.
+
+Local HTML `--block` waits for that exact page: submission exits 0 (including empty
+values), dismissal exits 2, and failure exits 1. A transport timeout does not close
+the page. `window.close()` dismisses the originating page.
+
+Remote display/replication is deferred to a separate OpenSpec change; transport
+selection, likely agterm/zmx interoperability, remains undecided.
+
+### Review bridge and recovery
+
+Trusted local HTML has declarative `data-agterm` buttons/forms and, with `--js`,
+the asynchronous `agwinterm.request` API and `agterm.request` alias. General requests
+inherit the live owner session/pane/window context and accept explicit target/window
+options. They refuse `zmx.present`, `zmx.reset`, `session.overlay.job.run`,
+`session.overlay.page.serve` and `session.companion.page.attach`. URL/image content
+and subframes receive no host authority. Declarative `data-agterm-args` supplies a
+JSON object; named form fields add arguments and `data-agterm-into` renders output
+as text. No `--js` is required for declarative controls.
+
+Explicit `--js --bridge review` selects the narrower review API. Its permitted calls are:
+
+```javascript
+await agwinterm.request('session.overlay.submit', {args: {value: 'review text'}});
+await agterm.request('session.overlay.close', {}); // alternative: cancel
+```
+
+The review bridge accepts no target/window override, other command or subframe request.
+Submission is limited to 1 MiB UTF-8; an empty string is a valid submission.
+The host binds requests to the current document and invalidates that binding on
+reload/navigation. Submission records the result before closing. First completion
+wins. Close, owner removal and shutdown dismiss a pending page; hiding does not.
+
+`agwintermctl session overlay result --page PAGE_ID --json` returns
+`result.pageOutcome:{pageID,outcome}` where outcome is `pending`, `submitted` or
+`dismissed`; only submitted results add `value`. The last 32 finished outcomes are
+retained instance-wide; pending pages do not count toward that bound. Unknown or
+evicted IDs refuse. These results and page profiles are not restored after restart.
+Closing a page deletes its temporary profile. After the shared browser exits,
+remaining page directories are removed; a later web request also sweeps orphaned
+page directories from interrupted runs. Shared runtime caches may remain. Terminal
+startup does not create a browser or sweep browser files. Browser failure leaves a
+bounded error and an explicit Reload action; reload recreates a failed browser with
+the same page ID. A failed browser cannot promise preservation of unsaved DOM edits.
+An adapter should save its own output backup and query a known page ID after a
+transport timeout, which does not prove cancellation. Ordinary CLI exit codes remain
+0/1/2; adapters must interpret dismissal separately from CLI argument-error code 2.
+
 ## Reaching an instance
 
 Ordinary requests exit 0 on success, 1 on server refusal, transport failure or invalid
