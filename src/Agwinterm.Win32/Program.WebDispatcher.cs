@@ -10,6 +10,7 @@ internal partial class Program
     private const uint WebDispatchMessage = 0x8003;
     private static readonly ConcurrentQueue<Action> WebContinuations = new();
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")] private static extern bool PostThreadMessageW(uint thread, uint message, IntPtr w, IntPtr l);
 
     private static WebViewHost NewWebHost()

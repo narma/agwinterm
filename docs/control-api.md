@@ -122,7 +122,13 @@ the asynchronous `agwinterm.request` API and `agterm.request` alias. General req
 inherit the live owner session/pane/window context and accept explicit target/window
 options. They refuse `zmx.present`, `zmx.reset`, `session.overlay.job.run`,
 `session.overlay.page.serve` and `session.companion.page.attach`. URL/image content
-and subframes receive no host authority. Declarative `data-agterm-args` supplies a
+and subframes receive no host authority. Local resource-backed child documents run
+in an opaque-origin sandbox, so they cannot call the parent's bridge even when
+loading the same URL. Inline `about:blank`/`srcdoc` child navigations are refused;
+use a file within the explicit directory grant for embedded content. Commands that
+act on a pane inherit the page's owning pane, including after a swap. Queued bridge
+mutations recheck document lifetime at execution and are refused after close/reload.
+Declarative `data-agterm-args` supplies a
 JSON object; named form fields add arguments and `data-agterm-into` renders output
 as text. No `--js` is required for declarative controls.
 

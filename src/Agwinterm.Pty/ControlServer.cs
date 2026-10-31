@@ -66,19 +66,23 @@ public sealed partial class ControlServer : IDisposable
         _acceptedSharedFrameSequences = new();
     private long _sharedFrameRequestGeneration;
 
-    public ControlServer(ISessionHost host, string pipeName = "agwinterm")
+    public ControlServer(ISessionHost host, string pipeName = "agwinterm", Func<Func<string>, string>? sessionCommandExecutor = null)
     {
         _host = host;
         _pipeName = pipeName;
+        _sessionCommandExecutor = sessionCommandExecutor;
     }
 
     /// <summary>Multi-window server: content verbs resolve through <paramref name="windows"/> (--window), window.* act on it.</summary>
-    public ControlServer(ISessionHost host, IWindowHost windows, string pipeName = "agwinterm")
+    public ControlServer(ISessionHost host, IWindowHost windows, string pipeName = "agwinterm", Func<Func<string>, string>? sessionCommandExecutor = null)
     {
         _host = host;
         _windows = windows;
         _pipeName = pipeName;
+        _sessionCommandExecutor = sessionCommandExecutor;
     }
+
+    private readonly Func<Func<string>, string>? _sessionCommandExecutor;
 
     /// <summary>Convenience: serve a single fixed session (tests / simple hosts).</summary>
     public ControlServer(ISession session, string pipeName = "agwinterm")
@@ -417,7 +421,10 @@ public sealed partial class ControlServer : IDisposable
             host = auxiliary ?? host;
 
             if (cmd is "install.hooks" or "install.skill" or "install.shell" or "install.cli")
-                return Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
+            {
+                string Install() => Ok(WslIntegration.Install(host.IntegrationProfile(target), cmd[8..], GetBool(args, "remove")));
+                return _sessionCommandExecutor is null ? Install() : _sessionCommandExecutor(Install);
+            }
 
             if (host.IsQuickSurface && cmd is not ("quick" or "window.state" or "tree"
                 or "session.write" or "session.type" or "session.text" or "session.copy" or "session.status"
@@ -657,42 +664,46 @@ public sealed partial class ControlServer : IDisposable
             }
 
             // Session-targeted commands.
-            var s = host.Resolve(target);
-            if (s is null) return Err("no session");
-            return cmd switch
+            string ExecuteSessionCommand()
             {
-                "session.write" => HandleWrite(s, args),
-                "session.type" => HandleType(s, args),
-                "session.text" => HandleText(s, args),
-                // The selection's text, "" when the pane has none — and a target that resolves to no
-                // pane is the read verbs' refusal above (it answered ok:true "" — a missing pane and an
-                // empty selection were the same reply). Not HostReply: the reply IS the selection, and
-                // a selection may begin with anything, RefusePrefix included.
-                "session.copy" => Ok(host.SessionCopy(target)),
-                "session.status" => HandleStatus(s, args),
-                "session.metrics" => HandleSessionMetrics(host, s, target),
-                // surface.cursor — the caret COLUMN as a bare integer (agterm's shape, so a script
-                // written against either product reads the same reply; a JSON object here would
-                // diverge for no caller we have, and the row is not what "is the composer empty"
-                // asks). Targeting follows Resolve, exactly as session.text/session.type do, so the
-                // pane you CHECK is the pane you then type into: a pane id reports that pane, and a
-                // session NAME reports its focused pane — a cursor is a per-pane thing, and focus is
-                // the only non-arbitrary answer for a session-wide target. The session-id rule, by
-                // condition (P4): while a pane carries the session's id — pane 0 of a fresh session,
-                // either side after a session.swap, a restore keeping the order it saved — the id
-                // reports THAT pane wherever it sits,
-                // regardless of focus (Resolve's exact-pane-first order); while none does — the
-                // carrier was closed, by split.close, Ctrl+Shift+W, split off after a swap, or its
-                // shell exiting — the id falls through to the exact-session arm and reports the
-                // FOCUSED pane, like a name (verified in qa/control-read.md).
-                "surface.cursor" => OkRaw(s.SnapshotCursor().Col.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                "image.show" => HandleImageShow(s, args),
-                "image.sixel" => HandleImageSixel(s, args),
-                "image.clear" => HandleImageClear(s),
-                "image.frame" => HandleImageFrame(s, args),
-                "image.frameshm" => HandleImageFrameShm(s, args),
-                _ => Err($"unknown command '{cmd}'"),
-            };
+                var s = host.Resolve(target);
+                if (s is null) return Err("no session");
+                return cmd switch
+                {
+                    "session.write" => HandleWrite(s, args),
+                    "session.type" => HandleType(s, args),
+                    "session.text" => HandleText(s, args),
+                    // The selection's text, "" when the pane has none — and a target that resolves to no
+                    // pane is the read verbs' refusal above (it answered ok:true "" — a missing pane and an
+                    // empty selection were the same reply). Not HostReply: the reply IS the selection, and
+                    // a selection may begin with anything, RefusePrefix included.
+                    "session.copy" => Ok(host.SessionCopy(target)),
+                    "session.status" => HandleStatus(s, args),
+                    "session.metrics" => HandleSessionMetrics(host, s, target),
+                    // surface.cursor — the caret COLUMN as a bare integer (agterm's shape, so a script
+                    // written against either product reads the same reply; a JSON object here would
+                    // diverge for no caller we have, and the row is not what "is the composer empty"
+                    // asks). Targeting follows Resolve, exactly as session.text/session.type do, so the
+                    // pane you CHECK is the pane you then type into: a pane id reports that pane, and a
+                    // session NAME reports its focused pane — a cursor is a per-pane thing, and focus is
+                    // the only non-arbitrary answer for a session-wide target. The session-id rule, by
+                    // condition (P4): while a pane carries the session's id — pane 0 of a fresh session,
+                    // either side after a session.swap, a restore keeping the order it saved — the id
+                    // reports THAT pane wherever it sits,
+                    // regardless of focus (Resolve's exact-pane-first order); while none does — the
+                    // carrier was closed, by split.close, Ctrl+Shift+W, split off after a swap, or its
+                    // shell exiting — the id falls through to the exact-session arm and reports the
+                    // FOCUSED pane, like a name (verified in qa/control-read.md).
+                    "surface.cursor" => OkRaw(s.SnapshotCursor().Col.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    "image.show" => HandleImageShow(s, args),
+                    "image.sixel" => HandleImageSixel(s, args),
+                    "image.clear" => HandleImageClear(s),
+                    "image.frame" => HandleImageFrame(s, args),
+                    "image.frameshm" => HandleImageFrameShm(s, args),
+                    _ => Err($"unknown command '{cmd}'"),
+                };
+            }
+            return _sessionCommandExecutor is null ? ExecuteSessionCommand() : _sessionCommandExecutor(ExecuteSessionCommand);
         }
         catch (ObservationException ex) { return ex.ToJson(); }
         catch (JsonException ex) { return Err("invalid json: " + ex.Message); }

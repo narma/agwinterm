@@ -1,5 +1,24 @@
 # WebView2 release validation
 
+## PR review hardening (2026-11-01)
+
+The first Greptile review identified five confirmed defects: same-origin child
+frames could call the parent's bridge, pane commands inherited the session ID,
+companion creation retained a parent pane, queued commands outlived their document,
+and native Reload could access an uninitialized controller. The follow-up fixes
+use browser-provided frame IDs and opaque child origins (including separate renderer
+targets), pane-specific defaults, companion rollback, execution-time mutation guards,
+and initialization-safe reload.
+
+Release build and 577 Core / 1,562 PTY tests pass. The new
+`web-overlay-parity.ps1 -ReviewOnly` run verifies external child scripts, same-URL
+children, srcdoc refusal, right-pane typing, swap, companion pane targeting and early
+reload. A deterministic queued-command test invalidates the document while paused
+and verifies that the terminal status remains unchanged. Full native cookbook and
+parity runs also pass for the initial fixes; final child-renderer handling is checked
+by the focused regression run. Local logs are `artifacts/webview2-greptile-*.log`.
+The installed/published measurements below precede these review fixes.
+
 ## Local parity extension — published-build evidence (2026-11-01)
 
 Remote display/replication was explicitly deferred on 2026-10-31 to a future

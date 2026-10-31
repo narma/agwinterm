@@ -124,12 +124,14 @@ internal partial class Program
         {
             if (request.Persistent && _webStorageClearing) throw new ArgumentException("browser storage is being cleared");
             var pageOwner = request.Companion ? CreatePageCompanion(context.owner, request) : context.owner;
-            var page = new WebPage(request, NewWebHost(), pageOwner, context.pane);
+            var pagePane = request.Companion ? null : context.pane;
+            var page = new WebPage(request, NewWebHost(), pageOwner, pagePane);
             page.Resources = resources;
             page.ImageDocument = imageDocument; page.ImageInfo = imageInfo;
-            if (!_webPages.TryReserve(page.Slot, page, AllSessions().Contains(pageOwner) && (context.pane is null || pageOwner.Panes.Contains(context.pane)), (context.pane?.Overlay ?? pageOwner.Overlay).Term is not null))
+            if (!_webPages.TryReserve(page.Slot, page, AllSessions().Contains(pageOwner) && (pagePane is null || pageOwner.Panes.Contains(pagePane)), (pagePane?.Overlay ?? pageOwner.Overlay).Term is not null))
             {
                 page.Host.Dispose();
+                if (request.Companion) CloseSessionInternal(pageOwner, undoable: false);
                 throw new ArgumentException("web overlay owner or slot changed while validating the source");
             }
             WebOutcomes.Register(page.Id);
@@ -278,34 +280,7 @@ internal partial class Program
                     if (page.Request.Block) page.Completion.TrySetException(new IOException(page.Error));
                     RequestRedraw();
                 };
-                if (resources is not null)
-                {
-                    browser.AddWebResourceRequestedFilter(origin + "/*", CoreWebView2WebResourceContext.All,
-                        CoreWebView2WebResourceRequestSourceKinds.All);
-                    browser.WebResourceRequested += (_, e) =>
-                    {
-                        var deferral = e.GetDeferral();
-                        string path = new Uri(e.Request.Uri).AbsolutePath;
-                        _ = host.RunAsync(async () =>
-                        {
-                            try
-                            {
-                                byte[] bytes = page.ImageDocument ?? await Task.Run(() => resources.Read(path));
-                                if (!IsCurrent()) return;
-                                e.Response = browser.Environment.CreateWebResourceResponse(new MemoryStream(bytes, false), 200, "OK",
-                                    "Content-Type: " + (page.ImageDocument is null ? LocalWebSource.ContentType(path) : "text/html; charset=utf-8") + "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff" +
-                                    (!request.JavaScript ? "\r\nContent-Security-Policy: script-src 'none'; object-src 'none'" :
-                                     request.Bridge is not null ? "\r\nContent-Security-Policy: frame-src 'none'; object-src 'none'" : ""));
-                            }
-                            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
-                            {
-                                if (IsCurrent())
-                                    e.Response = browser.Environment.CreateWebResourceResponse(Stream.Null, 403, "Resource unavailable or outside document grant", "Cache-Control: no-store");
-                            }
-                            finally { try { deferral.Complete(); } catch (InvalidOperationException) { } }
-                        });
-                    };
-                }
+                if (resources is not null) await BindLocalResources(page, origin);
                 if (request.Bridge == "review") await BindReview(owner, page, source);
                 else if (resources is not null && request.Image is null) await BindLocalCommands(owner, page, source);
                 if (!IsCurrent()) return;
@@ -327,6 +302,9 @@ internal partial class Program
 
     private void ReloadWebPage(Ses owner, WebPage page, bool current = true)
     {
+        // Controller creation already navigates to the original source. Until then
+        // a reload is coalesced with that first navigation, including native clicks.
+        if (!page.Host.IsReady && !page.RecreateHost) return;
         CancelWebExternal(page);
         if (!page.RecreateHost)
         {

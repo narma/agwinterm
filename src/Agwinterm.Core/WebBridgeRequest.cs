@@ -6,6 +6,13 @@ namespace Agwinterm.Core;
 /// <summary>Trusted local-page control envelope. Remote documents never reach this parser.</summary>
 public sealed record WebBridgeRequest(string Id, string Method, string? Target, string? Window, JsonElement Args)
 {
+    public static bool TargetsPane(string command) => command is
+        "session.type" or "session.write" or "session.text" or "session.copy" or "session.paste" or "session.search" or
+        "session.status" or "session.metrics" or "session.output" or "session.readonly" or "session.agent-resume" or
+        "surface.cursor" or "font" or "notify" or "command.run" ||
+        command.StartsWith("font.", StringComparison.Ordinal) || command.StartsWith("image.", StringComparison.Ordinal) ||
+        command.StartsWith("selection.", StringComparison.Ordinal);
+
     public static WebBridgeRequest Parse(string json, string token)
     {
         if (Encoding.UTF8.GetByteCount(json) > 6 * ReviewBridgeRequest.MaxValueBytes + 4096) throw new ArgumentException("bridge request too large");

@@ -1,6 +1,7 @@
 param(
     [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
-    [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe"
+    [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
+    [switch]$ReviewOnly
 )
 $ErrorActionPreference = 'Stop'
 $Exe = (Resolve-Path $Exe).Path
@@ -62,6 +63,12 @@ try {
     }
     $script:owner = (Call @('tree')).result.workspaces[0].sessions[0].id
     $script:mainWindow = @((Call @('window','list')).result.windows | Where-Object open)[0].id
+    if ($ReviewOnly) {
+        . "$PSScriptRoot/web-overlay-review-cases.ps1"
+        Require ((Call @('window','close')).ok) 'review regression window closes'
+        Require ($process.WaitForExit(10000)) 'review regression process exits'
+        return
+    }
     Require ((Call @('session','split','on','--target',$owner)).ok) 'split enables'
     $left = Call @('session','overlay','open','--html',"$directory/page.html",'--js','--cwd',$directory,'--pane','left','--target',$owner)
     $right = Call @('session','overlay','open','--html',"$directory/page.html",'--js','--cwd',$directory,'--pane','right','--target',$owner)

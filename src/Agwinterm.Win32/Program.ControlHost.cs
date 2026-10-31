@@ -774,7 +774,9 @@ internal partial class Program
         return profile is null ? null : new ShellProfile { Name = profile.Name, Command = profile.Command, Args = profile.Args?.ToArray(), Env = profile.Env is null ? null : new(profile.Env) };
     }
 
-    public string RestoreClear()
+    public string RestoreClear() => WebCommandGuard.Value is null ? RestoreClearCore() : InvokeOnUiQueued(RestoreClearCore);
+
+    private string RestoreClearCore()
     {
         try
         {

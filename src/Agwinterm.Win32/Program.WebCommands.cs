@@ -6,6 +6,17 @@ namespace Agwinterm.Win32;
 
 internal partial class Program
 {
+    // Captured by every UI mutation hop, including hops into another window.
+    // Only bridge dispatch installs this scope; ordinary pipe clients are unaffected.
+    private static readonly AsyncLocal<Action?> WebCommandGuard = new();
+    private static T GuardWebCommand<T>(Action? guard, Func<T> action)
+    {
+        guard?.Invoke();
+        var previous = WebCommandGuard.Value;
+        WebCommandGuard.Value = guard;
+        try { return action(); }
+        finally { WebCommandGuard.Value = previous; }
+    }
     private const string DeclarativeWebScript = """
         (() => {
           if(window!==top) return;
@@ -83,7 +94,20 @@ internal partial class Program
                             return BuildWebCommand(page, request);
                         });
                         if (envelope is null) reply = JsonSerializer.Serialize(new { ok = true, result = new { pageID = page.Id } });
-                        else { using var dispatcher = new ControlServer(this, this); reply = dispatcher.Dispatch(envelope); }
+                        else
+                        {
+                            Action guard = () =>
+                            {
+                                if (!IsCurrent() || page.DocumentGeneration != generation) throw new ArgumentException("stale page request");
+                            };
+                            WebCommandGuard.Value = guard;
+                            try
+                            {
+                                using var dispatcher = new ControlServer(this, this, sessionCommandExecutor: fn => InvokeOnUiQueued(fn));
+                                reply = dispatcher.Dispatch(envelope);
+                            }
+                            finally { WebCommandGuard.Value = null; }
+                        }
                     }
                     catch (Exception ex) { reply = JsonSerializer.Serialize(new { ok = false, error = ex.Message }); }
                     PostVerb(() =>
@@ -137,6 +161,7 @@ internal partial class Program
         }
         bool global = command.StartsWith("browser.", StringComparison.Ordinal) || command is "recent.list" or "recent.clear" || command.StartsWith("hooks.", StringComparison.Ordinal);
         if (target is null && window is null && (command.StartsWith("session.", StringComparison.Ordinal) && command is not ("session.new" or "session.go") || command is "notify" or "font" || command.StartsWith("font.", StringComparison.Ordinal))) target = page.Owner.Id;
+        if (request.Target is null && request.Window is null && page.Pane is not null && WebBridgeRequest.TargetsPane(command)) target = page.Pane.Id;
         if (target is null && command.StartsWith("window.", StringComparison.Ordinal) && command is not ("window.new" or "window.list")) target = window ?? Id;
         if (!global && request.Target is null && window is null && !command.StartsWith("window.", StringComparison.Ordinal)) window = Id;
         var envelope = new Dictionary<string, object?> { ["cmd"] = command, ["args"] = args };

@@ -6,6 +6,16 @@ namespace Agwinterm.Core.Tests;
 public class WebParityTests
 {
     [Theory]
+    [InlineData("session.type", true)]
+    [InlineData("session.status", true)]
+    [InlineData("surface.cursor", true)]
+    [InlineData("session.rename", false)]
+    [InlineData("session.close", false)]
+    [InlineData("session.overlay", false)]
+    public void BridgeSeparatesPaneAndSessionTargets(string command, bool pane)
+        => Assert.Equal(pane, WebBridgeRequest.TargetsPane(command));
+
+    [Theory]
     [InlineData("zmx.present")]
     [InlineData("zmx.reset")]
     [InlineData("session.overlay.job.run")]

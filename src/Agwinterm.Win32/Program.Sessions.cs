@@ -2189,6 +2189,12 @@ internal partial class Program
     /// WM_DESTROY answered ok with the action stranded.</summary>
     private void PostVerb(Action a)
     {
+        if (WebCommandGuard.Value is not null)
+        {
+            // Bridge callers need the guarded mutation's result, not merely a queued ack.
+            InvokeOnUiQueued(() => { a(); return true; });
+            return;
+        }
         if (!Post(a)) throw new InvalidOperationException(NothingApplied());
     }
     /// <summary>Why a post was withdrawn, as far as this side can tell: the window is closing
@@ -2215,10 +2221,12 @@ internal partial class Program
     private static readonly TimeSpan UiQueuedTimeout = TimeSpan.FromSeconds(15);
     private T InvokeOnUiQueued<T>(Func<T> fn)
     {
+        var guard = WebCommandGuard.Value;
+        if (GetCurrentThreadId() == GetWindowThreadProcessId(_hwnd, out _)) return GuardWebCommand(guard, fn);
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         bool posted = Post(() =>
         {
-            try { tcs.TrySetResult(fn()); }
+            try { tcs.TrySetResult(GuardWebCommand(guard, fn)); }
             catch (Exception ex) { tcs.TrySetException(ex); }
         });
         if (!posted) throw new InvalidOperationException(NothingApplied());
@@ -2240,6 +2248,7 @@ internal partial class Program
     private readonly object _syncLock = new();
     private string InvokeOnUi(Func<string> fn)
     {
+        if (WebCommandGuard.Value is not null) return InvokeOnUiQueued(fn);
         lock (_syncLock)
         {
             _syncFn = fn;

@@ -29,6 +29,7 @@ internal sealed partial class WebViewHost : IDisposable
     private EnvironmentLease? _environment;
     private string? _dataDirectory;
     public bool HasFocus { get; private set; }
+    public bool IsReady => !_disposed && _controller is not null;
     public Action<CoreWebView2AcceleratorKeyPressedEventArgs>? Accelerator { get; set; }
     public Action<double>? ZoomChanged { get; set; }
     public Action? Focused { get; set; }

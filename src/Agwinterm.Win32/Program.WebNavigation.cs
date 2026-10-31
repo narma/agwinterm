@@ -70,6 +70,7 @@ internal partial class Program
         for (int i = 0; i < page.NavigationButtons.Length; i++)
         {
             if (page.Request.Navigation && i < 2) EnableWindow(page.NavigationButtons[i], i == 0 ? page.CanGoBack : page.CanGoForward);
+            if (page.Request.Navigation && i == 2) EnableWindow(page.NavigationButtons[i], page.Host.IsReady || page.RecreateHost);
             if (page.Owner.PageParentId is not null && i == (page.Request.Navigation ? 5 : 1)) { Win32.ShowWindow(page.NavigationButtons[i], 0); continue; }
             int left = bounds.Left + bounds.Width * i / page.NavigationButtons.Length;
             int right = bounds.Left + bounds.Width * (i + 1) / page.NavigationButtons.Length;

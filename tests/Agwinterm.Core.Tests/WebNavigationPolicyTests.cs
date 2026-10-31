@@ -11,6 +11,8 @@ public class WebNavigationPolicyTests
     [InlineData("https://page.test/asset.html", true, false, false, true)]
     [InlineData("https://page.test/asset.html", true, true, false, false)]
     [InlineData("about:blank", false, false, true, true)]
+    [InlineData("about:blank", true, false, false, false)]
+    [InlineData("about:srcdoc", true, false, false, false)]
     [InlineData("file:///C:/secret", false, false, false, false)]
     public void FramePolicyPreservesLocalReviewAndChromelessBoundaries(string destination, bool local, bool review, bool chromeless, bool allowed)
         => Assert.Equal(allowed, WebNavigationPolicy.AllowsFrame("https://page.test/", destination, local, review, chromeless));
