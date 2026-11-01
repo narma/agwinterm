@@ -191,3 +191,4 @@ try {
 }
 Write-Host "$script:checks checks, $script:failed failed"
 if ($script:failed) { exit 1 }
+exit 0
