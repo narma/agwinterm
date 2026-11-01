@@ -75,6 +75,30 @@ exit 0
     }
     @{test='NotAnEntryPoint'; parameters=@{}} | ConvertTo-Json | Set-Content (Join-Path $temporary 'run.json')
     Check 'unknown dispatch refuses to run a script' ((Run-Probe (Join-Path $integration 'sandbox-ui-dispatch.ps1') @('-WorkDirectory',$temporary) $guest).code -ne 0)
+    # Exercise the actual host-generated plan, not only hand-built dispatch data.
+    $binaries = Join-Path $temporary 'binaries'
+    $fakePowerShell = Join-Path $temporary 'powershell'
+    $null = New-Item -ItemType Directory -Path $binaries,$fakePowerShell
+    foreach ($file in @('app.exe','ctl.exe')) { 'fixture' | Set-Content (Join-Path $binaries $file) }
+    'fixture' | Set-Content (Join-Path $fakePowerShell 'pwsh.exe')
+    foreach ($testName in @('ControlCli','WebStartupBaseline','Conformance')) {
+        $output = Join-Path $temporary "host-plan-$testName"
+        $parameters = @{}
+        if ($testName -eq 'WebStartupBaseline') { $parameters = @{Installer=(Join-Path $binaries 'app.exe');Portable=(Join-Path $binaries 'ctl.exe')} }
+        if ($testName -eq 'Conformance') { $parameters.Spec = Join-Path $root 'tests/conformance/control-api.json' }
+        & "$PSScriptRoot/sandbox-ui.ps1" -Test $testName -TestParameters $parameters -Exe (Join-Path $binaries 'app.exe') -CtlExe (Join-Path $binaries 'ctl.exe') -PowerShellHome $fakePowerShell -OutputDirectory $output -PrepareOnly
+        $payload = Join-Path $output 'input'
+        $path = Join-Path $payload $definitions[$testName].Path
+        @'
+param([string]$Exe,[string]$Ctl,[switch]$Strict,[string]$Spec,[string]$Output,[int]$Runs,[string]$Installer,[string]$Portable)
+@{exe=$Exe;spec=$Spec;output=$Output} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
+exit 0
+'@ | Set-Content -LiteralPath $path
+        $result = Run-Probe (Join-Path $payload 'tests/integration/sandbox-ui-dispatch.ps1') @('-WorkDirectory',$payload) $guest
+        Check "$testName host-generated plan dispatches successfully" ($result.code -eq 0)
+        $probe = Get-Content -LiteralPath $guest.SANDBOX_DISPATCH_PROBE -Raw | ConvertFrom-Json
+        if ($testName -eq 'Conformance') { Check 'host stages the exact custom contract' ((Get-FileHash $probe.spec).Hash -eq (Get-FileHash $parameters.Spec).Hash) }
+    }
     $entry = Join-Path $temporary 'entry'
     $null = New-Item -ItemType Directory -Path $entry
     Copy-Item "$PSScriptRoot/sandbox-ui-entry.ps1" -Destination $entry

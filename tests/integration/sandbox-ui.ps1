@@ -189,7 +189,7 @@ try {
     }
     $parameters = @{}
     foreach ($key in $TestParameters.Keys) { if ($key -in $definition.Options) { $parameters[$key] = $TestParameters[$key] } }
-    @{test=$Test; parameters=$parameters; inputs=@($inputFiles.Keys); outputs=@($definition.Outputs); suite=$Suite; exeName=(Split-Path $Exe -Leaf)} | ConvertTo-Json -Depth 8 |
+    @{test=$Test; parameters=$parameters; inputs=@($inputFiles.Keys); outputs=@($definition.Outputs | Where-Object { $_ }); suite=$Suite; exeName=(Split-Path $Exe -Leaf)} | ConvertTo-Json -Depth 8 |
         Set-Content -LiteralPath (Join-Path $payload 'run.json') -Encoding utf8
     $inputXml = [Security.SecurityElement]::Escape($payload)
     $resultsXml = [Security.SecurityElement]::Escape($results)

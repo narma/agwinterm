@@ -25,10 +25,12 @@ try {
     if ($definition.Strict) { $arguments.Strict = $true }
     if ($name -eq 'Hud') { $arguments.Suite = $run.suite }
     foreach ($key in $run.inputs) {
+        if (-not $key) { throw 'Invalid empty input name' }
         if ($key -notin @($definition.Inputs) + @($definition.OptionalInputs)) { throw "Unsupported input: $key" }
         $arguments[$key] = Join-Path $WorkDirectory "inputs/$key"
     }
     foreach ($key in $run.outputs) {
+        if (-not $key) { throw 'Invalid empty output name' }
         if ($key -notin $definition.Outputs) { throw "Unsupported output: $key" }
         $arguments[$key] = Join-Path $WorkDirectory "artifacts/$name-$key.json"
     }

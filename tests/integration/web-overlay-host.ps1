@@ -194,7 +194,7 @@ try {
     $valuePattern.SetValue('unsaved web draft')
     for ($i=0; $i -lt 30 -and $valuePattern.Current.Value -ne 'unsaved web draft'; $i++) { Start-Sleep -Milliseconds 50 }
     Require ($page.id -eq $opened.result.pageID -and $snapshot.overlay) 'tree preserves page ID and occupancy'
-    $refused=Call @('session','overlay','open','--html',$source,'--target',$owner)
+    $refused=Call @('session','overlay','open','--html',$source,'--replace','--target',$owner)
     Require (-not $refused.ok) 'second page refuses an occupied web slot'
     Require (-not (Call @('session','overlay','open','cmd /d /q /k','--target',$owner)).ok) 'program open refuses an occupied web slot'
     [void](Call @('session','overlay','toggle','--target',$owner))
