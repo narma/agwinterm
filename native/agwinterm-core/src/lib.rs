@@ -27,7 +27,7 @@ use screen::ScreenBuffer;
 /// Bumped whenever the exported C surface changes shape. The C# loader
 /// refuses a mismatch loudly (same hard-handshake philosophy as the
 /// pty-host protocol).
-pub const ABI_VERSION: u32 = 19;
+pub const ABI_VERSION: u32 = 20;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn agwcore_abi_version() -> u32 {
@@ -64,6 +64,7 @@ pub struct FfiCell {
     pub bg_kind: u32,
     pub bg_index: u32,
     pub bg_rgb: u32,
+    pub hyperlink: u32,
 }
 
 fn pack_color(c: Color) -> u32 {
@@ -98,6 +99,7 @@ impl From<Cell> for FfiCell {
             bg_kind: c.bg_spec.kind as u32,
             bg_index: c.bg_spec.index as u32,
             bg_rgb: pack_color(c.bg_spec.rgb),
+            hyperlink: c.hyperlink,
         }
     }
 }
@@ -106,6 +108,7 @@ impl From<FfiCell> for Cell {
     fn from(f: FfiCell) -> Cell {
         Cell {
             rune: f.rune,
+            hyperlink: f.hyperlink,
             foreground: unpack_color(f.fg),
             background: unpack_color(f.bg),
             attributes: f.attrs,
@@ -1018,7 +1021,7 @@ pub unsafe extern "C" fn agwcore_emu_copy_history_row(
     true
 }
 
-/// UTF-8 string properties: 0 = title, 1 = cwd, 2 = DumpModes. Free with agwcore_free_buf.
+/// UTF-8 string properties: 0 = title, 1 = cwd, 2 = DumpModes, 3 + id = OSC 8 payload. Free with agwcore_free_buf.
 /// # Safety
 /// `p` from `agwcore_emu_new`; `out_len` writable.
 #[unsafe(no_mangle)]
@@ -1037,6 +1040,7 @@ pub unsafe extern "C" fn agwcore_emu_get_text(
         0 => t.emu.title.clone(),
         1 => t.emu.cwd.clone(),
         2 => t.emu.dump_modes(),
+        id if id >= 3 => t.emu.hyperlink(id - 3).to_owned(),
         _ => return core::ptr::null_mut(),
     };
     let mut buf = s.into_bytes().into_boxed_slice();

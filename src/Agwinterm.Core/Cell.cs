@@ -7,7 +7,14 @@ namespace Agwinterm.Core;
 /// </summary>
 public readonly record struct Cell(
     int Rune, Color Foreground, Color Background, CellAttributes Attributes, byte Width = 1,
-    ColorSpec FgSpec = default, ColorSpec BgSpec = default)
+    ColorSpec FgSpec = default, ColorSpec BgSpec = default, TerminalHyperlink? Hyperlink = null)
 {
     public static Cell Empty => new(' ', Color.DefaultForeground, Color.DefaultBackground, CellAttributes.None);
+}
+
+/// <summary>OSC 8 target and opaque parameters, including the optional id.</summary>
+public sealed record TerminalHyperlink(string Uri, string Parameters = "")
+{
+    public string Sequence => "\x1b]8;" + Parameters + ";" + Uri + "\x1b\\";
+    public const string Close = "\x1b]8;;\x1b\\";
 }

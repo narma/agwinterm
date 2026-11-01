@@ -2,6 +2,11 @@
 
 For Linux sessions, see [WSL setup and integration](wsl.md).
 
+Links in terminal output support OSC 8, including labels that differ from the destination URL.
+Hold Ctrl and hover to underline a link; Ctrl+click opens it. Explicit OSC 8 targets take priority
+over URLs detected in the label. Links remain attached to their text in scrollback and after resize.
+The existing opening policy applies: HTTP(S) and file links are supported.
+
 ## Agent-first
 
 - **Workspaces → sessions → panes** in a custom-drawn sidebar: drag-reorder, rename, flag, focus,

@@ -603,6 +603,12 @@ internal partial class Program
             lock (h.pane.S.SyncRoot)
             {
                 int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
+                if (CellAbs(em, hist, rows, cols, ln, col).Hyperlink is { } target)
+                {
+                    url = target.Uri; pane = h.pane; line = ln; c0 = c1 = col;
+                    while (c0 > 0 && CellAbs(em, hist, rows, cols, ln, c0 - 1).Hyperlink == target) c0--;
+                    while (c1 + 1 < cols && CellAbs(em, hist, rows, cols, ln, c1 + 1).Hyperlink == target) c1++;
+                }
                 for (int c = 0; c < cols; c++)   // string index == screen column (spacers/astral -> ' '; URLs are ASCII)
                 {
                     Cell cell = CellAbs(em, hist, rows, cols, ln, c);
@@ -610,14 +616,14 @@ internal partial class Program
                 }
             }
             string row = sb.ToString();
-            foreach (System.Text.RegularExpressions.Match m in LinkRx.Matches(row))
+            foreach (System.Text.RegularExpressions.Match m in LinkRx.Matches(url is null ? row : ""))
             {
                 int end = m.Index + TrimLink(m.Value).Length;
                 if (col >= m.Index && col < end)
                 { url = row[m.Index..end]; pane = h.pane; line = ln; c0 = m.Index; c1 = end - 1; break; }
             }
         }
-        if (url != _linkUrl || !ReferenceEquals(pane, _linkPane) || line != _linkLine || c0 != _linkC0)
+        if (url != _linkUrl || !ReferenceEquals(pane, _linkPane) || line != _linkLine || c0 != _linkC0 || c1 != _linkC1)
         { _linkUrl = url; _linkPane = pane; _linkLine = line; _linkC0 = c0; _linkC1 = c1; RequestRedraw(); }
         return _linkUrl is not null;
     }

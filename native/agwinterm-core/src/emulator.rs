@@ -169,6 +169,9 @@ pub struct Emulator {
     fg_spec: ColorSpec,
     bg_spec: ColorSpec,
     attrs: u32,
+    hyperlink: u32,
+    hyperlinks: HashMap<u32, String>,
+    next_hyperlink: u32,
 
     pub title: String,
     pub cwd: String,
@@ -242,6 +245,9 @@ impl Emulator {
             fg_spec: ColorSpec::DEFAULT,
             bg_spec: ColorSpec::DEFAULT,
             attrs: attrs::NONE,
+            hyperlink: 0,
+            hyperlinks: HashMap::new(),
+            next_hyperlink: 1,
             title: String::new(),
             cwd: String::new(),
             kbd_stack: Vec::new(),
@@ -259,8 +265,20 @@ impl Emulator {
         }
     }
 
-    /// Drain the queued host actions (Notify/Progress/Clipboard/Respond/Unhandled), clearing
-    /// the queue. The C# adapter calls this after each feed and forwards them to `IHostActions`.
+    /// Resolve a cell hyperlink handle to its OSC 8 payload.
+    pub fn hyperlink(&self, id: u32) -> &str {
+        self.hyperlinks.get(&id).map_or("", String::as_str)
+    }
+
+    fn hyperlink_sequence(&self, id: u32) -> String {
+        let payload = self.hyperlink(id);
+        format!(
+            "\u{1b}]8;{}\u{1b}\\",
+            if payload.is_empty() { ";" } else { payload }
+        )
+    }
+
+    /// Drain the host actions queued during feed.
     pub fn take_host_actions(&mut self) -> Vec<HostAction> {
         core::mem::take(&mut self.host_actions)
     }
@@ -460,6 +478,7 @@ impl Emulator {
             width: w as u8,
             fg_spec: self.fg_spec,
             bg_spec: self.bg_spec,
+            hyperlink: self.hyperlink,
         };
         let (r, c) = (self.cursor_row, self.cursor_col);
         self.scr().set(r, c, cell);
@@ -483,6 +502,7 @@ impl Emulator {
             width: 1,
             fg_spec: ColorSpec::DEFAULT,
             bg_spec: self.bg_spec,
+            hyperlink: 0,
         }
     }
 
@@ -1023,10 +1043,16 @@ impl Emulator {
             }
             s.push_str(&format!("\u{1b}[{};1H", r + 1));
             let mut pen = String::from("0");
+            let mut link = "";
             for c in 0..end {
                 let cell = screen.get(r, c);
                 if cell.width == 0 {
                     continue;
+                }
+                let target = self.hyperlink(cell.hyperlink);
+                if target != link {
+                    s.push_str(&self.hyperlink_sequence(cell.hyperlink));
+                    link = target;
                 }
                 let sgr = sgr_of(&cell);
                 if sgr != pen {
@@ -1038,6 +1064,9 @@ impl Emulator {
                         .filter(|&ch| ch != '\0')
                         .unwrap_or(' '),
                 );
+            }
+            if !link.is_empty() {
+                s.push_str("\u{1b}]8;;\u{1b}\\");
             }
             if pen != "0" {
                 s.push_str("\u{1b}[0m");
@@ -1066,11 +1095,17 @@ impl Emulator {
                     last + 1,
                     sgr_of(&cell)
                 ));
+                if cell.hyperlink != 0 {
+                    s.push_str(&self.hyperlink_sequence(cell.hyperlink));
+                }
                 s.push(
                     char::from_u32(cell.rune as u32)
                         .filter(|&ch| ch != '\0')
                         .unwrap_or(' '),
                 );
+                if cell.hyperlink != 0 {
+                    s.push_str("\u{1b}]8;;\u{1b}\\");
+                }
             }
             None => {
                 let (r, c) = self.cursor_report();
@@ -1085,6 +1120,12 @@ impl Emulator {
             ..Cell::EMPTY
         };
         s.push_str(&format!("\u{1b}[{}m", sgr_of(&pen)));
+        if self.hyperlink != 0 {
+            s.push_str(&format!(
+                "\u{1b}]8;{}\u{1b}\\",
+                self.hyperlink(self.hyperlink)
+            ));
+        }
         if self.g0_line_drawing {
             s.push_str("\u{1b}(0");
         }
@@ -1170,6 +1211,7 @@ impl Emulator {
                     width: 1,
                     fg_spec: ColorSpec::DEFAULT,
                     bg_spec: ColorSpec::DEFAULT,
+                    hyperlink: 0,
                 });
             }
             self.history.push(row);
@@ -1417,6 +1459,37 @@ impl Performer for Emulator {
         match command {
             0 | 2 => self.title = text,
             7 => self.cwd = text,
+            8 => {
+                if let Some((_, uri)) = text.split_once(';') {
+                    if uri.is_empty() {
+                        self.hyperlink = 0;
+                    } else {
+                        // Drop unreachable targets periodically, retaining both screens and history.
+                        if self.next_hyperlink % 1024 == 0 {
+                            let mut used = std::collections::HashSet::new();
+                            for screen in [&self.main, &self.alt] {
+                                for r in 0..screen.rows() {
+                                    for c in 0..screen.cols() {
+                                        used.insert(screen.get(r, c).hyperlink);
+                                    }
+                                }
+                            }
+                            for row in &self.history {
+                                for cell in row {
+                                    used.insert(cell.hyperlink);
+                                }
+                            }
+                            self.hyperlinks.retain(|id, _| used.contains(id));
+                        }
+                        self.hyperlink = self.next_hyperlink;
+                        self.next_hyperlink = self
+                            .next_hyperlink
+                            .checked_add(1)
+                            .expect("hyperlink id exhausted");
+                        self.hyperlinks.insert(self.hyperlink, text);
+                    }
+                }
+            }
             // OSC 9;9 — ConEmu "set working directory". Crucially this is the cwd form that
             // conhost/ConPTY passes THROUGH to the client (it swallows OSC 7), so under a pty-host
             // it is the only way the live cwd reaches the terminal-side emulator. Other OSC 9
@@ -1657,7 +1730,8 @@ fn charsets_seq((g0, g1, shifted): (bool, bool, bool)) -> String {
 }
 
 fn is_default_blank(cell: &Cell) -> bool {
-    (cell.rune == ' ' as i32 || cell.rune == 0)
+    cell.hyperlink == 0
+        && (cell.rune == ' ' as i32 || cell.rune == 0)
         && cell.attributes == attrs::NONE
         && cell.fg_spec == ColorSpec::DEFAULT
         && cell.bg_spec == ColorSpec::DEFAULT
@@ -2030,6 +2104,48 @@ mod tests {
             (replay.emu.cursor_row, replay.emu.cursor_col),
             (t.emu.cursor_row, t.emu.cursor_col)
         );
+    }
+
+    #[test]
+    fn osc8_dump_preserves_targets_and_active_link() {
+        for close in [false, true] {
+            let mut t = Terminal::new(6, 3);
+            t.feed(b"\x1b]8;id=x;https://example.com\x07abcdef");
+            if close {
+                t.feed(b"\x1b]8;;\x1b\\");
+            }
+            let mut replay = Terminal::new(6, 3);
+            replay.feed(t.emu.dump_screen().as_bytes());
+            t.feed(b"z");
+            replay.feed(b"z");
+            for r in 0..3 {
+                for c in 0..6 {
+                    let want = t.emu.screen().get(r, c);
+                    let got = replay.emu.screen().get(r, c);
+                    assert_eq!(want.rune, got.rune);
+                    assert_eq!(
+                        t.emu.hyperlink(want.hyperlink),
+                        replay.emu.hyperlink(got.hyperlink)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn osc8_target_collection_keeps_live_history_and_alternate_links() {
+        let mut t = Terminal::new(8, 3);
+        t.feed(b"\x1b]8;id=old;https://old\x07old\x1b]8;;\x07\r\n\r\n\r\n");
+        let old = t.emu.get_history_cell(0, 0).hyperlink;
+        t.feed(b"\x1b]8;;https://main\x07M\x1b]8;;\x07\x1b[?1049h");
+        for _ in 0..2100 {
+            t.feed(b"\x1b[H\x1b]8;;https://temporary\x07x\x1b]8;;\x07");
+        }
+        assert_eq!(t.emu.hyperlink(old), "id=old;https://old");
+        assert!(t.emu.hyperlinks.len() < 1024);
+        t.feed(b"\x1b[?1049l");
+        let cell = t.emu.screen().get(2, 0);
+        assert_eq!(t.emu.hyperlink(cell.hyperlink), ";https://main");
     }
 
     #[test]

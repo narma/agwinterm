@@ -16,7 +16,7 @@ namespace Agwinterm.Core;
 /// </summary>
 public sealed unsafe class RustEmulatorCore : IDisposable
 {
-    public const uint RequiredAbi = 19;
+    public const uint RequiredAbi = 20;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Info
@@ -36,12 +36,13 @@ public sealed unsafe class RustEmulatorCore : IDisposable
         public uint Fg, Bg, Attrs, Width;
         public uint FgKind, FgIndex, FgRgb;
         public uint BgKind, BgIndex, BgRgb;
+        public uint Hyperlink;
 
         /// <summary>Convert to the managed Cell (colors unpacked from 0x00RRGGBB).</summary>
-        public Cell ToCell() => new(
+        public Cell ToCell(TerminalHyperlink? hyperlink = null) => new(
             Rune, Unpack(Fg), Unpack(Bg), (CellAttributes)Attrs, (byte)Width,
             new ColorSpec((ColorSpecKind)FgKind, (byte)FgIndex, Unpack(FgRgb)),
-            new ColorSpec((ColorSpecKind)BgKind, (byte)BgIndex, Unpack(BgRgb)));
+            new ColorSpec((ColorSpecKind)BgKind, (byte)BgIndex, Unpack(BgRgb)), hyperlink);
 
         private static Color Unpack(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v);
     }
@@ -162,6 +163,14 @@ public sealed unsafe class RustEmulatorCore : IDisposable
     public bool CopyHistoryRow(int row, NativeCell[] cells)
     {
         fixed (NativeCell* p = cells) return _copyHistory(_handle, (uint)row, p, (uint)cells.Length);
+    }
+
+    public TerminalHyperlink? GetHyperlink(uint id)
+    {
+        if (id == 0) return null;
+        string payload = GetText(checked(id + 3));
+        int semi = payload.IndexOf(';');
+        return semi < 0 ? null : new TerminalHyperlink(payload[(semi + 1)..], payload[..semi]);
     }
 
     public string Title => GetText(0);

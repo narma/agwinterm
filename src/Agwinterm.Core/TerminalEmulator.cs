@@ -190,6 +190,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     private ColorSpec _fgSpec = ColorSpec.Default;   // semantic colour (default/indexed/rgb) for theming
     private ColorSpec _bgSpec = ColorSpec.Default;
     private CellAttributes _attrs = CellAttributes.None;
+    private TerminalHyperlink? _hyperlink;
 
     /// <summary>Window title set via OSC 0/2.</summary>
     public string Title { get; private set; } = string.Empty;
@@ -284,9 +285,9 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
             Index();
         }
 
-        Screen[CursorRow, CursorCol] = new Cell(cp, _fg, _bg, _attrs, (byte)w, _fgSpec, _bgSpec);
+        Screen[CursorRow, CursorCol] = new Cell(cp, _fg, _bg, _attrs, (byte)w, _fgSpec, _bgSpec, _hyperlink);
         if (w == 2)
-            Screen[CursorRow, CursorCol + 1] = new Cell('\0', _fg, _bg, _attrs, 0, _fgSpec, _bgSpec); // trailing spacer
+            Screen[CursorRow, CursorCol + 1] = new Cell('\0', _fg, _bg, _attrs, 0, _fgSpec, _bgSpec, _hyperlink); // trailing spacer
         CursorCol += w;
     }
 
@@ -701,6 +702,12 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
             case 7:
                 Cwd = text;
                 break;
+            case 8: // OSC 8 ; params ; URI. SGR changes do not end a hyperlink.
+                int separator = text.IndexOf(';');
+                if (separator >= 0)
+                    _hyperlink = separator == text.Length - 1 ? null
+                        : new TerminalHyperlink(text[(separator + 1)..], text[..separator]);
+                break;
             case 10 when text.Trim() == "?": // OSC 10 — query the default foreground color
                 if (Host is { DefaultColors: { } fgTheme } fgHost) fgHost.Respond("\x1b]10;" + OscColorReply(Rgb(fgTheme.Foreground)) + "\x1b\\");
                 break;
@@ -1063,14 +1070,21 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
             if (end == 0) continue;
             sb.Append("\x1b[").Append(r + 1).Append(";1H");
             string pen = "0";
+            TerminalHyperlink? link = null;
             for (int c = 0; c < end; c++)
             {
                 Cell cell = Screen[r, c];
                 if (cell.Width == 0) continue;
+                if (cell.Hyperlink != link)
+                {
+                    sb.Append(cell.Hyperlink?.Sequence ?? TerminalHyperlink.Close);
+                    link = cell.Hyperlink;
+                }
                 string sgr = SgrOf(cell);
                 if (sgr != pen) { sb.Append("\x1b[").Append(sgr).Append('m'); pen = sgr; }
                 sb.Append(cell.Rune is 0 ? " " : char.ConvertFromUtf32(cell.Rune));
             }
+            if (link is not null) sb.Append(TerminalHyperlink.Close);
             if (pen != "0") sb.Append("\x1b[0m");
         }
         // DECSTBM homes the cursor, so the margins go before the cursor is placed.
@@ -1085,7 +1099,9 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
             // A pending wrap: reprint the row's last glyph, which leaves the cursor past the edge again.
             Cell cell = Screen[CursorRow, last];
             sb.Append("\x1b[").Append(CursorRow + 1).Append(';').Append(last + 1).Append("H\x1b[").Append(SgrOf(cell)).Append('m')
+              .Append(cell.Hyperlink?.Sequence ?? "")
               .Append(cell.Rune is 0 ? " " : char.ConvertFromUtf32(cell.Rune));
+            if (cell.Hyperlink is not null) sb.Append(TerminalHyperlink.Close);
         }
         else
         {
@@ -1095,6 +1111,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         // The pen the app left set, for its next output that sets none.
         var appPen = new Cell(' ', _fg, _bg, _attrs, 1, _fgSpec, _bgSpec);
         sb.Append("\x1b[").Append(SgrOf(appPen)).Append('m');
+        if (_hyperlink is not null) sb.Append(_hyperlink.Sequence);
         if (_g0LineDrawing) sb.Append("\x1b(0");
         if (_g1LineDrawing) sb.Append("\x1b)0");
         if (_shiftedOut) sb.Append('\x0e');
@@ -1106,7 +1123,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         $"\u001b({(sets.G0 ? '0' : 'B')}\u001b){(sets.G1 ? '0' : 'B')}{(sets.Shifted ? '\u000e' : '\u000f')}";
 
     private static bool IsDefaultBlank(Cell cell) =>
-        (cell.Rune is ' ' or 0) && cell.Attributes == CellAttributes.None
+        cell.Hyperlink is null && (cell.Rune is ' ' or 0) && cell.Attributes == CellAttributes.None
         && cell.FgSpec.Kind == ColorSpecKind.Default && cell.BgSpec.Kind == ColorSpecKind.Default;
 
     /// <summary>The SGR parameters that set a cell's pen from a reset one ("0" plus attributes and colors).</summary>
