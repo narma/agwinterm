@@ -78,6 +78,8 @@ The runner always passes `-Strict`.
 
 The host generates a unique `artifacts/sandbox/<run>/ui-tests.wsb`, opens Sandbox
 and waits up to 900 seconds. `-TimeoutSeconds` changes this deadline.
+On Store-serviced clients, the wrapper uses `wsb.exe` to start the environment
+and connect its viewer; older Windows installations use `WindowsSandbox.exe`.
 The guest starts the suite automatically after copying the payload to its own disk.
 Networking, clipboard, microphone, camera and printer redirection are disabled.
 Only the input payload (read-only) and that run's result directory (writable) are mapped.
@@ -94,8 +96,11 @@ Results contain `stdout.log`, `stderr.log`, `evidence/` (transcripts and PNGs), 
 an atomic `result.json`. The host returns the suite's exit code: 0 for success,
 1 for test failure, 2 for a guest setup/cleanup failure. A missing result or timeout
 fails the host command; it never counts as a pass. Sandbox remains open for
-inspection, including after timeout; close it manually before another run.
-The runner refuses a second simultaneous run or an already running Sandbox.
+inspection, including after timeout; stop it before another run. With the modern
+client, closing the viewer leaves the guest running: use the `wsb stop --id <id>`
+command printed by the wrapper. With the legacy client, close the Sandbox window.
+The runner refuses a second simultaneous run or an already running Sandbox,
+including a modern CLI environment running without an open viewer.
 
 To stage and inspect the configuration without opening Sandbox:
 
@@ -115,7 +120,7 @@ The same test cases and assertions run locally inside Sandbox and directly in CI
 The core CI job also runs wrapper checks with fixture binaries and a fake launcher,
 without starting any UI or requiring Windows Sandbox. These checks verify suite
 parity with `hud-ui.ps1`, staging and guest dispatch for every suite, result
-handling and evidence export. Run them locally with:
+handling, both modern and legacy launchers, and evidence export. Run them locally with:
 
 ```powershell
 pwsh -NoProfile -File tests/integration/sandbox-ui.tests.ps1

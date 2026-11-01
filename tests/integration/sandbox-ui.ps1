@@ -44,8 +44,12 @@ if ($needsRuntime) {
         }
     }
 }
+$sandboxCli = $null
 $sandbox = if (-not $PrepareOnly) {
-    $command = Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue
+    # Store-serviced clients expose wsb.exe; the legacy launcher can exit successfully
+    # without starting a guest on these systems. Keep it for older Windows hosts.
+    $sandboxCli = Get-Command wsb.exe -ErrorAction SilentlyContinue
+    $command = if ($sandboxCli) { $sandboxCli } else { Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue }
     if (-not $command) {
         throw 'Enable Windows Sandbox (Containers-DisposableClientVM) in Windows Features, restart if required, and finish installing the Sandbox client from Start/Store. Use -PrepareOnly to stage without the client.'
     }
@@ -70,6 +74,13 @@ try {
         if (-not $locked) { throw 'Another Sandbox UI run is active.' }
         if (Get-Process -Name WindowsSandbox,WindowsSandboxClient,WindowsSandboxRemoteSession -ErrorAction SilentlyContinue) {
             throw 'Close the existing Windows Sandbox before starting a UI run.'
+        }
+        if ($sandboxCli) {
+            $running = & $sandbox list --raw
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot list running Windows Sandbox environments.' }
+            if (($running | ConvertFrom-Json).WindowsSandboxEnvironments.Count -gt 0) {
+                throw 'Close the existing Windows Sandbox before starting a UI run.'
+            }
         }
     }
     $payload = Join-Path $OutputDirectory 'input'
@@ -118,19 +129,31 @@ try {
     Write-Host "Results: $results"
     if ($PrepareOnly) { return }
 
-    Start-Process -FilePath $sandbox -ArgumentList "`"$configuration`""
+    $closeInstruction = 'Close Windows Sandbox when finished inspecting the results.'
+    if ($sandboxCli) {
+        $started = & $sandbox start --config (Get-Content -LiteralPath $configuration -Raw) --raw
+        if ($LASTEXITCODE -ne 0) { throw 'Windows Sandbox CLI could not start the UI environment.' }
+        $sandboxId = ($started | ConvertFrom-Json).Id
+        if (-not $sandboxId) { throw 'Windows Sandbox CLI did not return an environment id.' }
+        $closeInstruction = "Stop this Windows Sandbox environment with: wsb stop --id $sandboxId"
+        Write-Host $closeInstruction
+        & $sandbox connect --id $sandboxId --raw
+        if ($LASTEXITCODE -ne 0) { throw "Cannot open Windows Sandbox $sandboxId. $closeInstruction" }
+    } else {
+        Start-Process -FilePath $sandbox -ArgumentList "`"$configuration`""
+    }
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $resultFile = Join-Path $results 'result.json'
     while (-not (Test-Path -LiteralPath $resultFile)) {
         if ([DateTime]::UtcNow -ge $deadline) {
-            throw "Sandbox did not return a result within $TimeoutSeconds seconds. It may still be running; close it manually. Evidence: $results"
+            throw "Sandbox did not return a result within $TimeoutSeconds seconds. It may still be running. $closeInstruction Evidence: $results"
         }
         Start-Sleep -Milliseconds 500
     }
     $result = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
     if ($result.exitCode -notin @(0,1,2)) { throw "Invalid Sandbox result: $resultFile" }
     Write-Host "Sandbox $Suite completed with exit code $($result.exitCode). $($result.error)"
-    Write-Host 'Close Windows Sandbox when finished inspecting the results.'
+    Write-Host $closeInstruction
     exit $result.exitCode
 } finally {
     if ($locked) { $mutex.ReleaseMutex() }

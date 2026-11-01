@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $runner = Join-Path $PSScriptRoot 'sandbox-ui.ps1'
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('agwinterm sandbox & tests ' + [guid]::NewGuid().ToString('N'))
-$global:AgwintermSandboxUiTestState = @{mode='success'; running=$false; available=$true; launches=0}
+$global:AgwintermSandboxUiTestState = @{mode='success'; running=$false; available=$true; launches=0; cliAvailable=$false; cliRunning=$false; cliMode='success'; cliCommands=@()}
 $script:checks = 0
 $script:failed = 0
 $ciBefore = $env:CI
@@ -19,6 +19,10 @@ function Refuses([string]$Name, [scriptblock]$Action, [string]$Message) {
 }
 function Get-Command {
     param([string]$Name, $ErrorAction)
+    if ($Name -eq 'wsb.exe') {
+        if ($global:AgwintermSandboxUiTestState.cliAvailable) { [pscustomobject]@{Source='Invoke-TestSandboxCli'} }
+        return
+    }
     if ($global:AgwintermSandboxUiTestState.available) { [pscustomobject]@{Source='sandbox-test-launcher.exe'} }
 }
 function Get-Process {
@@ -30,13 +34,40 @@ function Start-Process {
     $global:AgwintermSandboxUiTestState.launches++
     $configuration = $ArgumentList.Substring(1, $ArgumentList.Length - 2)
     $xml = [xml](Get-Content -LiteralPath $configuration -Raw)
-    $results = $xml.Configuration.MappedFolders.MappedFolder[1].HostFolder
+    Write-TestResult $xml
+}
+function Write-TestResult([xml]$Configuration) {
+    $results = $Configuration.Configuration.MappedFolders.MappedFolder[1].HostFolder
     switch ($global:AgwintermSandboxUiTestState.mode) {
         'success' { '{"exitCode":0,"error":null}' | Set-Content -LiteralPath (Join-Path $results 'result.json') }
         'failure' { '{"exitCode":1,"error":null}' | Set-Content -LiteralPath (Join-Path $results 'result.json') }
         'setup' { '{"exitCode":2,"error":"setup failed"}' | Set-Content -LiteralPath (Join-Path $results 'result.json') }
         'invalid' { '{"error":"no exit code"}' | Set-Content -LiteralPath (Join-Path $results 'result.json') }
         'timeout' { }
+    }
+}
+function Invoke-TestSandboxCli {
+    $operation = $args[0]
+    $global:AgwintermSandboxUiTestState.cliCommands += $operation
+    $global:LASTEXITCODE = 0
+    if ($global:AgwintermSandboxUiTestState.cliMode -eq ($operation + 'Failure')) {
+        $global:LASTEXITCODE = 1
+        return
+    }
+    switch ($operation) {
+        'list' {
+            if ($global:AgwintermSandboxUiTestState.cliRunning) { '{"WindowsSandboxEnvironments":[{"Id":"existing"}]}' }
+            else { '{"WindowsSandboxEnvironments":[]}' }
+        }
+        'start' {
+            $configIndex = [Array]::IndexOf($args, '--config')
+            Write-TestResult ([xml]$args[$configIndex + 1])
+            if ($global:AgwintermSandboxUiTestState.cliMode -eq 'missingId') { '{}' }
+            else { '{"Id":"fixture-sandbox"}' }
+        }
+        'connect' {
+            $global:AgwintermSandboxUiTestState.connectedCorrectId = ($args[1] -eq '--id' -and $args[2] -eq 'fixture-sandbox')
+        }
     }
 }
 function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailEvidence, [string]$Suite = 'Navigation') {
@@ -171,6 +202,27 @@ try {
     Refuses 'missing completion times out instead of passing' {
         & $runner @parameters -OutputDirectory (Join-Path $temporary 'timeout') -TimeoutSeconds 1
     } '*did not return a result*'
+    $global:AgwintermSandboxUiTestState.cliAvailable = $true
+    $global:AgwintermSandboxUiTestState.available = $false
+    $global:AgwintermSandboxUiTestState.mode = 'success'
+    & $runner @parameters -OutputDirectory (Join-Path $temporary 'modern-client')
+    Check 'modern client succeeds without the legacy launcher and opens its new guest' ($LASTEXITCODE -eq 0 -and ($global:AgwintermSandboxUiTestState.cliCommands -join ',') -eq 'list,start,connect' -and $global:AgwintermSandboxUiTestState.connectedCorrectId)
+    $global:AgwintermSandboxUiTestState.cliRunning = $true
+    Refuses 'modern client refuses an existing guest without a viewer' {
+        & $runner @parameters -OutputDirectory (Join-Path $temporary 'modern-running')
+    } '*Close the existing Windows Sandbox*'
+    $global:AgwintermSandboxUiTestState.cliRunning = $false
+    foreach ($case in @(
+        @{mode='listFailure';message='*Cannot list running*'},
+        @{mode='startFailure';message='*could not start*'},
+        @{mode='missingId';message='*did not return an environment id*'},
+        @{mode='connectFailure';message='*Cannot open Windows Sandbox*'}
+    )) {
+        $global:AgwintermSandboxUiTestState.cliMode = $case.mode
+        Refuses "modern client reports $($case.mode)" {
+            & $runner @parameters -OutputDirectory (Join-Path $temporary $case.mode)
+        } $case.message
+    }
     Check 'host CI environment is unchanged' ($env:CI -ceq $ciBefore)
     if ($env:USERNAME -ne 'WDAGUtilityAccount') {
         Refuses 'guest bootstrap refuses accidental host execution' {
