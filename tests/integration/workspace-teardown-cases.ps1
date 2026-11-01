@@ -1,5 +1,14 @@
 # Runs only within hud-ui's private process job and suite-token lifetime.
-if(-not (NavWait {(Node $session).foregroundShell-eq 'cmd'})){throw 'Teardown fixture needs its survivor shell ready'}
+# foregroundShell is a conservative hint: a live cmd can have startup children and
+# report null. Prove readiness by executing a command, and capture the owned shell
+# before taking the process baseline used by the deletion checks below.
+$survivorMarker='READY-'+[guid]::NewGuid().ToString('N').Substring(0,12)
+$null=Rpc 'session.type' @{text="echo $survivorMarker`r"} $session
+$survivorReady=NavWait {
+    $ownedCmds=@($job.MemberIds()|ForEach-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}|Where-Object ProcessName -eq 'cmd')
+    $ownedCmds.Count-eq 1 -and ([string](Rpc 'session.text' @{} $session))-match "(?m)^$survivorMarker\s*$"
+}
+if(-not $survivorReady){throw "Teardown survivor shell not ready: node=$((Node $session)|ConvertTo-Json -Compress -Depth 5) members=$($job.Members()) text=$([string](Rpc 'session.text' @{} $session))"}
 $survivorIds=@($job.MemberIds());$survivorCount=$survivorIds.Count
 "Teardown baseline: $survivorCount processes; $($job.Members())"
 foreach($finishWalk in 'cancel','commit'){
