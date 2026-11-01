@@ -89,6 +89,11 @@ jobs:
         shell: pwsh
         run: ./tools/export-ui-evidence.tests.ps1
 
+      - name: Windows Sandbox wrapper fixtures (no VM)
+        if: matrix.suite == 'core'
+        shell: pwsh
+        run: ./tests/integration/sandbox-ui.tests.ps1
+
       - name: Restore
         run: dotnet restore Agwinterm.slnx
 

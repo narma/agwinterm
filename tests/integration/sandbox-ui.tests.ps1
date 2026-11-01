@@ -39,10 +39,12 @@ function Start-Process {
         'timeout' { }
     }
 }
-function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailEvidence) {
+function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailEvidence, [string]$Suite = 'Navigation') {
     function Start-Process {
         param($FilePath, $ArgumentList, $RedirectStandardOutput, $RedirectStandardError, [switch]$Wait, [switch]$PassThru)
         if ($FailStart) { throw 'simulated guest launch failure' }
+        $suiteIndex = [Array]::IndexOf($ArgumentList, '-Suite')
+        $global:AgwintermSandboxUiTestState.guestArgumentsMatch = ($suiteIndex -ge 0 -and $ArgumentList[$suiteIndex + 1] -ceq $Suite -and $ArgumentList -contains '-Strict' -and $Wait -and $PassThru -and $FilePath -eq (Join-Path $Directory 'work/powershell/pwsh.exe') -and $ArgumentList -contains ('"' + (Join-Path $Directory 'work/tests/integration/hud-ui.ps1') + '"'))
         'test failed' | Set-Content -LiteralPath $RedirectStandardOutput
         '' | Set-Content -LiteralPath $RedirectStandardError
         [pscustomobject]@{ExitCode=1}
@@ -50,11 +52,12 @@ function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailE
     $inputPath = Join-Path $Directory 'input'
     $resultPath = Join-Path $Directory 'results'
     $null = New-Item -ItemType Directory -Path (Join-Path $inputPath '.revmux/navigation-run'), $resultPath -Force
-    '{"suite":"Navigation","exeName":"Agwinterm.Win32.exe"}' | Set-Content -LiteralPath (Join-Path $inputPath 'run.json')
+    @{suite=$Suite; exeName='Agwinterm.Win32.exe'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $inputPath 'run.json')
     'screenshot evidence' | Set-Content -LiteralPath (Join-Path $inputPath '.revmux/navigation-run/tooltip.png')
     if ($FailEvidence) { 'cannot overwrite this file with a directory' | Set-Content -LiteralPath (Join-Path $resultPath 'evidence') }
     $usernameBefore = $env:USERNAME
     $pathBefore = $env:PATH
+    $global:AgwintermSandboxUiTestState.guestArgumentsMatch = $false
     try {
         $env:USERNAME = 'WDAGUtilityAccount'
         & (Join-Path $PSScriptRoot 'sandbox-ui-guest.ps1') -InputDirectory $inputPath -ResultsDirectory $resultPath -WorkDirectory (Join-Path $Directory 'work')
@@ -62,6 +65,9 @@ function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailE
         $env:USERNAME = $usernameBefore
         $env:PATH = $pathBefore
         $env:CI = $ciBefore
+    }
+    if (-not $FailStart) {
+        Check "guest dispatches $Suite to the strict UI runner" $global:AgwintermSandboxUiTestState.guestArgumentsMatch
     }
     Get-Content -LiteralPath (Join-Path $resultPath 'result.json') -Raw | ConvertFrom-Json
 }
@@ -78,6 +84,24 @@ try {
         CtlExe=(Join-Path $temporary 'app/agwintermctl.exe')
         PowerShellHome=(Join-Path $temporary 'powershell')
         DotnetHome=(Join-Path $temporary 'dotnet')
+    }
+    # Parse parameter metadata without invoking the real UI runner or the mocked Get-Command.
+    function SuiteNames([string]$Path) {
+        $ast = [Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
+        $parameter = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Suite' }
+        $validation = $parameter.Attributes | Where-Object { $_.TypeName.Name -eq 'ValidateSet' }
+        $validation.PositionalArguments | ForEach-Object { $_.SafeGetValue() }
+    }
+    $suites = @(SuiteNames (Join-Path $PSScriptRoot 'hud-ui.ps1'))
+    $wrapperSuites = @(SuiteNames $runner)
+    Check 'Sandbox supports exactly the direct UI runner suites' ($suites.Count -gt 0 -and -not (Compare-Object $suites $wrapperSuites))
+    foreach ($suite in $suites) {
+        $suiteDirectory = Join-Path $temporary "suite-$suite"
+        & $runner @parameters -Suite $suite -OutputDirectory $suiteDirectory -PrepareOnly
+        $run = Get-Content -LiteralPath (Join-Path $suiteDirectory 'input/run.json') -Raw | ConvertFrom-Json
+        Check "$suite is staged with the current UI runner" ($run.suite -ceq $suite -and (Test-Path -LiteralPath (Join-Path $suiteDirectory 'input/tests/integration/hud-ui.ps1')))
+        $result = Invoke-GuestCase (Join-Path $temporary "dispatch-$suite") -Suite $suite
+        Check "$suite guest returns the runner outcome" ($result.exitCode -eq 1)
     }
     $checkout = Join-Path $temporary 'standard-build'
     $appOutput = Join-Path $checkout 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64'

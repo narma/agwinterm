@@ -70,8 +70,11 @@ The default paths match the solution's build outputs: the app under
 `artifacts/local/` is needed. Pass both `-Exe` and `-CtlExe` for a packaged build
 or other output directories; the runner does not search old artifact directories.
 `-PowerShellHome` and `-DotnetHome` override the host dependency locations.
-Other supported suites are `Hud`, `Quick`, `Picker`, `Accessibility`, `Command`
-and `Menu`; the runner always passes `-Strict`.
+The wrapper supports every `hud-ui.ps1` suite, including the fork's `Ask`,
+`HudAdvanced`, `Recent`, `WorkingSets`, `Windows` and `Presentation`. The full list
+is `Hud`, `HudAdvanced`, `Recent`, `WorkingSets`, `Windows`, `Presentation`, `Quick`,
+`Navigation`, `Picker`, `Ask`, `Accessibility`, `Command` and `Menu`.
+The runner always passes `-Strict`.
 
 The host generates a unique `artifacts/sandbox/<run>/ui-tests.wsb`, opens Sandbox
 and waits up to 900 seconds. `-TimeoutSeconds` changes this deadline.
@@ -105,11 +108,14 @@ fix application defects or all timing-related failures.
 
 ## CI
 
-CI is unchanged: the existing Windows jobs run `hud-ui.ps1 -Strict` and its suites
+The existing Windows jobs run `hud-ui.ps1 -Strict` and its suites
 directly on the CI runner desktop. They do not use or require Windows Sandbox.
 The same test cases and assertions run locally inside Sandbox and directly in CI.
 
-Runner checks use fixture binaries and a fake launcher, without starting any UI:
+The core CI job also runs wrapper checks with fixture binaries and a fake launcher,
+without starting any UI or requiring Windows Sandbox. These checks verify suite
+parity with `hud-ui.ps1`, staging and guest dispatch for every suite, result
+handling and evidence export. Run them locally with:
 
 ```powershell
 pwsh -NoProfile -File tests/integration/sandbox-ui.tests.ps1
