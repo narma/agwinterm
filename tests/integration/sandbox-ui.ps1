@@ -10,6 +10,7 @@ param(
     [ValidateRange(1,86400)][int]$TimeoutSeconds = 900,
     [ValidateRange(2048,65536)][int]$MemoryInMB = 4096,
     [switch]$DisableVGpu,
+    [switch]$Background,
     [switch]$PrepareOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -45,6 +46,7 @@ if ($needsRuntime) {
     }
 }
 $sandboxCli = $null
+$viewerCommand = $null
 $sandbox = if (-not $PrepareOnly) {
     # Store-serviced clients expose wsb.exe; the legacy launcher can exit successfully
     # without starting a guest on these systems. Keep it for older Windows hosts.
@@ -52,6 +54,11 @@ $sandbox = if (-not $PrepareOnly) {
     $command = if ($sandboxCli) { $sandboxCli } else { Get-Command WindowsSandbox.exe -ErrorAction SilentlyContinue }
     if (-not $command) {
         throw 'Enable Windows Sandbox (Containers-DisposableClientVM) in Windows Features, restart if required, and finish installing the Sandbox client from Start/Store. Use -PrepareOnly to stage without the client.'
+    }
+    if ($Background) {
+        if (-not $sandboxCli) { throw 'Background UI tests require the modern Windows Sandbox client (wsb.exe).' }
+        $viewerCommand = Get-Command WindowsSandboxRemoteSession.exe -ErrorAction SilentlyContinue
+        if (-not $viewerCommand) { throw 'Background UI tests require the WindowsSandboxRemoteSession.exe execution alias.' }
     }
     $command.Source
 }
@@ -68,6 +75,7 @@ foreach ($source in $sources) {
 
 $mutex = [Threading.Mutex]::new($false, 'Local\agwinterm-sandbox-ui')
 $locked = $false
+$backgroundViewer = $null
 try {
     if (-not $PrepareOnly) {
         try { $locked = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $locked = $true }
@@ -137,14 +145,25 @@ try {
         if (-not $sandboxId) { throw 'Windows Sandbox CLI did not return an environment id.' }
         $closeInstruction = "Stop this Windows Sandbox environment with: wsb stop --id $sandboxId"
         Write-Host $closeInstruction
-        & $sandbox connect --id $sandboxId --raw
-        if ($LASTEXITCODE -ne 0) { throw "Cannot open Windows Sandbox $sandboxId. $closeInstruction" }
+        if ($Background) {
+            try {
+                $backgroundViewer = & "$PSScriptRoot/sandbox-ui-window.ps1" -Exe $viewerCommand.Source -SandboxId $sandboxId
+            } catch {
+                throw "Cannot connect background Windows Sandbox $sandboxId. $_ $closeInstruction"
+            }
+        } else {
+            & $sandbox connect --id $sandboxId --raw
+            if ($LASTEXITCODE -ne 0) { throw "Cannot open Windows Sandbox $sandboxId. $closeInstruction" }
+        }
     } else {
         Start-Process -FilePath $sandbox -ArgumentList "`"$configuration`""
     }
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $resultFile = Join-Path $results 'result.json'
     while (-not (Test-Path -LiteralPath $resultFile)) {
+        if ($backgroundViewer -and $backgroundViewer.HasExited) {
+            throw "Background Sandbox viewer exited with code $($backgroundViewer.ExitCode). $closeInstruction Evidence: $results"
+        }
         if ([DateTime]::UtcNow -ge $deadline) {
             throw "Sandbox did not return a result within $TimeoutSeconds seconds. It may still be running. $closeInstruction Evidence: $results"
         }
@@ -156,6 +175,7 @@ try {
     Write-Host $closeInstruction
     exit $result.exitCode
 } finally {
+    if ($backgroundViewer) { $backgroundViewer.Dispose() }
     if ($locked) { $mutex.ReleaseMutex() }
     $mutex.Dispose()
 }

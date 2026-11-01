@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $runner = Join-Path $PSScriptRoot 'sandbox-ui.ps1'
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('agwinterm sandbox & tests ' + [guid]::NewGuid().ToString('N'))
-$global:AgwintermSandboxUiTestState = @{mode='success'; running=$false; available=$true; launches=0; cliAvailable=$false; cliRunning=$false; cliMode='success'; cliCommands=@()}
+$global:AgwintermSandboxUiTestState = @{mode='success'; running=$false; available=$true; launches=0; cliAvailable=$false; cliRunning=$false; cliMode='success'; cliCommands=@(); viewerAvailable=$true}
 $script:checks = 0
 $script:failed = 0
 $ciBefore = $env:CI
@@ -21,6 +21,10 @@ function Get-Command {
     param([string]$Name, $ErrorAction)
     if ($Name -eq 'wsb.exe') {
         if ($global:AgwintermSandboxUiTestState.cliAvailable) { [pscustomobject]@{Source='Invoke-TestSandboxCli'} }
+        return
+    }
+    if ($Name -eq 'WindowsSandboxRemoteSession.exe') {
+        if ($global:AgwintermSandboxUiTestState.viewerAvailable) { [pscustomobject]@{Source='fixture-viewer.exe'} }
         return
     }
     if ($global:AgwintermSandboxUiTestState.available) { [pscustomobject]@{Source='sandbox-test-launcher.exe'} }
@@ -63,10 +67,10 @@ function Invoke-TestSandboxCli {
             $configIndex = [Array]::IndexOf($args, '--config')
             Write-TestResult ([xml]$args[$configIndex + 1])
             if ($global:AgwintermSandboxUiTestState.cliMode -eq 'missingId') { '{}' }
-            else { '{"Id":"fixture-sandbox"}' }
+            else { '{"Id":"00000000-0000-0000-0000-000000000123"}' }
         }
         'connect' {
-            $global:AgwintermSandboxUiTestState.connectedCorrectId = ($args[1] -eq '--id' -and $args[2] -eq 'fixture-sandbox')
+            $global:AgwintermSandboxUiTestState.connectedCorrectId = ($args[1] -eq '--id' -and $args[2] -eq '00000000-0000-0000-0000-000000000123')
         }
     }
 }
@@ -207,6 +211,42 @@ try {
     $global:AgwintermSandboxUiTestState.mode = 'success'
     & $runner @parameters -OutputDirectory (Join-Path $temporary 'modern-client')
     Check 'modern client succeeds without the legacy launcher and opens its new guest' ($LASTEXITCODE -eq 0 -and ($global:AgwintermSandboxUiTestState.cliCommands -join ',') -eq 'list,start,connect' -and $global:AgwintermSandboxUiTestState.connectedCorrectId)
+    # Replace only the native viewer boundary in an isolated fixture checkout.
+    @'
+param([string]$Exe, [guid]$SandboxId)
+if ($global:AgwintermSandboxUiTestState.viewerFails) { throw 'simulated viewer startup failure' }
+$global:AgwintermSandboxUiTestState.backgroundViewer = "$Exe|$SandboxId"
+$viewer = [pscustomobject]@{HasExited=[bool]$global:AgwintermSandboxUiTestState.viewerExited; ExitCode=42}
+$viewer | Add-Member -MemberType ScriptMethod -Name Dispose -Value { $global:AgwintermSandboxUiTestState.viewerDisposed = $true }
+$viewer
+'@ | Set-Content -LiteralPath (Join-Path $scriptDirectory 'sandbox-ui-window.ps1')
+    # The fake CLI uses real-looking ids so the same argument validation applies.
+    $global:AgwintermSandboxUiTestState.cliCommands = @()
+    & (Join-Path $scriptDirectory 'sandbox-ui.ps1') @parameters -Background -OutputDirectory (Join-Path $temporary 'background-client')
+    Check 'background mode connects its own viewer without opening a host viewer via CLI' ($LASTEXITCODE -eq 0 -and ($global:AgwintermSandboxUiTestState.cliCommands -join ',') -eq 'list,start' -and $global:AgwintermSandboxUiTestState.backgroundViewer -eq 'fixture-viewer.exe|00000000-0000-0000-0000-000000000123' -and $global:AgwintermSandboxUiTestState.viewerDisposed)
+    $global:AgwintermSandboxUiTestState.viewerFails = $true
+    Refuses 'background viewer failure is reported with stop instructions' {
+        & (Join-Path $scriptDirectory 'sandbox-ui.ps1') @parameters -Background -OutputDirectory (Join-Path $temporary 'background-failure')
+    } '*simulated viewer startup failure*wsb stop --id*'
+    $global:AgwintermSandboxUiTestState.viewerFails = $false
+    $global:AgwintermSandboxUiTestState.viewerExited = $true
+    $global:AgwintermSandboxUiTestState.mode = 'timeout'
+    Refuses 'background viewer exit fails immediately with diagnostics' {
+        & (Join-Path $scriptDirectory 'sandbox-ui.ps1') @parameters -Background -TimeoutSeconds 10 -OutputDirectory (Join-Path $temporary 'background-exited')
+    } '*viewer exited with code 42*wsb stop --id*'
+    $global:AgwintermSandboxUiTestState.viewerExited = $false
+    $global:AgwintermSandboxUiTestState.mode = 'success'
+    $global:AgwintermSandboxUiTestState.viewerAvailable = $false
+    Refuses 'background mode requires the viewer alias before staging' {
+        & $runner @parameters -Background -OutputDirectory (Join-Path $temporary 'background-no-alias')
+    } '*require the WindowsSandboxRemoteSession.exe*'
+    $global:AgwintermSandboxUiTestState.viewerAvailable = $true
+    $global:AgwintermSandboxUiTestState.cliAvailable = $false
+    $global:AgwintermSandboxUiTestState.available = $true
+    Refuses 'background mode does not silently open a legacy viewer' {
+        & $runner @parameters -Background -OutputDirectory (Join-Path $temporary 'background-legacy')
+    } '*require the modern Windows Sandbox client*'
+    $global:AgwintermSandboxUiTestState.cliAvailable = $true
     $global:AgwintermSandboxUiTestState.cliRunning = $true
     Refuses 'modern client refuses an existing guest without a viewer' {
         & $runner @parameters -OutputDirectory (Join-Path $temporary 'modern-running')

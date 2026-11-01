@@ -64,6 +64,25 @@ From the repository root, launch the suite:
 pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation
 ```
 
+To keep the Sandbox viewer off your desktop and avoid interrupting your work:
+
+```powershell
+pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation -Background
+```
+
+`-Background` requires the modern Store-serviced client (`wsb.exe` and the
+`WindowsSandboxRemoteSession.exe` execution alias). It connects the viewer on a
+private host desktop without switching your input desktop. The viewer remains
+unminimized there so the guest can render its UI; no viewer window appears on your
+working desktop or takes focus from your programs. Running without a viewer does
+not create a logged-in guest desktop, and simply minimizing the normal viewer can
+let the client restore its window during connection.
+Omit `-Background` to watch tests in the normal viewer. Both modes return the same
+results and require stopping the guest with the command printed by the wrapper.
+The background viewer is closed when the wrapper finishes, including on failure
+or timeout; the guest VM remains available until you stop it. After a run you can
+open a normal viewer with `wsb connect --id <id>` to inspect that guest.
+
 The default paths match the solution's build outputs: the app under
 `src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/` and the CLI under
 `src/Agwinterm.Ctl/bin/Release/net10.0-windows/`. No manual staging into
@@ -86,10 +105,10 @@ Only the input payload (read-only) and that run's result directory (writable) ar
 `CI=true` is set only inside the isolated guest so the existing UI runner does not
 require the developer's desktop suite-token helper.
 
-Keep the Sandbox desktop unlocked and avoid interacting with its windows during
-the run. Work in host windows outside the Sandbox viewer. Do not close Sandbox
-before `result.json` appears. Minimized-viewer rendering is not yet validated for
-these Direct2D/PrintWindow checks. vGPU is enabled by default; use `-DisableVGpu`
+For a visible run, keep the Sandbox desktop unlocked and avoid interacting with its
+windows during the run. Work in host windows outside the Sandbox viewer. Do not close Sandbox
+before `result.json` appears. Use `-Background` rather than minimizing the visible
+viewer. vGPU is enabled by default; use `-DisableVGpu`
 to try software rendering when diagnosing graphics issues.
 
 Results contain `stdout.log`, `stderr.log`, `evidence/` (transcripts and PNGs), and

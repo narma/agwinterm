@@ -58,6 +58,7 @@ They run under **PowerShell 7** (`pwsh -NoProfile -File ...`), never Windows Pow
 |---|---|---|
 | Direct Windows desktop | `pwsh -NoProfile -File tests/integration/hud-ui.ps1 -Suite Navigation -Strict` | Keep the test desktop free of mouse and focus changes. |
 | Windows Sandbox | `pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation` | Continue working on the host; leave the guest desktop untouched. |
+| Background Windows Sandbox | `pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation -Background` | Keep the viewer on a private host desktop without interrupting host focus; requires the modern client. |
 
 Both modes run the same suites and assertions using the standard Release outputs. The direct runner requires `-TokenOwner` (or `AGWINTERM_TEST_OWNER`) when the maintainer's suite-token helper is installed; without that helper it requires `CI=true` in the test process. The optional Sandbox wrapper sets this only inside the guest. See [local UI testing](docs/sandbox-ui-tests.md) for prerequisites, direct-run commands, and results. Core/Pty unit tests and the wrapper's fixture checks do not require Sandbox.
 
