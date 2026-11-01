@@ -48,11 +48,19 @@ pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Test Conformance -Backgr
 | `ProgramOverlay` | `program-overlay-controls.ps1`; `Dpi` |
 | `WebOverlayHost` | `web-overlay-host.ps1`; `Cookbook`, `CookbookOnly`, `NavigationOnly` |
 | `WebOverlayParity` | `web-overlay-parity.ps1`; `ReviewOnly` |
+| `WebViewGate` | `webview-gate.ps1` / `tests/WebViewHost.Gate`; optional wrapper `-GateExe` |
 | `ProfileMemory` | `tools/profile-memory.ps1`; `Cycles` |
 | `WebPageMeasurements` | `tools/web-page-measurements.ps1`; `Output` |
 | `WebStartupBaseline` | `tools/web-startup-baseline.ps1`; `Runs`, `Installer`, `Portable`, `Output` |
 
-The baseline harness also requires local installer and portable files. Explicit
+Build the C# gate first with
+`dotnet build tests/WebViewHost.Gate/WebViewHost.Gate.csproj -c Release`.
+Launching that gate directly (including `dotnet run`) also routes to background
+Sandbox before its first window is created.
+
+The baseline harness also requires local installer and portable files. Its Git
+commit and SDK version are recorded on the host and passed as data; neither Git
+nor the SDK is required inside Sandbox. Explicit
 `Output` paths receive the exported guest report on the host after success.
 The registry is `tests/integration/sandbox-ui-tests.psd1`; shared UI code, fixtures,
 conformance contracts, logs, screenshots and guest state are staged/exported too.
@@ -83,7 +91,7 @@ cursor inside the guest. Application behavior and CI execution are unchanged.
 - Enough disk space for a staged copy of the binaries, PowerShell and runtimes.
   No dependencies are downloaded during a test run.
 - Web tests also need a local WebView2 runtime (auto-detected, or `-WebView2Home`).
-  Cookbook and web parity tests need Python 3 (auto-detected using `py -3`, or
+  Cookbook, navigation-only web and web parity tests need Python 3 (auto-detected using `py -3`, or
   `-PythonHome`). Only the interpreter, DLLs and standard library are copied;
   third-party site-packages are excluded. All web servers run inside the guest.
 

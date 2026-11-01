@@ -32,6 +32,7 @@ internal static class Gate
     [STAThread]
     private static int Main()
     {
+        if (RouteLocalRun() is { } result) return result;
         _window = CreateWindowExW(0, "STATIC", "WebView2 isolated gate", 0x00CF0000, 0, 0, 800, 600, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
         if (_window == IntPtr.Zero) throw new Exception("Cannot create test HWND");
         using var dispatcher = new WebViewHost(Post);
@@ -56,6 +57,28 @@ internal static class Gate
         finally { DestroyWindow(_window); }
     }
 
+    private static int? RouteLocalRun()
+    {
+        bool guest = Environment.GetEnvironmentVariable("AGWINTERM_SANDBOX_UI") == "1" &&
+            string.Equals(Environment.UserName, "WDAGUtilityAccount", StringComparison.OrdinalIgnoreCase);
+        bool ci = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" &&
+            Environment.GetEnvironmentVariable("CI") == "true";
+        if (guest || ci) return null;
+        try
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Agwinterm.slnx"))) directory = directory.Parent;
+            if (directory is null) throw new InvalidOperationException("Run the WebView2 gate from its checkout so background Sandbox can be prepared.");
+            var start = new System.Diagnostics.ProcessStartInfo("pwsh.exe") { UseShellExecute = false, CreateNoWindow = true };
+            foreach (string argument in new[] { "-NoProfile", "-File", Path.Combine(directory.FullName, "tests", "integration", "sandbox-ui.ps1"),
+                "-Test", "WebViewGate", "-Background", "-GateExe", Path.Combine(AppContext.BaseDirectory, "WebViewHost.Gate.exe") }) start.ArgumentList.Add(argument);
+            using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Cannot start background Sandbox routing.");
+            process.WaitForExit();
+            return process.ExitCode;
+        }
+        catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+    }
+
     private static async Task Load(CoreWebView2 page, Action navigate)
     {
         var loaded = new TaskCompletionSource<bool>();
@@ -71,6 +94,16 @@ internal static class Gate
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, "index.html"), "<!doctype html><title>Storage gate</title>");
         string data = Path.Combine(directory, "profiles");
+        string? selectedRuntime = Environment.GetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER");
+        try
+        {
+            Environment.SetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", Path.Combine(directory, "missing-runtime"));
+            bool refused = false;
+            try { _ = WebViewHost.RuntimeVersion(); }
+            catch (InvalidOperationException ex) { refused = ex.Message.Contains("Runtime"); }
+            Check(refused, "runtime preflight refuses an unavailable selected runtime before changing overlays");
+        }
+        finally { Environment.SetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", selectedRuntime); }
         Console.WriteLine("Runtime " + WebViewHost.RuntimeVersion());
         Console.WriteLine("Private artifacts " + directory);
         using var first = new WebViewHost(Post);

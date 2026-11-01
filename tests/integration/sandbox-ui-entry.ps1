@@ -10,6 +10,7 @@ foreach ($key in $Parameters.Keys) {
     switch ($key) {
         'Exe' { $options.Exe = $Parameters[$key] }
         'Ctl' { $options.CtlExe = $Parameters[$key] }
+        'GateExe' { $options.GateExe = $Parameters[$key] }
         'TokenOwner' { }
         'Strict' { }
         default {

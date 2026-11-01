@@ -21,12 +21,20 @@ function Run-Probe([string]$Script, [string[]]$Arguments, [hashtable]$Environmen
     foreach ($key in $Environment.Keys) { $start.Environment[$key] = $Environment[$key] }
     $process = [Diagnostics.Process]::Start($start)
     try {
+        $outputTask = $process.StandardOutput.ReadToEndAsync()
+        $errorTask = $process.StandardError.ReadToEndAsync()
         if (-not $process.WaitForExit(20000)) { $process.Kill($true); throw 'Probe timed out' }
-        $output = $process.StandardOutput.ReadToEnd() + $process.StandardError.ReadToEnd()
+        $output = $outputTask.GetAwaiter().GetResult() + $errorTask.GetAwaiter().GetResult()
         @{code=$process.ExitCode; output=$output}
     } finally { $process.Dispose() }
 }
 try {
+    $largeProbe = Join-Path $temporary 'large-output.ps1'
+    '[Console]::Out.WriteLine((''a'' * 100000)); [Console]::Error.WriteLine((''b'' * 100000)); exit 0' | Set-Content $largeProbe
+    $large = Run-Probe $largeProbe @() @{}
+    Check 'simultaneous large stdout and stderr do not block probe completion' ($large.code -eq 0 -and $large.output.Length -ge 200000)
+    $gateSource = Get-Content (Join-Path $root 'tests/WebViewHost.Gate/Program.cs') -Raw
+    Check 'C# gate routes before creating its first window' ($gateSource.IndexOf('if (RouteLocalRun()') -lt $gateSource.IndexOf('_window = CreateWindowExW'))
     $definitions = Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1"
     $entryPaths = @($definitions.Values | ForEach-Object { $_.Path })
     foreach ($directory in @('tests/integration','tools')) {
@@ -52,7 +60,7 @@ try {
         $path = Join-Path $temporary $definition.Path
         $null = New-Item -ItemType Directory -Path (Split-Path $path) -Force
         @'
-param([string]$Exe,[string]$Ctl,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly)
+param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly)
 @{exe=$Exe;ctl=$Ctl;strict=[bool]$Strict;suite=$Suite;dpi=$Dpi;only=$Only;cookbook=[bool]$Cookbook;output=$Output;spec=$Spec} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
 exit 0
 '@ | Set-Content -LiteralPath $path
@@ -88,6 +96,7 @@ exit 0
         if ($testName -eq 'Conformance') { $parameters.Spec = Join-Path $root 'tests/conformance/control-api.json' }
         & "$PSScriptRoot/sandbox-ui.ps1" -Test $testName -TestParameters $parameters -Exe (Join-Path $binaries 'app.exe') -CtlExe (Join-Path $binaries 'ctl.exe') -PowerShellHome $fakePowerShell -OutputDirectory $output -PrepareOnly
         $payload = Join-Path $output 'input'
+        Check "$testName stages an alternate app filename for canonical-path runners" ((Get-FileHash (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe')).Hash -eq (Get-FileHash (Join-Path $binaries 'app.exe')).Hash)
         $path = Join-Path $payload $definitions[$testName].Path
         @'
 param([string]$Exe,[string]$Ctl,[switch]$Strict,[string]$Spec,[string]$Output,[int]$Runs,[string]$Installer,[string]$Portable)

@@ -88,6 +88,9 @@ function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailE
     $null = New-Item -ItemType Directory -Path (Join-Path $inputPath '.revmux/navigation-run'), (Join-Path $Directory 'local-data'), $resultPath -Force
     @{suite=$Suite; exeName='Agwinterm.Win32.exe'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $inputPath 'run.json')
     'screenshot evidence' | Set-Content -LiteralPath (Join-Path $inputPath '.revmux/navigation-run/tooltip.png')
+    $null = New-Item -ItemType Directory -Path (Join-Path $inputPath 'artifacts'), (Join-Path $Directory 'local-data/agwinterm-fixture') -Force
+    'artifact evidence' | Set-Content -LiteralPath (Join-Path $inputPath 'artifacts/report.json')
+    'guest state evidence' | Set-Content -LiteralPath (Join-Path $Directory 'local-data/agwinterm-fixture/window.json')
     if ($FailEvidence) { 'cannot overwrite this file with a directory' | Set-Content -LiteralPath (Join-Path $resultPath 'evidence') }
     $usernameBefore = $env:USERNAME
     $pathBefore = $env:PATH
@@ -134,14 +137,18 @@ try {
         if ($testName -eq 'WebStartupBaseline') { $options = @{Installer=$parameters.Exe; Portable=$parameters.CtlExe} }
         if ($testName -eq 'WebOverlayHost') { $options.Cookbook=$true }
         $testOutput = Join-Path $temporary "test-$testName"
-        & $runner @parameters -Test $testName -TestParameters $options -WebView2Home (Join-Path $temporary 'webview2') -PythonHome (Join-Path $temporary 'python') -OutputDirectory $testOutput -PrepareOnly
+        & $runner @parameters -Test $testName -TestParameters $options -WebView2Home (Join-Path $temporary 'webview2') -PythonHome (Join-Path $temporary 'python') -GateExe $parameters.Exe -OutputDirectory $testOutput -PrepareOnly
         $config = Get-Content (Join-Path $testOutput 'input/run.json') -Raw | ConvertFrom-Json
         Check "$testName stages its test id and entry point" ($config.test -eq $testName -and (Test-Path -LiteralPath (Join-Path $testOutput "input/$($definitions[$testName].Path)")))
         Check "$testName stages shared UI and conformance resources" ((Test-Path (Join-Path $testOutput 'input/tests/ui/lib.ps1')) -and (Test-Path (Join-Path $testOutput 'input/tests/conformance/control-api.json')))
         if ($definitions[$testName].Web) { Check "$testName stages an offline WebView2 runtime" (Test-Path (Join-Path $testOutput 'input/webview2/msedgewebview2.exe')) }
         if ($definitions[$testName].Python -or $testName -eq 'WebOverlayHost') { Check "$testName stages an offline Python runtime" (Test-Path (Join-Path $testOutput 'input/python/python.exe')) }
+        if ($testName -eq 'WebStartupBaseline') { Check 'baseline records host Git and SDK without staging either tool' ($config.hostMetadata.commit -match '^[0-9a-f]{40}$' -and $config.hostMetadata.sdk) }
     }
     Refuses 'unknown tests are rejected before staging' { & $runner @parameters -Test '../arbitrary.ps1' -PrepareOnly } '*Unknown Sandbox UI test*'
+    $navigationOutput = Join-Path $temporary 'navigation-only'
+    & $runner @parameters -Test WebOverlayHost -TestParameters @{NavigationOnly=$true} -WebView2Home (Join-Path $temporary 'webview2') -PythonHome (Join-Path $temporary 'python') -OutputDirectory $navigationOutput -PrepareOnly
+    Check 'navigation-only web tests also stage Python' (Test-Path (Join-Path $navigationOutput 'input/python/python.exe'))
     Refuses 'unknown parameters are rejected before staging' { & $runner @parameters -Test Win32Control -TestParameters @{RestoreClipboard='host-path'} -PrepareOnly } '*Unsupported Win32Control parameter*'
     # Parse parameter metadata without invoking the real UI runner or the mocked Get-Command.
     function SuiteNames([string]$Path) {
@@ -296,6 +303,8 @@ $viewer
     $guestFailure = Join-Path $temporary 'guest-failure'
     $result = Invoke-GuestCase $guestFailure
     Check 'guest preserves test failure and exports screenshot evidence' ($result.exitCode -eq 1 -and (Test-Path -LiteralPath (Join-Path $guestFailure 'results/evidence/navigation-run/tooltip.png')))
+    Check 'guest exports artifacts after test failure' ((Get-Content (Join-Path $guestFailure 'results/artifacts/report.json')) -eq 'artifact evidence')
+    Check 'guest exports private app state after test failure' ((Get-Content (Join-Path $guestFailure 'results/state/agwinterm-fixture/window.json')) -eq 'guest state evidence')
     Check 'guest publishes completion without a partial result file' (-not (Test-Path -LiteralPath (Join-Path $guestFailure 'results/result.json.tmp')))
     $result = Invoke-GuestCase (Join-Path $temporary 'guest-setup') -FailStart
     Check 'guest launch error becomes setup failure with diagnostics' ($result.exitCode -eq 2 -and $result.error -like '*simulated guest launch failure*')

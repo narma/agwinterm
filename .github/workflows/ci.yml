@@ -105,6 +105,10 @@ jobs:
       - name: Build
         run: dotnet build Agwinterm.slnx -c Release --no-restore
 
+      - name: Build isolated WebView2 UI gate (no UI launch)
+        if: matrix.suite == 'core'
+        run: dotnet build tests/WebViewHost.Gate/WebViewHost.Gate.csproj -c Release
+
       - name: Check agwinterm-core ABI agreement
         if: matrix.suite == 'core'
         # The C ABI is declared three times (Rust const, C# RequiredAbi, lite kRequiredAbi) and a

@@ -66,10 +66,10 @@ try {
     }
     $times = @($samples.terminalReadyMs | Sort-Object)
     $report = [ordered]@{
-        timestampUtc=[DateTime]::UtcNow.ToString('o'); commit=(& git rev-parse HEAD)
+        timestampUtc=[DateTime]::UtcNow.ToString('o'); commit=$(if ($env:AGWINTERM_TEST_COMMIT) { $env:AGWINTERM_TEST_COMMIT } else { & git rev-parse HEAD })
         executable=$Exe; executableSha256=(Get-FileHash $Exe).Hash
         protocol='20+ sequential warm-cache starts; fixed cmd /d /q /k echo marker; in-process managed terminal; no restore; terminal.text polling at 10ms, connection timeout 100ms; timing includes process creation and control readback, not first paint'
-        sdk=(& dotnet --version); os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber)
+        sdk=$(if ($env:AGWINTERM_TEST_SDK) { $env:AGWINTERM_TEST_SDK } else { & dotnet --version }); os=(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber)
         cpu=(Get-CimInstance Win32_Processor | Select-Object Name); gpu=(Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion)
         powerPlan=(& powercfg /getactivescheme | Out-String).Trim()
         medianMs=($times[[int][math]::Floor(($Runs-1)/2)]+$times[[int][math]::Floor($Runs/2)])/2

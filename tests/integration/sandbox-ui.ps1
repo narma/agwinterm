@@ -8,6 +8,7 @@ param(
     [hashtable]$TestParameters = @{},
     [string]$WebView2Home,
     [string]$PythonHome,
+    [string]$GateExe = "$PSScriptRoot/../WebViewHost.Gate/bin/Release/net10.0-windows/win-x64/WebViewHost.Gate.exe",
     [string]$PowerShellHome = $PSHOME,
     [string]$DotnetHome = "$env:ProgramFiles/dotnet",
     [string]$OutputDirectory = "$PSScriptRoot/../../artifacts/sandbox/$((Get-Date).ToString('yyyyMMddTHHmmss'))-$([guid]::NewGuid().ToString('N').Substring(0,8))",
@@ -29,8 +30,17 @@ foreach ($key in $TestParameters.Keys) {
 }
 if ($Test -eq 'Hud' -and $TestParameters.ContainsKey('Suite')) { $Suite = $TestParameters.Suite }
 $label = if ($Test -eq 'Hud') { $Suite } else { $Test }
-$requiresPython = $definition.Python -or ($Test -eq 'WebOverlayHost' -and ($TestParameters.Cookbook -or $TestParameters.CookbookOnly))
+$requiresPython = $definition.Python -or ($Test -eq 'WebOverlayHost' -and ($TestParameters.Cookbook -or $TestParameters.CookbookOnly -or $TestParameters.NavigationOnly))
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$hostMetadata = @{}
+if ($Test -eq 'WebStartupBaseline') {
+    $commit = & git -C $repo rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot record the host commit for the startup baseline.' }
+    $sdk = & dotnet --version
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot record the host SDK for the startup baseline.' }
+    $hostMetadata = @{commit=($commit -join '').Trim(); sdk=($sdk -join '').Trim()}
+}
+if ($definition.Gate) { $GateExe = (Resolve-Path -LiteralPath $GateExe).Path }
 $inputFiles = @{}
 foreach ($key in @($definition.Inputs) + @($definition.OptionalInputs)) {
     if (-not $key -or ($key -in $definition.OptionalInputs -and -not $TestParameters.ContainsKey($key))) { continue }
@@ -75,7 +85,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $PowerShellHome 'pwsh.exe'))) {
     throw 'PowerShellHome must contain a portable Windows x64 PowerShell 7 installation.'
 }
 $needsRuntime = $false
-foreach ($binary in @($Exe, $CtlExe)) {
+$binaries = @($Exe, $CtlExe)
+if ($definition.Gate) { $binaries += $GateExe }
+foreach ($binary in $binaries) {
     $runtimeConfig = [IO.Path]::ChangeExtension($binary, '.runtimeconfig.json')
     if (Test-Path -LiteralPath $runtimeConfig) {
         $options = (Get-Content -LiteralPath $runtimeConfig -Raw | ConvertFrom-Json).runtimeOptions
@@ -113,6 +125,7 @@ $sources = @((Split-Path $Exe), (Split-Path $CtlExe), $PowerShellHome, $PSScript
 foreach ($part in @('tests/ui','tests/fixtures','tests/conformance')) { $sources += Join-Path $repo $part }
 if ($definition.Web) { $sources += $WebView2Home }
 if ($requiresPython) { $sources += $PythonHome }
+if ($definition.Gate) { $sources += Split-Path $GateExe }
 if ($needsRuntime) { $sources += $DotnetHome }
 foreach ($source in $sources) {
     $prefix = [IO.Path]::GetFullPath($source).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
@@ -144,6 +157,9 @@ try {
     Write-Host "Preparing $label payload in $OutputDirectory"
     $null = New-Item -ItemType Directory -Path $payload, $results
     Copy-Directory (Split-Path $Exe) (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64')
+    if ((Split-Path $Exe -Leaf) -ne 'Agwinterm.Win32.exe') {
+        Copy-Item -LiteralPath $Exe -Destination (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe') -Force
+    }
     $ctlDirectory = Join-Path $payload 'src/Agwinterm.Ctl/bin/Release/net10.0-windows'
     Copy-Directory (Split-Path $CtlExe) $ctlDirectory
     if ((Split-Path $CtlExe -Leaf) -ne 'agwintermctl.exe') {
@@ -163,6 +179,7 @@ try {
         foreach ($key in $inputFiles.Keys) { Copy-Item -LiteralPath $inputFiles[$key] -Destination (Join-Path $payload "inputs/$key") }
     }
     if ($definition.Web) { Copy-Directory $WebView2Home (Join-Path $payload 'webview2') }
+    if ($definition.Gate) { Copy-Directory (Split-Path $GateExe) (Join-Path $payload 'gate') }
     if ($requiresPython) {
         $pythonDestination = Join-Path $payload 'python'
         $null = New-Item -ItemType Directory -Path $pythonDestination
@@ -189,7 +206,7 @@ try {
     }
     $parameters = @{}
     foreach ($key in $TestParameters.Keys) { if ($key -in $definition.Options) { $parameters[$key] = $TestParameters[$key] } }
-    @{test=$Test; parameters=$parameters; inputs=@($inputFiles.Keys); outputs=@($definition.Outputs | Where-Object { $_ }); suite=$Suite; exeName=(Split-Path $Exe -Leaf)} | ConvertTo-Json -Depth 8 |
+    @{test=$Test; parameters=$parameters; inputs=@($inputFiles.Keys); outputs=@($definition.Outputs | Where-Object { $_ }); hostMetadata=$hostMetadata; gateName=(Split-Path $GateExe -Leaf); suite=$Suite; exeName=(Split-Path $Exe -Leaf)} | ConvertTo-Json -Depth 8 |
         Set-Content -LiteralPath (Join-Path $payload 'run.json') -Encoding utf8
     $inputXml = [Security.SecurityElement]::Escape($payload)
     $resultsXml = [Security.SecurityElement]::Escape($results)

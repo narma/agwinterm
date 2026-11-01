@@ -18,10 +18,13 @@ try {
     $exe = Join-Path $appDirectory $run.exeName
     $ctl = Join-Path $WorkDirectory 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
     $env:AGWINTERMCTL = $ctl
+    if ($run.hostMetadata.commit) { $env:AGWINTERM_TEST_COMMIT = $run.hostMetadata.commit }
+    if ($run.hostMetadata.sdk) { $env:AGWINTERM_TEST_SDK = $run.hostMetadata.sdk }
     $null = New-Item -ItemType Directory -Path (Join-Path $WorkDirectory 'artifacts') -Force
     $env:PATH = (Split-Path $ctl) + ';' + $env:PATH
     if ($definition.Exe) { $arguments.Exe = $exe }
     if ($definition.Ctl) { $arguments.Ctl = $ctl }
+    if ($definition.Gate) { $arguments.GateExe = Join-Path $WorkDirectory "gate/$($run.gateName)" }
     if ($definition.Strict) { $arguments.Strict = $true }
     if ($name -eq 'Hud') { $arguments.Suite = $run.suite }
     foreach ($key in $run.inputs) {

@@ -320,8 +320,10 @@ setTimeout(() => {
     $searchValue.SetValue('Snapshot')
     Require ($null -ne (Web-Element 'Snapshot fixture')) 'snapshot search retains matching session'
     $copyWorkspace = Web-Element 'copy workspace'
+    [WebGateWindow]::FocusForKeys([WebGateWindow]::Find($process.Id))
     $copyWorkspace.SetFocus()
     for ($i=0; $i -lt 30 -and -not $copyWorkspace.Current.HasKeyboardFocus; $i++) { Start-Sleep -Milliseconds 50 }
+    Require $copyWorkspace.Current.HasKeyboardFocus 'snapshot keyboard fixture has focus before sending navigation'
     [WebGateWindow]::Key([WebGateWindow]::Renderer([WebGateWindow]::Find($process.Id)),40)
     Require ($null -ne (Web-Element 'copy restore snippet')) 'snapshot keyboard selection opens full details'
     Add-Type -AssemblyName System.Windows.Forms

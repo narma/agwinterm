@@ -9,6 +9,7 @@
     ProgramOverlay = @{ Path='tests/integration/program-overlay-controls.ps1'; Options=@('Dpi') }
     WebOverlayHost = @{ Path='tests/integration/web-overlay-host.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@('Cookbook','CookbookOnly','NavigationOnly') }
     WebOverlayParity = @{ Path='tests/integration/web-overlay-parity.ps1'; Exe=$true; Ctl=$true; Web=$true; Python=$true; Options=@('ReviewOnly') }
+    WebViewGate = @{ Path='tests/integration/webview-gate.ps1'; Gate=$true; Web=$true; Options=@() }
     ProfileMemory = @{ Path='tools/profile-memory.ps1'; Exe=$true; Ctl=$true; Options=@('Cycles') }
     WebPageMeasurements = @{ Path='tools/web-page-measurements.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@(); Outputs=@('Output') }
     WslControl = @{ Path='tests/integration/wsl-control.ps1'; Wsl=$true; Options=@('Distro','NativeHooks','LinuxUser','NoPython','Portable') }
