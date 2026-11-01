@@ -70,6 +70,41 @@ Open the action palette (**Ctrl+Shift+P**) and run the **Install …** entries w
 
 Each is reversible / re-runnable and can also be driven headless: `agwintermctl install cli|hooks|skill|shell`.
 
+## Local GUI-only update
+
+For day-to-day GUI development, double-click `installer\update-gui.cmd`, or run:
+
+```powershell
+.\installer\update-gui.ps1
+# Custom installation or update without launching the GUI:
+.\installer\update-gui.ps1 -InstallDir 'D:\Programs\agwinterm' -NoLaunch
+# Include CLI changes such as new command flags:
+.\installer\update-gui.ps1 -IncludeCli
+```
+
+The script publishes the current .NET GUI to a fresh folder, waits up to 120 seconds
+for you to close the installed GUI normally, backs up changed files, updates them,
+verifies their hashes, and launches the GUI again. Use `-WaitSeconds 600` for more time.
+It never kills processes. Close the GUI in your usual session-preserving way; closing
+individual windows while other windows remain can terminate those windows' sessions.
+Only server-hosted sessions can survive a GUI exit; in-process sessions cannot.
+
+The Rust pty-host, native Rust core, ConPTY/OpenConsole and hooks stay untouched.
+The CLI stays untouched unless `-IncludeCli` is supplied; then GUI and CLI are
+published together and use the same lock checks, backup and rollback.
+The changed GUI assemblies, managed dependencies, .NET runtime, themes, and assets
+come from `dotnet publish`. No Inno Setup or Rust build is needed. Backups and publish
+output remain under `artifacts/gui-update/`; a copy/verification failure attempts to
+restore previous files and reports any rollback failure. A locked file aborts the
+preflight before any installed file is changed. A running C# `--pty-host` uses the GUI
+executable and must exit before that executable can be updated.
+
+Use this for GUI changes compatible with the installed Rust core and host protocol.
+For changes to the native core/ABI, host/protocol, ConPTY, hooks, or CLI, use the full
+build and installer instead, after finishing the sessions that depend on those files.
+This script requires an existing installation; it does not create shortcuts or update
+the Windows uninstall registration.
+
 ## Silent install / uninstall
 
 ```powershell
@@ -79,6 +114,26 @@ agwinterm-lite-setup-<ver>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 "%LOCALAPPDATA%\Programs\agwinterm\unins000.exe" /VERYSILENT
 "%LOCALAPPDATA%\Programs\agwinterm-lite\unins000.exe" /VERYSILENT
 ```
+
+## Optional WebView2 runtime
+
+Web overlays use Microsoft WebView2 Evergreen. Normal terminal startup never
+downloads or initializes it. Both package formats ship the pinned SDK Core
+assembly and x64 loader; the Chromium runtime is a separate shared installation.
+Run `agwintermctl install webview2` to explicitly install it with winget, or run
+`install-webview2.cmd` from the installed application directory. These actions
+are never invoked by ordinary app startup or by the installer itself.
+
+For an offline machine, obtain Microsoft's Evergreen Standalone Installer from
+the [WebView2 download page](https://developer.microsoft.com/microsoft-edge/webview2/)
+on another machine and run it explicitly. Terminal use remains available without
+the runtime; web requests return an installation hint and preserve existing overlays.
+
+The portable exe embeds its native loader through .NET single-file extraction.
+Extraction uses the .NET bundle directory (or `DOTNET_BUNDLE_EXTRACT_BASE_DIR`
+when explicitly configured), independently of portable CLI/hook extraction.
+Measure loader extraction, application bytes, runtime installation and temporary
+browser profiles separately when comparing package sizes.
 
 ## Signing (not done)
 

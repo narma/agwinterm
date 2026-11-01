@@ -1,0 +1,5 @@
+{
+  "created": "2026-10-31 fixture", "file": "sample.json",
+  "windows": [{"name":"Fixture window","workspaces":[{"name":"Web cookbook","sessions":["fixture-session"],"snippet":"agwintermctl session new --name restored-fixture"}]}],
+  "sessions": [{"id":"fixture-session","name":"Snapshot fixture","window":"Fixture window","workspace":"Web cookbook","workspaceId":"fixture-workspace","cwd":"D:\\Projects\\Agwinterm","foreground":["cmd.exe"],"status":"idle","snippet":"agwintermctl session new --name restored-fixture","restore":"cmd.exe","claude":null}]
+}

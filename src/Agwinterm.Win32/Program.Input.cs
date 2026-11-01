@@ -115,6 +115,8 @@ internal partial class Program
     /// <summary>Dispatch a keymap action id (or "command:&lt;Label&gt;") to the matching behavior.</summary>
     private void RunAction(string action)
     {
+        if (_active?.PageParentId is not null && action is "split_pane" or "duplicate_session" or "toggle_scratch")
+        { ShowToast("This action is not available on a page companion"); return; }
         if (_isQuickWindow && !QuickActionAllowed(action)) { ShowToast("This action needs a library window"); return; }
         if (action.StartsWith("command:", StringComparison.OrdinalIgnoreCase))
         {
@@ -134,7 +136,9 @@ internal partial class Program
             // pane's own overlay (P5 — agterm's Cmd+W closes the overlay before it would close the pane),
             // then the pane.
             case "close_session": case "close_pane":
-                if (_coverKind == 3) CloseActiveOverlay();
+                if (_active is { } webOwner && _webPages.ContainsKey(webOwner))
+                { if (webOwner.PageParentId is not null) CloseSessionInternal(webOwner); else CloseWebPage(webOwner); }
+                else if (_coverKind == 3) CloseActiveOverlay();
                 else if (_cover is not null) HideCover();
                 else if (_active is { Hud: not null } hudOwner) ClearHud(hudOwner);
                 else if (FocusedPaneWithOverlay() is { } fpo) ClosePaneOverlay(_active!, fpo);
@@ -176,7 +180,10 @@ internal partial class Program
             case "next_workspace": NavigateWorkspace("next"); break;
             case "previous_workspace": NavigateWorkspace("prev"); break;
             case "toggle_workspace_collapse": ToggleWorkspaceCollapse(); break;
-            case "close_cover": CloseCover(); break;
+            case "close_cover":
+                if (_active is { } webOwnerToClose && _webPages.ContainsKey(webOwnerToClose)) CloseWebPage(webOwnerToClose);
+                else CloseCover();
+                break;
             case "toggle_fullscreen": ToggleFullscreen(); break;
             case "toggle_broadcast": ToggleBroadcast(); break;
             case "mark_mode": ToggleMarkMode(); break;
@@ -626,7 +633,7 @@ internal partial class Program
     private void OpenLink(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) { ShowToast("invalid link"); return; }
-        if (u.Scheme is "http" or "https") { ShellExecuteW(IntPtr.Zero, "open", url, null, null, SW_SHOW); return; }
+        if (u.Scheme is "http" or "https") { if (!TryOpenWebLink(url)) ShellExecuteW(IntPtr.Zero, "open", url, null, null, SW_SHOW); return; }
         if (u.Scheme == "file")
         {
             if (WslIntegration.IsWsl(ResolveProfile(_active?.ProfileName)?.Command)

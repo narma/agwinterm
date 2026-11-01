@@ -389,6 +389,8 @@ internal partial class Program : ISessionHost, IWindowHost
         public readonly int UiaIdentity = Interlocked.Increment(ref _nextUiaIdentity);
         public required string Id;
         private string _initialName = "~";
+        public string? PageParentId;
+        public bool Closing;
         public required string Name
         {
             get => ReadName(allowStale: false);
@@ -398,6 +400,7 @@ internal partial class Program : ISessionHost, IWindowHost
         private string ReadName(bool allowStale)
         {
             if (!string.IsNullOrWhiteSpace(CustomName)) return CustomName.Trim();
+            if (PageParentId is not null) return _initialName;
             return Panes.Count == 0 ? _initialName : AutomaticSessionName(ActivePane, allowStale);
         }
         public required Workspace Ws;
@@ -690,6 +693,8 @@ internal partial class Program : ISessionHost, IWindowHost
 
         while (GetMessageW(out MSG msg, IntPtr.Zero, 0, 0) > 0)
         {
+            if (DispatchWebContinuation(msg)) continue;
+            if (_registry.Values.Distinct().Any(window => window._webPages.Count != 0 && window.WebNavigationKey(msg))) continue;
             TranslateMessage(ref msg);
             DispatchMessageW(ref msg);
         }
@@ -1202,7 +1207,7 @@ internal partial class Program : ISessionHost, IWindowHost
         var p = ActiveSurface();
         if (p is null) return null;
         var (oxC, oyC, cw, ch) = ActivePaneView();
-        var origin = new POINT { x = (int)oxC, y = (int)oyC };
+        var origin = new POINT { x = (int)Math.Round(oxC * Scale), y = (int)Math.Round(oyC * Scale) };
         ClientToScreen(_hwnd, ref origin);   // bounding rectangles are screen coords
         lock (p.S.SyncRoot)
         {
@@ -1236,8 +1241,8 @@ internal partial class Program : ISessionHost, IWindowHost
                 VisibleRows = rows,
                 ScreenX = origin.x,
                 ScreenY = origin.y,
-                CellW = cw,
-                CellH = ch,
+                CellW = cw * Scale,
+                CellH = ch * Scale,
             };
         }
     }

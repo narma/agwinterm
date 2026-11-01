@@ -32,7 +32,7 @@ internal partial class Program
         if (sessions is { Count: > 0 }) order = sessions.Take(DashMax).ToList();
         else { EnsureMru(); order = _mru.Select(FindSes).Where(s => s is not null).Cast<Ses>().Take(DashMax).ToList(); }
         if (order.Count == 0) { ShowToast("No sessions to show"); return; }
-        _dashSessions.Clear(); _dashSessions.AddRange(order);
+        _dashSessions.Clear(); _dashSessions.AddRange(order.Where(s => s.PageParentId is null));
         _dashFontPin = fontPin > 0 ? Math.Clamp(fontPin, 4, 40) : 0;
         _dashSel = Math.Max(0, _dashSessions.FindIndex(s => ReferenceEquals(s, _active)));
         _dashboardOpen = true;

@@ -1012,6 +1012,8 @@ internal partial class Program
     /// <summary>Current value of a config key as a string (for config get/list + the Settings window).</summary>
     private static string ConfigValue(string key) => key switch
     {
+        "browser-links" => BrowserSettingsValue(),
+        "browser-undo-close" => BrowserPreferences.UndoClose ? "true" : "false",
         "font-family" => _config.FontFamily,
         "font-size" => _config.FontSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
         "cursor-style" => _config.CursorStyle.ToString().ToLowerInvariant(),
@@ -1701,6 +1703,7 @@ internal partial class Program
                 var wss = new WorkspaceState { Id = id, Name = name, Expanded = expanded, DefaultDir = defaultDir };
                 foreach (var s in sessions)
                 {
+                    if (s.PageParentId is not null) continue;
                     var ss = new SessionState
                     {
                         Id = s.Id,

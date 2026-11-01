@@ -88,7 +88,7 @@ internal partial class Program : IRecentHost
     }
     private void CaptureClosedSession(Ses s)
     {
-        if (_isQuickWindow) return;
+        if (_isQuickWindow || s.PageParentId is not null) return;
         try { _closedSessions.Add(CaptureClosedSessionData(s)); SaveRecent(); }
         catch (Exception e) { ShowToast("Recent capture failed: " + e.Message); }
     }
@@ -97,7 +97,7 @@ internal partial class Program : IRecentHost
         if (_isQuickWindow) return;
         try
         {
-            _closedWorkspaces.Add(new(ws.Name, sessions.Select(CaptureClosedSessionData).ToList(), Recent.NextSequence(),
+            _closedWorkspaces.Add(new(ws.Name, sessions.Where(s => s.PageParentId is null).Select(CaptureClosedSessionData).ToList(), Recent.NextSequence(),
                 ws.Id, Id, Guid.NewGuid().ToString(), ws.Expanded, DefaultDir: ws.DefaultDir));
             SaveRecent();
         }
@@ -154,6 +154,8 @@ internal partial class Program : IRecentHost
     private sealed record RecentMember(string originalId, string? sessionId, string[] paneIds, string? error);
     private object OpenRecentCore(string entryId)
     {
+        foreach (var window in _registry.Values.Distinct())
+            if (window.RestoreSoftWebClose(entryId, out var restored)) return restored!;
         var single = _closedSessions.FirstOrDefault(s => s.EntryId == entryId);
         var group = _closedWorkspaces.FirstOrDefault(w => w.EntryId == entryId);
         if (single is null && group is null) throw new ArgumentException("recent entry not found (use exact entry ID)");
@@ -203,7 +205,8 @@ internal partial class Program : IRecentHost
     private static string RecentFreeId(string wanted)
     {
         bool used = _byId.Values.Any(w => w._workspaces.Any(ws => ws.Id == wanted || ws.Sessions.Any(s =>
-            s.Id == wanted || s.AllPanes.Any(p => p.Id == wanted))));
+            s.Id == wanted || s.AllPanes.Any(p => p.Id == wanted))) || w._softWebCloses.Any(c => c.Members.Any(m =>
+                m.Session.Id == wanted || m.Session.AllPanes.Any(p => p.Id == wanted))));
         return used ? Guid.NewGuid().ToString() : wanted;
     }
     private Ses RestoreRecentSession(ClosedSession item, Workspace ws)
@@ -253,6 +256,7 @@ internal partial class Program : IRecentHost
     }
     private void ReopenMostRecent()
     {
+        if (RestoreSoftWebClose(null, out _)) return;
         long a = _closedSessions.LastOrDefault()?.Seq ?? -1, b = _closedWorkspaces.LastOrDefault()?.Seq ?? -1;
         if (a < 0 && b < 0) { ShowToast("No recently closed items"); return; }
         if (b > a) ReopenClosedWorkspace(_closedWorkspaces[^1]); else ReopenClosedSession();

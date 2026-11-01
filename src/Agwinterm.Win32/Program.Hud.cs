@@ -29,6 +29,7 @@ internal partial class Program
         if (action == "close") ClearHud(ses); // never touches a program overlay
         else
         {
+            if (_webPages.ContainsKey(ses)) return ISessionHost.RefusePrefix + "hud: a web overlay occupies the slot";
             if (ses.Overlay.Term is not null) return ISessionHost.RefusePrefix + "hud: a program overlay occupies the slot";
             if (action == "update" && ses.Hud is null) return ISessionHost.RefusePrefix + "hud: no HUD to update";
             if (spec is null) return ISessionHost.RefusePrefix + "hud: missing message specification";

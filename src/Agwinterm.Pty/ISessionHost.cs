@@ -26,7 +26,12 @@ public sealed record SessionSnapshot(string Id, string Name, bool Active, AgentS
     string? Axis = null, IReadOnlyList<string>? PaneOverlays = null, HudSpec? Hud = null,
     IReadOnlyList<string?>? ForegroundShells = null,
     string? CustomName = null, IReadOnlyDictionary<string, string?>? PaneCwds = null,
-    IReadOnlyList<OverlayDetailSnapshot>? OverlayDetails = null);
+    IReadOnlyList<OverlayDetailSnapshot>? OverlayDetails = null,
+    IReadOnlyList<WebOverlaySnapshot>? HtmlOverlays = null, string? PageParentId = null);
+
+public sealed record WebOverlaySnapshot(string Id, string? File, string? Url, string? CurrentUrl,
+    string State, string? Error, bool Hidden, bool Visible, int X, int Y, int Width, int Height, double Zoom, bool Browse = false, string? Pane = null,
+    string? Title = null, bool CanGoBack = false, bool CanGoForward = false, bool Navigation = false, bool JavaScript = false, bool Chromeless = false, bool Persistent = false, string? Cwd = null, string? Image = null);
 
 public sealed record OverlayDetailSnapshot(string Id, string Slot, string? OwnerPaneId, bool Hidden, bool Visible,
     bool Exited, float X, float Y, float Width, float Height, int Percent, int? WidthDip, int? HeightDip);
@@ -524,6 +529,12 @@ public interface ISessionHost
     /// pair), refused <see cref="OverlayPanes.NoOverlay"/> / <see cref="OverlayPanes.NotRealized"/> /
     /// <see cref="OverlayPanes.ReadFailed"/>. The server wraps both as <c>{"text":…}</c>.
     /// </summary>
+    object OpenWebOverlay(string? target, WebOverlayRequest request) => throw new ArgumentException("web overlays are unavailable in this host");
+    object WebOverlayOperation(string? target, WebOverlayCommand request) => throw new ArgumentException("web overlays are unavailable in this host");
+    object BrowserCommand(string action, string? mode) => throw new ArgumentException("browser controls are unavailable in this host");
+    string? BrowserLinkOpenMode() => null;
+    bool IsPageCompanion(string? target) => false;
+
     string SessionOverlay(string? target, string action, string? command, int sizePercent, bool wait, bool block,
         string? pane, OverlayTextArgs text);
 

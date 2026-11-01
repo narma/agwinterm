@@ -193,6 +193,7 @@ internal partial class Program
             float nameAvail = MathF.Max(0f, nameRight - nameX);
             // Clip + ellipsis-trim so a long name (or an enlarged sidebar font) never spills over the dot.
             string name = _sidebarMode == SidebarMode.Flagged && _flaggedLayout == "flat" ? s.SidebarName + " : " + s.Ws.Name : s.SidebarName; // one nonblocking snapshot for drawing, accessibility and context placement
+            if (s.PageParentId is not null) name = "↳ ▧ " + name;
             rt.DrawText(name, _sidebarFont, new Rect(nameX, y, nameAvail, rowH), brush, DrawTextOptions.Clip);
             RecordSidebarName(s, name, nameX, y, nameAvail, rowH);
             // session.context (P3): a dimmer, smaller suffix after the name in the SAME row, clipped to
@@ -451,7 +452,7 @@ internal partial class Program
             if (sel.Any(x => AggStatus(x) != AgentStatus.Idle))
                 A($"Clear Status of {n}", "", () => { foreach (var x in sel) foreach (var p in x.Panes) p.S.SetStatus(AgentStatus.Idle); RequestRedraw(); });
             list.Add(MenuSeparator());
-            A($"Close {n} Sessions", "", () => { if (ConfirmCloseOk()) { foreach (var x in sel) CloseSessionInternal(x); ClearSelection(); } });
+            A($"Close {n} Sessions", "", () => { if (ConfirmCloseOk()) { if (!TrySoftCloseWebSessions(sel)) foreach (var x in sel) CloseSessionInternal(x, undoable: false); ClearSelection(); } });
             return list;
         }
         if (item is Ses ses)
@@ -633,6 +634,7 @@ internal partial class Program
         lock (_workspaces) if (_workspaces.Count <= 1 || !_workspaces.Contains(ws)) return false;
         InvalidateSessionSelectors();
         List<Ses> sessions;
+        if (TrySoftCloseWebSessions(ws.Sessions.ToArray(), ws)) return true;
         bool hadActive = _active is not null && ReferenceEquals(_active.Ws, ws);
         lock (_workspaces)
         {

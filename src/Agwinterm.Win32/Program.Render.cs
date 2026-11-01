@@ -307,6 +307,7 @@ internal partial class Program
 
     private void Render()
     {
+        UpdateWebPresentation();
         if (_rt is null || _brush is null) return;
         long tStart = Stopwatch.GetTimestamp();
         _uploadCount = 0; _uploadMs = 0;

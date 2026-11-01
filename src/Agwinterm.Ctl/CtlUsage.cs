@@ -109,6 +109,16 @@ public static class CtlUsage
           agwintermctl session overlay text [--all|--lines N] [--pane left|right] [--target ID]
           agwintermctl session overlay resize --size-percent N [--target ID]   (the session-wide overlay only)
           agwintermctl session overlay hide|show|toggle [--pane left|right] [--target ID]
+          agwintermctl session overlay open --html FILE|--url URL [--js] [--browse] [--navigation|--chromeless]
+              [--bridge review] [--cwd DIRECTORY] [--persistent] [--block] [--companion] [--pane left|right] [--follow] [--target SESSION_ID]
+              --cwd/--block require local HTML; --persistent/--browse require URL. --companion owns a shell-less child session.
+          agwintermctl session overlay open --image FILE [--size-percent N|--width W --height H] [--pane left|right] [--target SESSION_ID]
+              PNG/JPEG/GIF/WebP, at most 64 MiB and 100 million pixels; pane pages cannot use floating dimensions.
+          agwintermctl session overlay reload [--current] [--pane left|right] [--target SESSION_ID]
+          agwintermctl session overlay navigate back|forward|browser|finder [--pane left|right] [--target SESSION_ID]
+          agwintermctl session overlay result --page PAGE_ID
+          agwintermctl browser clear
+          agwintermctl browser links [browser|overlay|overlay95|overlay75|overlay50]
               Hiding preserves the process/ID; explicit overlay IDs still address hidden programs.
               Open/resize: --width N --height N (1..16384 DIP, session slot only), percent fallback per axis.
               Partial resize retains omitted axes; explicit percent resets DIP overrides. Resize --full resets all.
@@ -186,6 +196,7 @@ public static class CtlUsage
           agwintermctl image frameshm --images '[{"name":"Local\\agwinterm-frame-x","slot":0,...}]'
               (several entries applied as one all-or-nothing frame; see docs/specs/image-frameshm.md)
           agwintermctl install hooks
+          agwintermctl install webview2  (explicit local Evergreen Runtime installation using winget)
           agwintermctl install cli|skill|shell [--target ID]  (uses the session's Windows/WSL environment)
           agwintermctl session bind <agent> --resume <id> --pid <hook-pid> --cwd <directory>
         Target defaults to $AGWINTERM_SESSION_ID (the current session) when not given.

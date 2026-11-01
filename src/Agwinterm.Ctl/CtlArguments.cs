@@ -6,13 +6,14 @@ namespace Agwinterm.Ctl;
 public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
-    { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block",
+    { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block", "js", "navigation", "chromeless", "browse", "current", "persistent", "companion", "undoable",
       "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed", "minimized", "path-only", "hide-image" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ping"] = "", ["version"] = "", ["tree"] = "window",
+        ["browser clear"] = "", ["browser links"] = "",
         ["recent list"] = "", ["recent open"] = "window", ["recent clear"] = "",
         ["events"] = "window since limit kind run watch",
         ["session wait"] = "window target scope wait-timeout",
@@ -21,6 +22,7 @@ public static class CtlArguments
         ["keymap list"] = "window", ["config reload"] = "window", ["app version"] = "window",
         ["install hooks"] = "window target", ["install skill"] = "window target",
         ["install shell"] = "window target", ["install cli"] = "window target remove",
+        ["install webview2"] = "",
         ["omp list"] = "", ["omp set"] = "window persist",
         ["workspace new"] = "window name collapsed default-dir", ["workspace default-dir"] = "window target", ["workspace rename"] = "window target",
         ["workspace delete"] = "window target", ["workspace select"] = "window target",
@@ -28,7 +30,7 @@ public static class CtlArguments
         ["workspace expand"] = "window target", ["workspace focus"] = "window target", ["workspace filter"] = "window", ["workspace flag"] = "window target",
         ["workspace move"] = "window target to",
         ["session new"] = "window command command-mode cwd name workspace workspace-name create-workspace profile no-select wait before after",
-        ["session select"] = "window target", ["session close"] = "window target targets",
+        ["session select"] = "window target", ["session close"] = "window target targets undoable",
         ["session duplicate"] = "window target", ["session rename"] = "window target name clear",
         ["session context"] = "window target clear stdin", ["session metrics"] = "window target",
         ["session status"] = "window target blink auto-reset sound",
@@ -45,8 +47,9 @@ public static class CtlArguments
         ["session resize"] = "window target split-ratio grow-left grow-right grow-top grow-bottom",
         ["session background set"] = "window target path opacity mode",
         ["session background clear"] = "window target",
-        ["session overlay open"] = "window target command pane wait block size-percent width height cwd follow background-color",
-        ["session overlay close"] = "window target pane", ["session overlay result"] = "window target pane",
+        ["session overlay open"] = "window target command pane wait block size-percent width height cwd follow background-color html url image js navigation chromeless bridge browse persistent companion",
+        ["session overlay close"] = "window target pane", ["session overlay result"] = "window target pane page",
+        ["session overlay reload"] = "window target current pane", ["session overlay navigate"] = "window target pane",
         ["session overlay copy"] = "window target pane", ["session overlay text"] = "window target pane all lines",
         ["session overlay resize"] = "window target size-percent width height full pane",
         ["session overlay hide"] = "window target pane", ["session overlay show"] = "window target pane", ["session overlay toggle"] = "window target pane",
