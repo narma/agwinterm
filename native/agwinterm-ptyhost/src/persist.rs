@@ -2,7 +2,7 @@
 /// One cell. Colours are 0x00RRGGBB; specs mirror ColorSpec (kind 0 default /
 /// 1 indexed / 2 rgb). Fields are packed to keep the blob small: most cells are
 /// a rune with default everything, so proto3's "omit defaults" does the work.
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PCell {
     #[prost(int32, tag = "1")]
     pub rune: i32,
@@ -27,6 +27,11 @@ pub struct PCell {
     pub bg_index: u32,
     #[prost(uint32, tag = "11")]
     pub bg_rgb: u32,
+    /// OSC 8; absent in older blobs means no hyperlink
+    #[prost(string, tag = "12")]
+    pub hyperlink_uri: ::prost::alloc::string::String,
+    #[prost(string, tag = "13")]
+    pub hyperlink_parameters: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PRow {

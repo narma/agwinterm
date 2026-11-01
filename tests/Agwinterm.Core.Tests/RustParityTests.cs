@@ -61,6 +61,7 @@ public class RustParityTests
         public uint Fg, Bg, Attrs, Width;
         public uint FgKind, FgIndex, FgRgb;
         public uint BgKind, BgIndex, BgRgb;
+        public uint Hyperlink;
 
         public static FfiCell From(Cell c) => new()
         {

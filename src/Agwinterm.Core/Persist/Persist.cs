@@ -24,19 +24,20 @@ namespace Agwinterm.Core.Persist {
     static PersistReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg1wZXJzaXN0LnByb3RvEhFhZ3dpbnRlcm0ucGVyc2lzdCKxAQoFUENlbGwS",
+            "Cg1wZXJzaXN0LnByb3RvEhFhZ3dpbnRlcm0ucGVyc2lzdCLmAQoFUENlbGwS",
             "DAoEcnVuZRgBIAEoBRIKCgJmZxgCIAEoDRIKCgJiZxgDIAEoDRINCgVhdHRy",
             "cxgEIAEoDRINCgV3aWR0aBgFIAEoDRIPCgdmZ19raW5kGAYgASgNEhAKCGZn",
             "X2luZGV4GAcgASgNEg4KBmZnX3JnYhgIIAEoDRIPCgdiZ19raW5kGAkgASgN",
-            "EhAKCGJnX2luZGV4GAogASgNEg4KBmJnX3JnYhgLIAEoDSIvCgRQUm93EicK",
-            "BWNlbGxzGAEgAygLMhguYWd3aW50ZXJtLnBlcnNpc3QuUENlbGwiTwoHUEJ1",
-            "ZmZlchIPCgd2ZXJzaW9uGAEgASgNEgwKBGNvbHMYAiABKA0SJQoEcm93cxgD",
-            "IAMoCzIXLmFnd2ludGVybS5wZXJzaXN0LlBSb3dCGaoCFkFnd2ludGVybS5D",
-            "b3JlLlBlcnNpc3RiBnByb3RvMw=="));
+            "EhAKCGJnX2luZGV4GAogASgNEg4KBmJnX3JnYhgLIAEoDRIVCg1oeXBlcmxp",
+            "bmtfdXJpGAwgASgJEhwKFGh5cGVybGlua19wYXJhbWV0ZXJzGA0gASgJIi8K",
+            "BFBSb3cSJwoFY2VsbHMYASADKAsyGC5hZ3dpbnRlcm0ucGVyc2lzdC5QQ2Vs",
+            "bCJPCgdQQnVmZmVyEg8KB3ZlcnNpb24YASABKA0SDAoEY29scxgCIAEoDRIl",
+            "CgRyb3dzGAMgAygLMhcuYWd3aW50ZXJtLnBlcnNpc3QuUFJvd0IZqgIWQWd3",
+            "aW50ZXJtLkNvcmUuUGVyc2lzdGIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb", "HyperlinkUri", "HyperlinkParameters" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PRow), global::Agwinterm.Core.Persist.PRow.Parser, new[]{ "Cells" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PBuffer), global::Agwinterm.Core.Persist.PBuffer.Parser, new[]{ "Version", "Cols", "Rows" }, null, null, null, null)
           }));
@@ -96,6 +97,8 @@ namespace Agwinterm.Core.Persist {
       bgKind_ = other.bgKind_;
       bgIndex_ = other.bgIndex_;
       bgRgb_ = other.bgRgb_;
+      hyperlinkUri_ = other.hyperlinkUri_;
+      hyperlinkParameters_ = other.hyperlinkParameters_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -240,6 +243,33 @@ namespace Agwinterm.Core.Persist {
       }
     }
 
+    /// <summary>Field number for the "hyperlink_uri" field.</summary>
+    public const int HyperlinkUriFieldNumber = 12;
+    private string hyperlinkUri_ = "";
+    /// <summary>
+    /// OSC 8; absent in older blobs means no hyperlink
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string HyperlinkUri {
+      get { return hyperlinkUri_; }
+      set {
+        hyperlinkUri_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "hyperlink_parameters" field.</summary>
+    public const int HyperlinkParametersFieldNumber = 13;
+    private string hyperlinkParameters_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string HyperlinkParameters {
+      get { return hyperlinkParameters_; }
+      set {
+        hyperlinkParameters_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -266,6 +296,8 @@ namespace Agwinterm.Core.Persist {
       if (BgKind != other.BgKind) return false;
       if (BgIndex != other.BgIndex) return false;
       if (BgRgb != other.BgRgb) return false;
+      if (HyperlinkUri != other.HyperlinkUri) return false;
+      if (HyperlinkParameters != other.HyperlinkParameters) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -284,6 +316,8 @@ namespace Agwinterm.Core.Persist {
       if (BgKind != 0) hash ^= BgKind.GetHashCode();
       if (BgIndex != 0) hash ^= BgIndex.GetHashCode();
       if (BgRgb != 0) hash ^= BgRgb.GetHashCode();
+      if (HyperlinkUri.Length != 0) hash ^= HyperlinkUri.GetHashCode();
+      if (HyperlinkParameters.Length != 0) hash ^= HyperlinkParameters.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -346,6 +380,14 @@ namespace Agwinterm.Core.Persist {
         output.WriteRawTag(88);
         output.WriteUInt32(BgRgb);
       }
+      if (HyperlinkUri.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(HyperlinkUri);
+      }
+      if (HyperlinkParameters.Length != 0) {
+        output.WriteRawTag(106);
+        output.WriteString(HyperlinkParameters);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -400,6 +442,14 @@ namespace Agwinterm.Core.Persist {
         output.WriteRawTag(88);
         output.WriteUInt32(BgRgb);
       }
+      if (HyperlinkUri.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(HyperlinkUri);
+      }
+      if (HyperlinkParameters.Length != 0) {
+        output.WriteRawTag(106);
+        output.WriteString(HyperlinkParameters);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -442,6 +492,12 @@ namespace Agwinterm.Core.Persist {
       }
       if (BgRgb != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(BgRgb);
+      }
+      if (HyperlinkUri.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(HyperlinkUri);
+      }
+      if (HyperlinkParameters.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(HyperlinkParameters);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -487,6 +543,12 @@ namespace Agwinterm.Core.Persist {
       }
       if (other.BgRgb != 0) {
         BgRgb = other.BgRgb;
+      }
+      if (other.HyperlinkUri.Length != 0) {
+        HyperlinkUri = other.HyperlinkUri;
+      }
+      if (other.HyperlinkParameters.Length != 0) {
+        HyperlinkParameters = other.HyperlinkParameters;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -551,6 +613,14 @@ namespace Agwinterm.Core.Persist {
             BgRgb = input.ReadUInt32();
             break;
           }
+          case 98: {
+            HyperlinkUri = input.ReadString();
+            break;
+          }
+          case 106: {
+            HyperlinkParameters = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -612,6 +682,14 @@ namespace Agwinterm.Core.Persist {
           }
           case 88: {
             BgRgb = input.ReadUInt32();
+            break;
+          }
+          case 98: {
+            HyperlinkUri = input.ReadString();
+            break;
+          }
+          case 106: {
+            HyperlinkParameters = input.ReadString();
             break;
           }
         }

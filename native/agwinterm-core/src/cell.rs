@@ -157,6 +157,7 @@ pub struct Cell {
     pub width: u8,
     pub fg_spec: ColorSpec,
     pub bg_spec: ColorSpec,
+    pub hyperlink: u32,
 }
 
 impl Cell {
@@ -168,6 +169,7 @@ impl Cell {
         width: 1,
         fg_spec: ColorSpec::DEFAULT,
         bg_spec: ColorSpec::DEFAULT,
+        hyperlink: 0,
     };
 }
 

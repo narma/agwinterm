@@ -30,12 +30,15 @@ public static class BufferPersist
         BgKind = (uint)c.BgSpec.Kind,
         BgIndex = c.BgSpec.Index,
         BgRgb = Pack(c.BgSpec.Rgb),
+        HyperlinkUri = c.Hyperlink?.Uri ?? "",
+        HyperlinkParameters = c.Hyperlink?.Parameters ?? "",
     };
 
     private static Cell FromP(PCell p) => new(
         p.Rune, Unpack(p.Fg), Unpack(p.Bg), (CellAttributes)p.Attrs, (byte)p.Width,
         new ColorSpec((ColorSpecKind)p.FgKind, (byte)p.FgIndex, Unpack(p.FgRgb)),
-        new ColorSpec((ColorSpecKind)p.BgKind, (byte)p.BgIndex, Unpack(p.BgRgb)));
+        new ColorSpec((ColorSpecKind)p.BgKind, (byte)p.BgIndex, Unpack(p.BgRgb)),
+        p.HyperlinkUri.Length == 0 ? null : new TerminalHyperlink(p.HyperlinkUri, p.HyperlinkParameters));
 
     private static bool RowNeeded(IReadOnlyList<PCell> _) => true;
 

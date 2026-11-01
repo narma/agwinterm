@@ -11,6 +11,22 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class RustEmulatorCoreTests
 {
+    [Fact]
+    public void Adapter_Osc8HyperlinksFollowCells()
+    {
+        if (!Available) return;
+        using var rust = new RustTerminalCore(8, 3);
+        Osc8Tests.Verify(rust);
+    }
+
+    [Fact]
+    public void Adapter_Osc8WideEditsClearTheWholeGlyph()
+    {
+        if (!Available) return;
+        using var rust = new RustTerminalCore(8, 3);
+        Osc8Tests.VerifyWideEdits(rust);
+    }
+
     private static readonly bool Available = Probe();
 
     private static bool Probe()

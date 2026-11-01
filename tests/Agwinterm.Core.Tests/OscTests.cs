@@ -234,10 +234,10 @@ public class OscTests
     {
         var t = new TerminalEmulator(40, 3);
         var host = new RecordingHost(); t.Host = host;
-        t.Feed(Encoding.UTF8.GetBytes("\x1b]8;;https://example.com\x1b\\"));   // OSC 8 hyperlink (not implemented)
+        t.Feed(Encoding.UTF8.GetBytes("\x1b]999;unknown\x1b\\")); // unassigned OSC
         var u = Assert.Single(host.Unhandleds);
         Assert.Equal("OSC", u.Kind);
-        Assert.StartsWith("8;", u.Detail);
+        Assert.StartsWith("999;", u.Detail);
     }
 
     [Fact]

@@ -7,6 +7,41 @@ namespace Agwinterm.Core.Tests;
 /// cell's colour and attributes (vs the old plain-text path that reseeded flat dim text).</summary>
 public class BufferPersistTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RoundTrip_PreservesHyperlinks(bool includeVisible)
+    {
+        var target = new TerminalHyperlink("https://example.com/a;b", "id=docs:other=value");
+        var src = Feed(12, 3, target.Sequence + "中 docs  " + TerminalHyperlink.Close + "!\r\n\r\n\r\n" +
+            target.Sequence + "live" + TerminalHyperlink.Close);
+        Assert.True(src.HistoryCount > 0);
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(src, includeVisible: includeVisible), out var buffer));
+        var dst = new TerminalEmulator(12, 3);
+        BufferPersist.Restore(dst, buffer);
+        for (int h = 0; h < src.HistoryCount; h++)
+            for (int c = 0; c < 12; c++) Assert.Equal(src.GetHistoryCell(h, c), dst.GetHistoryCell(h, c));
+        Assert.Equal(target, dst.GetHistoryCell(0, 1).Hyperlink); // wide spacer
+        Assert.Equal(target, dst.GetHistoryCell(0, 7).Hyperlink); // linked trailing space
+        Assert.Null(dst.GetHistoryCell(0, 9).Hyperlink); // punctuation after the close
+        if (includeVisible)
+            Assert.Equal(target, dst.GetHistoryCell(src.HistoryCount + 2, 0).Hyperlink);
+        else
+            Assert.Equal(src.HistoryCount, dst.HistoryCount);
+    }
+
+    [Fact]
+    public void Restore_OldCellsWithoutHyperlinkFieldsRemainUnlinked()
+    {
+        // v1 blob written before hyperlink fields 12/13 existed: one row containing 'x'.
+        byte[] oldBlob = [8, 1, 16, 8, 26, 6, 10, 4, 8, 120, 40, 1];
+        Assert.True(BufferPersist.TryParse(oldBlob, out var buffer));
+        var dst = new TerminalEmulator(8, 3);
+        BufferPersist.Restore(dst, buffer);
+        Assert.Equal('x', dst.GetHistoryCell(0, 0).Rune);
+        Assert.Null(dst.GetHistoryCell(0, 0).Hyperlink);
+    }
+
     private static TerminalEmulator Feed(int cols, int rows, string s)
     {
         var t = new TerminalEmulator(cols, rows);

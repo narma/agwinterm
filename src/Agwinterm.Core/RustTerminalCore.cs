@@ -46,10 +46,18 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
             _gridBuf = new RustEmulatorCore.NativeCell[cols * rows];
             _rowBuf = new RustEmulatorCore.NativeCell[cols];
         }
+        var links = new Dictionary<uint, TerminalHyperlink?>();
+        Cell ConvertCell(RustEmulatorCore.NativeCell cell)
+        {
+            TerminalHyperlink? target = null;
+            if (cell.Hyperlink != 0 && !links.TryGetValue(cell.Hyperlink, out target))
+                links[cell.Hyperlink] = target = _rust.GetHyperlink(cell.Hyperlink);
+            return cell.ToCell(target);
+        }
         if (_rust.CopyGrid(_gridBuf))
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
-                    _mirror[r, c] = _gridBuf[r * cols + c].ToCell();
+                    _mirror[r, c] = ConvertCell(_gridBuf[r * cols + c]);
 
         int target = (int)_info.HistoryCount;
         if (target < _histMirror.Count) _histMirror.Clear();   // trimmed — refetch all
@@ -57,7 +65,7 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
         {
             if (!_rust.CopyHistoryRow(h, _rowBuf)) break;
             var row = new Cell[cols];
-            for (int c = 0; c < cols; c++) row[c] = _rowBuf[c].ToCell();
+            for (int c = 0; c < cols; c++) row[c] = ConvertCell(_rowBuf[c]);
             _histMirror.Add(row);
         }
 
