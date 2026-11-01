@@ -1,4 +1,5 @@
 param([string]$Distro = 'Ubuntu', [switch]$NativeHooks, [string]$LinuxUser = '', [switch]$NoPython, [switch]$Portable)
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslControl -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'

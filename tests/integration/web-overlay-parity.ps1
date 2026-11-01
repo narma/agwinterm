@@ -1,8 +1,9 @@
 param(
-    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
+    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
     [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
     [switch]$ReviewOnly
 )
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebOverlayParity -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
 $Exe = (Resolve-Path $Exe).Path
 $Ctl = (Resolve-Path $Ctl).Path
@@ -17,6 +18,7 @@ foreach ($key in @('AGWINTERM_APP_ID','AGWINTERM_PIPE','AGWINTERM_SESSION_ID','A
     $saved[$key]=[Environment]::GetEnvironmentVariable($key)
     [Environment]::SetEnvironmentVariable($key,$null)
 }
+$python = if ($env:AGWINTERM_TEST_PYTHON) { $env:AGWINTERM_TEST_PYTHON } else { (& py -3 -c 'import sys; print(sys.executable)').Trim() }
 $process = $null
 $server = $null
 function Call([string[]]$Words) {

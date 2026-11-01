@@ -10,6 +10,7 @@ param(
     [string]$RestoreClipboard
 )
 
+if (-not $RestoreClipboard -and (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test Win32Control -Parameters $PSBoundParameters)) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
 $fail = 0
 

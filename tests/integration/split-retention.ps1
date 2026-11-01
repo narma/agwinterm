@@ -1,4 +1,5 @@
 # Real Win32 split toggle regression: private state and pipe; no global input.
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test SplitRetention -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'

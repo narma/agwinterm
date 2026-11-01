@@ -59,14 +59,14 @@ try {
     Require (@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0].name -eq 'Declarative owner') 'local child frame renders without document scripts or a declarative bridge'
     [void](Call @('session','overlay','close','--target',$owner))
     foreach ($design in @('editorial','brief','classic','custom')) {
-        $pageId = & py -3 "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/$design.html"
+        $pageId = & $python "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/$design.html"
         Require ($LASTEXITCODE -eq 0 -and $pageId) "cookbook $design template loads through adapter"
-        $again = & py -3 "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/$design.html"
+        $again = & $python "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/$design.html"
         Require ($LASTEXITCODE -eq 0 -and $again -eq $pageId) "cookbook $design reload preserves page ID"
     }
     [void](Call @('session','overlay','close','--target',$owner))
     $backgroundOwner = (Call @('session','new','--name','document-background','--no-select')).result
-    & py -3 "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/brief.html" --target $backgroundOwner
+    & $python "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/brief.html" --target $backgroundOwner
     Require ($LASTEXITCODE -eq 0) 'cookbook adapter opens a background owner'
     $tree = (Call @('tree')).result
     $background = @($tree.workspaces.sessions | Where-Object id -eq $backgroundOwner)[0]
@@ -85,7 +85,7 @@ try {
     [void](Call @('session','overlay','close','--target',$owner))
     Require ((Call @('session','overlay','open','cmd /d /q /k','--target',$owner)).ok) 'cookbook refusal test opens program overlay'
     [void](Call @('session','overlay','hide','--target',$owner))
-    & py -3 "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/brief.html" 2>"$directory/cookbook-refusal.txt"
+    & $python "$fixtures/show.py" "$fixtures/html-doc-overlay/assets/brief.html" 2>"$directory/cookbook-refusal.txt"
     Require ($LASTEXITCODE -eq 1) 'cookbook adapter refuses hidden program overlay'
     [void](Call @('session','overlay','close','--target',$owner))
 
@@ -93,7 +93,7 @@ try {
     "# Review fixture`n`nA paragraph to annotate." | Set-Content -Encoding utf8 $document
     $backup = Join-Path $directory 'review-output.txt'
     $reviewScript = "$fixtures/annotate-document/scripts/webrev.py"
-    & py -3 $reviewScript review $document --fit --output $backup --timeout 0.1 2>"$directory/review-timeout.txt"
+    & $python $reviewScript review $document --fit --output $backup --timeout 0.1 2>"$directory/review-timeout.txt"
     Require ($LASTEXITCODE -eq 1) 'review timeout returns pending without dismissing page'
     $pending = (Get-Content $backup -Raw).Trim()
     Require ($pending -match '^pending [a-f0-9]+$') 'review timeout backup retains page ID'
@@ -121,19 +121,19 @@ setTimeout(() => {
         Start-Sleep -Milliseconds 100
     }
     Require ($outcome.outcome -eq 'submitted' -and $outcome.value.Contains('File annotation') -and $outcome.value.Contains('Block annotation')) 'actual cookbook review submits file and block annotations'
-    $recovered = & py -3 $reviewScript result $reviewId
+    $recovered = & $python $reviewScript result $reviewId
     Require ($LASTEXITCODE -eq 0 -and ($recovered -join "`n").Contains('Block annotation')) 'review adapter recovers submitted text after timeout'
     Require ((Get-Content $backup -Raw).Trim() -eq $pending) 'pending backup remains an honest recovery pointer after waiter exits'
 
-    & py -3 $reviewScript review $document --output $backup --timeout 0.1 2>"$directory/review-cancel.txt"
+    & $python $reviewScript review $document --output $backup --timeout 0.1 2>"$directory/review-cancel.txt"
     $cancelId = (Get-Content $backup -Raw).Trim().Substring(8)
     [void](Call @('session','overlay','close','--target',$owner))
-    & py -3 $reviewScript result $cancelId 2>"$directory/review-dismissed.txt"
+    & $python $reviewScript result $cancelId 2>"$directory/review-dismissed.txt"
     Require ($LASTEXITCODE -eq 2) 'review adapter cancellation uses exit 2 independently of CLI success'
     . "$PSScriptRoot/cookbook-review-storage-cases.ps1"
     }
 
-    $dashboard = Start-Process py -ArgumentList '-3',"$fixtures/scheduled-jobs/dashboard.py" -WindowStyle Hidden -PassThru -RedirectStandardOutput "$directory/dashboard-url.txt" -RedirectStandardError "$directory/dashboard-error.txt"
+    $dashboard = Start-Process $python -ArgumentList "$fixtures/scheduled-jobs/dashboard.py" -WindowStyle Hidden -PassThru -RedirectStandardOutput "$directory/dashboard-url.txt" -RedirectStandardError "$directory/dashboard-error.txt"
     for ($i=0; $i -lt 50 -and -not (Get-Content "$directory/dashboard-url.txt" -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 100 }
     $url = (Get-Content "$directory/dashboard-url.txt" -Raw).Trim()
     Require ((Call @('browser','links','overlay75')).ok) 'terminal links use overlay75 policy'
@@ -308,7 +308,7 @@ setTimeout(() => {
     [void](Call @('session','overlay','close','--target',$owner))
 
     $snapshot = Join-Path $directory 'snapshot.html'
-    & py -3 "$fixtures/session-snapshot/render.py" "$fixtures/session-snapshot/sample.json" $snapshot --target $owner
+    & $python "$fixtures/session-snapshot/render.py" "$fixtures/session-snapshot/sample.json" $snapshot --target $owner
     Require ($LASTEXITCODE -eq 0) 'standalone snapshot viewer launches embedded with JS and no bridge'
     $search = Web-Element 'filter sessions… ( / )'
     $searchValue = $search.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)

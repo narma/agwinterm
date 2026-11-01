@@ -78,27 +78,28 @@ function Invoke-GuestCase([string]$Directory, [switch]$FailStart, [switch]$FailE
     function Start-Process {
         param($FilePath, $ArgumentList, $RedirectStandardOutput, $RedirectStandardError, [switch]$Wait, [switch]$PassThru)
         if ($FailStart) { throw 'simulated guest launch failure' }
-        $suiteIndex = [Array]::IndexOf($ArgumentList, '-Suite')
-        $global:AgwintermSandboxUiTestState.guestArgumentsMatch = ($suiteIndex -ge 0 -and $ArgumentList[$suiteIndex + 1] -ceq $Suite -and $ArgumentList -contains '-Strict' -and $Wait -and $PassThru -and $FilePath -eq (Join-Path $Directory 'work/powershell/pwsh.exe') -and $ArgumentList -contains ('"' + (Join-Path $Directory 'work/tests/integration/hud-ui.ps1') + '"'))
+        $global:AgwintermSandboxUiTestState.guestArgumentsMatch = ($ArgumentList -contains '-WorkDirectory' -and $Wait -and $PassThru -and $FilePath -eq (Join-Path $Directory 'work/powershell/pwsh.exe') -and $ArgumentList -contains ('"' + (Join-Path $Directory 'work/tests/integration/sandbox-ui-dispatch.ps1') + '"'))
         'test failed' | Set-Content -LiteralPath $RedirectStandardOutput
         '' | Set-Content -LiteralPath $RedirectStandardError
         [pscustomobject]@{ExitCode=1}
     }
     $inputPath = Join-Path $Directory 'input'
     $resultPath = Join-Path $Directory 'results'
-    $null = New-Item -ItemType Directory -Path (Join-Path $inputPath '.revmux/navigation-run'), $resultPath -Force
+    $null = New-Item -ItemType Directory -Path (Join-Path $inputPath '.revmux/navigation-run'), (Join-Path $Directory 'local-data'), $resultPath -Force
     @{suite=$Suite; exeName='Agwinterm.Win32.exe'} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $inputPath 'run.json')
     'screenshot evidence' | Set-Content -LiteralPath (Join-Path $inputPath '.revmux/navigation-run/tooltip.png')
     if ($FailEvidence) { 'cannot overwrite this file with a directory' | Set-Content -LiteralPath (Join-Path $resultPath 'evidence') }
     $usernameBefore = $env:USERNAME
     $pathBefore = $env:PATH
+    $guestMarkerBefore = $env:AGWINTERM_SANDBOX_UI
     $global:AgwintermSandboxUiTestState.guestArgumentsMatch = $false
     try {
         $env:USERNAME = 'WDAGUtilityAccount'
-        & (Join-Path $PSScriptRoot 'sandbox-ui-guest.ps1') -InputDirectory $inputPath -ResultsDirectory $resultPath -WorkDirectory (Join-Path $Directory 'work')
+        & (Join-Path $PSScriptRoot 'sandbox-ui-guest.ps1') -InputDirectory $inputPath -ResultsDirectory $resultPath -WorkDirectory (Join-Path $Directory 'work') -LocalDataDirectory (Join-Path $Directory 'local-data')
     } finally {
         $env:USERNAME = $usernameBefore
         $env:PATH = $pathBefore
+        $env:AGWINTERM_SANDBOX_UI = $guestMarkerBefore
         $env:CI = $ciBefore
     }
     if (-not $FailStart) {
@@ -120,6 +121,28 @@ try {
         PowerShellHome=(Join-Path $temporary 'powershell')
         DotnetHome=(Join-Path $temporary 'dotnet')
     }
+    $null = New-Item -ItemType Directory -Path (Join-Path $temporary 'webview2'), (Join-Path $temporary 'python')
+    'fixture' | Set-Content (Join-Path $temporary 'webview2/msedgewebview2.exe')
+    'fixture' | Set-Content (Join-Path $temporary 'python/python.exe')
+    $definitions = Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1"
+    foreach ($testName in $definitions.Keys) {
+        if ($definitions[$testName].Wsl) {
+            Refuses "$testName refuses host WSL fallback before staging" { & $runner @parameters -Test $testName -PrepareOnly } '*does not inherit host WSL*'
+            continue
+        }
+        $options = @{}
+        if ($testName -eq 'WebStartupBaseline') { $options = @{Installer=$parameters.Exe; Portable=$parameters.CtlExe} }
+        if ($testName -eq 'WebOverlayHost') { $options.Cookbook=$true }
+        $testOutput = Join-Path $temporary "test-$testName"
+        & $runner @parameters -Test $testName -TestParameters $options -WebView2Home (Join-Path $temporary 'webview2') -PythonHome (Join-Path $temporary 'python') -OutputDirectory $testOutput -PrepareOnly
+        $config = Get-Content (Join-Path $testOutput 'input/run.json') -Raw | ConvertFrom-Json
+        Check "$testName stages its test id and entry point" ($config.test -eq $testName -and (Test-Path -LiteralPath (Join-Path $testOutput "input/$($definitions[$testName].Path)")))
+        Check "$testName stages shared UI and conformance resources" ((Test-Path (Join-Path $testOutput 'input/tests/ui/lib.ps1')) -and (Test-Path (Join-Path $testOutput 'input/tests/conformance/control-api.json')))
+        if ($definitions[$testName].Web) { Check "$testName stages an offline WebView2 runtime" (Test-Path (Join-Path $testOutput 'input/webview2/msedgewebview2.exe')) }
+        if ($definitions[$testName].Python -or $testName -eq 'WebOverlayHost') { Check "$testName stages an offline Python runtime" (Test-Path (Join-Path $testOutput 'input/python/python.exe')) }
+    }
+    Refuses 'unknown tests are rejected before staging' { & $runner @parameters -Test '../arbitrary.ps1' -PrepareOnly } '*Unknown Sandbox UI test*'
+    Refuses 'unknown parameters are rejected before staging' { & $runner @parameters -Test Win32Control -TestParameters @{RestoreClipboard='host-path'} -PrepareOnly } '*Unsupported Win32Control parameter*'
     # Parse parameter metadata without invoking the real UI runner or the mocked Get-Command.
     function SuiteNames([string]$Path) {
         $ast = [Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
@@ -145,13 +168,14 @@ try {
     $oldOutput = Join-Path $checkout 'artifacts/local'
     $null = New-Item -ItemType Directory -Path $appOutput, $ctlOutput, $scriptDirectory, $oldOutput -Force
     Copy-Item -LiteralPath $runner -Destination $scriptDirectory
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'sandbox-ui-tests.psd1') -Destination $scriptDirectory
     'fresh app' | Set-Content -LiteralPath (Join-Path $appOutput 'Agwinterm.Win32.exe')
     'fresh CLI' | Set-Content -LiteralPath (Join-Path $ctlOutput 'agwintermctl.exe')
     'stale app' | Set-Content -LiteralPath (Join-Path $oldOutput 'Agwinterm.Win32.exe')
     'stale CLI' | Set-Content -LiteralPath (Join-Path $oldOutput 'agwintermctl.exe')
     $standardResult = Join-Path $temporary 'standard-result'
     & (Join-Path $scriptDirectory 'sandbox-ui.ps1') -PowerShellHome $parameters.PowerShellHome -OutputDirectory $standardResult -PrepareOnly
-    Check 'default application path uses the standard x64 Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/app/Agwinterm.Win32.exe')) -eq 'fresh app')
+    Check 'default application path uses the standard x64 Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe')) -eq 'fresh app')
     Check 'default CLI path uses its standard Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe')) -eq 'fresh CLI')
     $prepared = Join-Path $temporary 'prepared'
     & $runner @parameters -OutputDirectory $prepared -PrepareOnly
@@ -162,7 +186,7 @@ try {
     Check 'networking and clipboard sharing are disabled' ($xml.Configuration.Networking -eq 'Disable' -and $xml.Configuration.ClipboardRedirection -eq 'Disable')
     Check 'vGPU is enabled by default' ($xml.Configuration.vGPU -eq 'Enable')
     Check 'guest bootstrap is selected' ($xml.Configuration.LogonCommand.Command -like '*sandbox-ui-guest.ps1')
-    Check 'CLI and native application dependencies are staged' ((Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe')) -and (Test-Path -LiteralPath (Join-Path $prepared 'input/app/conpty.dll')))
+    Check 'CLI and native application dependencies are staged' ((Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe')) -and (Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/conpty.dll')))
     Check 'self-contained payload does not copy host dotnet' (-not (Test-Path -LiteralPath (Join-Path $prepared 'input/dotnet')))
     Check 'prepare-only does not launch Sandbox or write a test result' ($global:AgwintermSandboxUiTestState.launches -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $prepared 'results/result.json')))
 

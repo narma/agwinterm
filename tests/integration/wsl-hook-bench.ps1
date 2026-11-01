@@ -1,3 +1,4 @@
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslBenchmark -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $linuxRepo=(& wsl -d Ubuntu --exec wslpath -u $repo).Trim()

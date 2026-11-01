@@ -3,6 +3,7 @@ param(
     [string]$Ctl = "$PSScriptRoot/../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
     [string]$Output = "$PSScriptRoot/../artifacts/webview2-page-measurements.json"
 )
+if (& "$PSScriptRoot/../tests/integration/sandbox-ui-entry.ps1" -Test WebPageMeasurements -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
 $Exe = (Resolve-Path $Exe).Path; $Ctl = (Resolve-Path $Ctl).Path
 $identity = 'agwinterm-web-measure-' + [guid]::NewGuid().ToString('N')
@@ -20,6 +21,7 @@ $saved = @{}
 foreach ($key in @('AGWINTERM_APP_ID','AGWINTERM_PIPE','AGWINTERM_SESSION_ID','AGWINTERM_PANE_ID','WEBVIEW2_BROWSER_EXECUTABLE_FOLDER')) {
     $saved[$key]=[Environment]::GetEnvironmentVariable($key); [Environment]::SetEnvironmentVariable($key,$null)
 }
+$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER = $env:AGWINTERM_TEST_WEBVIEW2
 $process=$null; $samples=[Collections.Generic.List[object]]::new(); $loads=[Collections.Generic.List[object]]::new()
 Add-Type -Path "$PSHOME/UIAutomationTypes.dll"
 Add-Type -Path "$PSHOME/UIAutomationClient.dll"

@@ -94,6 +94,11 @@ jobs:
         shell: pwsh
         run: ./tests/integration/sandbox-ui.tests.ps1
 
+      - name: Windows Sandbox UI routing fixtures (no VM)
+        if: matrix.suite == 'core'
+        shell: pwsh
+        run: ./tests/integration/sandbox-ui-routing.tests.ps1
+
       - name: Restore
         run: dotnet restore Agwinterm.slnx
 

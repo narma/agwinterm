@@ -52,15 +52,15 @@ Build and the unit tests must be green before you send a PR. `Agwinterm.Core` tr
 
 They run under **PowerShell 7** (`pwsh -NoProfile -File ...`), never Windows PowerShell 5.1. Each one starts a private instance (`--app-id` and `--pipe` with throwaway names, `--no-restore`) and drives it only by posting messages to that instance's own windows: no `keybd_event`, no `SendInput`, no global mouse. Keep to that when you add a case. Private instance data does not isolate a window from real desktop mouse and focus events.
 
-**Direct desktop and Windows Sandbox are equally supported local UI test modes.** After `dotnet build Agwinterm.slnx -c Release`, choose either:
+**Local UI tests use background Windows Sandbox.** After `dotnet build Agwinterm.slnx -c Release`, use an entry point or select a runner explicitly:
 
 | Mode | Command | Desktop interaction |
 |---|---|---|
-| Direct Windows desktop | `pwsh -NoProfile -File tests/integration/hud-ui.ps1 -Suite Navigation -Strict` | Keep the test desktop free of mouse and focus changes. |
+| Local entry point (auto-routed) | `pwsh -NoProfile -File tests/integration/hud-ui.ps1 -Suite Navigation -Strict` | Automatically uses background Sandbox before any UI work. |
 | Windows Sandbox | `pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation` | Continue working on the host; leave the guest desktop untouched. |
 | Background Windows Sandbox | `pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation -Background` | Keep the viewer on a private host desktop without interrupting host focus; requires the modern client. |
 
-Both modes run the same suites and assertions using the standard Release outputs. The direct runner requires `-TokenOwner` (or `AGWINTERM_TEST_OWNER`) when the maintainer's suite-token helper is installed; without that helper it requires `CI=true` in the test process. The optional Sandbox wrapper sets this only inside the guest. See [local UI testing](docs/sandbox-ui-tests.md) for prerequisites, direct-run commands, and results. Core/Pty unit tests and the wrapper's fixture checks do not require Sandbox.
+Local UI entry points, including `win32-control.ps1`, conformance, restore, CLI/events, split, program/web overlays and profiling tools, automatically route to background Sandbox. The wrapper accepts `-Test Win32Control` and other named runners in addition to HUD suites. It stages shared UI code, fixtures and optional offline WebView2/Python dependencies, and exports guest evidence. `CI=true` alone is not a host-desktop bypass. WSL-dependent scripts refuse locally because Sandbox does not inherit host distributions. See [local UI testing](docs/sandbox-ui-tests.md) for the registry, prerequisites and results. Core/Pty unit tests and fixture checks do not require Sandbox.
 
 **CI runs UI suites directly** on the runner desktop, without Windows Sandbox. The core job also checks the Sandbox wrapper with fixtures that require no VM.
 
