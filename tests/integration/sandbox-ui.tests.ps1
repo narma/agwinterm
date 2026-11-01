@@ -130,7 +130,7 @@ try {
     $definitions = Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1"
     foreach ($testName in $definitions.Keys) {
         if ($definitions[$testName].Wsl) {
-            Refuses "$testName refuses host WSL fallback before staging" { & $runner @parameters -Test $testName -PrepareOnly } '*does not inherit host WSL*'
+            Refuses "$testName explains private desktop routing instead of staging a VM" { & $runner @parameters -Test $testName -PrepareOnly } '*private desktop*'
             continue
         }
         $options = @{}

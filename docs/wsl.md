@@ -56,6 +56,13 @@ Build the solution and native binaries below, then run `pwsh -NoProfile -File te
 For native hooks, build `cargo build --release --manifest-path native/Cargo.toml -p agwinterm-hook` on Windows and run `tools/build-wsl-hook.ps1`. The Linux build requires Rust in WSL with both musl targets installed (`rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl` inside WSL). It produces both static binaries under `artifacts/wsl-hook`; `-Architecture x64` or `-Architecture arm64` builds only the requested target. Run `tests/integration/wsl-control.ps1 -NativeHooks` to stage the binaries and test installation; add `-LinuxUser root` to exercise a non-default user in the disposable HOME. After `installer/build-portable.ps1`, use `tests/integration/portable-tools.ps1` to check the actual standalone executable and `tests/integration/wsl-control.ps1 -Portable -NoPython` for the full WSL test using its embedded tools. `tests/integration/wsl-hook-bench.ps1` compares Python, Windows Rust and Linux Rust paths, tests a stalled pipe, and writes raw measurements under `artifacts/wsl-hook-research`.
 
 PR CI and releases share a Linux workflow that builds and executes musl Rust tests and the installer/bootstrap suite on native x64 and ARM64 runners. The installer tests use an explicit `AGWINTERM_TEST_POSIX_PATHS=1` path-conversion stub on ordinary Linux; they do not claim to test Windows interop. Real WSL runs omit that flag and use `wslpath`. CI also builds the portable executable and verifies extraction, tool hashes, ELF architectures, and standalone CLI execution.
+Local WSL integration and benchmark entry points automatically run their Windows
+processes on a private non-input desktop through `tests/integration/wsl-ui.ps1`.
+They use the installed host distribution, keep their disposable Linux HOME and
+private app ID, and do not show test windows on the user's desktop. Setup errors
+fail the run without falling back to the input desktop; logs and desktop identity
+are saved under `artifacts/wsl-ui`. See [background UI tests](sandbox-ui-tests.md).
+
 # Observing agent status from WSL
 
 The installed `agwintermctl` wrapper runs the Windows CLI through WSL interop;

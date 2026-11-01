@@ -43,7 +43,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Could not create disposable Linux HOME' }
     $profileEnv = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" }
     if ($NoPython) {
-        & wsl @selectors --exec sh -c 'mkdir -p "$1/tools"; for tool in wslpath uname mktemp cp chmod rm rmdir mkdir sh bash sleep env; do ln -s "$(command -v "$tool")" "$1/tools/$tool"; done' setup $linuxHome
+        & wsl @selectors --exec sh -c 'mkdir -p "$1/tools"; for tool in wslpath uname id mktemp cp chmod rm rmdir mkdir sh bash sleep env; do ln -s "$(command -v "$tool")" "$1/tools/$tool"; done' setup $linuxHome
         if ($LASTEXITCODE -ne 0) { throw 'Cannot create Python-free PATH' }
         $profileEnv.PATH = "$linuxHome/tools"
     }
@@ -96,6 +96,9 @@ try {
     $row = (Ctl @('tree')).workspaces.sessions | Where-Object id -eq $session
     Check ($row.name -eq 'tmp') 'Label follows focused split pane'
     Check ($row.paneCwds.$split -eq '/tmp' -and $row.paneCwds.$session -eq "$linuxHome/path with spaces") 'Tree distinguishes split pane directories'
+    # split off maximizes the focused pane; choose the primary explicitly so
+    # the following duplicate/persistence checks exercise its spaced cwd.
+    $null = Ctl @('session','focus','left','--target',$session)
     $null = Ctl @('session', 'split', 'off', '--target', $session)
     $copy = Ctl @('session', 'duplicate', '--target', $session)
     Start-Sleep -Seconds 1
@@ -145,7 +148,7 @@ try {
             if ($lines.Count -ge 5) { break }
             Start-Sleep -Milliseconds 100
         }
-        Check ($lines.Count -eq 5 -and $lines[0] -eq "$linuxHome/path with spaces" -and $lines[1] -eq $expectedUser -and $lines[2] -eq $Distro -and $lines[3] -eq $copy -and $lines[4] -eq "$linuxHome/path with spaces") "C0 $mode preserves target distro/user/Linux cwd/AGW identity"
+        Check ($lines.Count -eq 5 -and $lines[0] -eq "$linuxHome/path with spaces" -and $lines[1] -eq $expectedUser -and $lines[2] -eq $Distro -and $lines[3] -eq $copy -and $lines[4] -eq "$linuxHome/path with spaces") "C0 $mode preserves target distro/user/Linux cwd/AGW identity ($($lines -join ' | '))"
         if ($mode -ne 'new') {
             Check ([bool]((Ctl @('tree')).workspaces.sessions | Where-Object { $_.id -eq $windowsSession -and $_.active })) "C0 $mode never selects source"
         }
@@ -332,7 +335,7 @@ try {
     Check ($c5Row.paneCwds.$c5Right -eq '/tmp' -and $c5Row.paneCwds.$c5 -eq "$linuxHome/path with spaces") 'C5 restores distinct WSL pane directories'
 }
 finally {
-    if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    if ($process -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
     # Generated paths are confined to test namespaces; never accept a user-supplied deletion path.
     $expected = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $id))
     if ($state -eq $expected -and $id -match '^agwinterm-wsl-test-[a-f0-9]{32}$') {

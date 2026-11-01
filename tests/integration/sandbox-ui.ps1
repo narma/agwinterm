@@ -23,7 +23,11 @@ if (-not $IsWindows) { throw 'Windows Sandbox UI tests require a Windows host.' 
 $definitions = Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1"
 if (-not $definitions.ContainsKey($Test)) { throw "Unknown Sandbox UI test: $Test. Available: $($definitions.Keys -join ', ')" }
 $definition = $definitions[$Test]
-if ($definition.Wsl) { throw "$Test requires a configured Linux distribution. Windows Sandbox does not inherit host WSL distributions; refusing to open test windows on the host." }
+if ($definition.Wsl) {
+    if ($PrepareOnly) { throw 'WSL tests use the host distribution on a private desktop; there is no Sandbox payload to prepare.' }
+    & "$PSScriptRoot/wsl-ui.ps1" -Test $Test -TestParameters $TestParameters -OutputDirectory $OutputDirectory -TimeoutSeconds ([Math]::Min($TimeoutSeconds,7200))
+    exit $LASTEXITCODE
+}
 foreach ($key in $TestParameters.Keys) {
     if ($key -notin @($definition.Options) + @($definition.Inputs) + @($definition.OptionalInputs) + @($definition.Outputs)) { throw "Unsupported $Test parameter: $key" }
     if ($TestParameters[$key] -isnot [string] -and $TestParameters[$key] -isnot [bool] -and $TestParameters[$key] -isnot [int]) { throw "Unsupported value for $Test parameter: $key" }

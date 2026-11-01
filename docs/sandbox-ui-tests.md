@@ -1,6 +1,6 @@
 # Local UI tests in background Windows Sandbox
 
-Local UI entry points automatically route to **background Windows Sandbox** before
+Local Windows UI entry points automatically route to **background Windows Sandbox** before
 creating windows, touching the clipboard or launching processes. This includes
 `hud-ui.ps1`, `win32-control.ps1`, conformance, restore, CLI/event, split, overlay,
 web and profiling entry points. Failure to prepare Sandbox fails the command;
@@ -65,14 +65,27 @@ nor the SDK is required inside Sandbox. Explicit
 The registry is `tests/integration/sandbox-ui-tests.psd1`; shared UI code, fixtures,
 conformance contracts, logs, screenshots and guest state are staged/exported too.
 
-**WSL limitation:** `wsl-control.ps1` and `wsl-hook-bench.ps1` need a configured Linux
-distribution. Sandbox does not inherit the host's WSL installation. Their local
-entry points refuse with an explanation before any host process/window launch;
-they do not claim a pass or fall back to the user's desktop. They require a
-separately provisioned Linux-capable test environment.
+**WSL tests:** `wsl-control.ps1` and `wsl-hook-bench.ps1` automatically run on a
+private non-input Win32 desktop using the host's configured WSL distribution.
+This is window isolation, not a disposable VM: the tests still use their private
+app IDs and disposable Linux HOME directories. Build the native helpers as
+described in [WSL validation](wsl.md) first. Existing test parameters are preserved:
+
+```powershell
+pwsh -NoProfile -File tests/integration/wsl-control.ps1 -Distro Ubuntu -NativeHooks -NoPython
+pwsh -NoProfile -File tests/integration/wsl-hook-bench.ps1
+./tests/integration/wsl-ui.ps1 -Test WslControl -TestParameters @{Distro='Ubuntu'; NativeHooks=$true}
+```
+
+The worker verifies its actual desktop before UI work. An environment marker
+alone cannot bypass that check. The runner never switches the input desktop,
+creates no console window, preserves failures and logs under `artifacts/wsl-ui`,
+and terminates its Windows process job on completion, failure or timeout.
+`sandbox-ui.ps1 -Test WslControl` / `-Test WslBenchmark` delegates to this runner too.
 
 Setting `CI=true` alone no longer bypasses local routing. Direct execution is
-reserved for the marked guest or GitHub Actions (`GITHUB_ACTIONS=true`, `CI=true`).
+reserved for the marked guest, verified WSL private desktop, or GitHub Actions
+(`GITHUB_ACTIONS=true`, `CI=true`).
 
 ## Windows Sandbox
 
