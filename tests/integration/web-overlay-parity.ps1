@@ -3,8 +3,8 @@ param(
     [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
     [switch]$ReviewOnly
 )
-if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebOverlayParity -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebOverlayParity -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $Exe = (Resolve-Path $Exe).Path
 $Ctl = (Resolve-Path $Ctl).Path
 $identity = 'agwinterm-web-parity-' + [guid]::NewGuid().ToString('N')

@@ -54,8 +54,8 @@ param(
     [string]$Only = ''          # run a single cell by name: graceful | killed | refusal | replay | quit-capture | axis-graceful | axis-killed | swap-killed
 )
 
-if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test RestoreRoundtrip -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test RestoreRoundtrip -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 # agwintermctl exits nonzero while a pipe is coming up, and the ping loop in the harness polls it on
 # purpose; with the native-command mapping on, that poll would throw on its first iteration.
 $PSNativeCommandUseErrorActionPreference = $false

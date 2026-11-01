@@ -1,5 +1,5 @@
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslBenchmark -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
-$ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $linuxRepo=(& wsl -d Ubuntu --exec wslpath -u $repo).Trim()
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'artifacts/wsl-hook-research') | Out-Null

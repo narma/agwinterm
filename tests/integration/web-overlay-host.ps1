@@ -5,8 +5,8 @@ param(
     [switch]$CookbookOnly,
     [switch]$NavigationOnly
 )
-if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebOverlayHost -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebOverlayHost -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $Exe = (Resolve-Path $Exe).Path
 $Ctl = (Resolve-Path $Ctl).Path
 $identity = 'agwinterm-web-test-' + [guid]::NewGuid().ToString('N')

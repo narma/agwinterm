@@ -6,8 +6,8 @@ param(
     [string]$Output = "$PSScriptRoot/../artifacts/webview2-before.json",
     [ValidateRange(20, 1000)][int]$Runs = 20
 )
-if (& "$PSScriptRoot/../tests/integration/sandbox-ui-entry.ps1" -Test WebStartupBaseline -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/../tests/integration/sandbox-ui-entry.ps1" -Test WebStartupBaseline -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $Exe = (Resolve-Path -LiteralPath $Exe).Path
 $identity = 'agwinterm-web-baseline-' + [guid]::NewGuid().ToString('N')
 $dataRoot = [Environment]::GetFolderPath('LocalApplicationData')

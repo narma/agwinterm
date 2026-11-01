@@ -11,6 +11,7 @@ param(
     [string]$Ctl = "$PSScriptRoot\..\src\Agwinterm.Ctl\bin\Debug\net10.0-windows\agwintermctl.exe",
     [int]$Cycles = 30
 )
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/../tests/integration/sandbox-ui-entry.ps1" -Test ProfileMemory -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'SilentlyContinue'
 

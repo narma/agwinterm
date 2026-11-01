@@ -3,8 +3,8 @@ param(
     [string]$Ctl = "$PSScriptRoot/../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
     [string]$Output = "$PSScriptRoot/../artifacts/webview2-page-measurements.json"
 )
-if (& "$PSScriptRoot/../tests/integration/sandbox-ui-entry.ps1" -Test WebPageMeasurements -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/../tests/integration/sandbox-ui-entry.ps1" -Test WebPageMeasurements -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $Exe = (Resolve-Path $Exe).Path; $Ctl = (Resolve-Path $Ctl).Path
 $identity = 'agwinterm-web-measure-' + [guid]::NewGuid().ToString('N')
 $directory = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) $identity

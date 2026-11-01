@@ -46,7 +46,8 @@ try {
         $definition = $definitions[$name]
         $source = Get-Content -LiteralPath (Join-Path $root $definition.Path) -Raw
         $guard = $source.IndexOf("-Test $name -Parameters " + '$PSBoundParameters')
-        Check "$name redirects before any setup" ($guard -ge 0 -and $guard -lt $source.IndexOf('$ErrorActionPreference'))
+        $ast = [Management.Automation.Language.Parser]::ParseInput($source, [ref]$null, [ref]$null)
+        Check "$name fails closed and redirects before any setup" ($guard -ge 0 -and $ast.EndBlock.Statements[0].Extent.Text -eq '$ErrorActionPreference = ''Stop''' -and $ast.EndBlock.Statements[1].Extent.Text.Contains('sandbox-ui-entry.ps1'))
         if ($definition.Wsl) { continue }
         $path = Join-Path $temporary $definition.Path
         $null = New-Item -ItemType Directory -Path (Split-Path $path) -Force
