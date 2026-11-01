@@ -1,6 +1,6 @@
 # Runs inside the existing disposable cookbook fixture.
 foreach ($completion in @('submit','cancel')) {
-    $waiter = Start-Process py -ArgumentList '-3',$reviewScript,'review',$document,'--fit','--output',$backup,'--timeout','20' -WindowStyle Hidden -PassThru -RedirectStandardOutput "$directory/review-$completion-out.txt" -RedirectStandardError "$directory/review-$completion-err.txt"
+    $waiter = Start-Process $python -ArgumentList $reviewScript,'review',$document,'--fit','--output',$backup,'--timeout','20' -WindowStyle Hidden -PassThru -RedirectStandardOutput "$directory/review-$completion-out.txt" -RedirectStandardError "$directory/review-$completion-err.txt"
     try {
         $waitingPage = $null
         for ($i=0; $i -lt 100 -and -not $waitingPage; $i++) {
@@ -26,7 +26,7 @@ $storagePeer = (Call @('session','new','--name','storage-peer','--no-select')).r
 $storageOwners = @($owner,$storagePeer)
 for ($index=0; $index -lt 2; $index++) {
     $storageFile = Join-Path $directory "storage-$index.html"
-    & py -3 $reviewScript render $document $storageFile
+    & $python $reviewScript render $document $storageFile
     Require ($LASTEXITCODE -eq 0) 'review storage fixture renders'
     $probeScript = @'
 <script>

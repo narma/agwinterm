@@ -157,6 +157,10 @@ function Test-SandboxAppId {
 function Start-SandboxProcess {
     param([Parameter(Mandatory)]$S, [Parameter(Mandatory)][string[]]$Arguments)
 
+    if (-not (($env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount') -or ($env:GITHUB_ACTIONS -eq 'true' -and $env:CI -eq 'true'))) {
+        throw 'Local UI processes require background Windows Sandbox; use tests/integration/sandbox-ui.ps1.'
+    }
+
     # A check must never inherit the pane it is being RUN from, or `session type` lands in the
     # caller's own terminal instead of the sandbox.
     foreach ($v in 'AGWINTERM_SESSION_ID', 'AGWINTERM_PANE_ID', 'AGWINTERM_PIPE') {

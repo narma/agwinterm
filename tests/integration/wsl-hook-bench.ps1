@@ -1,4 +1,5 @@
-$ErrorActionPreference='Stop'
+$ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslBenchmark -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $linuxRepo=(& wsl -d Ubuntu --exec wslpath -u $repo).Trim()
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'artifacts/wsl-hook-research') | Out-Null
@@ -47,7 +48,7 @@ try {
  if(-not ($saved -join '').Contains('codex resume research-linux-session')){throw 'Linux native binding not persisted'}
  Write-Host 'PASS native binding persisted'
 } finally {
- if($process -and -not $process.HasExited){Stop-Process -Id $process.Id -Force;$process.WaitForExit()}
+ if($process -and -not $process.HasExited){$process.Kill($true);$process.WaitForExit()}
  $expected=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $id))
  if($state -eq $expected -and $id -match '^agwinterm-research-[a-f0-9]{32}$') {
   if(Test-Path -LiteralPath $state){Remove-Item -LiteralPath $state -Recurse -Force}

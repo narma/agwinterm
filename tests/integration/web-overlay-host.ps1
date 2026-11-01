@@ -6,6 +6,7 @@ param(
     [switch]$NavigationOnly
 )
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebOverlayHost -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $Exe = (Resolve-Path $Exe).Path
 $Ctl = (Resolve-Path $Ctl).Path
 $identity = 'agwinterm-web-test-' + [guid]::NewGuid().ToString('N')
@@ -21,7 +22,9 @@ foreach ($key in @('AGWINTERM_APP_ID','AGWINTERM_PIPE','AGWINTERM_SESSION_ID','A
     $saved[$key]=[Environment]::GetEnvironmentVariable($key)
     [Environment]::SetEnvironmentVariable($key,$null)
 }
+$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER = $env:AGWINTERM_TEST_WEBVIEW2
 $env:AGWINTERM_APP_ID = $identity + '-fallback'
+$python = if ($env:AGWINTERM_TEST_PYTHON) { $env:AGWINTERM_TEST_PYTHON } elseif ($Cookbook -or $CookbookOnly -or $NavigationOnly) { (& py -3 -c 'import sys; print(sys.executable)').Trim() }
 $process = $null
 Add-Type @'
 using System;
@@ -42,10 +45,13 @@ public static class WebGateWindow {
     [DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(long point);
-    public static void ControlClick(IntPtr hwnd, int x, int y) {
+    public static void FocusForKeys(IntPtr hwnd) {
         SetForegroundWindow(hwnd);
         for(int i=0;i<50 && GetForegroundWindow()!=hwnd;i++) System.Threading.Thread.Sleep(20);
-        if(GetForegroundWindow()!=hwnd) throw new Exception("Test window cannot take foreground for link click");
+        if(GetForegroundWindow()!=hwnd) throw new Exception("Test window cannot take foreground for keyboard input");
+    }
+    public static void ControlClick(IntPtr hwnd, int x, int y) {
+        FocusForKeys(hwnd);
         keybd_event(0x11,0,0,UIntPtr.Zero);
         try {
             System.Threading.Thread.Sleep(50); SetCursorPos(x-1,y); SetCursorPos(x,y);
@@ -378,7 +384,7 @@ try {
     [void](Call @('session','overlay','hide','--target',$owner))
     $before=(Call @('tree')).result.workspaces[0].sessions[0].overlayDetails | ConvertTo-Json -Depth 8 -Compress
     $refused=Call @('session','overlay','open','--html',$source,'--target',$owner)
-    Require (-not $refused.ok -and ($refused | ConvertTo-Json -Compress) -match 'Runtime|runtime') 'missing runtime gives actionable refusal'
+    Require (-not $refused.ok -and ($refused | ConvertTo-Json -Compress) -match 'Runtime|runtime') "missing runtime gives actionable refusal: $($refused | ConvertTo-Json -Compress -Depth 8)"
     $after=(Call @('tree')).result.workspaces[0].sessions[0].overlayDetails | ConvertTo-Json -Depth 8 -Compress
     Require ($before -eq $after) 'missing-runtime request preserves hidden program overlay'
     [void](Call @('session','overlay','close','--target',$owner))

@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $RestoreClipboard -and (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test Win32Control -Parameters $PSBoundParameters)) { exit $LASTEXITCODE }
 $fail = 0
 
 if (('Agwinterm.Win32ControlTest.NativeMethods' -as [type]) -and

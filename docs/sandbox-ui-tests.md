@@ -1,37 +1,95 @@
-# Local UI tests: desktop or Windows Sandbox
+# Local UI tests in background Windows Sandbox
 
-**Direct desktop and Windows Sandbox are equally supported local UI test modes.**
-Run `hud-ui.ps1` directly on Windows, or use the optional `sandbox-ui.ps1` wrapper
-to run the same suites in Sandbox. Core/Pty unit tests and the runner's fixture
-checks do not require Sandbox.
+Local Windows UI entry points automatically route to **background Windows Sandbox** before
+creating windows, touching the clipboard or launching processes. This includes
+`hud-ui.ps1`, `win32-control.ps1`, conformance, restore, CLI/event, split, overlay,
+web and profiling entry points. Failure to prepare Sandbox fails the command;
+there is no fallback to the user's desktop. Host-free unit and fixture tests run
+directly. GitHub Actions still runs real UI tests directly on its own runner.
 
-Both modes use the standard Release outputs. From the repository root, build first:
+Tests use the standard Release outputs. From the repository root, build first:
 
 ```powershell
 dotnet build Agwinterm.slnx -c Release
 ```
 
-## Direct Windows desktop
+## Local entry points
 
 ```powershell
 pwsh -NoProfile -File tests/integration/hud-ui.ps1 -Suite Navigation -Strict
+pwsh -NoProfile -File tests/integration/win32-control.ps1 -Strict
+pwsh -NoProfile -File tests/conformance/conformance.ps1 -Strict
 ```
 
-This mode does not require Sandbox. Keep mouse position and focus steady and avoid
-interacting with test windows during the run. Private instance data and control
-pipes do not isolate the tests from desktop input events.
+These commands now run inside background Sandbox automatically. Parameters such
+as `-Dpi 144`, `-Only replay`, `-CookbookOnly` and explicit `-Exe`/`-Ctl` paths are
+forwarded as data; host paths for binaries are replaced by their staged guest paths.
+Tests supporting strict mode always run strictly. The clipboard recovery operation
+`win32-control.ps1 -RestoreClipboard <snapshot>` remains a maintenance command;
+it restores the named snapshot without launching UI tests.
 
-If the maintainer's suite-token helper is installed, supply `-TokenOwner` or set
-`AGWINTERM_TEST_OWNER`. Without that helper, the runner requires `CI=true`; set it
-only in a child test process so the current shell environment is unchanged:
+You can also select standalone runners explicitly:
 
 ```powershell
-pwsh -NoProfile -Command '$env:CI = "true"; & ./tests/integration/hud-ui.ps1 -Suite Navigation -Strict'
+pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Test Win32Control -Background
+pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Test Conformance -Background
+./tests/integration/sandbox-ui.ps1 -Test ProgramOverlay -TestParameters @{Dpi=144} -Background
 ```
+
+| Test | Entry point / parameters |
+|---|---|
+| `Hud` (default) | All 13 `hud-ui.ps1` suites, selected with `-Suite` |
+| `Win32Control` | `win32-control.ps1` |
+| `Conformance` | `tests/conformance/conformance.ps1`; optional custom `Spec` is staged |
+| `RestoreRoundtrip` | `restore-roundtrip.ps1`; `Only` |
+| `ControlCli` | `control-cli-reliability.ps1` |
+| `ControlEvents` | `control-events-and-wait.ps1` |
+| `SplitRetention` | `split-retention.ps1` |
+| `ProgramOverlay` | `program-overlay-controls.ps1`; `Dpi` |
+| `WebOverlayHost` | `web-overlay-host.ps1`; `Cookbook`, `CookbookOnly`, `NavigationOnly` |
+| `WebOverlayParity` | `web-overlay-parity.ps1`; `ReviewOnly` |
+| `WebViewGate` | `webview-gate.ps1` / `tests/WebViewHost.Gate`; optional wrapper `-GateExe` |
+| `ProfileMemory` | `tools/profile-memory.ps1`; `Cycles` |
+| `WebPageMeasurements` | `tools/web-page-measurements.ps1`; `Output` |
+| `WebStartupBaseline` | `tools/web-startup-baseline.ps1`; `Runs`, `Installer`, `Portable`, `Output` |
+
+Build the C# gate first with
+`dotnet build tests/WebViewHost.Gate/WebViewHost.Gate.csproj -c Release`.
+Launching that gate directly (including `dotnet run`) also routes to background
+Sandbox before its first window is created.
+
+The baseline harness also requires local installer and portable files. Its Git
+commit and SDK version are recorded on the host and passed as data; neither Git
+nor the SDK is required inside Sandbox. Explicit
+`Output` paths receive the exported guest report on the host after success.
+The registry is `tests/integration/sandbox-ui-tests.psd1`; shared UI code, fixtures,
+conformance contracts, logs, screenshots and guest state are staged/exported too.
+
+**WSL tests:** `wsl-control.ps1` and `wsl-hook-bench.ps1` automatically run on a
+private non-input Win32 desktop using the host's configured WSL distribution.
+This is window isolation, not a disposable VM: the tests still use their private
+app IDs and disposable Linux HOME directories. Build the native helpers as
+described in [WSL validation](wsl.md) first. Existing test parameters are preserved:
+
+```powershell
+pwsh -NoProfile -File tests/integration/wsl-control.ps1 -Distro Ubuntu -NativeHooks -NoPython
+pwsh -NoProfile -File tests/integration/wsl-hook-bench.ps1
+./tests/integration/wsl-ui.ps1 -Test WslControl -TestParameters @{Distro='Ubuntu'; NativeHooks=$true}
+```
+
+The worker verifies its actual desktop before UI work. An environment marker
+alone cannot bypass that check. The runner never switches the input desktop,
+creates no console window, preserves failures and logs under `artifacts/wsl-ui`,
+and terminates its Windows process job on completion, failure or timeout.
+`sandbox-ui.ps1 -Test WslControl` / `-Test WslBenchmark` delegates to this runner too.
+
+Setting `CI=true` alone no longer bypasses local routing. Direct execution is
+reserved for the marked guest, verified WSL private desktop, or GitHub Actions
+(`GITHUB_ACTIONS=true`, `CI=true`).
 
 ## Windows Sandbox
 
-Use this optional mode to run the suites on an isolated guest desktop while
+Use the wrapper to run tests on an isolated guest desktop while
 continuing to work on the host. The wrapper never sends mouse or keyboard input to
 the host. The Navigation tooltip fixture positions its test window under the
 cursor inside the guest. Application behavior and CI execution are unchanged.
@@ -45,6 +103,10 @@ cursor inside the guest. Application behavior and CI execution are unchanged.
   runtime; its `host` and `shared` directories are copied, without the SDK.
 - Enough disk space for a staged copy of the binaries, PowerShell and runtimes.
   No dependencies are downloaded during a test run.
+- Web tests also need a local WebView2 runtime (auto-detected, or `-WebView2Home`).
+  Cookbook, navigation-only web and web parity tests need Python 3 (auto-detected using `py -3`, or
+  `-PythonHome`). Only the interpreter, DLLs and standard library are copied;
+  third-party site-packages are excluded. All web servers run inside the guest.
 
 Enable **Windows Sandbox** in Windows Features and restart Windows if necessary.
 Open Windows Sandbox from Start once to finish client installation. On Windows 11
@@ -111,7 +173,8 @@ before `result.json` appears. Use `-Background` rather than minimizing the visib
 viewer. vGPU is enabled by default; use `-DisableVGpu`
 to try software rendering when diagnosing graphics issues.
 
-Results contain `stdout.log`, `stderr.log`, `evidence/` (transcripts and PNGs), and
+Results contain `stdout.log`, `stderr.log`, `evidence/` (transcripts and PNGs),
+`artifacts/`, `state/` (guest-only private application data), and
 an atomic `result.json`. The host returns the suite's exit code: 0 for success,
 1 for test failure, 2 for a guest setup/cleanup failure. A missing result or timeout
 fails the host command; it never counts as a pass. Sandbox remains open for
@@ -143,6 +206,7 @@ handling, both modern and legacy launchers, and evidence export. Run them locall
 
 ```powershell
 pwsh -NoProfile -File tests/integration/sandbox-ui.tests.ps1
+pwsh -NoProfile -File tests/integration/sandbox-ui-routing.tests.ps1
 ```
 
 See Microsoft's [Sandbox configuration documentation](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file).

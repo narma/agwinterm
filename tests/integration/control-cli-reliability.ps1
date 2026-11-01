@@ -1,6 +1,7 @@
 # C0 acceptance: real Win32 host, private state/pipe, no global input or clipboard.
 param()
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test ControlCli -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'

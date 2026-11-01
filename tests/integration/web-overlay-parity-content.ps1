@@ -162,7 +162,7 @@ $hardReply = Call-Raw @{cmd='session.close';target=$hardOwner;args=@{undoable=$f
 Require ($hardReply.ok -and -not $hardReply.result.undoable) 'explicit undoable false bypasses grace'
 Require ((Call @('session','overlay','result','--page',$hardPage.result.pageID)).result.pageOutcome.outcome -eq 'dismissed') 'immediate close releases the page before replying'
 $script:owner = (Call @('tree')).result.workspaces[0].sessions[0].id
-$server = Start-Process py -ArgumentList @('-3',('"'+[IO.Path]::GetFullPath("$PSScriptRoot/../fixtures/web-parity-server.py")+'"'),('"'+$directory+'/server.json"')) -WindowStyle Hidden -PassThru
+$server = Start-Process $python -ArgumentList @(('"'+[IO.Path]::GetFullPath("$PSScriptRoot/../fixtures/web-parity-server.py")+'"'),('"'+$directory+'/server.json"')) -WindowStyle Hidden -PassThru
 for ($i=0; $i -lt 60 -and -not (Test-Path "$directory/server.json"); $i++) { Start-Sleep -Milliseconds 100 }
 $url = (Get-Content "$directory/server.json" -Raw | ConvertFrom-Json).url
 $state = Open-State

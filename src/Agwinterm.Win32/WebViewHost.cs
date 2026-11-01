@@ -46,7 +46,9 @@ internal sealed partial class WebViewHost : IDisposable
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static string RuntimeVersion()
     {
-        try { return CoreWebView2Environment.GetAvailableBrowserVersionString(); }
+        // Validate the selected runtime, including offline Sandbox deployments,
+        // rather than finding an unrelated installed runtime before creation.
+        try { return CoreWebView2Environment.GetAvailableBrowserVersionString(Environment.GetEnvironmentVariable("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER")); }
         catch (Exception ex) when (ex is WebView2RuntimeNotFoundException or DllNotFoundException or BadImageFormatException)
         {
             throw new InvalidOperationException("WebView2 Evergreen Runtime or its loader is unavailable. Run agwintermctl install webview2 explicitly, or install the Microsoft Evergreen Standalone Runtime offline, then retry. Terminal operation does not require it.", ex);

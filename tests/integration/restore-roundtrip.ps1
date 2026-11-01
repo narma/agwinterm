@@ -55,6 +55,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test RestoreRoundtrip -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 # agwintermctl exits nonzero while a pipe is coming up, and the ping loop in the harness polls it on
 # purpose; with the native-command mapping on, that poll would throw on its first iteration.
 $PSNativeCommandUseErrorActionPreference = $false
@@ -107,7 +108,21 @@ function Start-Child($s, $id) {
         Send-Ctl $s @('session', 'type', "$ChildLine`r", '--target', $id) | Out-Null
         for ($i = 0; $i -lt 16; $i++) {
             Start-Sleep -Milliseconds 250
-            if ((PaneText $s $id) -match 'Pinging 127\.0\.0\.1') { return $true }
+            # Ping's banner is localized, and the echoed command alone does not
+            # prove a child started. Require our exact command below this app.
+            $processes = @(Get-CimInstance Win32_Process)
+            $parents = @{}
+            foreach ($process in $processes) { $parents[[int]$process.ProcessId] = [int]$process.ParentProcessId }
+            foreach ($child in $processes | Where-Object { $_.Name -ieq 'PING.EXE' -and $_.CommandLine -match $ChildPattern }) {
+                $ancestor = [int]$child.ParentProcessId
+                $seen = @{}
+                while ($ancestor -gt 0 -and -not $seen.ContainsKey($ancestor)) {
+                    if ($ancestor -eq $s.Proc.Id) { return $true }
+                    $seen[$ancestor] = $true
+                    if (-not $parents.ContainsKey($ancestor)) { break }
+                    $ancestor = $parents[$ancestor]
+                }
+            }
         }
     }
     return $false
