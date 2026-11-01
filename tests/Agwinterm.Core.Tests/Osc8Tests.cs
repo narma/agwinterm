@@ -8,6 +8,39 @@ public class Osc8Tests
     [Fact]
     public void ManagedCore_HyperlinksFollowCells() => Verify(new TerminalEmulator(8, 3));
 
+    [Fact]
+    public void ManagedCore_WideEditsClearTheWholeGlyph() => VerifyWideEdits(new TerminalEmulator(8, 3));
+
+    internal static void VerifyWideEdits(ITerminalCore t)
+    {
+        var target = new TerminalHyperlink("https://example.com", "id=wide");
+        foreach (var (edit, cleared) in new (string, int[])[]
+        {
+            ("\rX", [0, 1]),
+            ("\x1b[2GX", [0, 1]),
+            ("\x1b[2G界", [0, 1, 2, 3]), // intersects both wide glyphs
+            ("\r\x1b[X", [0, 1]),
+            ("\x1b[2G\x1b[X", [0, 1]),
+            ("\x1b[2G\x1b[K", [0, 1, 2, 3]),
+            ("\x1b[3G\x1b[1K", [0, 1, 2, 3]),
+        })
+        {
+            t.Feed(Encoding.UTF8.GetBytes("\x1b[H\x1b[2J" + target.Sequence + "中中" + TerminalHyperlink.Close + edit));
+            for (int c = 0; c < 4; c++)
+                Assert.Equal(cleared.Contains(c) ? null : target, t.Screen[0, c].Hyperlink);
+            for (int c = 0; c < 8; c++)
+            {
+                var cell = t.Screen[0, c];
+                if (cell.Width == 0) Assert.True(c > 0 && t.Screen[0, c - 1].Width == 2);
+                if (cell.Width == 2) Assert.True(c < 7 && t.Screen[0, c + 1].Width == 0);
+            }
+        }
+        // Wrapping a new wide glyph from the last column clears the old glyph there.
+        t.Feed(Encoding.UTF8.GetBytes("\x1b[H\x1b[2J\x1b[7G" + target.Sequence + "中" + TerminalHyperlink.Close + "\x1b[8G界"));
+        Assert.Equal(Cell.Empty, t.Screen[0, 6]);
+        Assert.Equal(Cell.Empty, t.Screen[0, 7]);
+    }
+
     internal static void Verify(ITerminalCore t)
     {
         void Feed(string text) => t.Feed(Encoding.UTF8.GetBytes(text));

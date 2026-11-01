@@ -27,6 +27,8 @@ message PCell {
   uint32 bg_kind = 9;
   uint32 bg_index = 10;
   uint32 bg_rgb = 11;
+  string hyperlink_uri = 12; // OSC 8; absent in older blobs means no hyperlink
+  string hyperlink_parameters = 13;
 }
 
 message PRow {

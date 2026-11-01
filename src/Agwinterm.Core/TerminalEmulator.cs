@@ -280,11 +280,13 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         // A double-width glyph cannot straddle the right edge: wrap first.
         if (w == 2 && CursorCol == Screen.Cols - 1)
         {
+            ClearWideEdges(CursorCol, CursorCol + 1);
             Screen[CursorRow, CursorCol] = Blank();
             CursorCol = 0;
             Index();
         }
 
+        ClearWideEdges(CursorCol, CursorCol + w);
         Screen[CursorRow, CursorCol] = new Cell(cp, _fg, _bg, _attrs, (byte)w, _fgSpec, _bgSpec, _hyperlink);
         if (w == 2)
             Screen[CursorRow, CursorCol + 1] = new Cell('\0', _fg, _bg, _attrs, 0, _fgSpec, _bgSpec, _hyperlink); // trailing spacer
@@ -883,9 +885,22 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     /// <summary>A blank cell carrying the current background (background-color-erase).</summary>
     private Cell Blank() => new(' ', Color.DefaultForeground, _bg, CellAttributes.None, 1, ColorSpec.Default, _bgSpec);
 
+    // Replacing either half of a wide glyph also clears the half outside [from, to).
+    // Otherwise an invisible spacer (including its OSC 8 target) survives the edit.
+    private void ClearWideEdges(int from, int to)
+    {
+        to = Math.Min(to, Screen.Cols);
+        if (from >= to) return;
+        if (from > 0 && Screen[CursorRow, from].Width == 0)
+            Screen[CursorRow, from - 1] = Blank();
+        if (to < Screen.Cols && Screen[CursorRow, to - 1].Width == 2)
+            Screen[CursorRow, to] = Blank();
+    }
+
     private void EraseChars(int count)
     {
         int to = Math.Min(CursorCol + count, Screen.Cols);
+        ClearWideEdges(CursorCol, to);
         for (int c = CursorCol; c < to; c++)
             Screen[CursorRow, c] = Blank();
     }
@@ -894,6 +909,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     {
         int from = mode == 0 ? CursorCol : 0;
         int to = mode == 1 ? CursorCol : Screen.Cols - 1;
+        ClearWideEdges(from, to + 1);
         for (int c = from; c <= to; c++) Screen[CursorRow, c] = Blank();
     }
 

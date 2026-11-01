@@ -464,6 +464,7 @@ impl Emulator {
             self.index();
         }
         if w == 2 && self.cursor_col == self.screen().cols() - 1 {
+            self.clear_wide_edges(self.cursor_col, self.cursor_col + 1);
             let b = self.blank();
             let (r, c) = (self.cursor_row, self.cursor_col);
             self.scr().set(r, c, b);
@@ -481,6 +482,7 @@ impl Emulator {
             hyperlink: self.hyperlink,
         };
         let (r, c) = (self.cursor_row, self.cursor_col);
+        self.clear_wide_edges(c, c + w);
         self.scr().set(r, c, cell);
         if w == 2 {
             let spacer = Cell {
@@ -699,9 +701,27 @@ impl Emulator {
 
     // ---- erase ----
 
+    // Clear the half of a wide glyph outside the replaced [from, to) range.
+    fn clear_wide_edges(&mut self, from: usize, to: usize) {
+        let cols = self.screen().cols();
+        let to = to.min(cols);
+        if from >= to {
+            return;
+        }
+        let row = self.cursor_row;
+        let blank = self.blank();
+        if from > 0 && self.screen().get(row, from).width == 0 {
+            self.scr().set(row, from - 1, blank);
+        }
+        if to < cols && self.screen().get(row, to - 1).width == 2 {
+            self.scr().set(row, to, blank);
+        }
+    }
+
     fn erase_chars(&mut self, count: i64) {
         let cols = self.screen().cols() as i64;
         let to = (self.cursor_col as i64 + count.max(0)).min(cols);
+        self.clear_wide_edges(self.cursor_col, to as usize);
         let b = self.blank();
         let row = self.cursor_row;
         for c in self.cursor_col as i64..to {
@@ -716,6 +736,7 @@ impl Emulator {
         } else {
             self.screen().cols() - 1
         };
+        self.clear_wide_edges(from, to + 1);
         let b = self.blank();
         let row = self.cursor_row;
         let mut c = from;

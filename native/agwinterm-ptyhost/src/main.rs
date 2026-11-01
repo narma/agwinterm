@@ -885,6 +885,7 @@ fn serialize_history(emu: &agwinterm_core::emulator::Emulator) -> Vec<u8> {
         };
         for col in 0..len {
             let c = emu.get_history_cell(h, col);
+            let (parameters, uri) = emu.hyperlink(c.hyperlink).split_once(';').unwrap_or(("", ""));
             row.cells.push(persist::PCell {
                 rune: c.rune,
                 fg: pack(c.foreground),
@@ -897,6 +898,8 @@ fn serialize_history(emu: &agwinterm_core::emulator::Emulator) -> Vec<u8> {
                 bg_kind: c.bg_spec.kind as u32,
                 bg_index: c.bg_spec.index as u32,
                 bg_rgb: pack(c.bg_spec.rgb),
+                hyperlink_uri: uri.to_owned(),
+                hyperlink_parameters: parameters.to_owned(),
             });
         }
         buf.rows.push(row);
@@ -908,6 +911,30 @@ fn serialize_history(emu: &agwinterm_core::emulator::Emulator) -> Vec<u8> {
         buf.rows.drain(0..buf.rows.len() - 500);
     }
     buf.encode_to_vec()
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+
+    #[test]
+    fn serialized_history_preserves_osc8_targets_and_parameters() {
+        let mut t = Terminal::new(12, 3);
+        t.feed("\x1b]8;id=docs:other=value;https://example.com/a;b\x07中 docs  \x1b]8;;\x1b\\!\r\n\r\n\r\n".as_bytes());
+        let bytes = serialize_history(&t.emu);
+        let restored = persist::PBuffer::decode(bytes.as_slice()).unwrap();
+        assert_eq!(restored.version, 1);
+        assert_eq!(restored.rows.len(), 1);
+        let cells = &restored.rows[0].cells;
+        assert_eq!(cells.len(), 10);
+        for cell in &cells[..9] {
+            assert_eq!(cell.hyperlink_uri, "https://example.com/a;b");
+            assert_eq!(cell.hyperlink_parameters, "id=docs:other=value");
+        }
+        assert_eq!(cells[1].width, 0); // wide spacer
+        assert!(cells[9].hyperlink_uri.is_empty());
+        assert!(cells[9].hyperlink_parameters.is_empty());
+    }
 }
 
 fn dump_history_row(t: &Terminal, index: usize) -> String {
