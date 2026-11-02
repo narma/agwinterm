@@ -21,6 +21,7 @@ if request['verb'] == 'attach' and request['name'] == config.get('refuseAttach')
     raise SystemExit(1)
 if request['verb'] == 'attach':
     import os
+    time.sleep(3)  # A real SSH transport exists before its first managed role notice.
     os.execv(config['bridge'], [config['bridge'], '--request', base64.b64encode(raw).decode()])
 result = subprocess.run([config['bridge']], input=raw, capture_output=True, timeout=15)
 if request['verb'] == 'type' and config.get('dropInputReply'):

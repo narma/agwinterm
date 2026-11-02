@@ -65,6 +65,10 @@ Validate the entire intended topology before local publication. After attachment
 
 Local close/detach and app shutdown cannot invoke origin lifecycle mutations. UI restart adopts only the saved exact Rust ticket; transport loss probes the saved incarnation before attaching again. Serialize by binding, use bounded backoff and cancellation, and discard late responses after close or replacement. Automatic reconnect remains follower; explicit `lead` creates a fresh nonce/generation and claims size.
 
+Persist the prepared Rust ticket and nonce before allowing transport creation, not after the managed-role acknowledgement. If restore cannot adopt that exact ticket, cancel only its reservation/transport before trying again. Checkpoint failure must create no child. The bounded retry budget resets after successful attachment.
+
+Require the running daemon's source/feature build response (IPC tag 26) on the verified socket as well as the signed client/daemon file hashes. A file can be replaced while an old process image remains alive; an absent or mismatched runtime capability must refuse rather than infer primary-history support from the new file.
+
 Persist layout and remote metadata, but never seed saved buffers into a reattached stream or execute saved resume/pin/captured commands. Recent retains a remote descriptor and reopens only by explicit existing-only attachment; it never enters stage-1 owned creation. Missing origin work is not restartable from the viewer. Readonly affects automated input; leadership does not override target validation.
 
 ### 6. Authoritative control remains separate from rendering

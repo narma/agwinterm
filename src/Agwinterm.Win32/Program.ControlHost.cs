@@ -49,6 +49,7 @@ internal partial class Program
     private static Program LiveWindow()
     {
         var f = Frontmost;
+        if (f is null) throw new InvalidOperationException("No window is ready yet");
         if (!f._uiGone.IsCancellationRequested) return f;
         lock (_windowIndex) return _byId.Values.FirstOrDefault(w => !w._uiGone.IsCancellationRequested) ?? f;
     }

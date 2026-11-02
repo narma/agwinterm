@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import shutil
 import socket
 import struct
 import subprocess
@@ -98,10 +99,43 @@ with tempfile.TemporaryDirectory(prefix='aw-rem-', dir='/tmp') as directory:
         assert 'REPLACEMENT' in subprocess.run([str(client), 'screen', name], env=env,
             capture_output=True, text=True, timeout=5).stdout
         request(dict(bound, verb='screen', all=False), success=False)
-        print('PASS macOS identity, inherited FD no-create, input/screen, borrowed detach, replacement refusal')
+        # End only this test-owned replacement daemon; observe the managed client's real exit bytes.
+        while select.select([replacement_master], [], [], .1)[0]:
+            os.read(replacement_master, 65536)
+        with connect(root/name) as channel:
+            channel.sendall(struct.pack('<BI3x', 5, 0))
+        tail = b''
+        until = time.monotonic() + 5
+        while time.monotonic() < until:
+            if select.select([replacement_master], [], [], .1)[0]:
+                try:
+                    block = os.read(replacement_master, 65536)
+                    if not block: break
+                    tail += block
+                except OSError: break
+            elif replacement.poll() is not None: break
+        assert replacement.wait(timeout=5) == 0
+        assert b'\x1b[?2004l' in tail and b'\x1bc' not in tail and b'\x1b[2J' not in tail, tail
+        legacy = prefix/'zmx-before-runtime-gate'
+        if legacy.exists():
+            legacy_path = root/'legacy-zmx'
+            shutil.copy2(legacy, legacy_path)
+            old, old_master = launch([str(legacy_path), 'attach', missing, '/bin/sh', '-c',
+                "printf 'OLD-IMAGE\\n'; exec /bin/cat"], env)
+            wait_text(old_master, b'OLD-IMAGE')
+            replacement_file = root/'next-zmx'
+            shutil.copy2(client, replacement_file)
+            os.replace(replacement_file, legacy_path)  # Leave the old mapped inode alive.
+            result = subprocess.run([str(bridge)], input=json.dumps(dict(base,
+                verb='probe', executable=str(legacy_path), name=missing)), text=True, capture_output=True, timeout=10)
+            assert result.returncode != 0 and not json.loads(result.stdout)['ok'], result.stdout
+            assert json.loads(result.stdout)['state'] == 'unsupported', result.stdout
+            assert 'running origin ZMX build' in result.stdout, result.stdout
+            print('PASS replaced executable cannot attest the old running daemon')
+        print('PASS macOS identity, inherited FD no-create, input/screen, borrowed detach, replacement refusal, managed exit preserves screen')
     finally:
         # Only sockets created in this private test directory are eligible for cleanup.
-        for path in (root/name, root/(name+'.old')):
+        for path in (root/name, root/(name+'.old'), root/missing):
             if path.exists():
                 try:
                     with connect(path) as channel: channel.sendall(struct.pack('<BI3x',5,0))

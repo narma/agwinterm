@@ -51,7 +51,9 @@ pub fn main() {
         Ok(value) => println!("{}", json!({"ok":true,"result":value})),
         Err(error) => {
             let state = match error.to_string().as_str() {
-                "origin ZMX build is not the verified client/daemon pair" => "unsupported",
+                "origin ZMX build is not the verified client/daemon pair"
+                | "running origin ZMX build is unsupported"
+                | "running origin ZMX build capability unavailable" => "unsupported",
                 "input delivery uncertain" => "uncertain",
                 _ => "unavailable",
             };
@@ -146,6 +148,15 @@ fn dispatch(request: &Value) -> Result<Value> {
         return Err("origin ZMX build is not the verified client/daemon pair".into());
     }
     let mut daemon = ExactDaemon::open(&directory.join(name), executable)?;
+    // The file can be upgraded while an old executable image remains alive. Require
+    // the running peer to report the pinned feature build on this verified connection.
+    daemon.send(26, &[])?;
+    let runtime_build = daemon
+        .receive(26, 1, 512)
+        .map_err(|_| "running origin ZMX build capability unavailable")?;
+    if runtime_build != include_str!("../zmx-runtime-build.txt").trim().as_bytes() {
+        return Err("running origin ZMX build is unsupported".into());
+    }
     daemon.identity["platform"] = json!(std::env::consts::OS);
     daemon.identity["executable"] = json!(fs::canonicalize(executable)?);
     if verb == "probe" {

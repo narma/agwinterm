@@ -90,7 +90,7 @@ internal partial class Program
                     ? remoteBackend.CreateExistingOnlyTransport(paneId, cols, rows)
                     : _sessionBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
-                    && session is ServerSession liveServer && liveServer.TryAdopt(ticket);
+                    && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
             }
             catch (Exception ex)
             {

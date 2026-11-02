@@ -23,7 +23,11 @@ function Start-Ui {
     for ($i=0;$i -lt 60;$i++) {
         Start-Sleep -Milliseconds 200
         $null=& $ctl ping --pipe $id --json 2>$null
-        if ($LASTEXITCODE -eq 0 -and @((Ctl @('window','list')).windows | Where-Object { $_.open -and $_.active }).Count -eq 1) { return }
+        if ($LASTEXITCODE -eq 0 -and @((Ctl @('window','list')).windows | Where-Object { $_.open -and $_.active }).Count -eq 1) {
+            # Window metadata is visible before Frontmost and the startup UI queue are ready.
+            $null=& $ctl recent list --pipe $id --json 2>$null
+            if ($LASTEXITCODE -eq 0) { return }
+        }
     }
     throw 'Test UI did not become ready'
 }
@@ -153,7 +157,21 @@ try {
         $partial=Ctl (@('zmx','remote','attach')+$remote+@('--bridge',$FaultBridge,'--session',$candidate.Session.Id,'--window',$window))
         if ($partial.panes.Count -ne 2) { throw 'Fault fixture needs an origin split' }
         $left=[string]$partial.panes[0].paneId; $right=[string]$partial.panes[1].paneId
+        $prepared=$null
+        for ($i=0;$i -lt 100;$i++) {
+            foreach ($file in Get-ChildItem (Join-Path $state 'windows') -Filter '*.json') {
+                $savedWindow=Get-Content $file.FullName -Raw | ConvertFrom-Json -Depth 100
+                $prepared=@($savedWindow.Workspaces.Sessions.Panes | Where-Object { $_.Id -eq $left -and $_.LiveBinding.TransportTicket -and $_.LiveBinding.Recovery -eq 'pending' })[0]
+                if ($prepared) { break }
+            }
+            if ($prepared) { break }
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not $prepared -or (Pane-State $left).role -ne 'unknown') { throw 'No durable ticket before managed handshake' }
+        $ui.Kill(); $ui.WaitForExit()
+        Start-Ui
         $null=Await-Pane $left
+        Write-Host 'PASS UI crash before role acknowledgement recovers the checkpointed transport'
         for ($i=0;$i -lt 60;$i++) {
             $failed=Pane-State $right
             if ($failed.recovery -eq 'unavailable') { break }

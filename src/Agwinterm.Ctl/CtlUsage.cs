@@ -29,8 +29,8 @@ public static class CtlUsage
           agwintermctl version [--json]                  (the CLI that ran + the app serving the pipe)
           agwintermctl tree [--json]
           agwintermctl zmx list --profile NAME [--window ID] [--json]
-          agwintermctl zmx remote list --distribution DISTRO --user USER --host HOST [--agent-socket PATH] [--json]
-          agwintermctl zmx remote attach --distribution DISTRO --user USER --host HOST --bridge PATH --session ORIGIN_ID --window ID [--agent-socket PATH] [--json]
+          agwintermctl zmx remote list --distribution DISTRO --user USER --host HOST [--agent-socket PATH] [--origin-socket PATH] [--json]
+          agwintermctl zmx remote attach --distribution DISTRO --user USER --host HOST --bridge PATH --session ORIGIN_ID --window ID [--agent-socket PATH] [--origin-socket PATH] [--json]
           agwintermctl zmx remote retry|detach|lead --target PANE_ID --window ID [--json]
           agwintermctl zmx attach --profile NAME --daemon NAME --incarnation TOKEN [--window ID] [--json]
           agwintermctl zmx retry|detach|lead --target PANE_ID [--window ID] [--json]

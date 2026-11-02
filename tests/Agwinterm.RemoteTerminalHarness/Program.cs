@@ -12,6 +12,25 @@ using var backend = new ServerSessionBackend(id, args[7], "--pipe " + id, "serve
 ServerSession? first = null, second = null;
 try
 {
+    using (var prepared = (ServerSession)backend.Create("checkpoint-refusal", 80, 24))
+    {
+        bool observed = false;
+        await prepared.StartCheckpointedAsync("SHOULD-NOT-RUN", [], ticket =>
+        {
+            using var host = PtyHostClient.Connect(id);
+            observed = host.QueryCreate("checkpoint-refusal", ticket) == Agwinterm.Pty.Proto.CreationPhase.CreationPrepared
+                && !host.List().Any(s => s.Id == "checkpoint-refusal");
+            throw new IOException("test checkpoint refusal");
+        });
+        using var host = PtyHostClient.Connect(id);
+        if (!observed || !prepared.HasExited || host.List().Any(s => s.Id == "checkpoint-refusal"))
+            throw new Exception("Transport spawned before durable checkpoint");
+        var orphanTicket = host.PrepareCreate("orphan-preparation");
+        using var orphan = (ServerSession)backend.Create("orphan-preparation", 80, 24);
+        if (orphan.TryAdopt(orphanTicket, cancelUnattached: true)
+            || host.QueryCreate("orphan-preparation", orphanTicket) != Agwinterm.Pty.Proto.CreationPhase.CreationUnknown)
+            throw new Exception("Unpublished transport reservation was not cancelled exactly");
+    }
     // The supplied script belongs to the isolated origin fixture; never address a user's session.
     if (!args[6].StartsWith("/tmp/aw-stage2-source-", StringComparison.Ordinal) || args[6].Any(c => !char.IsAsciiLetterOrDigit(c) && !"/._-".Contains(c)))
         throw new ArgumentException("isolated test fixture path required");

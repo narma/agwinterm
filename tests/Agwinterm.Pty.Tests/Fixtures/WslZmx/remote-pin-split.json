@@ -1,0 +1,35 @@
+{
+  "result": {
+    "remote": {
+      "presentation": 1,
+      "endpoint": {
+        "socketDirectory": "/tmp/agterm-zmx-test",
+        "executable": "/opt/agterm/zmx"
+      },
+      "sessions": [
+        {
+          "workspaceName": "test workspace",
+          "splitAxis": "vertical",
+          "workspaceID": "origin-workspace",
+          "panes": [
+            {
+              "pane": "left",
+              "daemon": "agterm-11111111111111111111111111111111"
+            },
+            {
+              "pane": "right",
+              "daemon": "agterm-22222222222222222222222222222222"
+            }
+          ],
+          "cwd": "/tmp/test",
+          "name": "test terminal",
+          "windowID": "origin-window",
+          "companions": [],
+          "windowName": "test window",
+          "id": "origin-session"
+        }
+      ]
+    }
+  },
+  "ok": true
+}

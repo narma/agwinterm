@@ -1,6 +1,6 @@
 # WSL ZMX and bidirectional agterm interoperability
 
-Updated: 2026-11-02. Status: stage 1 merged in origin/narma at 5552130. Stage 2 implementation started: bounded SSH discovery and envelope decoding complete; terminal attachment pending.
+Updated: 2026-11-02. Status: stage 1 merged in origin/narma at 5552130. Stage 2 implementation and pinned real-peer acceptance complete; current-head CI and Greptile review tracked in PR #25.
 
 ## Committed outcome
 
@@ -15,7 +15,7 @@ Implementation of stage 1 was explicitly requested on 2026-11-02, including the 
 | Stage | Deliverable | Status | OpenSpec |
 | --- | --- | --- | --- |
 | 1 | WSL ZMX lifecycle and recovery with Rust PTY host | 29/29 tasks complete; local acceptance and CI passed; disabled by default; [PR #23](https://github.com/narma/agwinterm/pull/23) merged; [evidence](../wsl-zmx-development.md) | [add-wsl-zmx-session-recovery](../../openspec/changes/archive/2026-11-02-add-wsl-zmx-session-recovery/proposal.md) |
-| 2 | Agwinterm viewer attaches to agterm origin | In progress; 2/22 tasks complete; real-peer discovery passed, live mode disabled; terminal acceptance pending; [evidence](../agterm-remote-development.md) | [add-agterm-remote-attach](../../openspec/changes/add-agterm-remote-attach/proposal.md) |
+| 2 | Agwinterm viewer attaches to agterm origin | 22/22 tasks complete; real pinned macOS origin single/split, recovery, fault and terminal continuity acceptance passed; shared `agwinterm-zmx` member; [PR #25](https://github.com/narma/agwinterm/pull/25) checks/review in progress; [evidence](../agterm-remote-development.md) | [add-agterm-remote-attach](../../openspec/changes/add-agterm-remote-attach/proposal.md) |
 | 3 | agterm viewer attaches to Agwinterm's WSL origin | Required; proposal pending; follows stage 2 | Not created; suggested name `export-wsl-sessions-to-agterm` |
 | 4 | Remote presentation in both directions | Required; proposal pending; follows stages 2 and 3 | Not created; suggested name `add-agterm-remote-presentation` |
 
@@ -63,7 +63,7 @@ For a new chat or after finishing any change:
 4. Draft the next stage's proposal/design/specs/tasks using current upstream and shipped local contracts. Replace its suggested name with an actual link. Do not reopen the already confirmed question of whether stages 2–4 are wanted.
 5. Begin implementation only when requested; keep future planning separate from automatic deployment or service configuration.
 
-Current next action: continue stage 2 on `codex/agterm-remote-attach-implementation`, based on merged stage 1 in `origin/narma`. Implementation was requested on 2026-11-02. Discovery works against the supplied macOS origin; its live mode is disabled. Prepare the native origin bridge and existing-FD client proof before remote provisioning and terminal acceptance. See the development evidence for completed work and outstanding gates.
+Current next action: finish current-head CI and clean Greptile review for stage-2 PR #25 on `codex/agterm-remote-attach-implementation`. Real-peer acceptance uses isolated apps and state; the user's installed origin is unchanged. After review, archive the completed change and propose stage 3. Stages 3 and 4 remain separate, unfinished work.
 
 ## Relationship to older plans
 

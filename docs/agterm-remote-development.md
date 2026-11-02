@@ -1,6 +1,6 @@
 # Outbound agterm attachment development
 
-Updated 2026-11-02. OpenSpec: `add-agterm-remote-attach`. Implementation and real-peer acceptance are in progress; see the stage-2 evidence below and the task ledger for remaining coverage.
+Updated 2026-11-02. OpenSpec: `add-agterm-remote-attach`. Implementation and real-peer acceptance are complete; PR checks and review are tracked in [PR #25](https://github.com/narma/agwinterm/pull/25).
 
 ## Implemented slice
 
@@ -92,8 +92,13 @@ publishing the client SHA manifest.
 Replay comes from the daemon. The installed stock ZMX was insufficient for hidden primary
 history; a patched viewer alone does not fix it. The bridge therefore requires an identical,
 explicitly provisioned daemon/client build, in addition to process/socket identity. The
-tested application is agterm 0.38.1 (`09727610`), copied into an isolated directory with
-the patched ZMX. This is distinct from the patch-source revision above. macOS signing can
+running daemon must also answer bounded IPC tag 26 with the pinned source/feature build
+from `zmx-runtime-build.txt`. A changed file on disk cannot attest an older mapped image;
+missing or mismatched runtime replies refuse before probe, screen, input or attach.
+The
+initial application was agterm 0.38.1 (`09727610`), copied into an isolated directory with
+the patched ZMX. Final acceptance also builds and runs the exact `9133258` application pin.
+macOS signing can
 change binary bytes: attest the final signed binary and use that same binary for the viewer.
 No installed app, SSH service, host key or user session was replaced.
 
@@ -108,7 +113,7 @@ must target only those explicit test directories. Primary user state is not a ro
 
 - Linux: 21 hook tests and 4 shared-library tests passed; the ignored hook entry is a
   subprocess crash worker exercised by its parent test.
-- Windows: 177 targeted remote/SSH/WSL/identity/restore unit tests passed; Release build passed.
+- Windows: 202 targeted remote/SSH/WSL/identity/restore/ticket unit tests passed; Release build passed.
 - macOS: existing-FD attach, missing socket/no-create, exact process identity, authoritative
   read/input, borrowed detach and socket/name replacement refusal passed.
 - Private Windows desktop against real agterm: single and split import, per-pane input/read,
@@ -118,11 +123,11 @@ must target only those explicit test directories. Primary user state is not a ro
   owned close and fresh Recent semantics. Ordinary Windows RestoreRoundtrip passed in
   background Windows Sandbox.
 
-Final terminal continuity, expanded fault/race coverage, final hashes and PR checks are
-still being verified; this section does not yet declare stage 2 accepted.
+Terminal continuity and the expanded fault matrix passed on the exact application pin.
+CI and review status must be read from the PR for its current head.
 
 
-The final signed test ZMX pair has SHA-256 `bee4afb0bd75bdd06f21fb2f73e5031e2ccbddb43b1e0b50bb367a6985602345`. The native bridge will be hashed again after final changes.
+The initial copied-app signed ZMX pair had SHA-256 `bee4afb0bd75bdd06f21fb2f73e5031e2ccbddb43b1e0b50bb367a6985602345`. The final pinned-app hashes are recorded below.
 
 Real-client terminal continuity passed: styled wide glyphs, alternative screen and input modes, follower geometry, one query response, hidden primary history exactly once, and exact reconnect. SSH transport loss, saved buffer/command suppression, and metadata clear passed. Background Sandbox Recent passed all 25 checks.
 
@@ -141,3 +146,56 @@ implicit package installation. All app/source/build products remain under the ex
 test build root. Pass that resulting bundle as the fourth argument to `remote-peer-fixture.py
 start ROOT BUILT_ZMX BUILT_APP` to create a separate test instance. The normal installed app
 is never a replacement target.
+
+## Pinned acceptance and build manifest
+
+The actual app and its bundled CLI were built from agterm `9133258994a6cafb330ee354df949b76b1b2834b`.
+The single and vertical-split raw control envelopes are retained as `remote-pin-single.json`
+and `remote-pin-split.json` under the Pty test fixtures, with only names, IDs, daemon names,
+paths and JSON formatting anonymized. Required/optional fields match the pinned Swift
+contracts described above; the optional `presentation: 1` never grants local presentation.
+
+Final SHA-256 values after signing the isolated fixture:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| agterm executable | `8fa3bc6d7bfb47a5457f272366700b83d12c8467b684462e14528be1cc312cdd` |
+| daemon and existing-only viewer (identical bytes) | `93735bb87860cddc4c9189ddf56b49cae601cd50a5e5f89e622617fcd29c785d` |
+| final Rust origin bridge | `d1fa60b82360aeb46bded37ad0e8edcd5d63cfaaa9573021cba0dd64cbc147dc` |
+| standalone bridge Cargo.lock | `ecbe699177bf440aafdef144db1b3f1808a7382c6f008057381345157960f5d2` |
+
+XcodeGen 2.44.1 resolves to `21ac9944b0ab546a07422dbed86f33dd2ebd76f8`.
+App Ghostty is `683d8db643b95cf229bfb5fe9fab9ae677920343`; ZMX's independent Ghostty pin
+is listed in the build recipe above. Local tests use macOS arm64 and Windows x64 -> Ubuntu
+WSL -> SSH. Linux x64/arm64 helpers and the macOS bridge are additionally built/tested in CI.
+
+Reproduction commands (supply explicit test-only selectors and paths):
+
+```powershell
+dotnet test tests/Agwinterm.Pty.Tests/Agwinterm.Pty.Tests.csproj -c Release --filter 'FullyQualifiedName~Agterm|FullyQualifiedName~Wsl|FullyQualifiedName~ZmxCompatibility|FullyQualifiedName~RestoreState|FullyQualifiedName~SessionStartFence|FullyQualifiedName~CreationTickets'
+./tests/integration/wsl-agterm-remote.ps1 -Distro DISTRO -LinuxUser USER -Destination HOST -AgentSocket AGENT -OriginSocket FIXTURE_SOCKET -Bridge BRIDGE -TerminalFixture FIXTURE -FaultBridge FAULT_BRIDGE
+./tests/integration/wsl-zmx-survival.ps1 -Distro DISTRO -BuildDirectory PINNED_WSL_BUILD -ProfileLive -LifecycleControls
+./tests/integration/sandbox-ui.ps1 -Test RestoreRoundtrip -Background
+./tests/integration/sandbox-ui.ps1 -Suite Recent -Background
+./tests/integration/sandbox-ui.ps1 -Test Win32Control -Background
+openspec validate add-agterm-remote-attach --strict
+```
+
+Run the remote matrix once with a single-pane origin (omit FaultBridge), then with a split.
+Wrong Rust tickets are refused without replacing the current stream. Both viewer sizes
+preserve origin geometry, styled wide cells, cursor, paste/keyboard modes and one query reply.
+Hidden primary history returns exactly once after alternate-screen reconnect. The native
+origin runner verifies managed exit emits input-mode resets without RIS or screen clearing.
+
+Limitations: only the explicitly provisioned matching ZMX pair is supported; installed stock
+agterm/ZMX is not silently upgraded. Authoritative styled reads are unsupported. Input ACK
+means queued, not application consumption; uncertain delivery is never retried. Remote
+presentation and inbound WSL export belong to later roadmap stages. No real-peer stage-2
+acceptance item is substituted by a host-free fixture.
+
+Crash recovery checkpoints the Rust reservation ticket and attachment nonce before the
+host can create SSH, including before the managed-role handshake. A failed checkpoint
+creates no child; a restart cancels only an unadoptable exact reservation. The routed fault
+test kills the UI while the SSH bridge deliberately delays its first role notice and verifies
+recovery. The origin runner additionally replaces a test daemon's executable file atomically
+while its old image continues running and verifies that runtime build attestation refuses it.

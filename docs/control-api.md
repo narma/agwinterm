@@ -14,7 +14,8 @@ shares is canonical in [`tests/conformance/control-api.json`](../tests/conforman
 ## Opt-in WSL live sessions (development)
 
 Rust remains the Windows PTY host. The local ZMX daemon runs only inside the
-configured WSL distribution; SSH and agterm presentation are not supported.
+configured WSL distribution. Outbound SSH attachment is a separate borrowed provider
+described below; agterm presentation is not supported.
 Provision the pinned dependency explicitly as described in
 [the development guide](wsl-zmx-development.md). This feature is disabled by
 default. The local acceptance matrix is recorded in the development guide;
@@ -59,6 +60,38 @@ and control-byte validation. Its `{accepted:true,executionComplete:false}` resul
 means queued input, not command completion. A lost acknowledgement is uncertain:
 inspect the workload rather than resending. These operations do not claim
 leadership; `zmx lead` is the explicit claim.
+
+## Borrowed agterm terminals over WSL SSH
+
+Explicitly provision the compatible origin bridge and daemon/client build using the
+[remote development guide](agterm-remote-development.md). The viewer does not upload or
+install components automatically. Select the WSL distribution/user and existing SSH
+authentication and host-key configuration; no SSH service or key setup is performed.
+
+```powershell
+agwintermctl zmx remote list --distribution Ubuntu --user USER --host HOST --agent-socket /home/USER/.ssh/agent.sock --json
+agwintermctl zmx remote attach --distribution Ubuntu --user USER --host HOST --agent-socket /home/USER/.ssh/agent.sock --bridge /absolute/agwinterm-remote --session ORIGIN_SESSION --window LOCAL_WINDOW --json
+agwintermctl zmx remote retry --target LOCAL_PANE --json
+agwintermctl zmx remote lead --target LOCAL_PANE --json
+agwintermctl zmx remote detach --target LOCAL_PANE --json
+```
+
+`--origin-socket /absolute/control.sock` optionally selects a specific origin instance.
+Raw verbs are `zmx.remote.list/attach/retry/lead/detach`. List args are `distribution`,
+`user`, `host`, optional `agentSocket` and `originSocket`; attach also requires `bridge`
+and the exact origin `session`. Route attach with the exact local `window` field.
+Retry/lead/detach require an exact local `target` and empty args. Unknown or duplicate
+options/fields refuse. Split import preserves left/right roles and origin axis; each pane
+reports its own recovery state. A closed destination never falls back to another window.
+
+`session text`, `session type` and cursor reads target the verified origin. Styled reads
+are unsupported; input obeys readonly and control-byte restrictions. A failed or missing
+input acknowledgement is an error and is never automatically retried. `lead` explicitly
+claims origin geometry; import/reconnect remains a follower. Close/detach, app exit and
+Recent clearing disconnect only local viewers. Remote terminate/restart are unavailable.
+Recent reopen and recovery attach the saved incarnation only; a missing origin stays
+unavailable. Tree readback labels panes `borrowed` and never grants inbound export or
+presentation capabilities.
 
 ## Optional web overlays
 

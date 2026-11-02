@@ -151,9 +151,17 @@ internal partial class Program
             }).ConfigureAwait(false);
             if (!pane.LiveRecovery.IsCurrent(generation)) return;
             string[] argv = AgtermRemoteOperations.AttachmentArgs(binding, nonce, pane.LiveClaim);
-            await pane.S.StartAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs, verbatimCommandLine: true).ConfigureAwait(false);
+            if (pane.S is not ServerSession server) throw new IOException("Remote transport requires the Rust host");
+            await server.StartCheckpointedAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs,
+                ticket => LiveUiAsync(() =>
+                {
+                    if (!pane.LiveRecovery.IsCurrent(generation)) throw new OperationCanceledException();
+                    pane.LiveBinding = JsonSerializer.SerializeToElement(binding with
+                        { TransportTicket = ticket, AttachmentNonce = nonce, Recovery = "pending", Error = null });
+                    if (!SaveState(sync: true)) throw new IOException("Cannot save prepared remote transport ticket");
+                }).GetAwaiter().GetResult()).ConfigureAwait(false);
             if (!pane.LiveRecovery.IsCurrent(generation)) { pane.S.Dispose(); return; }
-            if (pane.S is not ServerSession server || server.HasExited || string.IsNullOrEmpty(server.CreationTicket))
+            if (server.HasExited || string.IsNullOrEmpty(server.CreationTicket))
                 throw new IOException("Remote transport did not start");
             bool acknowledged = false;
             for (int i = 0; i < 100 && !acknowledged; i++)

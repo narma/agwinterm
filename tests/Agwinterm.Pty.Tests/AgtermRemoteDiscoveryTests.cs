@@ -5,6 +5,21 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermRemoteDiscoveryTests
 {
+    [Theory]
+    [InlineData("single", 1, null)]
+    [InlineData("split", 2, "vertical")]
+    public void ReadsCapturedPinnedApplicationEnvelope(string fixture, int panes, string? axis)
+    {
+        var result = AgtermRemoteDiscovery.Decode(0, File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "Fixtures", "WslZmx", "remote-pin-" + fixture + ".json")));
+        var row = Assert.Single(result.Sessions);
+        Assert.True(row.CanImportTerminal);
+        Assert.Equal("origin-session", row.Session.Id);
+        Assert.Equal(panes, row.Session.Panes.Length);
+        Assert.Equal("left", row.Session.Panes[0].Role);
+        Assert.Equal(axis, row.Session.SplitAxis);
+    }
+
     static JsonObject Envelope()
     {
         var tree = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "WslZmx", "tree.json")))!;

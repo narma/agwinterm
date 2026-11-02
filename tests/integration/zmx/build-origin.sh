@@ -40,6 +40,7 @@ for patch in "$patches"/ghostty/*.patch; do git -C "$root/zmx-ghostty" apply --w
 for patch in "$patches"/*.patch; do git -C "$root/zmx" apply --whitespace=nowarn "$patch"; done
 python3 "$source_dir/tests/integration/zmx/patch-existing-fd.py" "$root/zmx"
 python3 "$source_dir/tests/integration/zmx/patch-primary-replay.py" "$root/zmx"
+python3 "$source_dir/tests/integration/zmx/patch-runtime-build.py" "$root/zmx"
 (cd "$root/zmx"; "$zig" build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos.14.0)
 cp -R "$source_dir/native/agwinterm-remote" "$root/bridge"
 cp -R "$source_dir/native/agwinterm-zmx" "$root/agwinterm-zmx"
