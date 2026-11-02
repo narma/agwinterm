@@ -1,6 +1,8 @@
 //! Shared ZMX wire/identity primitives. No creation, ownership ledger or terminate API.
 #![cfg(unix)]
 use serde_json::{Value, json};
+#[cfg(target_os = "macos")]
+use std::os::fd::AsRawFd;
 use std::os::{
     fd::{FromRawFd, OwnedFd},
     unix::{
@@ -8,8 +10,6 @@ use std::os::{
         net::UnixStream,
     },
 };
-#[cfg(target_os = "macos")]
-use std::os::fd::AsRawFd;
 use std::{
     fs,
     io::{self, Read, Write},
@@ -21,6 +21,26 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unreaped_exit_is_reported_as_esrch() {
+        let mut child = std::process::Command::new("/bin/sh")
+            .args(["-c", "exit 0"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let mut status: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let waited =
+            unsafe { libc::waitid(libc::P_PID, pid, &mut status, libc::WEXITED | libc::WNOWAIT) };
+        let result = process_identity(pid as i32);
+        child.wait().unwrap();
+        assert_eq!(waited, 0);
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<io::Error>().unwrap().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+    }
     #[test]
     fn process_identity_is_stable_and_rejects_invalid_ids() {
         let pid = std::process::id() as i32;
@@ -261,7 +281,7 @@ pub fn process_identity(pid: i32) -> Result<(Value, i32)> {
         .split_whitespace()
         .collect();
     if fields.first() == Some(&"Z") {
-        return Err("process exited".into());
+        return Err(io::Error::from_raw_os_error(libc::ESRCH).into());
     }
     Ok((
         json!({"pid":pid,"start":fields.get(19).ok_or("missing process start")?,

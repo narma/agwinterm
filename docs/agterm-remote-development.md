@@ -43,7 +43,11 @@ The remote provider now implements explicit list/import, borrowed close/detach, 
 authoritative screen/input, exact-ticket UI adoption, bounded reconnect and Recent reopen.
 `agwinterm-zmx` is a shared Cargo workspace member used by both `agwinterm-hook` and
 `agwinterm-remote`. It owns bounded ZMX framing and existing socket/process identity.
-Linux ownership records, creation, pidfd fencing and termination stay in the hook. The
+Linux ownership records, creation, pidfd fencing and termination stay in the hook. Linux
+retains its original process/inode checks: `SO_PEERCRED` on a listening socket can identify
+the pre-fork creator rather than the ZMX daemon. macOS additionally verifies `LOCAL_PEERPID`.
+Zombie processes retain `ESRCH`, so the hook recognizes completed workloads during cleanup.
+The
 remote executable exposes no creation, restart or termination operation. No interpreter
 or other new installed runtime is required; Python/Swift in integration scripts are test tooling.
 
@@ -69,8 +73,8 @@ tests. Import re-reads discovery and probes all pane identities before publicati
 pane then reports its own attachment state. It never reports a split as connected because
 only one side succeeded. Finite requests are bounded to 20 seconds each; CLI import allows
 90 seconds for discovery, two probes and UI publication. SSH terminal keepalives detect
-dead connections. Five automatic retries use 1/2/4/8/16-second backoff; explicit retry
-resets the budget. Reconnect is follower-only; `lead` is the explicit geometry claim.
+dead connections. Five automatic retries use 1/2/4/8/16-second backoff; successful attachment
+or explicit retry resets the budget. Reconnect is follower-only; `lead` is the explicit geometry claim.
 Input is never retried after an uncertain reply. Styled authoritative queries are refused.
 
 ## Explicit real-peer provisioning and rollback
@@ -102,9 +106,9 @@ must target only those explicit test directories. Primary user state is not a ro
 
 ## Current acceptance evidence (2026-11-02)
 
-- Linux: 21 hook tests and 3 shared-library tests passed; the ignored hook entry is a
+- Linux: 21 hook tests and 4 shared-library tests passed; the ignored hook entry is a
   subprocess crash worker exercised by its parent test.
-- Windows: 101 targeted remote/SSH/identity/restore unit tests passed; Release build passed.
+- Windows: 177 targeted remote/SSH/WSL/identity/restore unit tests passed; Release build passed.
 - macOS: existing-FD attach, missing socket/no-create, exact process identity, authoritative
   read/input, borrowed detach and socket/name replacement refusal passed.
 - Private Windows desktop against real agterm: single and split import, per-pane input/read,
@@ -121,3 +125,19 @@ still being verified; this section does not yet declare stage 2 accepted.
 The final signed test ZMX pair has SHA-256 `bee4afb0bd75bdd06f21fb2f73e5031e2ccbddb43b1e0b50bb367a6985602345`. The native bridge will be hashed again after final changes.
 
 Real-client terminal continuity passed: styled wide glyphs, alternative screen and input modes, follower geometry, one query response, hidden primary history exactly once, and exact reconnect. SSH transport loss, saved buffer/command suppression, and metadata clear passed. Background Sandbox Recent passed all 25 checks.
+
+Expanded fault acceptance passed: six separate SSH outages recover as followers, a closed
+destination window cannot redirect import, one failed split pane leaves its healthy sibling
+usable, lost input replies produce failure after exactly one delivery, and an absent-origin
+Recent entry stays unavailable without changing the original workload. Tests run through
+`wsl-agterm-remote.ps1`, which routes to the private non-input Windows desktop. The fault
+bridge is test-only Python in an isolated `/tmp/aw-stage2-fault-*` directory; it is not shipped.
+Background Windows Sandbox `Win32Control` passed, in addition to RestoreRoundtrip and Recent.
+
+For exact application-pin verification, `build-pinned-app.sh` builds the app at `9133258`
+using its pinned Ghostty library, the already built compatible ZMX, and XcodeGen 2.44.1.
+It needs Xcode's build-only Metal component and gettext; it does not run upstream setup's
+implicit package installation. All app/source/build products remain under the explicit
+test build root. Pass that resulting bundle as the fourth argument to `remote-peer-fixture.py
+start ROOT BUILT_ZMX BUILT_APP` to create a separate test instance. The normal installed app
+is never a replacement target.

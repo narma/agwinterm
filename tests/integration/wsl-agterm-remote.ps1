@@ -1,4 +1,4 @@
-param([string]$Distro='Ubuntu', [string]$LinuxUser='alzo', [Parameter(Mandatory)][string]$Destination,
+param([string]$Distro='Ubuntu', [Parameter(Mandatory)][string]$LinuxUser, [Parameter(Mandatory)][string]$Destination,
     [Parameter(Mandatory)][string]$AgentSocket, [Parameter(Mandatory)][string]$OriginSocket,
     [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge)
 $ErrorActionPreference = 'Stop'
@@ -23,7 +23,7 @@ function Start-Ui {
     for ($i=0;$i -lt 60;$i++) {
         Start-Sleep -Milliseconds 200
         $null=& $ctl ping --pipe $id --json 2>$null
-        if ($LASTEXITCODE -eq 0) { return }
+        if ($LASTEXITCODE -eq 0 -and @((Ctl @('window','list')).windows | Where-Object { $_.open -and $_.active }).Count -eq 1) { return }
     }
     throw 'Test UI did not become ready'
 }
@@ -98,13 +98,15 @@ try {
         if ($live.recovery -ne 'remote-reattached' -or $live.role -ne 'follower') { throw 'Rust-host recovery must reattach as follower' }
     }
     Write-Host 'PASS Rust-host loss reconnects the same workloads as follower'
+    for ($outage=0;$outage -lt 6;$outage++) {
     $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
     $transports=@(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" | Where-Object { $_.ParentProcessId -eq $hosts[0].ProcessId -and $_.CommandLine.Contains($Bridge) })
     if (-not $transports.Count) { throw 'Test-owned SSH transport was not found' }
     Stop-Process -Id $transports[0].ProcessId -Force
     Start-Sleep -Seconds 3
     foreach ($item in $import.panes) { $null=Await-Pane $item.paneId }
-    Write-Host 'PASS SSH transport loss reconnects without replay'
+    }
+    Write-Host 'PASS six independent SSH outages each reconnect without replay'
     $null=Ctl @('session','close',$import.sessionId)
     Start-Sleep -Milliseconds 300
     $entry=@((Ctl @('recent','list')).entries)[0]
@@ -133,6 +135,21 @@ try {
     }
     Write-Host 'PASS immediate import/close races do not resurrect panes'
     if ($FaultBridge) {
+        $closingWindow=[string](Ctl @('window','new','--name','remote-import-race'))
+        $start=[Diagnostics.ProcessStartInfo]::new($ctl)
+        $start.UseShellExecute=$false; $start.CreateNoWindow=$true
+        $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+        foreach ($arg in (@('zmx','remote','attach')+$remote+@('--bridge',$FaultBridge,'--session',$candidate.Session.Id,'--window',$closingWindow,'--pipe',$id,'--json','--timeout','90'))) { $start.ArgumentList.Add($arg) }
+        $pending=[Diagnostics.Process]::Start($start)
+        $pendingOutput=$pending.StandardOutput.ReadToEndAsync()
+        $pendingError=$pending.StandardError.ReadToEndAsync()
+        Start-Sleep -Seconds 1
+        $null=Ctl @('window','close','--target',$closingWindow)
+        if (-not $pending.WaitForExit(30000)) { $pending.Kill(); throw 'Import into closed window did not finish' }
+        if ($pending.ExitCode -eq 0) { throw 'Import into closed window succeeded' }
+        $pending.Dispose()
+        if (@((Ctl @('tree','--window',$window)).workspaces.sessions.liveSessions | Where-Object { $_ -and $_.PSObject.Properties.Count }).Count) { throw 'Closed-window import fell back to another window' }
+        Write-Host 'PASS disappeared import window cannot redirect attachment'
         $partial=Ctl (@('zmx','remote','attach')+$remote+@('--bridge',$FaultBridge,'--session',$candidate.Session.Id,'--window',$window))
         if ($partial.panes.Count -ne 2) { throw 'Fault fixture needs an origin split' }
         $left=[string]$partial.panes[0].paneId; $right=[string]$partial.panes[1].paneId
@@ -151,6 +168,34 @@ try {
         $null=Ctl @('session','close',$partial.sessionId)
         Write-Host 'PASS partial split failure and single delivery after lost input reply'
     }
+    # Keep the origin alive; point only an offline test-owned Recent descriptor at an absent socket.
+    $remembered=@((Ctl @('recent','list')).entries)[0]
+    if (-not $remembered) { throw 'No remote Recent entry for absent-origin test' }
+    $ui.Kill(); $ui.WaitForExit()
+    $recentPath=Join-Path $state 'recent.json'
+    $savedRecent=Get-Content $recentPath -Raw | ConvertFrom-Json -Depth 100
+    $missing='/tmp/aw-stage2-missing-'+[guid]::NewGuid().ToString('N')
+    foreach ($saved in $savedRecent.Sessions.State.Panes | Where-Object { $_.LiveBinding.Provider -eq 'agterm-ssh' }) {
+        $saved.LiveBinding.Endpoint.SocketDirectory=$missing
+        $saved.LiveBinding.Identity.path=$missing+'/'+$saved.LiveBinding.Daemon
+        $saved.LiveBinding.Bridge=$Bridge
+    }
+    $savedRecent | ConvertTo-Json -Depth 100 | Set-Content $recentPath
+    Start-Ui
+    $absent=Ctl @('recent','open',$remembered.id)
+    foreach ($pane in $absent.members[0].paneIds) {
+        for ($i=0;$i -lt 100;$i++) {
+            $failed=Pane-State $pane
+            if ($failed.recovery -eq 'unavailable') { break }
+            Start-Sleep -Milliseconds 100
+        }
+        if ($failed.recovery -ne 'unavailable' -or $failed.remoteAttach) { throw 'Recent recreated an absent origin' }
+        Refuse @('session','type','SHOULD-NOT-CREATE','--target',$pane)
+    }
+    $null=Ctl @('recent','clear')
+    $after=Ctl (@('zmx','remote','list')+$remote)
+    if (-not ($after.Sessions | Where-Object { $_.Session.Id -eq $candidate.Session.Id })) { throw 'Absent-origin Recent mutated real origin' }
+    Write-Host 'PASS absent-origin Recent stays unavailable and preserves original work'
     if ($TerminalFixture) {
         & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture (Join-Path (Split-Path $exe) 'agwinterm-ptyhost.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Remote terminal continuity harness failed' }

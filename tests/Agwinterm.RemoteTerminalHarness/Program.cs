@@ -19,7 +19,15 @@ try
     first = (ServerSession)backend.Create("first", 80, 24);
     await Attach(first, "first");
     await Wait(() => { lock (first.SyncRoot) return Ready(first); });
+    using (var observer = PtyHostClient.Connect(id))
+    {
+        bool refused = false;
+        try { using var wrong = observer.Attach("first", creationTicket: Guid.NewGuid().ToString("N")); }
+        catch (InvalidOperationException ex) when (ex.Message == "pty-host: session incarnation changed") { refused = true; }
+        if (!refused || first.HasExited) throw new Exception("Wrong ticket replaced the live remote transport");
+    }
     AssertCells(first);
+    await Wait(() => { lock (first.SyncRoot) return first.Emulator.CursorRow == 3 && first.Emulator.CursorCol == 6; });
     lock (first.SyncRoot)
         if (!first.Emulator.BracketedPaste || first.Emulator.KeyboardFlags != 1) throw new Exception("input modes missing");
     var screen = await operations.ScreenAsync(binding, false);

@@ -171,6 +171,7 @@ internal partial class Program
                     TransportTicket = server.CreationTicket, AttachmentNonce = nonce });
                 pane.LiveSaveError = null;
                 if (!SaveState(sync: true)) throw new IOException("Cannot save remote transport ticket");
+                _remoteRetries.Remove(binding.BindingId);
                 RequestRedraw();
             }).ConfigureAwait(false);
         }

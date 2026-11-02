@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 root = Path(__file__).resolve().parent
 if not str(root).startswith('/private/tmp/aw-stage2-fault-') and not str(root).startswith('/tmp/aw-stage2-fault-'):
@@ -12,6 +13,8 @@ if not str(root).startswith('/private/tmp/aw-stage2-fault-') and not str(root).s
 config = json.loads((root/'config.json').read_text())
 raw = base64.b64decode(sys.argv[2]) if len(sys.argv) == 3 and sys.argv[1] == '--request' else sys.stdin.buffer.read(65537)
 request = json.loads(raw)
+if request['verb'] == 'probe':
+    time.sleep(3)  # Leave time for the selected local window to close during import.
 with (root/'requests.jsonl').open('a') as log:
     log.write(json.dumps({'verb': request['verb'], 'name': request['name']})+'\n')
 if request['verb'] == 'attach' and request['name'] == config.get('refuseAttach'):

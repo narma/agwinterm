@@ -29,12 +29,15 @@ if sys.argv[1] == 'start':
     (root/'zsh').mkdir()
     (root/'zsh/.zshrc').write_text('')
     bundle = '/Applications/agterm.app'
+    source_bundle = Path(sys.argv[4]).resolve() if len(sys.argv) > 4 else Path(bundle)
+    if len(sys.argv) > 4 and not str(source_bundle).startswith('/private/tmp/aw-stage2-build-'):
+        raise RuntimeError('only an isolated pinned build may replace the fixture source app')
     if len(sys.argv) > 3:
         client = Path(sys.argv[3]).resolve()
         if not str(client).startswith('/private/tmp/aw-stage2-build-') and not str(client).startswith('/tmp/aw-stage2-build-'):
             raise RuntimeError('only explicitly built isolated ZMX clients may be used')
         bundle = str(root/'agterm.app')
-        subprocess.run(['ditto', '/Applications/agterm.app', bundle], check=True, timeout=120)
+        subprocess.run(['ditto', str(source_bundle), bundle], check=True, timeout=120)
         shutil.copy2(client, Path(bundle)/'Contents/MacOS/zmx')
         subprocess.run(['codesign','--force','--deep','--sign','-',bundle], check=True, timeout=60)
     env = dict(AGTERM_STATE_DIR=str(root), AGTERM_CONTROL_SOCKET=control,
