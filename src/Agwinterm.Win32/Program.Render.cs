@@ -356,6 +356,38 @@ internal partial class Program
     /// itself covers it — a FALLBACK glyph's advance is arbitrary and would derail the run.</summary>
     private static bool GridTrue(int rune) => rune < 0x7F || FontHasGlyph(rune);
 
+    private void DrawSoloGlyph(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, string text,
+        IDWriteTextFormat format, float x, float y, float width, float height)
+    {
+        using var layout = _dwrite.CreateTextLayout(text, format, width, height);
+        // A fallback font can have a taller baseline/ink box than the terminal font.
+        // Clip alone chops off emoji bottoms. Fit the visible ink, preserving aspect
+        // ratio and grid advance, and keep the cell clip to protect neighbouring text.
+        var overhang = layout.OverhangMetrics;
+        float left = -overhang.Left, top = -overhang.Top;
+        float right = width + overhang.Right, bottom = height + overhang.Bottom;
+        float inkWidth = right - left, inkHeight = bottom - top;
+        if (inkWidth <= 0 || inkHeight <= 0) return;
+        float padding = MathF.Min(0.5f, MathF.Min(width, height) * 0.1f); // antialiasing margin
+        float scale = MathF.Min(1f, MathF.Min((width - 2 * padding) / inkWidth, (height - 2 * padding) / inkHeight));
+        float minX = padding - left * scale, minY = padding - top * scale;
+        float dx = Math.Clamp(0f, minX, MathF.Max(minX, width - padding - right * scale));
+        float dy = Math.Clamp(0f, minY, MathF.Max(minY, height - padding - bottom * scale));
+        var transform = rt.Transform;
+        rt.PushAxisAlignedClip(new Vortice.RawRectF(x, y, x + width, y + height), AntialiasMode.Aliased);
+        try
+        {
+            rt.Transform = System.Numerics.Matrix3x2.CreateScale(scale)
+                * System.Numerics.Matrix3x2.CreateTranslation(x + dx, y + dy) * transform;
+            rt.DrawTextLayout(System.Numerics.Vector2.Zero, layout, brush, DrawTextOptions.EnableColorFont);
+        }
+        finally
+        {
+            rt.Transform = transform;
+            rt.PopAxisAlignedClip();
+        }
+    }
+
     /// <summary>The format a run draws with: the pane's base format, or its bold/italic variant.</summary>
     private static IDWriteTextFormat StyleFmt(IDWriteTextFormat baseFmt, CellAttributes style)
         => (style & (CellAttributes.Bold | CellAttributes.Italic)) == 0
@@ -520,8 +552,7 @@ internal partial class Program
                         if (cell.Width == 1 && c + 1 < cols && CellAt(r, c + 1) is { Width: not 0 } nxt
                             && (nxt.Rune == ' ' || nxt.Rune == '\0'))
                             clipCells = 2;
-                        rt.DrawText(RuneStr(cell.Rune), StyleFmt(fmt, runStyle), new Rect(wx, y, clipCells * cw, ch),
-                            brush, DrawTextOptions.Clip | DrawTextOptions.EnableColorFont);
+                        DrawSoloGlyph(rt, brush, RuneStr(cell.Rune), StyleFmt(fmt, runStyle), wx, y, clipCells * cw, ch);
                         DrawDecorations(wx, cell.Width * cw, y, runStyle);
                         c++;
                         continue;

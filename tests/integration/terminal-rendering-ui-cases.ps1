@@ -9,6 +9,7 @@ function RenderPixels([string]$name) {
             $dc=$g.GetHdc()
             try {if(-not [HudOwnedJob]::PrintWindow($hwnd,$dc,3)){throw 'Render capture failed'}} finally {$g.ReleaseHdc($dc)}
             $bitmap.Save((Join-Path $artifact "$name.png"))
+            $script:renderWidth=$bitmap.Width
             $bits=$bitmap.LockBits([Drawing.Rectangle]::new(0,0,$bitmap.Width,$bitmap.Height),[Drawing.Imaging.ImageLockMode]::ReadOnly,[Drawing.Imaging.PixelFormat]::Format32bppArgb)
             try {
                 $pixels=[int[]]::new($bitmap.Width*$bitmap.Height)
@@ -30,13 +31,43 @@ try {
         $null=Rpc 'session.write' @{text=($esc+'[H🔴 🔵')} $session
         $colored=RenderPixels "emoji-$ligatures"
         $red=0;$blue=0
+        $redRows=@{};$blueRows=@{}
         for($i=0;$i-lt $colored.Length;$i++) {
             if($colored[$i]-eq $blank[$i]){continue}
             $r=($colored[$i]-shr 16)-band 255;$g=($colored[$i]-shr 8)-band 255;$b=$colored[$i]-band 255
-            if($r-gt 120 -and $r-gt $g+40 -and $r-gt $b+40){$red++}
-            if($b-gt 120 -and $b-gt $r+40 -and $b-gt $g+20){$blue++}
+            $row=[int][Math]::Floor($i/$script:renderWidth)
+            if($r-gt 120 -and $r-gt $g+40 -and $r-gt $b+40){$red++;$redRows[$row]++}
+            if($b-gt 120 -and $b-gt $r+40 -and $b-gt $g+20){$blue++;$blueRows[$row]++}
         }
         Check "emoji retain red and blue colour (ligatures=$ligatures)" ($red-gt 10 -and $blue-gt 10) "red=$red blue=$blue"
+        foreach($circle in @(@{name='red';rows=$redRows},@{name='blue';rows=$blueRows})) {
+            $rows=@($circle.rows.Keys | Sort-Object)
+            $peak=($circle.rows.Values | Measure-Object -Maximum).Maximum
+            $last=if($rows.Count){$circle.rows[$rows[-1]]}else{0}
+            # A whole circle tapers at its lower edge; clipping leaves a wide flat base.
+            Check "$($circle.name) circle has an intact lower contour (ligatures=$ligatures)" `
+                ($rows.Count-ge 8 -and $last-lt $peak*0.5) "rows=$($rows.Count) last=$last widest=$peak"
+        }
+        # U+2764 is BMP, width 1 in our grid, and present in Segoe UI Emoji itself.
+        # Selecting that family makes GridTrue succeed, so both hearts coalesce into
+        # DrawRun (DrawText with ligatures, DrawTextLayout without), not solo fallback.
+        $originalFamily=Rpc 'config.get' @{key='font-family'}
+        try {
+            $null=Rpc 'config.set' @{key='font-family';value='Segoe UI Emoji'}
+            $null=Rpc 'session.write' @{text=$clear} $session
+            $runBlank=RenderPixels "color-run-blank-$ligatures"
+            $null=Rpc 'session.write' @{text=($esc+'[38;2;255;255;255m❤❤')} $session
+            $runColored=RenderPixels "color-run-$ligatures"
+            $runRed=0
+            for($i=0;$i-lt $runColored.Length;$i++) {
+                if($runColored[$i]-eq $runBlank[$i]){continue}
+                $r=($runColored[$i]-shr 16)-band 255;$g=($runColored[$i]-shr 8)-band 255;$b=$runColored[$i]-band 255
+                if($r-gt 120 -and $r-gt $g+40 -and $r-gt $b+40){$runRed++}
+            }
+            Check "coalesced BMP color-font run retains red with a white pen (ligatures=$ligatures)" ($runRed-gt 10) "red=$runRed"
+        } finally {
+            $null=Rpc 'config.set' @{key='font-family';value=$originalFamily}
+        }
         # Spaces isolate the decoration from glyph ink: SGR 9 must add a visible line.
         $null=Rpc 'session.write' @{text=($clear+$esc+'[38;2;18;90;159m'+$esc+'[9m'+(' '*20)+$esc+'[29m')} $session
         $struck=RenderPixels "strikethrough-$ligatures"
