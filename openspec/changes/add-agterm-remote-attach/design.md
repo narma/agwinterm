@@ -31,9 +31,13 @@ Inspected on 2026-11-02 at agterm commit [`9133258994a6cafb330ee354df949b76b1b28
 
 ### 1. Separate remote binding and operation provider
 
-Introduce an additive, validated remote-binding field with a provider discriminator (`agterm-ssh`), resolved WSL distribution/user, SSH destination, origin endpoint, origin session/window/workspace, pane role, observed incarnation, local transport ticket and attachment nonce. Preserve raw malformed metadata as an error surface, not an ordinary shell checkpoint. Remote bindings have no owned state or relaunch source.
+Introduce a separate validated remote-binding model in the existing raw `LiveBinding` envelope, with a provider discriminator (`agterm-ssh`), resolved WSL distribution/user, SSH destination, origin endpoint, origin session/window/workspace, pane role, observed incarnation, local transport ticket and attachment nonce. Preserve raw malformed metadata as an error surface, not an ordinary shell checkpoint. Remote bindings have no owned state or relaunch source.
 
 Share replay suppression, generation fencing and local transport adoption with stage 1. Keep endpoint-specific probe/attach/read/type operations separate. Extending the local Linux binding with fake macOS `/proc` identities was rejected because it would weaken identity validation and mix termination authority.
+
+### Shared native protocol member
+
+Following the requested stage-1 reuse, `agwinterm-zmx` is a workspace library shared by `agwinterm-hook` and `agwinterm-remote`. It owns bounded wire framing, existing socket connection and platform process identity observation. Linux identity JSON remains unchanged for existing ledgers. Hook retains pidfd fencing, ownership records, creation and termination. Remote exposes only probe/attach/screen/type. The library introduces no separately installed runtime.
 
 ### 2. Explicit WSL SSH execution
 

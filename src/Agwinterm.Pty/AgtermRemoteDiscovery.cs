@@ -108,7 +108,7 @@ public static class AgtermRemoteDiscovery
     private static string? OptionalText(JsonElement value, string key) =>
         value.TryGetProperty(key, out var field) && field.ValueKind != JsonValueKind.Null ? Text(value, key) : null;
 
-    private static void RejectDuplicates(JsonElement value)
+    internal static void RejectDuplicates(JsonElement value)
     {
         if (value.ValueKind == JsonValueKind.Object)
         {

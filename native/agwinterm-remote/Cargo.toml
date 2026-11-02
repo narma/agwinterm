@@ -1,0 +1,13 @@
+[package]
+name = "agwinterm-remote"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[target.'cfg(unix)'.dependencies]
+agwinterm-zmx = { path = "../agwinterm-zmx" }
+libc = "0.2"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+base64 = "0.22"
+sha2 = "0.10"

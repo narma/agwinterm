@@ -12,6 +12,7 @@ internal partial class Program : IWslLiveHost
     private List<PalItem> BuildLiveMenu(string paneId)
     {
         var (_, pane) = ExactLivePane(paneId);
+        if (AgtermRemoteBinding.IsRemote(pane.LiveBinding)) return BuildRemoteMenu(pane);
         var binding = RestoreState.LoadLiveBinding(pane.LiveBinding, out var error);
         var menu = new List<PalItem> { new() { Label = binding is null ? "Unavailable: " + error
             : $"{binding.Ownership} · {binding.Recovery} · {pane.LiveRole?.Role ?? "unknown"}" } };
@@ -60,6 +61,7 @@ internal partial class Program : IWslLiveHost
 
     public JsonElement? LiveTerminalCommand(string command, JsonElement args, ISession session)
     {
+        if (RemoteTerminalCommand(command, args, session) is { } remoteResult) return remoteResult;
         var binding = InvokeOnUiQueued(() =>
         {
             var pane = AllSessions().SelectMany(s => s.AllPanes).FirstOrDefault(p => ReferenceEquals(p.S, session));
@@ -91,6 +93,7 @@ internal partial class Program : IWslLiveHost
 
     public object LiveCommand(string command, JsonElement args, string? target)
     {
+        if (command.StartsWith("zmx.remote.", StringComparison.Ordinal)) return RemoteCommand(command, args, target);
         WslLiveControl.Validate(command, args, target);
         if (command is "zmx.list" or "zmx.attach")
         {
@@ -252,6 +255,7 @@ internal partial class Program : IWslLiveHost
 
     private static JsonElement LiveReadback(Pane pane)
     {
+        if (AgtermRemoteBinding.IsRemote(pane.LiveBinding)) return RemoteReadback(pane);
         var binding = RestoreState.LoadLiveBinding(pane.LiveBinding, out var error);
         return JsonSerializer.SerializeToElement(new { provider = "wsl-zmx", bindingId = binding?.BindingId,
             endpoint = binding?.Endpoint, daemon = binding?.Identity, ownership = binding?.Ownership,

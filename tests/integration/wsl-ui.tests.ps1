@@ -68,7 +68,7 @@ param([string]$Test,[hashtable]$TestParameters)
 @{test=$Test; parameters=$TestParameters} | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot '../../route.json')
 exit 9
 '@ | Set-Content (Join-Path $integration 'wsl-ui.ps1')
-    foreach ($name in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity')) {
+    foreach ($name in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote')) {
         $route=Run (Join-Path $integration 'sandbox-ui-entry.ps1') @('-Test',$name)
         # Calling a routing helper alone returns an object; the caller owns exit.
         $record=Get-Content (Join-Path $temporary 'route.json') -Raw | ConvertFrom-Json

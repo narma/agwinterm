@@ -1,6 +1,6 @@
 # Use host WSL, with every test-owned Windows process on a private desktop.
 param(
-    [Parameter(Mandatory)][ValidateSet('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity')][string]$Test,
+    [Parameter(Mandatory)][ValidateSet('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote')][string]$Test,
     [hashtable]$TestParameters = @{},
     [string]$OutputDirectory,
     [ValidateRange(1,7200)][int]$TimeoutSeconds = 1200

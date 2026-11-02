@@ -1,13 +1,13 @@
 # Tasks
 
-Implementation started on 2026-11-02 from `origin/narma` at `5552130` (stage 1 merged). Read-only discovery passes against the supplied macOS peer; its live mode is disabled. Origin bridge provisioning and actual terminal acceptance remain pending. See `docs/agterm-remote-development.md` for evidence and continuation.
+Implementation started on 2026-11-02 from `origin/narma` at `5552130` (stage 1 merged). The origin bridge and shared agwinterm-zmx member are implemented. Real-client single/split and recovery acceptance passes against an isolated macOS origin; expanded fault cases and review remain in progress. See `docs/agterm-remote-development.md` for evidence and continuation.
 
 ## 1. Origin capability and compatibility gate
 
 - [ ] 1.1 Capture the real tree/control envelopes and build provenance at the design's agterm pin, including the new managed-exit patch; verify fixtures against upstream source and document required versus optional fields.
-- [ ] 1.2 Implement the explicitly provisioned origin bridge's bounded probe and platform identity observation; verify on macOS that process/name/socket replacement is detected without Linux `/proc` or pidfd assumptions.
-- [ ] 1.3 Port and build the connected-FD client seam for the test origin; prove missing-daemon and replacement races create no workload and retain the verified connection through attach. Record exact source/build hashes and capability evidence.
-- [ ] 1.4 Document real-peer setup and rollback, then verify discovery/attach prerequisites on the supplied authorized agterm host. Leave this gate unchecked if no real host is available; do not install dependencies or SSH services implicitly.
+- [x] 1.2 Implement the explicitly provisioned origin bridge's bounded probe and platform identity observation; verify on macOS that process/name/socket replacement is detected without Linux `/proc` or pidfd assumptions.
+- [x] 1.3 Port and build the connected-FD client seam for the test origin; prove missing-daemon and replacement races create no workload and retain the verified connection through attach. Record exact source/build hashes and capability evidence.
+- [x] 1.4 Document real-peer setup and rollback, then verify discovery/attach prerequisites on the supplied authorized agterm host. Leave this gate unchecked if no real host is available; do not install dependencies or SSH services implicitly.
 
 ## 2. Remote contracts and WSL SSH transport
 

@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Agwinterm.Pty;
 
-public sealed record AgtermSshTarget(string Distribution, string User, string Destination, string? AgentSocket = null)
+public sealed record AgtermSshTarget(string Distribution, string User, string Destination, string? AgentSocket = null, string? OriginSocket = null)
 {
     public void Validate()
     {
@@ -13,6 +13,8 @@ public sealed record AgtermSshTarget(string Distribution, string User, string De
             throw new ArgumentException("Invalid SSH destination");
         if (AgentSocket is not null && !AgtermRemoteDiscovery.OriginPath(AgentSocket))
             throw new ArgumentException("SSH agent socket must be an absolute Linux path");
+        if (OriginSocket is not null && !AgtermRemoteDiscovery.OriginPath(OriginSocket))
+            throw new ArgumentException("Origin control socket must be an absolute path");
     }
 }
 
@@ -26,6 +28,11 @@ public static class AgtermSshDiscoveryClient
     }
 
     internal static ProcessStartInfo StartInfo(AgtermSshTarget target)
+        => CommandInfo(target, false, string.Join(' ', new[] { "/bin/sh", "-c",
+            "PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; export PATH; exec agtermctl zmx tree --json" +
+            (target.OriginSocket is null ? "" : " --socket " + QuoteAccountShell(target.OriginSocket)) }.Select(QuoteAccountShell)));
+
+    internal static ProcessStartInfo CommandInfo(AgtermSshTarget target, bool terminal, string remoteCommand)
     {
         target.Validate();
         var start = new ProcessStartInfo("wsl.exe");
@@ -33,13 +40,15 @@ public static class AgtermSshDiscoveryClient
         start.ArgumentList.Add("--exec");
         start.ArgumentList.Add("/usr/bin/env");
         if (target.AgentSocket is not null) start.ArgumentList.Add("SSH_AUTH_SOCK=" + target.AgentSocket);
-        foreach (string arg in new[] { "ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+        foreach (string arg in new[] { "ssh", terminal ? "-tt" : "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
             "-o", "UpdateHostKeys=no", "-o", "ConnectTimeout=5", "-o", "ConnectionAttempts=1",
-            "-o", "ClearAllForwardings=yes", "-o", "PermitLocalCommand=no", target.Destination })
+            "-o", "ClearAllForwardings=yes", "-o", "PermitLocalCommand=no" })
             start.ArgumentList.Add(arg);
-        // The account shell receives one ordinary command, even if it is fish or tcsh.
-        const string script = "PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; export PATH; exec agtermctl zmx tree --json";
-        start.ArgumentList.Add(string.Join(' ', new[] { "/bin/sh", "-c", script }.Select(QuoteAccountShell)));
+        if (terminal)
+            foreach (string arg in new[] { "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2" })
+                start.ArgumentList.Add(arg);
+        start.ArgumentList.Add(target.Destination);
+        start.ArgumentList.Add(remoteCommand);
         foreach (string key in start.Environment.Keys.Where(k => k.StartsWith("ZMX_", StringComparison.Ordinal)).ToArray())
             start.Environment.Remove(key);
         return start;
@@ -56,7 +65,7 @@ public static class AgtermSshDiscoveryClient
 
     internal sealed record Result(int ExitCode, string Stdout);
 
-    internal static async Task<Result> RunAsync(ProcessStartInfo start, TimeSpan timeout, CancellationToken ct)
+    internal static async Task<Result> RunAsync(ProcessStartInfo start, TimeSpan timeout, CancellationToken ct, string? input = null)
     {
         start.UseShellExecute = false;
         start.CreateNoWindow = true;
@@ -67,15 +76,20 @@ public static class AgtermSshDiscoveryClient
         deadline.CancelAfter(timeout);
         ct.ThrowIfCancellationRequested();
         using var process = Process.Start(start) ?? throw new IOException("Cannot start remote discovery");
-        process.StandardInput.Close();
         using var registration = deadline.Token.Register(() => Stop(process));
         // Both pipes must be read concurrently. stderr is bounded but never echoed as trusted text.
         Task<string> stdout = ReadAsync(process.StandardOutput.BaseStream, AgtermRemoteDiscovery.MaxBytes, deadline.Token);
         Task<string> stderr = ReadAsync(process.StandardError.BaseStream, 64 * 1024, deadline.Token);
         Task exited = process.WaitForExitAsync(deadline.Token);
+        async Task WriteInput()
+        {
+            try { if (input is not null) await process.StandardInput.WriteAsync(input.AsMemory(), deadline.Token).ConfigureAwait(false); }
+            finally { process.StandardInput.Close(); }
+        }
+        Task written = WriteInput();
         try
         {
-            var pending = new List<Task> { stdout, stderr, exited };
+            var pending = new List<Task> { stdout, stderr, exited, written };
             while (pending.Count != 0)
             {
                 var completed = await Task.WhenAny(pending).ConfigureAwait(false);
@@ -88,7 +102,7 @@ public static class AgtermSshDiscoveryClient
         {
             deadline.Cancel();
             Stop(process);
-            try { await Task.WhenAll(stdout, stderr, exited).ConfigureAwait(false); } catch { }
+            try { await Task.WhenAll(stdout, stderr, exited, written).ConfigureAwait(false); } catch { }
             throw;
         }
     }

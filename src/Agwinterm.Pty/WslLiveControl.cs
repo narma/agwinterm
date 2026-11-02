@@ -12,6 +12,11 @@ public static class WslLiveControl
 {
     public static void Validate(string command, JsonElement args, string? target)
     {
+        if (command.StartsWith("zmx.remote.", StringComparison.Ordinal))
+        {
+            AgtermRemoteControl.Validate(command, args, target);
+            return;
+        }
         string[] fields = command switch
         {
             "zmx.list" => ["profile"], "zmx.attach" => ["profile", "daemon", "incarnation"],

@@ -24,6 +24,7 @@ new = '''    // Agwinterm existing-only attachment: ownership/incarnation was ch
         null;
     if (inherited_fd) |fd| {
         if (fd < 3 or labels != null) return error.InvalidInheritedAttachment;
+        if (std.c.fcntl(fd, lib_posix.F.GETFD, @as(c_int, 0)) < 0) return error.InvalidInheritedAttachment;
     } else {
         const sesh = socket.getSeshNameFromEnv();
         if (sesh.len > 0) return switchSesh(gpa, io, daemon, sesh);

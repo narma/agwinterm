@@ -51,6 +51,20 @@ bool printTextField = false;
 switch (area)
 {
     case "zmx":
+        if (sub == "remote")
+        {
+            if (rest.Count != 1) { Console.Error.WriteLine("zmx remote list|attach|retry|detach|lead"); return 2; }
+            cmd = "zmx.remote." + rest[0];
+            target = Opt("target");
+            foreach (var key in new[] { "distribution", "user", "host", "bridge", "session" })
+                if (Opt(key) is { } value) cargs[key] = value;
+            if (Opt("agent-socket") is { } socket) cargs["agentSocket"] = socket;
+            if (Opt("origin-socket") is { } originSocket) cargs["originSocket"] = originSocket;
+            try { AgtermRemoteControl.Validate(cmd, JsonSerializer.SerializeToElement(cargs), target); }
+            catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+            if (rest[0] == "attach" && Opt("window") is null) { Console.Error.WriteLine("Remote import requires --window ID"); return 2; }
+            break;
+        }
         if (rest.Count != 0) { Console.Error.WriteLine("zmx accepts named options only"); return 2; }
         cmd = "zmx." + sub;
         target = Opt("target");
@@ -870,7 +884,7 @@ if (cmd == "version")
 if (cmd == "session.wait" || (cmd == "events" && options.ContainsKey("watch")))
     return Agwinterm.Ctl.ObservationCli.Run(pipeName, req, cargs, options, jsonOut);
 
-if (!Agwinterm.Ctl.CtlRequest.TryResolveTimeout(Opt("timeout"), waitsByDesign: cmd == "session.overlay" && cargs.ContainsKey("block"),
+if (!Agwinterm.Ctl.CtlRequest.TryResolveTimeout(Opt("timeout") ?? (cmd == "zmx.remote.attach" ? "90" : null), waitsByDesign: cmd == "session.overlay" && cargs.ContainsKey("block"),
         out var replyTimeout, out var timeoutError))
 {
     Console.Error.WriteLine(timeoutError);

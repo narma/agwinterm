@@ -46,6 +46,15 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
         return new ServerSession(this, id, cols, rows);
     }
 
+    /// <summary>Allocate a fresh local transport for an existing-only remote binding. Restarting
+    /// an empty host here does not replay any other sessions or create an origin workload.</summary>
+    public ISession CreateExistingOnlyTransport(string id, int cols, int rows)
+    {
+        _startupClaims.Claim(id);
+        EnsureClient(allowEmptyHostRestart: true);
+        return new ServerSession(this, id, cols, rows);
+    }
+
     /// <summary>One best-effort sweep after restore. Every handle created in this host namespace is a
     /// claim, even before its pane is published. Closed/failed handles stay conservatively claimed
     /// for this sweep; their own exact lifecycle cleanup remains responsible for their child.</summary>
@@ -67,7 +76,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     // Reconciliation must never start a new host or reuse an ambiguous request/reply stream.
     internal PtyHostClient ConnectExisting() => PtyHostClient.Connect(_appId);
 
-    private PtyHostClient EnsureClient()
+    private PtyHostClient EnsureClient(bool allowEmptyHostRestart = false)
     {
         lock (_lock)
         {
@@ -76,7 +85,8 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
             {
                 if (_client.IsUsable) return _client;
                 _client.Dispose();
-                return _client = ConnectExisting(); // a broken host is not an instruction to replay/spawn
+                if (!allowEmptyHostRestart) return _client = ConnectExisting(); // no ordinary replay/spawn
+                _client = null;
             }
             if (!PtyHostClient.IsRunning(_appId))
             {
