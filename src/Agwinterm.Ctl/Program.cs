@@ -51,6 +51,18 @@ bool printTextField = false;
 switch (area)
 {
     case "zmx":
+        if (sub == "export")
+        {
+            if (rest.Count != 1 || rest[0] != "tree" || Opt("window") is null)
+            { Console.Error.WriteLine("zmx export tree requires --window ID and an explicit endpoint"); return 2; }
+            cmd = "zmx.export.tree";
+            foreach (var key in new[] { "distribution", "user", "origin", "executable", "adapter" })
+                if (Opt(key) is { } value) cargs[key] = value;
+            if (Opt("socket-directory") is { } directory) cargs["socketDirectory"] = directory;
+            try { WslLiveControl.Validate(cmd, JsonSerializer.SerializeToElement(cargs), null); }
+            catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+            break;
+        }
         if (sub == "remote")
         {
             if (rest.Count != 1) { Console.Error.WriteLine("zmx remote list|attach|retry|detach|lead"); return 2; }

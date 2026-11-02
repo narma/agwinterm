@@ -14,6 +14,7 @@ public static class CtlArguments
     {
         ["ping"] = "", ["version"] = "", ["tree"] = "window",
         ["zmx list"] = "window profile", ["zmx attach"] = "window profile daemon incarnation",
+        ["zmx export tree"] = "window distribution user origin executable socket-directory adapter",
         ["zmx remote list"] = "window distribution user host agent-socket origin-socket",
         ["zmx remote attach"] = "window distribution user host agent-socket origin-socket bridge session",
         ["zmx remote retry"] = "window target", ["zmx remote detach"] = "window target", ["zmx remote lead"] = "window target",
@@ -118,7 +119,7 @@ public static class CtlArguments
         string operation = area is "ping" or "version" or "tree" or "events" or "settings" or "sidebar" or "quick" or "broadcast" or "notify" or "dashboard"
             ? area : area + " " + sub;
         string third = positionals.ElementAtOrDefault(2)?.ToLowerInvariant() ?? "";
-        if (operation == "zmx remote") operation += " " + third;
+        if (operation is "zmx remote" or "zmx export") operation += " " + third;
         if (operation is "session overlay" or "session background") operation += " " + (third.Length == 0 ? sub == "overlay" ? "open" : "set" : third);
         if (operation == "session appearance") operation += " " + (third.Length == 0 ? "get" : third);
         // HUD action words are case-sensitive in the request builder; uppercase words

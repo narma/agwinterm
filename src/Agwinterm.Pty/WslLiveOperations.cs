@@ -9,6 +9,20 @@ public sealed class WslLiveOperations
 {
     private readonly WslLiveClient _client = new();
 
+    /// <summary>Read-only proof of this exact saved incarnation; never installs a helper.</summary>
+    public async Task<WslOriginObservation> ObserveOriginAsync(WslLiveBinding binding, CancellationToken ct)
+    {
+        if (!binding.IsValid || binding.Ownership != "owned" || binding.Pending || binding.Identity is null)
+            throw new InvalidOperationException("Export requires an exact owned binding");
+        var location = Location(binding);
+        if (!WslLiveClient.IsNative(location))
+            throw new InvalidOperationException("Export requires an already provisioned native helper");
+        // The native screen operation opens and verifies the exact daemon/workload/socket before
+        // reading. It neither acquires an ownership lease nor creates a daemon or ledger entry.
+        await ScreenAsync(binding, false, ct).ConfigureAwait(false);
+        return new(binding.BindingId, WslOriginScope.From(binding.Endpoint), binding.Identity, true);
+    }
+
     public async Task<WslLiveBinding> CreateAsync(ShellProfile profile, string appId, string paneId,
         string? cwd, IReadOnlyDictionary<string, string> environment,
         Func<WslLiveBinding, Task> persistReservation, CancellationToken ct = default)
@@ -134,9 +148,9 @@ public sealed class WslLiveOperations
         return Apply(binding, result, "zmx-reattached");
     }
 
-    public Task<JsonElement> ScreenAsync(WslLiveBinding binding, bool all) => _client.InvokeAsync(Location(binding),
+    public Task<JsonElement> ScreenAsync(WslLiveBinding binding, bool all, CancellationToken ct = default) => _client.InvokeAsync(Location(binding),
         new { verb = "screen", executable = binding.Endpoint.Executable, socketDirectory = binding.Endpoint.SocketDirectory,
-            name = binding.Identity!.Name, identity = WireIdentity(binding), all }, default);
+            name = binding.Identity!.Name, identity = WireIdentity(binding), all }, ct);
 
     public Task<JsonElement> TypeAsync(WslLiveBinding binding, string text) => _client.InvokeAsync(Location(binding),
         new { verb = "type", executable = binding.Endpoint.Executable, socketDirectory = binding.Endpoint.SocketDirectory,

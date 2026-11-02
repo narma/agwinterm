@@ -12,6 +12,11 @@ public static class WslLiveControl
 {
     public static void Validate(string command, JsonElement args, string? target)
     {
+        if (command == "zmx.export.tree")
+        {
+            _ = WslOriginExportRequest.Parse(args, target);
+            return;
+        }
         if (command.StartsWith("zmx.remote.", StringComparison.Ordinal))
         {
             AgtermRemoteControl.Validate(command, args, target);

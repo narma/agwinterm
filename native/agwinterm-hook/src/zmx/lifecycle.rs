@@ -551,7 +551,7 @@ fn borrow(request: &Value) -> Result<Outcome> {
     }
     reconcile(root, operation)
 }
-fn attach(request: &Value) -> Result<Value> {
+pub(super) fn attach(request: &Value) -> Result<Value> {
     let (executable, directory) = endpoint(request)?;
     let name = string(request, "name")?;
     daemon_name(name)?;
@@ -593,7 +593,7 @@ fn attach(request: &Value) -> Result<Value> {
     }
     Err(command.exec().into())
 }
-fn terminal(request: &Value) -> Result<Value> {
+pub(super) fn terminal(request: &Value) -> Result<Value> {
     let (executable, directory) = endpoint(request)?;
     let name = string(request, "name")?;
     daemon_name(name)?;

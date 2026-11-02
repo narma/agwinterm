@@ -38,6 +38,26 @@ public class WslLiveControlTests
         Assert.Equal(0, windows.First.LiveCalls);
         Assert.Equal(1, windows.Second.LiveCalls);
     }
+
+    [Fact]
+    public void OriginExportRequiresExactWindowAndNeverRoutesToAnotherWindow()
+    {
+        var windows = new WindowRouter();
+        using var server = new ControlServer(windows.First, windows, "unused");
+        var args = new { distribution = "Ubuntu", user = "alice", origin = "test",
+            executable = "/opt/zmx", socketDirectory = "/run/user/1000/aw", adapter = "/opt/export/attach" };
+        foreach (string? selector in new[] { null, "window-s", "active", "missing" })
+            Assert.Contains("\"ok\":false", server.Dispatch(JsonSerializer.Serialize(new { cmd = "zmx.export.tree", args, window = selector })));
+        Assert.Equal(0, windows.First.LiveCalls);
+        Assert.Equal(0, windows.Second.LiveCalls);
+        foreach (string selector in new[] { "window-first", "window-second" })
+            Assert.Contains("\"ok\":true", server.Dispatch(JsonSerializer.Serialize(new { cmd = "zmx.export.tree", args, window = selector })));
+        Assert.Equal(1, windows.First.LiveCalls);
+        Assert.Equal(1, windows.Second.LiveCalls);
+        Assert.Contains("\"ok\":false", server.Dispatch(JsonSerializer.Serialize(new
+            { cmd = "zmx.export.tree", args, window = "window-first", target = "pane" })));
+        Assert.Equal(1, windows.First.LiveCalls);
+    }
     [Theory]
     [InlineData("{\"cmd\":\"zmx.retry\",\"target\":\"pane\",\"target\":\"other\"}")]
     [InlineData("{\"cmd\":\"zmx.retry\",\"target\":\"pane\",\"unknown\":true}")]
