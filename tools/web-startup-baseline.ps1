@@ -1,8 +1,8 @@
 # Repeat before/after on the same desktop and power plan. Uses only a private app identity.
 param(
     [string]$Exe = "$PSScriptRoot/../installer/stage/Agwinterm.Win32.exe",
-    [string]$Installer = "$PSScriptRoot/../installer/Output/agwinterm-setup-0.20.14.exe",
-    [string]$Portable = "$PSScriptRoot/../installer/Output/agwinterm-portable-0.20.14-win-x64.exe",
+    [string]$Installer,
+    [string]$Portable,
     [string]$Output = "$PSScriptRoot/../artifacts/webview2-before.json",
     [ValidateRange(20, 1000)][int]$Runs = 20
 )
@@ -74,7 +74,7 @@ try {
         powerPlan=(& powercfg /getactivescheme | Out-String).Trim()
         medianMs=($times[[int][math]::Floor(($Runs-1)/2)]+$times[[int][math]::Floor($Runs/2)])/2
         p95Ms=$times[[int][math]::Ceiling($Runs*0.95)-1]
-        installerBytes=(Get-Item $Installer).Length; portableBytes=(Get-Item $Portable).Length
+        installerBytes=$(if ($Installer) { (Get-Item $Installer).Length }); portableBytes=$(if ($Portable) { (Get-Item $Portable).Length })
         applicationPayloadBytes=(Get-ChildItem (Split-Path $Exe) -Recurse -File | Measure-Object Length -Sum).Sum
         payloadNote='Published installer payload; excludes installer-created uninstaller and shared runtime installation.'
         samples=$samples

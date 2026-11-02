@@ -1,0 +1,10 @@
+<Project>
+  <!-- Opt in for the complete project graph, including project references. -->
+  <PropertyGroup Condition="'$(AgwintermNet11)' == 'true'">
+    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">true</PublishReadyToRun>
+    <UseRuntimeAsync Condition="'$(UseRuntimeAsync)' == ''">true</UseRuntimeAsync>
+    <Features Condition="'$(UseRuntimeAsync)' == 'true'">$(Features);runtime-async=on</Features>
+    <Features Condition="'$(UseRuntimeAsync)' == 'false'">$(Features);runtime-async=off</Features>
+  </PropertyGroup>
+</Project>
+

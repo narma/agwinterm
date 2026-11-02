@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net$(AgwintermFrameworkMajor).0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -15,7 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Agwinterm.Core/Agwinterm.Core.csproj" />
     <!-- PInvokeCharSetTests reflects over the BUILT Agwinterm.Win32 assembly (it can't reference it:
-         that's a net10.0-windows WinExe and this is net10.0). Build-order only — no assembly
+         that's a net$(AgwintermFrameworkMajor).0-windows WinExe and this is net$(AgwintermFrameworkMajor).0). Build-order only — no assembly
          reference, TFM check skipped. Without this the test fails with "build Agwinterm.Win32 first"
          in any fresh clone or worktree, and only passed in CI because the workflow happens to run a
          full solution build in an earlier step. -->

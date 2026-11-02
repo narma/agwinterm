@@ -29,7 +29,13 @@ public sealed record ReleaseInfo(string Version, IReadOnlyList<ReleaseAsset> Ass
 /// </summary>
 public static class AppUpdate
 {
+#if NET11_0_OR_GREATER
+    private const bool Net11Build = true;
+    public const string DefaultApiUrl = "https://api.github.com/repos/narma/agwinterm/releases/latest";
+#else
+    private const bool Net11Build = false;
     public const string DefaultApiUrl = "https://api.github.com/repos/yeroo/agwinterm/releases/latest";
+#endif
 
     /// <summary>Test seam: a local FILE PATH here (instead of an URL) is read as the API response,
     /// and asset "URLs" that are local paths are copied instead of downloaded — lets E2E runs
@@ -78,13 +84,15 @@ public static class AppUpdate
     /// <summary>The release asset a channel updates from: the setup exe for installed copies, the
     /// portable exe otherwise. Null when the release carries no such asset (or for package managers,
     /// which never self-update).</summary>
-    public static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel) => channel switch
+    public static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel) => PickAsset(release, channel, Net11Build);
+
+    internal static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel, bool net11) => channel switch
     {
         UpdateChannel.Installed => release.Assets.FirstOrDefault(a =>
-            a.Name.StartsWith("agwinterm-setup-", StringComparison.OrdinalIgnoreCase) &&
+            a.Name.StartsWith(net11 ? "agwinterm-net11-setup-" : "agwinterm-setup-", StringComparison.OrdinalIgnoreCase) &&
             a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
         UpdateChannel.Portable => release.Assets.FirstOrDefault(a =>
-            a.Name.StartsWith("agwinterm-portable-", StringComparison.OrdinalIgnoreCase) &&
+            a.Name.StartsWith(net11 ? "agwinterm-net11-portable-" : "agwinterm-portable-", StringComparison.OrdinalIgnoreCase) &&
             a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
         _ => null,
     };
