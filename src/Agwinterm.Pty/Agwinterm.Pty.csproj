@@ -14,5 +14,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Agwinterm.Pty.Tests" />
     <EmbeddedResource Include="Wsl/*" />
+    <EmbeddedResource Include="WslLive/*.py" />
   </ItemGroup>
 </Project>

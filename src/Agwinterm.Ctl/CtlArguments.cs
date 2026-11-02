@@ -6,13 +6,16 @@ namespace Agwinterm.Ctl;
 public static class CtlArguments
 {
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
-    { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block", "js", "navigation", "chromeless", "browse", "current", "persistent", "companion", "undoable",
+    { "json", "spinner", "stdin", "clear", "allow-control", "all", "styles", "wait", "block", "js", "navigation", "chromeless", "browse", "current", "persistent", "companion", "undoable", "force",
       "no-select", "create-workspace", "blink", "auto-reset", "next", "prev", "close", "remove", "persist", "auto-size", "watch", "full", "follow", "sticky", "no-frame", "markdown", "collapsed", "minimized", "path-only", "hide-image" };
 
     // Per operation options, in addition to the transport and output controls.
     private static readonly Dictionary<string, string> Vocabulary = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ping"] = "", ["version"] = "", ["tree"] = "window",
+        ["zmx list"] = "window profile", ["zmx attach"] = "window profile daemon incarnation",
+        ["zmx retry"] = "window target", ["zmx detach"] = "window target", ["zmx lead"] = "window target",
+        ["zmx terminate"] = "window target force", ["zmx restart"] = "window target source",
         ["browser clear"] = "", ["browser links"] = "",
         ["recent list"] = "", ["recent open"] = "window", ["recent clear"] = "",
         ["events"] = "window since limit kind run watch",

@@ -27,7 +27,8 @@ public sealed record SessionSnapshot(string Id, string Name, bool Active, AgentS
     IReadOnlyList<string?>? ForegroundShells = null,
     string? CustomName = null, IReadOnlyDictionary<string, string?>? PaneCwds = null,
     IReadOnlyList<OverlayDetailSnapshot>? OverlayDetails = null,
-    IReadOnlyList<WebOverlaySnapshot>? HtmlOverlays = null, string? PageParentId = null);
+    IReadOnlyList<WebOverlaySnapshot>? HtmlOverlays = null, string? PageParentId = null,
+    IReadOnlyDictionary<string, System.Text.Json.JsonElement>? LiveSessions = null);
 
 public sealed record WebOverlaySnapshot(string Id, string? File, string? Url, string? CurrentUrl,
     string State, string? Error, bool Hidden, bool Visible, int X, int Y, int Width, int Height, double Zoom, bool Browse = false, string? Pane = null,

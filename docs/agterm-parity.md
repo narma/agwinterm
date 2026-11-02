@@ -1,5 +1,13 @@
 # agterm parity tracker
 
+> **November 2026 ZMX scope:** [WSL ZMX and bidirectional agterm roadmap](plans/2026-11-01-wsl-zmx-agterm-roadmap.md)
+> tracks four required stages: local WSL recovery with Rust PTY host, outbound agterm
+> attachment, inbound WSL export and bidirectional remote presentation. Stage 1 has
+> implemented local WSL lifecycle/recovery and routed acceptance evidence;
+> stages 2–4 remain required follow-ups. No SSH or agterm presentation transport
+> is delivered by stage 1. This supersedes the older
+> ZMX exclusion for that scope, not the boundary against full upstream parity.
+
 > **October 2026 scope:** [Staged capability adoption from agterm 0.38.1](plans/2026-10-25-control-capabilities.md)
 > records the current planned work, dependencies, readiness criteria and explicit exclusions.
 > Full parity is not the goal. The v0.26.0 comparison and completed batches below remain
@@ -168,6 +176,10 @@ reporting the pane, and `--size-percent` validated rather than clamped — close
 ## Not chasing, with reasons
 
 ### Live and remote sessions (zmx)
+**Historical exclusion, superseded 2026-11-01:** the four-stage
+[WSL ZMX roadmap](plans/2026-11-01-wsl-zmx-agterm-roadmap.md) now tracks this work.
+The comparison below describes the older baseline, not current scope or acceptance.
+
 **agterm 0.26.0.** Processes survive a restart through a bundled zmx multiplexer; sessions on another
 Mac attach over SSH. Requires zsh as the login shell and macOS.
 

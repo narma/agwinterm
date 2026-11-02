@@ -194,6 +194,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
 
     /// <summary>Window title set via OSC 0/2.</summary>
     public string Title { get; private set; } = string.Empty;
+    public Func<string, bool>? TitleFilter { get; set; }
 
     /// <summary>Working directory reported via OSC 7 (raw text, typically a file:// URI).</summary>
     public string Cwd { get; private set; } = string.Empty;
@@ -699,7 +700,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         {
             case 0:
             case 2:
-                Title = text;
+                if (TitleFilter?.Invoke(text) != true) Title = text;
                 break;
             case 7:
                 Cwd = text;
@@ -1074,22 +1075,22 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     /// ConPTY passes output through and so does not repaint the viewport on a resize the way the inbox
     /// conhost does (#339). Trailing default blanks are left out; the pen ends reset. Same output as
     /// the Rust core's <c>dump_screen</c>.</summary>
-    public string DumpScreen()
+    private System.Text.StringBuilder DumpCells(ScreenBuffer screen)
     {
         // The cells hold the glyphs already drawn, so they are replayed as ASCII (G0 and G1 ASCII, SI);
         // the app's character sets are restored at the end, for its next output.
         var sb = new System.Text.StringBuilder("\x1b(B\x1b)B\x0f\x1b[0m\x1b[H\x1b[2J");
-        for (int r = 0; r < Screen.Rows; r++)
+        for (int r = 0; r < screen.Rows; r++)
         {
-            int end = Screen.Cols;
-            while (end > 0 && IsDefaultBlank(Screen[r, end - 1])) end--;
+            int end = screen.Cols;
+            while (end > 0 && IsDefaultBlank(screen[r, end - 1])) end--;
             if (end == 0) continue;
             sb.Append("\x1b[").Append(r + 1).Append(";1H");
             string pen = "0";
             TerminalHyperlink? link = null;
             for (int c = 0; c < end; c++)
             {
-                Cell cell = Screen[r, c];
+                Cell cell = screen[r, c];
                 if (cell.Width == 0) continue;
                 if (cell.Hyperlink != link)
                 {
@@ -1103,6 +1104,12 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
             if (link is not null) sb.Append(TerminalHyperlink.Close);
             if (pen != "0") sb.Append("\x1b[0m");
         }
+        return sb;
+    }
+
+    public string DumpScreen()
+    {
+        var sb = DumpCells(Screen);
         // DECSTBM homes the cursor, so the margins go before the cursor is placed.
         if (ScrollTop != 0 || ScrollBottom != Screen.Rows - 1)
             sb.Append("\x1b[").Append(ScrollTop + 1).Append(';').Append(ScrollBottom + 1).Append('r');
@@ -1174,6 +1181,8 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         var current = (_g0LineDrawing, _g1LineDrawing, _shiftedOut);
         if (IsAltScreen)
         {
+            sb.Append(DumpCells(_main));
+            sb.Append("\x1b[").Append(_savedRow + 1).Append(';').Append(_savedCol + 1).Append('H');
             // Entering 1049 saves the character sets, so the replica must enter it with the sets the app
             // had before it did, and only then take the alt screen's own.
             sb.Append(CharsetsSeq(_savedCharsets)).Append("\x1b[?1049h").Append(CharsetsSeq(current));
@@ -1186,6 +1195,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         if (_mouseSgr) sb.Append("\x1b[?1006h");
         if (_mouseSgrPixels) sb.Append("\x1b[?1016h");
         if (BracketedPaste) sb.Append("\x1b[?2004h");
+        foreach (int flags in _kbdStack.Reverse()) sb.Append("\x1b[>").Append(flags).Append('u');
         if (FocusReporting) sb.Append("\x1b[?1004h");
         if (Win32InputMode) sb.Append("\x1b[?9001h");
         if (CursorShape != 0) sb.Append("\x1b[").Append(CursorShape).Append(" q");

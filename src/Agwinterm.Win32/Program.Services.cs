@@ -1429,7 +1429,7 @@ internal partial class Program
 
     /// <summary>Whether a pane reconnected to a surviving pty-host session on this restore
     /// (see <see cref="ServerSession.Adopted"/>) — such panes' shells are LIVE, not fresh.</summary>
-    private static bool IsAdopted(Pane p) => p.S is ServerSession { Adopted: true };
+    private static bool SuppressesRestoreReplay(Pane p) => RestoreState.HasLiveBinding(p.LiveBinding) || p.S is ServerSession { Adopted: true };
 
     private static string DenylistPath => Path.Combine(AppDir, "restore-denylist.conf");
 
@@ -1628,7 +1628,19 @@ internal partial class Program
     // on the UI thread, where the data is; only the file I/O leaves it. A background write's failure
     // goes to the debug output, where the swallowed failures went before.
     private static readonly Agwinterm.Core.StateWriter _stateWriter =
-        new(TimeSpan.FromMilliseconds(200), m => System.Diagnostics.Debug.WriteLine(m));
+        new(TimeSpan.FromMilliseconds(200), m => System.Diagnostics.Debug.WriteLine(m), ReportLiveStateSaveFailure);
+
+    private static void ReportLiveStateSaveFailure(string path, string why)
+    {
+        Program[] windows;
+        lock (_registry) windows = _registry.Values.Where(w => w.StatePath == path).ToArray();
+        foreach (var window in windows) window.Post(() =>
+        {
+            var panes = window.AllSessions().SelectMany(s => s.AllPanes).Where(p => RestoreState.HasLiveBinding(p.LiveBinding)).ToList();
+            foreach (var pane in panes) pane.LiveSaveError = why;
+            if (panes.Count > 0) window.ShowToast("Live recovery checkpoint could not be saved: " + why, 10000);
+        });
+    }
 
     /// <summary>Snapshot the tree/selection/sidebar and hand the bytes to the state writer; this
     /// thread never waits on the file (#294). No-op while restoring. Returns whether a snapshot was
@@ -1741,7 +1753,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -1882,7 +1894,7 @@ internal partial class Program
                         ws, makeActive: s.Id == st.ActiveId,
                         fontSize: PaneFontSize.Restore(first.FontSize, (float)_config.FontSize, first.FontZoomed).Size,
                         profileName: string.IsNullOrWhiteSpace(s.Profile) ? null : s.Profile,
-                        paneId: StablePaneId(first.Id, s.Id, sid, first: true));
+                        paneId: StablePaneId(first.Id, s.Id, sid, first: true), liveBinding: first.LiveBinding);
                     if (s.SplitHidden == true) hiddenRestores.Add(ses);
                     // The axis BEFORE the second pane exists (P4). Every pty is spawned at the full content
                     // grid (CreatePane → GridSizeFor) and then RegridSession below sizes each one from
@@ -1897,7 +1909,7 @@ internal partial class Program
                         AppendPane(ses,
                             StablePaneId(pl[i].Id, s.Id, sid, first: false),   // verbatim: after a swap this is the pane that carries the session id
                             string.IsNullOrWhiteSpace(pl[i].Cwd) ? null : pl[i].Cwd,
-                            PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Size);
+                            PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Size, liveBinding: pl[i].LiveBinding);
                     lock (_workspaces)
                     {
                         for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
@@ -1922,7 +1934,7 @@ internal partial class Program
                             for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
                             {
                                 var pane = ses.Panes[i];
-                                if (IsAdopted(pane)) continue;
+                                if (SuppressesRestoreReplay(pane)) continue;
                                 // Prefer the full-fidelity attributed blob; fall back to plain text.
                                 if (pl[i].BufferBlob is { Length: > 0 } b64 && pane.S.Emulator is TerminalEmulator te
                                     && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))
@@ -1961,7 +1973,7 @@ internal partial class Program
                         // An ADOPTED pane's agent is STILL RUNNING — typing `claude --resume ...`
                         // into it would land in the live agent's prompt. The binding stays for
                         // future (non-adopted) restarts; nothing to relaunch now.
-                        if (IsAdopted(apane)) continue;
+                        if (SuppressesRestoreReplay(apane)) continue;
                         _ = Task.Run(async () =>
                         {
                             await Task.Delay(2500); // let the shell/profile settle so the wrapper function is defined
@@ -1975,7 +1987,7 @@ internal partial class Program
                     {
                         string pin = pl[i].RestoreCommand ?? "";
                         if (pin.Length == 0 || !string.IsNullOrWhiteSpace(pl[i].AgentResume)) continue;
-                        if (IsAdopted(ses.Panes[i])) continue;   // still running — don't double-launch
+                        if (SuppressesRestoreReplay(ses.Panes[i])) continue;   // still running — don't double-launch
                         var rpane = ses.Panes[i];
                         _ = Task.Run(async () =>
                         {
@@ -1992,7 +2004,7 @@ internal partial class Program
                         {
                             if (!string.IsNullOrWhiteSpace(pl[i].AgentResume)) continue; // agent panes handled above
                             if (!string.IsNullOrWhiteSpace(pl[i].RestoreCommand)) continue; // pinned command handled above
-                            if (IsAdopted(ses.Panes[i])) continue;   // the captured command is still running
+                            if (SuppressesRestoreReplay(ses.Panes[i])) continue;   // the captured command is still running
                             string cmd = pl[i].Command ?? "";
                             if (cmd.Length == 0) continue;
                             string lead = StripExe(cmd.TrimStart('"').Split(' ', 2)[0]);

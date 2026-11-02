@@ -62,13 +62,13 @@ exit $LASTEXITCODE
     Check 'quotes, non-ASCII and switches survive JSON as data' ($probe.distro -ceq 'quoted '' ; $(never code) текст' -and $probe.native)
     Check 'kill-on-close job reaps a remaining child' ($null -eq (Get-Process -Id $probe.child -ErrorAction SilentlyContinue))
     Check 'transcript is exported on test failure' ((Get-Content (Join-Path $output 'test.log') -Raw).Contains('PRIVATE_WINDOW_PROBE_PASSED'))
-    # Both entry points route; no test body is allowed on the input desktop.
+    # Every WSL entry point routes; no test body is allowed on the input desktop.
     @'
 param([string]$Test,[hashtable]$TestParameters)
 @{test=$Test; parameters=$TestParameters} | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot '../../route.json')
 exit 9
 '@ | Set-Content (Join-Path $integration 'wsl-ui.ps1')
-    foreach ($name in @('WslControl','WslBenchmark')) {
+    foreach ($name in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity')) {
         $route=Run (Join-Path $integration 'sandbox-ui-entry.ps1') @('-Test',$name)
         # Calling a routing helper alone returns an object; the caller owns exit.
         $record=Get-Content (Join-Path $temporary 'route.json') -Raw | ConvertFrom-Json

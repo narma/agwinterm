@@ -17,7 +17,7 @@ namespace Agwinterm.Pty.Tests;
 /// produce the same bytes, and a P3 build saving a session WITHOUT a context must produce what a
 /// pre-P3 build produces for that session — the key is absent, not <c>null</c>.
 /// </summary>
-public class RestoreStateTests
+public partial class RestoreStateTests
 {
     [Fact]
     public void HiddenSplit_RoundTripsBothPanePoliciesAndLayout()

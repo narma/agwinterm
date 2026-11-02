@@ -19,6 +19,8 @@ public sealed class ShellProfile
     public bool Elevate { get; set; }
     /// <summary>Environment variables injected into this profile's sessions (WT's per-profile environment).</summary>
     public Dictionary<string, string>? Env { get; set; }
+    /// <summary>Explicit WSL live-session opt-in. Absent/disabled keeps ordinary launch behavior.</summary>
+    public WslZmxConfiguration? Zmx { get; set; }
 }
 
 /// <summary>

@@ -78,6 +78,16 @@ public static class AgentSkill
         In WSL the CLI uses Windows interop. If the sandbox blocks it (e.g. UtilBindVsockAnyPort),
         retry through normal tool approval when available; never bypass a denial or disable the sandbox.
 
+        - Opt-in WSL live panes expose `liveSessions` in the tree. Rust stays the PTY host; ZMX is Linux-only.
+          `zmx list --profile NAME --json` discovers exact daemon/incarnation tokens; `zmx attach --profile NAME --daemon NAME --incarnation TOKEN`
+          connects existing work. `zmx retry|detach|lead --target PANE_ID` requires an explicit exact pane ID.
+          Retry never creates work; detach preserves it; lead explicitly claims terminal size ownership.
+          `zmx terminate --target PANE_ID --force` ends the exact owned workload for every client.
+          `zmx restart --target PANE_ID --source shell|agent|pin|captured` requires confirmed loss and one available source.
+          Read back pending operations in tree. Never resend uncertain mutations automatically.
+          Managed `session text`/`surface cursor` read the daemon. Managed `session type` acknowledges queue acceptance,
+          not execution completion; lost acknowledgement is uncertain. Readonly/control-byte restrictions still apply.
+          No SSH or agterm presentation is delivered by this local development feature.
         - `agwintermctl tree --json`                              — list workspaces+sessions (id, name, active, status,
           `statusChangedAt` = epoch SECONDS of the last status write on the pane whose status the node is
           showing — its liveness clock. Every status write to that pane restamps it, including a re-assert of

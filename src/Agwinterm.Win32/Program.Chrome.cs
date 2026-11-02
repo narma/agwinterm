@@ -471,7 +471,11 @@ internal partial class Program
             foreach (var t in targets) A($"Move to — {t.Name}", "", () => MoveSession(ses, t));
             if (AggStatus(ses) != AgentStatus.Idle) A("Clear Status", "", () => { foreach (var p in ses.Panes) p.S.SetStatus(AgentStatus.Idle); RequestRedraw(); });
             list.Add(MenuSeparator());
-            A("Close Session", "", () => { if (ConfirmCloseOk()) CloseSessionInternal(ses); });
+            foreach (var livePane in ses.AllPanes.Where(p => RestoreState.HasLiveBinding(p.LiveBinding)))
+                list.Add(new PalItem { Label = "WSL live — " + livePane.Id[..Math.Min(8, livePane.Id.Length)], Submenu = () => BuildLiveMenu(livePane.Id) });
+            string closeLabel = ses.AllPanes.Any(p => RestoreState.LoadLiveBinding(p.LiveBinding, out _) is { Ownership: "owned" })
+                ? "Close Session — terminate owned workloads" : "Close Session";
+            A(closeLabel, "", () => { if (ConfirmCloseOk()) CloseSessionInternal(ses); });
         }
         else if (item is Workspace cws)
         {

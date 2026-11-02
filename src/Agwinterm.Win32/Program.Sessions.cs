@@ -52,7 +52,7 @@ internal partial class Program
     /// When <paramref name="sessionCommand"/> is set, its validated application and argv run as the pane's process.</summary>
     private Pane CreatePane(string paneId, Workspace ws, string? cwd, float fontSize, string? command = null,
         bool shellWrap = false, bool interactive = false, Dictionary<string, string>? extraEnv = null, string? profileName = null,
-        bool deElevate = false, HandoffArgs? handoff = null, SessionCommand? sessionCommand = null)
+        bool deElevate = false, HandoffArgs? handoff = null, SessionCommand? sessionCommand = null, JsonElement liveBinding = default)
     {
         var (cols, rows) = GridSizeFor(fontSize);
         // The ONLY session creation site (see ISessionBackend). Handoff panes are pinned in-process
@@ -62,7 +62,41 @@ internal partial class Program
         // — the still-running shell reconnects instead of a fresh one spawning.
         ISession session;
         bool adopted = false;
-        if (handoff is not null || _isQuickWindow) session = InProcessSessionBackend.Instance.Create(paneId, cols, rows);
+        var liveProfile = ResolveProfile(profileName);
+        bool hasLiveBinding = RestoreState.HasLiveBinding(liveBinding);
+        // Opt-in affects new ordinary profile panes. Restoring an old ordinary
+        // checkpoint or inheriting a profile for a cover is not a migration.
+        bool newOrdinaryProfile = !_restoring && !_isQuickWindow && handoff is null && !shellWrap
+            && !paneId.Contains(":scratch:", StringComparison.Ordinal) && sessionCommand is null
+            && string.IsNullOrWhiteSpace(command) && !deElevate;
+        bool liveRequested = hasLiveBinding || newOrdinaryProfile && liveProfile?.Zmx is { Enabled: true } or { Error: not null };
+        string? liveError = null;
+        WslLiveBinding? restoredLive = hasLiveBinding ? RestoreState.LoadLiveBinding(liveBinding, out liveError) : null;
+        if (liveRequested)
+        {
+            if (!hasLiveBinding)
+                liveError = WslLiveProfiles.Validate(liveProfile!, _sessionBackend.Name,
+                    _isQuickWindow ? WslLiveSurface.Quick : handoff is not null ? WslLiveSurface.Handoff
+                    : shellWrap || paneId.Contains(":scratch:", StringComparison.Ordinal) ? WslLiveSurface.Program : WslLiveSurface.Ordinary);
+            if (_sessionBackend.Name != "server-rust") liveError = "WSL live sessions require the Rust PTY host";
+            if (deElevate || sessionCommand is not null || !string.IsNullOrWhiteSpace(command))
+                liveError = "This launch surface does not support WSL live sessions";
+            try
+            {
+                if (liveError is not null) throw new InvalidOperationException(liveError);
+                session = _sessionBackend.Create(paneId, cols, rows);
+                adopted = restoredLive?.TransportTicket is { Length: > 0 } ticket
+                    && session is ServerSession liveServer && liveServer.TryAdopt(ticket);
+            }
+            catch (Exception ex)
+            {
+                liveError = ex.Message;
+                session = InProcessSessionBackend.Instance.Create(paneId, cols, rows); // unstarted error surface only
+            }
+            if (!hasLiveBinding)
+                liveBinding = JsonSerializer.SerializeToElement(new { Version = 1, Provider = "wsl-zmx", Recovery = "unavailable", Error = liveError ?? "Preparing live session" });
+        }
+        else if (handoff is not null || _isQuickWindow) session = InProcessSessionBackend.Instance.Create(paneId, cols, rows);
         else if (ReferenceEquals(_sessionBackend, InProcessSessionBackend.Instance)) session = _sessionBackend.Create(paneId, cols, rows);
         else
             try
@@ -79,9 +113,10 @@ internal partial class Program
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
         if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
-        var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize,
+        var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize, LiveBinding = liveBinding,
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
+        if (liveRequested) ConfigureLiveTitle(pane, adopted ? restoredLive?.AttachmentNonce : null);
         Observation.ObservePane(pane.Id, session.StatusSignal!);
         // New output snaps this pane back to the live bottom when the buffer ACTUALLY scrolled (a line
         // pushed into history) — not on every repaint. TUIs like Claude Code redraw in place without
@@ -144,7 +179,14 @@ internal partial class Program
             [ThemeColors.EnvVar] = ThemeColors.Format(_theme.DefaultForeground, _theme.DefaultBackground),
         };
         if (extraEnv is not null) foreach (var kv in extraEnv) env[kv.Key] = kv.Value; // custom-command $AGW_* context
-        if (handoff is { } h)
+        if (liveRequested)
+        {
+            if (liveError is not null) ShowLiveError(pane, liveError);
+            else if (adopted && restoredLive is not null)
+                pane.LiveBinding = JsonSerializer.SerializeToElement(restoredLive with { Recovery = "host-adopted", Error = null });
+            else Post(() => pane.Start = StartLivePaneAsync(pane, restoredLive, liveProfile, cwd, env));
+        }
+        else if (handoff is { } h)
             // Default-terminal handoff: attach to conhost's existing PTY instead of spawning a shell.
             session.Attach(new Microsoft.Win32.SafeHandles.SafeFileHandle(h.ConOut, true),
                            new Microsoft.Win32.SafeHandles.SafeFileHandle(h.ConIn, true),
@@ -479,11 +521,12 @@ internal partial class Program
     /// split, a close, a swap or a restore).</summary>
     private Ses CreateSession(string id, string? name, string? cwd, Workspace ws, bool makeActive, float? fontSize = null,
         string? command = null, bool interactive = false, Dictionary<string, string>? extraEnv = null, string? profileName = null,
-        bool deElevate = false, HandoffArgs? handoff = null, string? paneId = null, SessionCommand? sessionCommand = null)
+        bool deElevate = false, HandoffArgs? handoff = null, string? paneId = null, SessionCommand? sessionCommand = null, JsonElement liveBinding = default)
     {
         lock (_workspaces) if (!_workspaces.Contains(ws)) throw new InvalidOperationException("workspace no longer exists");
         // Elevated profile from a non-elevated app: hand off to a separate elevated window (UAC).
-        if (profileName is not null && !IsElevated()
+        if (!RestoreState.HasLiveBinding(liveBinding) && ResolveProfile(profileName)?.Zmx is not { Enabled: true }
+            && profileName is not null && !IsElevated()
             && _profileCfg.Profiles.FirstOrDefault(p => p.Name.Equals(profileName, StringComparison.OrdinalIgnoreCase)) is { Elevate: true })
         {
             LaunchElevated(profileName);
@@ -500,7 +543,7 @@ internal partial class Program
         // closing it by any path leaves none (the id then resolves to the focused pane, like a name —
         // the rule by condition is on ISessionHost.SplitClose), and a restore hands the saved pane-0
         // id in — see the summary.
-        ses.Panes.Add(CreatePane(paneId ?? id, ws, cwd, fs, command, interactive: interactive, extraEnv: extraEnv, profileName: profileName, deElevate: deElevate, handoff: handoff, sessionCommand: sessionCommand));
+        ses.Panes.Add(CreatePane(paneId ?? id, ws, cwd, fs, command, interactive: interactive, extraEnv: extraEnv, profileName: profileName, deElevate: deElevate, handoff: handoff, sessionCommand: sessionCommand, liveBinding: liveBinding));
         ses.Active = 0;
         DetectSessionElevation(ses);   // refine ⚡ from the shell's real integrity once it's running
 
@@ -515,10 +558,10 @@ internal partial class Program
     }
 
     /// <summary>Append an extra pane to an existing session (used by split-layout restore).</summary>
-    private Pane AppendPane(Ses ses, string paneId, string? cwd, float fontSize)
+    private Pane AppendPane(Ses ses, string paneId, string? cwd, float fontSize, JsonElement liveBinding = default)
     {
         if (!OwnsSession(ses)) throw new InvalidOperationException("session no longer exists");
-        var p = CreatePane(paneId, ses.Ws, cwd, fontSize, profileName: ses.ProfileName);
+        var p = CreatePane(paneId, ses.Ws, cwd, fontSize, profileName: ses.ProfileName, liveBinding: liveBinding);
         lock (_workspaces) ses.Panes.Add(p);
         ObserveLayout(ses);
         return p;
@@ -1613,6 +1656,7 @@ internal partial class Program
     /// the queue) is a no-op, not a second dispose.</summary>
     private void ClosePane(Ses ses, Pane pane)
     {
+        if (BeginLiveClose([pane], () => ClosePane(ses, pane))) return;
         if (ses.HiddenSplit is { } hidden && ses.AllPanes.Contains(pane))
             lock (_workspaces)
             {
@@ -1648,6 +1692,18 @@ internal partial class Program
     /// (promote it into the main pane). Single-pane sessions keep the exited shell visible. (agterm #121.)</summary>
     private void OnPaneProcessExited(Pane p)
     {
+        if (RestoreState.HasLiveBinding(p.LiveBinding))
+        {
+            if (!p.LiveClosing)
+            {
+                if (RestoreState.LoadLiveBinding(p.LiveBinding, out _) is { } binding)
+                    p.LiveBinding = JsonSerializer.SerializeToElement(binding with { Recovery = "unavailable",
+                        Error = "Windows attachment ended; Linux workload has not yet been reconciled" });
+                ShowLiveError(p, "WSL attachment ended; retry verifies the saved workload before reconnecting");
+                SaveState();
+            }
+            return;
+        }
         if (_isQuickWindow && ReferenceEquals(p, _quick))
         {
             DismissQuick(); _quick = null; _cover = null; _coverKind = 0; _session = null;
@@ -1772,6 +1828,9 @@ internal partial class Program
 
     private void DisposeSessionResources(Ses ses)
     {
+        // Also covers failed Recent/startup construction before the posted
+        // live start runs. A retired pane must never start a late attachment.
+        foreach (var pane in ses.AllPanes) { pane.LiveClosing = true; pane.LiveRecovery.Cancel(); }
         DetachSessionUi(ses);
         FinalizeParkedWebCompanions(ses.Id);
         _retiredObservationSessions.GetOrCreateValue(ses);
@@ -1787,14 +1846,15 @@ internal partial class Program
         EvictWatermark(ses.BgPath); SweepBackground(ses.Id); // drop the session's watermark file + texture
     }
 
-    private void CloseSessionInternal(Ses ses, bool undoable = true)
+    private void CloseSessionInternal(Ses ses, bool undoable = true, bool remember = true)
     {
         if (ses.Closing) return;
+        if (BeginLiveClose(ses.AllPanes, () => CloseSessionInternal(ses, undoable, remember))) return;
         if (undoable && TrySoftCloseWebSession(ses)) return;
         FinalizeParkedWebCompanions(ses.Id);
         ses.Closing = true;
         foreach (var child in AllSessions().Where(s => s.PageParentId == ses.Id).ToArray()) CloseSessionInternal(child, undoable: false);
-        CaptureClosedSession(ses);   // remember it so Reopen Closed Session can bring it back
+        if (remember) CaptureClosedSession(ses);   // detach is not closed work
         bool wasActive = ReferenceEquals(_active, ses);
         DisposeSessionResources(ses);
         EmitEvent("tree");   // control-API event log (#273)
@@ -1806,7 +1866,8 @@ internal partial class Program
             Ses? next = _mru.Select(FindSes).FirstOrDefault(s => s is not null)
                         ?? AllSessions().FirstOrDefault();
             if (next is not null) SetActive(next);
-            else CreateSession(Guid.NewGuid().ToString(), null, null, ActiveWorkspace(), makeActive: true);
+            else if (remember) CreateSession(Guid.NewGuid().ToString(), null, null, ActiveWorkspace(), makeActive: true);
+            else { _active = null; _session = null; }
         }
         RequestRedraw();
         SaveState();

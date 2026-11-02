@@ -1,0 +1,5 @@
+{
+  "roles": ["zmx-role;n1:leader:7", "zmx-role;n1:follower:8", "zmx-role;n1:unowned:4294967295"],
+  "screen": "42 83 30 5 2 0\nhello 世界\n",
+  "capabilities": {"localWsl": true, "ssh": false, "presentation": false}
+}

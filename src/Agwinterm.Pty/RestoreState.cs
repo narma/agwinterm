@@ -42,7 +42,7 @@ namespace Agwinterm.Pty;
 /// <summary>One pane of a session. <c>Command</c> is the captured foreground command (restore-commands;
 /// <c>""</c> = nothing captured), <c>RestoreCommand</c> the explicit pin (independent of the toggle),
 /// <c>AgentResume</c> the bound resumable agent. Cwd/FontSize are per pane since splits.</summary>
-public sealed class PaneState { [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Agwinterm.Core.PaneAppearance? Appearance { get; set; } public string Id { get; set; } = ""; public string Cwd { get; set; } = ""; public float FontSize { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? FontZoomed { get; set; } public float Ratio { get; set; } = 1f; public string Command { get; set; } = ""; public string? AgentResume { get; set; } public string? RestoreCommand { get; set; } public List<string>? Buffer { get; set; } public string? BufferBlob { get; set; } }
+public sealed class PaneState { [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public JsonElement LiveBinding { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Agwinterm.Core.PaneAppearance? Appearance { get; set; } public string Id { get; set; } = ""; public string Cwd { get; set; } = ""; public float FontSize { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? FontZoomed { get; set; } public float Ratio { get; set; } = 1f; public string Command { get; set; } = ""; public string? AgentResume { get; set; } public string? RestoreCommand { get; set; } public List<string>? Buffer { get; set; } public string? BufferBlob { get; set; } }
 
 // Cwd/FontSize kept for backward-compat with pre-splits state.json (one pane per session).
 public sealed class SessionState
@@ -117,6 +117,24 @@ public static class RestoreState
 
     /// <summary>The file's text for <paramref name="state"/>. UTF-8 without BOM when the host writes it.</summary>
     public static string Serialize(AppState state) => JsonSerializer.Serialize(state, Json);
+
+    public static bool HasLiveBinding(JsonElement raw) => raw.ValueKind != JsonValueKind.Undefined;
+
+    /// <summary>Preserve unknown/corrupt bindings as unavailable, never ordinary replay candidates.</summary>
+    public static WslLiveBinding? LoadLiveBinding(JsonElement raw, out string? error)
+    {
+        error = null;
+        if (!HasLiveBinding(raw)) return null;
+        try
+        {
+            var value = raw.Deserialize<WslLiveBinding>();
+            if (value is { IsValid: true }) return value;
+            error = "Unsupported or invalid WSL live binding";
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
+        { error = "Invalid WSL live binding: " + ex.Message; }
+        return null;
+    }
 
     /// <summary>
     /// Parse a restore file. False (and null) when the JSON does not parse — the host's cue to rename

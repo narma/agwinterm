@@ -50,6 +50,17 @@ bool printTextField = false;
 
 switch (area)
 {
+    case "zmx":
+        if (rest.Count != 0) { Console.Error.WriteLine("zmx accepts named options only"); return 2; }
+        cmd = "zmx." + sub;
+        target = Opt("target");
+        foreach (string key in new[] { "profile", "daemon", "incarnation", "source" })
+            if (Opt(key) is { } value) cargs[key] = value;
+        if (valued.Contains("force")) { Console.Error.WriteLine("--force takes no value"); return 2; }
+        if (options.ContainsKey("force")) cargs["force"] = true;
+        try { WslLiveControl.Validate(cmd, JsonSerializer.SerializeToElement(cargs), target); }
+        catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+        break;
     case "recent":
         if (rest.Count > 1 || sub == "list" && rest.Count != 0 || sub == "open" && rest.Count != 1 ||
             rest.Count == 1 && !Guid.TryParse(rest[0], out _))

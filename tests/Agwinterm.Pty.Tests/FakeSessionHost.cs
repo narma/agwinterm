@@ -7,8 +7,18 @@ namespace Agwinterm.Pty.Tests;
 /// <summary>An in-memory <see cref="ISessionHost"/> for testing the control-API JSON contract without the
 /// Win32 UI: real workspace→session state + window flags, so tree/window.state/lifecycle verbs can be
 /// asserted end-to-end. Peripheral verbs return sensible constants.</summary>
-internal sealed class FakeSessionHost : ISessionHost
+internal sealed class FakeSessionHost : ISessionHost, IWslLiveHost
 {
+    public int LiveCalls { get; private set; }
+    public Func<string, System.Text.Json.JsonElement, string?, object>? LiveHandler { get; set; }
+    public Func<string, System.Text.Json.JsonElement, ISession, System.Text.Json.JsonElement?>? LiveTerminalHandler { get; set; }
+    public object LiveCommand(string command, System.Text.Json.JsonElement args, string? target)
+    {
+        LiveCalls++;
+        return LiveHandler?.Invoke(command, args, target) ?? new { target };
+    }
+    public System.Text.Json.JsonElement? LiveTerminalCommand(string command, System.Text.Json.JsonElement args, ISession session)
+        => LiveTerminalHandler?.Invoke(command, args, session);
     public Func<string?, bool>? PageCompanionLookup { get; set; }
     public bool IsPageCompanion(string? target) => PageCompanionLookup?.Invoke(target) ?? false;
     public WebOverlayRequest? LastWebRequest { get; private set; }

@@ -147,6 +147,7 @@ public sealed class ServerSession : ISession
     /// a fresh shell — restore must then skip buffer seeding, agent-resume typing, and
     /// restore-commands (the real thing is still running; typing a resume into it would be chaos).</summary>
     public bool Adopted { get; private set; }
+    public string CreationTicket => _creationTicket;
 
     // ---- Agent status: a UI-process concept (set via the control API), tracked locally exactly
     // like TerminalSession — the host knows nothing about it. Kept duplicated (25 lines) rather
@@ -286,11 +287,11 @@ public sealed class ServerSession : ISession
     /// attach with a repaint, seed the replica from the host's snapshot (scrollback text + modes),
     /// and go live — the child process keeps running untouched. False = nothing to adopt, launch
     /// fresh; an exited leftover is reaped here so the fresh launch starts clean.</summary>
-    public bool TryAdopt()
+    public bool TryAdopt(string? expectedCreationTicket = null)
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? ""); _creationHostPid = client.HostPid; }
         catch { return false; }                       // no such session (or host unreachable)
         _creationTicket = att.CreationTicket;
         if (att.HasExited)

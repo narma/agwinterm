@@ -1,0 +1,13 @@
+{
+  "endpoint": {"executable": "/opt/agterm/zmx", "socketDirectory": "/run/user/1000/agterm"},
+  "sessions": [{
+    "id": "origin-session", "name": "Research",
+    "windowID": "origin-window", "windowName": "main",
+    "workspaceID": "origin-workspace", "workspaceName": "dev",
+    "cwd": "/home/alice/work", "splitAxis": "horizontal",
+    "panes": [
+      {"pane": "left", "daemon": "agterm-11111111111111111111111111111111"},
+      {"pane": "right", "daemon": "agterm-22222222222222222222222222222222"}
+    ]
+  }]
+}

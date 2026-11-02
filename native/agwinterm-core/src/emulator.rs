@@ -1048,8 +1048,7 @@ impl Emulator {
     /// attributes, then the cursor. A pty-host sends it to a reattaching client, because a bundled
     /// ConPTY passes output through and so does not repaint the viewport on a resize the way the
     /// inbox conhost does (#339). Trailing default blanks are left out; the pen ends reset.
-    pub fn dump_screen(&self) -> String {
-        let screen = self.screen();
+    fn dump_cells(&self, screen: &ScreenBuffer) -> String {
         let (rows, cols) = (screen.rows(), screen.cols());
         // The cells hold the glyphs already drawn, so they are replayed as ASCII (G0 and G1 ASCII, SI);
         // the app's character sets are restored at the end, for its next output.
@@ -1093,6 +1092,13 @@ impl Emulator {
                 s.push_str("\u{1b}[0m");
             }
         }
+        s
+    }
+
+    pub fn dump_screen(&self) -> String {
+        let screen = self.screen();
+        let (rows, cols) = (screen.rows(), screen.cols());
+        let mut s = self.dump_cells(screen);
         // DECSTBM homes the cursor, so the margins go before the cursor is placed.
         if self.scroll_top != 0 || self.scroll_bottom != rows - 1 {
             s.push_str(&format!(
@@ -1163,6 +1169,12 @@ impl Emulator {
         let mut s = String::new();
         let current = (self.g0_line_drawing, self.g1_line_drawing, self.shifted_out);
         if self.on_alt {
+            s.push_str(&self.dump_cells(&self.main));
+            s.push_str(&format!(
+                "\u{1b}[{};{}H",
+                self.saved_row + 1,
+                self.saved_col + 1
+            ));
             // Entering 1049 saves the character sets, so the replica must enter it with the sets the
             // app had before it did, and only then take the alt screen's own.
             s.push_str(&charsets_seq(self.saved_charsets));
@@ -1191,6 +1203,9 @@ impl Emulator {
         }
         if self.bracketed_paste {
             s.push_str("\u{1b}[?2004h");
+        }
+        for flags in &self.kbd_stack {
+            s.push_str(&format!("\u{1b}[>{flags}u"));
         }
         if self.focus_reporting {
             s.push_str("\u{1b}[?1004h");
@@ -2023,6 +2038,38 @@ mod tests {
         let erased = t.emu.screen().get(0, 2);
         assert_eq!(erased.background, Color::from_index(1)); // BCE carries the pen bg
         assert_eq!(erased.rune, ' ' as i32);
+    }
+
+    #[test]
+    fn reattach_preserves_keyboard_stack_and_pop_behavior() {
+        let mut original = Terminal::new(80, 24);
+        original.feed(b"\x1b[>1u\x1b[>3u");
+        let mut replay = Terminal::new(80, 24);
+        replay.feed(original.emu.dump_modes().as_bytes());
+        assert_eq!(replay.emu.keyboard_flags(), 3);
+        replay.feed(b"\x1b[<u");
+        assert_eq!(replay.emu.keyboard_flags(), 1);
+        replay.feed(b"\x1b[<u");
+        assert_eq!(replay.emu.keyboard_flags(), 0);
+    }
+
+    #[test]
+    fn reattach_preserves_hidden_primary_and_saved_cursor() {
+        let mut original = Terminal::new(80, 24);
+        original.feed(b"\x1b[31mPRIMARY\x1b[0m\x1b[5;9H\x1b[?1049hALTERNATE");
+        let mut replay = Terminal::new(80, 24);
+        replay.feed(original.emu.dump_modes().as_bytes());
+        replay.feed(original.emu.dump_screen().as_bytes());
+        replay.feed(b"\x1b[?1049l");
+        original.feed(b"\x1b[?1049l");
+        assert_eq!(replay.emu.cursor_row, original.emu.cursor_row);
+        assert_eq!(replay.emu.cursor_col, original.emu.cursor_col);
+        for col in 0..80 {
+            assert_eq!(
+                replay.emu.screen().get(0, col),
+                original.emu.screen().get(0, col)
+            );
+        }
     }
 
     #[test]

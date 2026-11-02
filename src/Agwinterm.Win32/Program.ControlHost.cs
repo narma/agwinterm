@@ -229,7 +229,8 @@ internal partial class Program
                                              .Select(t => OverlayPanes.Word(t.i)).ToList(), Hud: huds.GetValueOrDefault(s.Id),
                         ForegroundShells: s.Panes.Select(p => p.S.HasExited ? null : shells.GetValueOrDefault(p)).ToList(),
                         CustomName: s.CustomName,
-                        PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf), OverlayDetails: overlays.GetValueOrDefault(s.Id), HtmlOverlays: webs.GetValueOrDefault(s.Id), PageParentId: s.PageParentId);
+                        PaneCwds: s.Panes.ToDictionary(p => p.Id, CwdOf), OverlayDetails: overlays.GetValueOrDefault(s.Id), HtmlOverlays: webs.GetValueOrDefault(s.Id), PageParentId: s.PageParentId,
+                        LiveSessions: s.Panes.Where(p => RestoreState.HasLiveBinding(p.LiveBinding)).ToDictionary(p => p.Id, LiveReadback));
                 }).ToList()
             , Collapsed: !w.Expanded, DefaultDir: w.DefaultDir)).ToList();
     }

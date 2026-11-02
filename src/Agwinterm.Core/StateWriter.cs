@@ -53,6 +53,7 @@ public sealed class StateWriter
     private readonly ManualResetEvent _stopping = new(false);   // interrupts the settle, unlike an Enqueue
     private readonly TimeSpan _settle;
     private readonly Action<string>? _log;
+    private readonly Action<string, string>? _failed;
     private readonly Thread? _worker;
     private long _clock;
 
@@ -60,10 +61,11 @@ public sealed class StateWriter
     /// newest of them. Zero writes as soon as it wakes.</param>
     /// <param name="log">Where a background write's failure is reported (a synchronous one is
     /// reported to its caller). Null drops them.</param>
-    public StateWriter(TimeSpan settle, Action<string>? log = null)
+    public StateWriter(TimeSpan settle, Action<string>? log = null, Action<string, string>? failed = null)
     {
         _settle = settle;
         _log = log;
+        _failed = failed;
         try
         {
             _worker = new Thread(Run) { IsBackground = true, Name = "agwinterm state writer" };
@@ -128,7 +130,9 @@ public sealed class StateWriter
             s = SlotFor(path);
             if (s.Pending is not null && s.PendingStamp <= stamp) s.Pending = null;
         }
-        return Write(s, path, text, stamp, out why);
+        bool ok = Write(s, path, text, stamp, out why);
+        if (!ok) ReportFailure(path, why!);
+        return ok;
     }
 
     /// <summary>Remove the file, as the newest thing that happened to it: a snapshot still queued or
@@ -194,7 +198,11 @@ public sealed class StateWriter
         foreach (var (path, slot, text, stamp) in work)
         {
             BeforeWrite?.Invoke(path);
-            if (!Write(slot, path, text, stamp, out var why)) _log?.Invoke($"state save to {path} failed: {why}");
+            if (!Write(slot, path, text, stamp, out var why))
+            {
+                _log?.Invoke($"state save to {path} failed: {why}");
+                ReportFailure(path, why!);
+            }
         }
         Interlocked.Increment(ref _drains);
     }
@@ -231,5 +239,11 @@ public sealed class StateWriter
                 return false;
             }
         }
+    }
+
+    private void ReportFailure(string path, string why)
+    {
+        // UI notification failures must never stop the persistence worker.
+        try { _failed?.Invoke(path, why); } catch { }
     }
 }
