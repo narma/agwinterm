@@ -346,6 +346,11 @@ internal partial class Program
     /// <summary>The subset drawn as decoration lines — the only styling visible on a blank cell.</summary>
     private const CellAttributes LineMask = CellAttributes.Underline | CellAttributes.Strikethrough;
 
+    // OSC 8 links are visibly underlined even when the application sends no SGR 4.
+    // Keep this a presentation choice: the cell's original SGR attributes remain intact.
+    private static CellAttributes DisplayStyle(Cell cell) => (cell.Attributes & StyleMask)
+        | (cell.Hyperlink is null ? CellAttributes.None : CellAttributes.Underline);
+
     /// <summary>Whether a BMP width-1 glyph is safe to coalesce into a text run: ASCII always is
     /// (any monospace font is grid-exact there); anything else only if the configured family
     /// itself covers it — a FALLBACK glyph's advance is arbitrary and would derail the run.</summary>
@@ -483,9 +488,9 @@ internal partial class Program
                     bool startBlank = cell.Rune == ' ' || cell.Rune == '\0';
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
-                    if (cell.Width == 0 || (startBlank && (cell.Attributes & LineMask) == 0)) { c++; continue; }
+                    if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
                     Color runFg = EffectiveFg(cell, localBackground);
-                    CellAttributes runStyle = cell.Attributes & StyleMask;
+                    CellAttributes runStyle = DisplayStyle(cell);
                     // Only claim the vector renderer's implemented set. Other glyphs retain the
                     // normal font-fallback, style and clipping rules below.
                     if (_config.BuiltinGlyphs && BuiltinBoxGlyphs.Supports(cell.Rune))
@@ -493,6 +498,8 @@ internal partial class Program
                         float bx = ox + c * cw;
                         if (!DrawBoxGlyph(rt, brush, cell.Rune, bx, y, cw, ch, C4(runFg)))
                         { brush.Color = C4(runFg); rt.DrawText(RuneStr(cell.Rune), StyleFmt(fmt, runStyle), new Rect(bx, y, cw, ch), brush, DrawTextOptions.Clip); }
+                        brush.Color = C4(runFg);
+                        DrawDecorations(bx, cw, y, runStyle);
                         c++; continue;
                     }
                     if (cell.Width == 2 || cell.Rune > 0xFFFF || !GridTrue(cell.Rune))
@@ -531,8 +538,8 @@ internal partial class Program
                         if (!blank && !GridTrue(cc.Rune)) break;   // fallback glyph → its own solo draw
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
-                        if (blank) { if ((cc.Attributes & LineMask) != (runStyle & LineMask)) break; }
-                        else if (EffectiveFg(cc, localBackground) != runFg || (cc.Attributes & StyleMask) != runStyle) break;
+                        if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask)) break; }
+                        else if (EffectiveFg(cc, localBackground) != runFg || DisplayStyle(cc) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);
                         c++;
                         if (!blank) lastNonBlank = _run.Length;

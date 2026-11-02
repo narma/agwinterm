@@ -45,6 +45,30 @@ try {
             if($struck[$i]-ne $blank[$i] -and ($struck[$i]-band 0xffffff)-eq 0x125a9f){$line++}
         }
         Check "SGR 9 draws strikethrough (ligatures=$ligatures)" ($line-gt 50) "line pixels=$line"
+        foreach($builtin in 'true','false') {
+            $null=Rpc 'config.set' @{key='builtin-glyphs';value=$builtin}
+            $ink=$esc+'[38;2;18;90;159m'
+            $label=' linked ASCII Привет ── 🔴 中  '
+            $prefix=$clear+$ink+'plain before '
+            $suffix=' plain after'
+            # Reference: explicit underline over exactly the label, including its spaces.
+            $null=Rpc 'session.write' @{text=($prefix+$esc+'[4m'+$label+$esc+'[24m'+$suffix)} $session
+            $reference=RenderPixels "link-reference-$ligatures-$builtin"
+            $openLink=$esc+']8;;https://example.com'+$esc+'\'
+            $closeLink=$esc+']8;;'+$esc+'\'
+            # SGR 24 inside OSC 8 must not remove the link's presentation underline.
+            $null=Rpc 'session.write' @{text=($prefix+$openLink+$esc+'[24m'+$label+$closeLink+$suffix)} $session
+            $linked=RenderPixels "link-default-$ligatures-$builtin"
+            $mismatches=0;$inkPixels=0
+            for($i=0;$i-lt $linked.Length;$i++) {
+                $expected=($reference[$i]-band 0xffffff)-eq 0x125a9f
+                $actual=($linked[$i]-band 0xffffff)-eq 0x125a9f
+                if($expected){$inkPixels++}
+                if($expected-ne $actual){$mismatches++}
+            }
+            Check "OSC 8 underline matches SGR 4 and stops at link boundary (ligatures=$ligatures builtin=$builtin)" `
+                ($inkPixels-gt 50 -and $mismatches-eq 0) "ink=$inkPixels mismatches=$mismatches"
+        }
     }
 } finally {
     $null=Rpc 'session.write' @{text=($esc+'[0m'+$esc+'[?25h'+$esc+'[?1049l')} $session

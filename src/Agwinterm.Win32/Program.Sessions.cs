@@ -143,6 +143,8 @@ internal partial class Program
             // Claude Code 2.1.186+ otherwise leaves ~~markers~~ literal for unrecognized terminals.
             // Our renderer supports SGR 9/29. Preserve an explicit inherited/profile override.
             ["CLAUDE_CODE_FORCE_STRIKETHROUGH"] = Environment.GetEnvironmentVariable("CLAUDE_CODE_FORCE_STRIKETHROUGH") ?? "1",
+            // Advertise OSC 8 support to clients whose terminal allowlist omits agwinterm.
+            ["FORCE_HYPERLINK"] = Environment.GetEnvironmentVariable("FORCE_HYPERLINK") ?? "1",
             // The theme a pty-host answers OSC 10/11 with while no UI is attached (#339).
             [ThemeColors.EnvVar] = ThemeColors.Format(_theme.DefaultForeground, _theme.DefaultBackground),
         };

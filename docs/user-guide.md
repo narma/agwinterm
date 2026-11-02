@@ -87,6 +87,10 @@ The existing opening policy applies: HTTP(S) and file links are supported.
   An inherited value or profile environment setting can override this default. Restart Claude in a
   new pane after updating; existing shells keep their environment. See the
   [Claude Code environment variable reference](https://code.claude.com/docs/en/env-vars).
+- OSC 8 hyperlinks are underlined without hovering. New sessions default `FORCE_HYPERLINK=1`
+  (also forwarded to WSL), so Claude Code can emit links without recognizing the terminal name.
+  An inherited value or profile environment setting overrides this default; use `0` to disable
+  forced hyperlinks. This controls whether supporting applications emit links, not their appearance.
 - **Git Bash working directory**: PowerShell panes report their directory out of the box. A Git Bash
   (or MSYS2) pane does it with a few lines in `~/.bashrc`, so the title shows the directory and the pane
   restores in it after a restart (agwinterm 0.20.11 or later, earlier builds also raised a notification):
