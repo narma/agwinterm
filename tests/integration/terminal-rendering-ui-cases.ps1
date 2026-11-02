@@ -1,0 +1,147 @@
+# Runs through hud-ui.ps1's isolated app and background Sandbox routing.
+function WaitRenderShellQuiet {
+    # A font change resizes ConPTY; cmd can asynchronously repaint its prompt over
+    # session.write's synthetic scene. Wait for that output before injecting pixels.
+    $previous=[string](Rpc 'session.text' @{} $session);$quiet=0
+    for($attempt=0;$attempt-lt 50;$attempt++) {
+        Start-Sleep -Milliseconds 100
+        $next=[string](Rpc 'session.text' @{} $session)
+        if($next-ceq $previous){$quiet++}else{$quiet=0}
+        if($quiet-ge 5){return}
+        $previous=$next
+    }
+    throw 'Shell did not settle after font resize'
+}
+function RenderPixels([string]$name) {
+    Start-Sleep -Milliseconds 300
+    $oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
+    try {
+        $rc=[HudOwnedJob+RECT]::new();[void][HudOwnedJob]::GetClientRect($hwnd,[ref]$rc)
+        $bitmap=[Drawing.Bitmap]::new($rc.right,$rc.bottom);$g=[Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $dc=$g.GetHdc()
+            try {if(-not [HudOwnedJob]::PrintWindow($hwnd,$dc,3)){throw 'Render capture failed'}} finally {$g.ReleaseHdc($dc)}
+            $bitmap.Save((Join-Path $artifact "$name.png"))
+            $script:renderWidth=$bitmap.Width
+            $bits=$bitmap.LockBits([Drawing.Rectangle]::new(0,0,$bitmap.Width,$bitmap.Height),[Drawing.Imaging.ImageLockMode]::ReadOnly,[Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            try {
+                $pixels=[int[]]::new($bitmap.Width*$bitmap.Height)
+                [Runtime.InteropServices.Marshal]::Copy($bits.Scan0,$pixels,0,$pixels.Length)
+                return ,$pixels
+            } finally {$bitmap.UnlockBits($bits)}
+        } finally {$g.Dispose();$bitmap.Dispose()}
+    } finally {[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
+}
+$esc=[string][char]27
+$null=Rpc 'config.set' @{key='cursor-blink';value='false'}
+# Use a font installed in Sandbox, avoiding missing-user-font notification pixels.
+$null=Rpc 'config.set' @{key='font-family';value='Consolas'}
+WaitRenderShellQuiet
+$null=Rpc 'session.write' @{text=($esc+'[?1049h'+$esc+'[?25l')} $session
+try {
+    foreach($ligatures in 'true','false') {
+        $null=Rpc 'config.set' @{key='ligatures';value=$ligatures}
+        $clear=$esc+'[0m'+$esc+'[2J'+$esc+'[H'
+        $null=Rpc 'session.write' @{text=$clear} $session
+        $blank=RenderPixels "blank-$ligatures"
+        $null=Rpc 'session.write' @{text=($esc+'[H🔴 🔵')} $session
+        $colored=RenderPixels "emoji-$ligatures"
+        $red=0;$blue=0
+        $redRows=@{};$blueRows=@{}
+        for($i=0;$i-lt $colored.Length;$i++) {
+            if($colored[$i]-eq $blank[$i]){continue}
+            $r=($colored[$i]-shr 16)-band 255;$g=($colored[$i]-shr 8)-band 255;$b=$colored[$i]-band 255
+            $row=[int][Math]::Floor($i/$script:renderWidth)
+            if($r-gt 120 -and $r-gt $g+40 -and $r-gt $b+40){$red++;$redRows[$row]++}
+            if($b-gt 120 -and $b-gt $r+40 -and $b-gt $g+20){$blue++;$blueRows[$row]++}
+        }
+        Check "emoji retain red and blue colour (ligatures=$ligatures)" ($red-gt 10 -and $blue-gt 10) "red=$red blue=$blue"
+        foreach($circle in @(@{name='red';rows=$redRows},@{name='blue';rows=$blueRows})) {
+            $rows=@($circle.rows.Keys | Sort-Object)
+            $peak=($circle.rows.Values | Measure-Object -Maximum).Maximum
+            $last=if($rows.Count){$circle.rows[$rows[-1]]}else{0}
+            # A whole circle tapers at its lower edge; clipping leaves a wide flat base.
+            Check "$($circle.name) circle has an intact lower contour (ligatures=$ligatures)" `
+                ($rows.Count-ge 8 -and $last-lt $peak*0.5) "rows=$($rows.Count) last=$last widest=$peak"
+        }
+        # U+2764 is BMP, width 1 in our grid, and present in Segoe UI Emoji itself.
+        # Selecting that family makes GridTrue succeed, so both hearts coalesce into
+        # DrawRun (DrawText with ligatures, DrawTextLayout without), not solo fallback.
+        $originalFamily=Rpc 'config.get' @{key='font-family'}
+        try {
+            $null=Rpc 'config.set' @{key='font-family';value='Segoe UI Emoji'}
+            $null=Rpc 'session.write' @{text=$clear} $session
+            $runBlank=RenderPixels "color-run-blank-$ligatures"
+            $null=Rpc 'session.write' @{text=($esc+'[38;2;255;255;255m❤❤')} $session
+            $runColored=RenderPixels "color-run-$ligatures"
+            $runRed=0
+            for($i=0;$i-lt $runColored.Length;$i++) {
+                if($runColored[$i]-eq $runBlank[$i]){continue}
+                $r=($runColored[$i]-shr 16)-band 255;$g=($runColored[$i]-shr 8)-band 255;$b=$runColored[$i]-band 255
+                if($r-gt 120 -and $r-gt $g+40 -and $r-gt $b+40){$runRed++}
+            }
+            Check "coalesced BMP color-font run retains red with a white pen (ligatures=$ligatures)" ($runRed-gt 10) "red=$runRed"
+        } finally {
+            $null=Rpc 'config.set' @{key='font-family';value=$originalFamily}
+            WaitRenderShellQuiet
+        }
+        # Spaces isolate the decoration from glyph ink: SGR 9 must add a visible line.
+        $null=Rpc 'session.write' @{text=($clear+$esc+'[38;2;18;90;159m'+$esc+'[9m'+(' '*20)+$esc+'[29m')} $session
+        $struck=RenderPixels "strikethrough-$ligatures"
+        $line=0
+        for($i=0;$i-lt $struck.Length;$i++) {
+            if($struck[$i]-ne $blank[$i] -and ($struck[$i]-band 0xffffff)-eq 0x125a9f){$line++}
+        }
+        Check "SGR 9 draws strikethrough (ligatures=$ligatures)" ($line-gt 50) "line pixels=$line"
+        # Repeated symbols with different pen colours/styles and one-/two-cell clips must
+        # survive warm reuse, LRU churn and a font reset with identical rendered pixels.
+        $cacheScene=$clear+$esc+'[31m⏺X ⏺  🔴中 '+$esc+'[1m⏺X 🔴 '+$esc+'[3m中 '+$esc+'[0;34m⏺X ⏺'
+        $null=Rpc 'session.write' @{text=$cacheScene} $session
+        $cacheReference=RenderPixels "cache-reference-$ligatures"
+        $cacheWarm=RenderPixels "cache-warm-$ligatures"
+        $churn=-join (0x4e00..0x4f40|ForEach-Object {[char]$_})
+        $null=Rpc 'session.write' @{text=($clear+$churn)} $session
+        $null=RenderPixels "cache-churn-$ligatures"
+        $null=Rpc 'session.write' @{text=$cacheScene} $session
+        $cacheAfter=RenderPixels "cache-after-churn-$ligatures"
+        $family=Rpc 'config.get' @{key='font-family'}
+        $null=Rpc 'config.set' @{key='font-family';value='Segoe UI Emoji'}
+        $null=Rpc 'config.set' @{key='font-family';value=$family}
+        WaitRenderShellQuiet
+        $null=Rpc 'session.write' @{text=$cacheScene} $session
+        $cacheReset=RenderPixels "cache-after-reset-$ligatures"
+        foreach($comparison in @(@{name='warm';pixels=$cacheWarm},@{name='churn';pixels=$cacheAfter},@{name='reset';pixels=$cacheReset})) {
+            $mismatches=0
+            for($i=0;$i-lt $cacheReference.Length;$i++) {
+                if($cacheReference[$i]-ne $comparison.pixels[$i]){$mismatches++}
+            }
+            Check "solo glyph pixels survive cache $($comparison.name) (ligatures=$ligatures)" ($mismatches-eq 0) "mismatches=$mismatches"
+        }
+        foreach($builtin in 'true','false') {
+            $null=Rpc 'config.set' @{key='builtin-glyphs';value=$builtin}
+            $ink=$esc+'[38;2;18;90;159m'
+            $label=' linked ASCII Привет ── 🔴 中  '
+            $prefix=$clear+$ink+'plain before '
+            $suffix=' plain after'
+            # Reference: explicit underline over exactly the label, including its spaces.
+            $null=Rpc 'session.write' @{text=($prefix+$esc+'[4m'+$label+$esc+'[24m'+$suffix)} $session
+            $reference=RenderPixels "link-reference-$ligatures-$builtin"
+            $openLink=$esc+']8;;https://example.com'+$esc+'\'
+            $closeLink=$esc+']8;;'+$esc+'\'
+            # SGR 24 inside OSC 8 must not remove the link's presentation underline.
+            $null=Rpc 'session.write' @{text=($prefix+$openLink+$esc+'[24m'+$label+$closeLink+$suffix)} $session
+            $linked=RenderPixels "link-default-$ligatures-$builtin"
+            $mismatches=0;$inkPixels=0
+            for($i=0;$i-lt $linked.Length;$i++) {
+                $expected=($reference[$i]-band 0xffffff)-eq 0x125a9f
+                $actual=($linked[$i]-band 0xffffff)-eq 0x125a9f
+                if($expected){$inkPixels++}
+                if($expected-ne $actual){$mismatches++}
+            }
+            Check "OSC 8 underline matches SGR 4 and stops at link boundary (ligatures=$ligatures builtin=$builtin)" `
+                ($inkPixels-gt 50 -and $mismatches-eq 0) "ink=$inkPixels mismatches=$mismatches"
+        }
+    }
+} finally {
+    $null=Rpc 'session.write' @{text=($esc+'[0m'+$esc+'[?25h'+$esc+'[?1049l')} $session
+}

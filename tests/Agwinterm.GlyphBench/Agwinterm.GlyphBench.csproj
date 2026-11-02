@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
+    <Compile Include="../../src/Agwinterm.Win32/SoloGlyphCache.cs" Link="SoloGlyphCache.cs" />
+  </ItemGroup>
+</Project>

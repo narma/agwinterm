@@ -108,13 +108,16 @@ public partial class WslIntegrationTests
         {
             ["WSLENV"] = "CUSTOM/p:AGWINTERM_PIPE/u:AGWINTERM_SESSION_ID/p",
             ["AGWINTERM_PIPE"] = "private-pipe", ["AGWINTERM_SESSION_ID"] = "pane-1",
-            ["TERM_PROGRAM"] = "agwinterm", ["CUSTOM"] = @"C:\work"
+            ["TERM_PROGRAM"] = "agwinterm", ["CUSTOM"] = @"C:\work",
+            ["CLAUDE_CODE_FORCE_STRIKETHROUGH"] = "1", ["FORCE_HYPERLINK"] = "1"
         };
         WslIntegration.ExportEnvironment(env);
         string once = env["WSLENV"];
         WslIntegration.ExportEnvironment(env);
         Assert.Equal(once, env["WSLENV"]);
-        Assert.Equal("CUSTOM/p:AGWINTERM_PIPE:AGWINTERM_SESSION_ID:TERM_PROGRAM", once);
+        Assert.Equal("CUSTOM/p:AGWINTERM_PIPE:AGWINTERM_SESSION_ID:TERM_PROGRAM:CLAUDE_CODE_FORCE_STRIKETHROUGH:FORCE_HYPERLINK", once);
+        Assert.Equal("1", env["CLAUDE_CODE_FORCE_STRIKETHROUGH"]);
+        Assert.Equal("1", env["FORCE_HYPERLINK"]);
     }
 
     [Theory]
