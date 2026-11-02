@@ -201,6 +201,18 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
                              "operation": restart_request["newOperation"], "identity": restarted["identity"]}))
             assert reply(start(restart_request))["state"] == "terminated"
         print("PASS live restart refuses; four explicit sources each run once with new identity; retries never relaunch", flush=True)
+        chained_request = {"verb": "restart", "ledger": request["ledger"],
+                           "operation": restart_request["newOperation"], "newOperation": str(uuid.uuid4()),
+                           "identity": restarted["identity"], "source": "shell", "command": None}
+        chained = reply(start(chained_request))
+        try:
+            assert chained["state"] == "ready", chained
+            assert (root / "counter").read_text() == "3", "shell restart reused saved command instead of original argv"
+            assert (root / "captured-once").read_text() == "1"
+        finally:
+            reply(start({"verb": "terminate", "ledger": request["ledger"],
+                         "operation": chained_request["newOperation"], "identity": chained["identity"]}))
+        print("PASS chained selected-command then shell restart preserves original shell argv", flush=True)
         lost = copy.deepcopy(request)
         lost["operation"] = str(uuid.uuid4())
         lost["specification"]["argv"] = [sys.executable, "-c", "import time; time.sleep(300)"]

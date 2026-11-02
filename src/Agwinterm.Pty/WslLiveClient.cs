@@ -22,13 +22,28 @@ public sealed class WslLiveClient
 
     public async Task<Location> PrepareAsync(ShellProfile profile, string appId, string? cwd, CancellationToken ct)
     {
-        var modules = new[] { "zmx_helper.py", "zmx_exact.py", "zmx_ledger.py", "zmx_readiness.py" }
-            .ToDictionary(n => n, n => Convert.ToBase64String(Encoding.UTF8.GetBytes(Source(n))));
         // Same application/profile endpoint is stable; distro and user each have their own filesystem.
         string endpoint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(appId + "\0" + profile.Name)))[..24];
         var args = WslIntegration.Selectors(profile.Args).ToList();
         string? directory = cwd ?? WslIntegration.ProfileDirectory(profile);
         if (!string.IsNullOrWhiteSpace(directory)) args.AddRange(["--cd", directory]);
+        return await InstallAsync(args, endpoint, ct).ConfigureAwait(false);
+    }
+
+    public async Task<Location> RefreshAsync(Location saved, CancellationToken ct)
+    {
+        var current = await InstallAsync(WslLiveProfiles.ResolvedSelectors(saved.Distribution, saved.User).ToList(),
+            saved.Ledger.Split('/').Last(), ct).ConfigureAwait(false);
+        if (current.Distribution != saved.Distribution || current.User != saved.User || current.Ledger != saved.Ledger
+            || current.SocketDirectory != saved.SocketDirectory)
+            throw new InvalidOperationException("Helper update resolved a different saved endpoint");
+        return current;
+    }
+
+    private static async Task<Location> InstallAsync(List<string> args, string endpoint, CancellationToken ct)
+    {
+        var modules = new[] { "zmx_helper.py", "zmx_exact.py", "zmx_ledger.py", "zmx_readiness.py" }
+            .ToDictionary(n => n, n => Convert.ToBase64String(Encoding.UTF8.GetBytes(Source(n))));
         args.AddRange(["--exec", "python3", "-B", "-c", Source("zmx_install.py")]);
         var result = await RequestAsync(args, new { endpoint, modules }, ct).ConfigureAwait(false);
         if (result.TryGetProperty("error", out var error)) throw new InvalidOperationException(error.GetString());

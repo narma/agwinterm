@@ -50,7 +50,7 @@ def clean_environment(values):
 
 
 def validate_spec(spec):
-    if set(spec) != {"executable", "socketDirectory", "cwd", "argv", "environment"}:
+    if set(spec) - {"shellArgv"} != {"executable", "socketDirectory", "cwd", "argv", "environment"}:
         raise ValueError("unknown or missing launch fields")
     for key in ("executable", "socketDirectory", "cwd"):
         value = spec[key]
@@ -59,6 +59,9 @@ def validate_spec(spec):
     argv = spec["argv"]
     if not isinstance(argv, list) or not argv or len(argv) > 256 or not all(isinstance(a, str) and "\0" not in a for a in argv) or not argv[0]:
         raise ValueError("invalid workload argv")
+    shell = spec.get("shellArgv", argv)
+    if not isinstance(shell, list) or not shell or len(shell) > 256 or not all(isinstance(a, str) and "\0" not in a for a in shell) or not shell[0]:
+        raise ValueError("invalid original shell argv")
     clean_environment(spec["environment"])
     require_dependency(spec["executable"])
     if spec["socketDirectory"].startswith("/mnt/") or len(spec["socketDirectory"].encode()) + 40 >= 108:
@@ -68,7 +71,7 @@ def validate_spec(spec):
 
 
 def public(record):
-    return {key: record[key] for key in ("operation", "name", "state", "identity", "guard", "error") if key in record}
+    return {key: record[key] for key in ("operation", "name", "state", "identity", "guard", "error", "rollback") if key in record}
 
 
 def observe(record):
@@ -250,6 +253,8 @@ def restart(request):
         if request["operation"] == request["newOperation"]:
             raise ValueError("fresh start requires a new operation ID")
         specification = json.loads(json.dumps(previous["specification"]))
+        specification["shellArgv"] = specification.get("shellArgv", specification["argv"])
+        specification["argv"] = list(specification["shellArgv"])
         if source != "shell":
             original = specification["argv"]
             # A chosen command replaces the creation command. It is exec'd once
@@ -277,6 +282,24 @@ def restart(request):
             else:
                 specification["argv"] = ["/bin/sh", "-c", 'exec "${SHELL:-/bin/sh}" -lc "$1"', "agwinterm-restart", command]
     return create({"ledger": request["ledger"], "operation": request["newOperation"], "specification": specification})
+
+
+def reconcile_restart(request):
+    # The Windows checkpoint precedes the Linux request. If nothing was reserved,
+    # atomically fence that operation before restoring its predecessor. A delayed
+    # restart request must not create work after rollback or a subsequent restart.
+    with Ledger(request["ledger"]) as ledger:
+        previous = ledger.read(request["operation"])
+        if previous is None or previous.get("external") or previous.get("identity") != request["identity"]:
+            raise ValueError("restart recovery requires exact owned origin evidence")
+        if request["operation"] == request["newOperation"]:
+            raise ValueError("restart recovery requires distinct operations")
+        pending = ledger.read(request["newOperation"])
+        rollback = pending is None or pending.get("state") == "cancelled"
+        if pending is None:
+            ledger.write({"version": 1, "operation": request["newOperation"], "state": "cancelled"})
+    result, fd = reconcile(request["ledger"], request["operation"] if rollback else request["newOperation"])
+    return dict(result, rollback=rollback), fd
 
 
 def terminate(request):
@@ -333,25 +356,44 @@ def inventory(request):
     executable, directory = validate_endpoint(request)
     result = []
     owned = {}
-    if request.get("ledger"):
-        with Ledger(request["ledger"]) as ledger:
-            paths = list(ledger.root.glob("*.json"))
-            if len(paths) > 1024:
-                raise ValueError("ledger inventory exceeds limit")
-            for path in paths:
-                record = ledger.read(path.stem)
-                if record and not record.get("external") and record.get("identity"):
-                    owned[record["name"]] = record
     deadline = time.monotonic() + 10
+    entries = []
     for index, entry in enumerate(Path(directory).iterdir()):
-        if index >= 1024 or len(result) >= 64 or time.monotonic() >= deadline:
+        if index >= 1024 or time.monotonic() >= deadline:
             raise ValueError("inventory exceeds endpoint limit")
-        if not re.fullmatch(r"agterm-[0-9a-f]{32}", entry.name):
-            continue
+        if re.fullmatch(r"agterm-[0-9a-f]{32}", entry.name):
+            entries.append(entry)
+    if request.get("ledger") and entries:
+        with Ledger(request["ledger"]) as ledger:
+            unresolved = set()
+            for entry in entries:
+                operation = ledger.owner_operation(entry.name)
+                if operation is None:
+                    unresolved.add(entry.name)
+                    continue
+                record = ledger.read(operation)
+                if record is None or record.get("name") != entry.name or record.get("external"):
+                    raise ValueError("invalid daemon owner index")
+                owned[entry.name] = record
+            # Compatibility with pre-index development ledgers. Scan lazily only
+            # for current sockets; historical count is never an inventory limit.
+            for path in ledger.root.glob("*.json") if unresolved else ():
+                if not unresolved:
+                    break
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("legacy ownership lookup timed out")
+                record = ledger.read(path.stem)
+                if record and not record.get("external") and record.get("name") in unresolved:
+                    owned[record["name"]] = record
+                    ledger.index_owner(record)
+                    unresolved.remove(record["name"])
+    for entry in entries:
+        if len(result) >= 64 or time.monotonic() >= deadline:
+            raise ValueError("inventory exceeds endpoint limit")
         try:
             with ExactDaemon(str(entry), executable) as daemon:
                 owner = owned.get(entry.name)
-                proven = owner is not None and owner["identity"] == daemon.identity
+                proven = owner is not None and owner.get("identity") == daemon.identity
                 result.append({"name": entry.name, "identity": daemon.identity, "attachments": daemon.clients,
                                "operation": owner["operation"] if proven else None,
                                "originPane": owner["specification"].get("environment", {}).get("AGWINTERM_SESSION_ID") if proven else None})
@@ -452,6 +494,7 @@ def main():
                "reconcile": {"verb", "ledger", "operation"},
                "terminate": {"verb", "ledger", "operation", "identity"},
                "restart": {"verb", "ledger", "operation", "newOperation", "identity", "source", "command"},
+               "reconcile-restart": {"verb", "ledger", "operation", "newOperation", "identity"},
                "inventory": {"verb", "executable", "socketDirectory", "ledger"},
                "borrow": {"verb", "executable", "socketDirectory", "name", "identity", "ledger", "operation"},
                "screen": {"verb", "executable", "socketDirectory", "name", "identity", "all"},
@@ -478,6 +521,8 @@ def main():
         record, fd = borrow(request)
     elif verb == "restart":
         record, fd = restart(request)
+    elif verb == "reconcile-restart":
+        record, fd = reconcile_restart(request)
     elif verb == "reconcile":
         record, fd = reconcile(request["ledger"], request["operation"])
     else:

@@ -6,6 +6,21 @@ namespace Agwinterm.Pty.Tests;
 
 public partial class RestoreStateTests
 {
+    [Fact]
+    public void PendingRestartPreservesItsExactPredecessorAndRejectsInvalidOrigins()
+    {
+        var previous = WslLiveIdentityTests.Binding();
+        var pending = previous with { BindingId = Guid.NewGuid().ToString(), Identity = null, Pending = true,
+            TransportTicket = null, Recovery = "uncertain", RestartOrigin = new(previous.BindingId, previous.Identity!),
+            Endpoint = previous.Endpoint with { LedgerDirectory = "/private/ledger", HelperPath = "/private/helper.py" } };
+        var saved = JsonSerializer.SerializeToElement(pending);
+        Assert.Equal(pending, RestoreState.LoadLiveBinding(saved, out var error));
+        Assert.Null(error);
+        Assert.False((pending with { RestartOrigin = new(pending.BindingId, previous.Identity!) }).IsValid);
+        Assert.False((pending with { RestartOrigin = new("bad", previous.Identity!) }).IsValid);
+        Assert.False((previous with { RestartOrigin = pending.RestartOrigin }).IsValid);
+    }
+
     [Theory]
     [InlineData("null")]
     [InlineData("{\"Version\":99}")]

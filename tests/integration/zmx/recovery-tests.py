@@ -15,6 +15,92 @@ from zmx_ledger import Ledger
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_restart_before_linux_reservation_rolls_back_and_fences_late_request(self):
+        with tempfile.TemporaryDirectory() as root:
+            operation, pending = str(uuid.uuid4()), str(uuid.uuid4())
+            identity = {"daemon": {"pid": 1}, "workload": {"pid": 2}}
+            with Ledger(root) as ledger:
+                original, _ = ledger.reserve(operation, {"executable": "/zmx", "argv": ["bash"]})
+                original.update(state="missing", identity=identity)
+                ledger.write(original)
+            request = {"ledger": root, "operation": operation, "newOperation": pending, "identity": identity}
+            with patch.object(helper, "incarnation_gone", return_value=True), patch.object(helper.subprocess, "Popen") as spawn:
+                for _ in range(2):
+                    result, fd = helper.reconcile_restart(request)
+                    self.assertTrue(result["rollback"])
+                    self.assertEqual(operation, result["operation"])
+                    self.assertEqual(identity, result["identity"])
+                    self.assertEqual("missing", result["state"])
+                    self.assertIsNone(fd)
+                with Ledger(root) as ledger:
+                    with self.assertRaisesRegex(ValueError, "reused"):
+                        ledger.reserve(pending, original["specification"])
+                spawn.assert_not_called()
+
+    def test_restart_with_committed_record_recovers_new_operation_even_after_exit(self):
+        with tempfile.TemporaryDirectory() as root:
+            operation, pending = str(uuid.uuid4()), str(uuid.uuid4())
+            old = {"daemon": {"pid": 1}, "workload": {"pid": 2}}
+            new = {"daemon": {"pid": 3}, "workload": {"pid": 4}}
+            with Ledger(root) as ledger:
+                for key, identity in ((operation, old), (pending, new)):
+                    record, _ = ledger.reserve(key, {"executable": "/zmx"})
+                    record.update(state="ready", identity=identity)
+                    ledger.write(record)
+            with patch.object(helper, "incarnation_gone", return_value=True), patch.object(helper.subprocess, "Popen") as spawn:
+                result, _ = helper.reconcile_restart({"ledger": root, "operation": operation, "newOperation": pending, "identity": old})
+                self.assertFalse(result["rollback"])
+                self.assertEqual(pending, result["operation"])
+                self.assertEqual(new, result["identity"])
+                self.assertEqual("missing", result["state"])
+                spawn.assert_not_called()
+
+    def test_shell_after_selected_command_uses_original_profile_argv(self):
+        for source in ("pin", "agent", "captured"):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as root:
+                operation, pending = str(uuid.uuid4()), str(uuid.uuid4())
+                identity = {"daemon": {"pid": 1}, "workload": {"pid": 2}}
+                original_argv = ["/bin/bash", "--noprofile", "--norc"]
+                with Ledger(root) as ledger:
+                    record, _ = ledger.reserve(operation, {"executable": "/zmx", "argv": original_argv})
+                    record.update(state="missing", identity=identity)
+                    ledger.write(record)
+                with patch.object(helper, "incarnation_gone", return_value=True), patch.object(helper, "create") as create:
+                    helper.restart({"ledger": root, "operation": operation, "newOperation": pending,
+                                    "identity": identity, "source": source, "command": "echo MUST_NOT_REPEAT"})
+                    selected = create.call_args.args[0]["specification"]
+                    self.assertEqual(original_argv, selected["shellArgv"])
+                    self.assertIn("echo MUST_NOT_REPEAT", selected["argv"])
+                    with Ledger(root) as ledger:
+                        record, _ = ledger.reserve(pending, selected)
+                        record.update(state="missing", identity=identity)
+                        ledger.write(record)
+                    helper.restart({"ledger": root, "operation": pending, "newOperation": str(uuid.uuid4()),
+                                    "identity": identity, "source": "shell", "command": None})
+                    self.assertEqual(original_argv, create.call_args.args[0]["specification"]["argv"])
+
+    def test_inventory_ignores_historical_volume_and_uses_live_owner_index(self):
+        with tempfile.TemporaryDirectory() as root:
+            sockets = Path(root) / "sockets"
+            sockets.mkdir()
+            ledger_path = str(Path(root) / "ledger")
+            identity = {"daemon": {"pid": 1}, "workload": {"pid": 2}}
+            with Ledger(ledger_path) as ledger:
+                for _ in range(1025):
+                    ledger.write({"version": 1, "operation": str(uuid.uuid4()), "state": "cancelled"})
+                owner, _ = ledger.reserve(str(uuid.uuid4()), {"executable": "/zmx"})
+                owner.update(state="ready", identity=identity)
+                ledger.write(owner)
+            request = {"ledger": ledger_path, "executable": "/zmx", "socketDirectory": str(sockets)}
+            with patch.object(helper, "validate_endpoint", return_value=("/zmx", str(sockets))):
+                self.assertEqual([], helper.inventory(request)["sessions"])
+                (sockets / owner["name"]).touch()
+                daemon = MagicMock(identity=identity, clients=1)
+                with patch.object(helper, "ExactDaemon") as exact, patch.object(Path, "glob", side_effect=AssertionError("must not scan history")):
+                    exact.return_value.__enter__.return_value = daemon
+                    result = helper.inventory(request)
+                    self.assertEqual(owner["operation"], result["sessions"][0]["operation"])
+
     def test_input_acknowledgement_never_retries_a_mutation(self):
         request = {"verb": "type", "name": "agterm-" + "a" * 32,
                    "identity": {"workload": "exact"}, "text": "once"}

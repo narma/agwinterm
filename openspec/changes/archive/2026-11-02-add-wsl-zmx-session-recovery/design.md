@@ -1,5 +1,14 @@
 # Design
 
+PR review correction (2026-11-02): pending restart checkpoints retain the exact
+predecessor. If the new operation was never reserved, reconciliation writes a
+durable cancellation tombstone under the endpoint lock before restoring that
+predecessor; late requests cannot create work after rollback. Existing new
+operations remain authoritative, including after workload exit. Original shell
+argv is retained separately from the selected restart command. A live-daemon
+owner index avoids scanning historical operations during ordinary discovery;
+idempotency records are not deleted. See `docs/wsl-zmx-development.md` for tests.
+
 ## Context
 
 See [proposal.md](proposal.md) for motivation. This document is a proposed design, not evidence of implemented or runtime-tested compatibility.

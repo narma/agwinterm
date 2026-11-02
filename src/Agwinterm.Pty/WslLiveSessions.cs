@@ -132,15 +132,23 @@ public sealed record WslDaemonIdentity(string Name, LinuxProcessIncarnation Daem
         && Daemon is { IsValid: true } && Workload is { IsValid: true } && SocketInode > 0;
 }
 
+public sealed record WslRestartOrigin(string BindingId, WslDaemonIdentity Identity)
+{
+    [JsonIgnore] public bool IsValid => Guid.TryParseExact(BindingId, "D", out _) && Identity is { IsValid: true };
+}
+
 public sealed record WslLiveBinding(int Version, string Provider, string BindingId, string OriginPaneId,
     WslLiveEndpoint Endpoint, WslDaemonIdentity? Identity, string Ownership, string Recovery,
-    string? TransportTicket = null, string? Error = null, bool Pending = false, string? AttachmentNonce = null)
+    string? TransportTicket = null, string? Error = null, bool Pending = false, string? AttachmentNonce = null,
+    WslRestartOrigin? RestartOrigin = null)
 {
     public static readonly string[] Outcomes = ["host-adopted", "zmx-reattached", "fresh-started", "missing", "unavailable", "unsupported", "uncertain"];
     [JsonIgnore] public bool IsValid => Version == 1 && Provider == "wsl-zmx" && Guid.TryParseExact(BindingId, "D", out _)
         && WslLiveValidation.Text(OriginPaneId) && Endpoint is { IsValid: true }
         && (Identity is { IsValid: true } || (Pending && Identity is null && Recovery is "uncertain" or "unsupported" or "unavailable"
             && Ownership == "owned" && TransportTicket is null && Endpoint.LedgerDirectory is not null && Endpoint.HelperPath is not null))
-        && Ownership is "owned" or "external" && Outcomes.Contains(Recovery);
+        && Ownership is "owned" or "external" && Outcomes.Contains(Recovery)
+        && (RestartOrigin is null || (RestartOrigin.IsValid && RestartOrigin.BindingId != BindingId
+            && Pending && Identity is null && Ownership == "owned"));
     [JsonIgnore] public bool SuppressesReplay => true;
 }

@@ -46,6 +46,34 @@ try
     binding = await operations.ReconcileAsync(binding);
     if (binding.Recovery != "missing") throw new Exception("loss not reported");
     Console.WriteLine("PASS exact termination and missing recovery without replay");
+    var beforeRestart = binding;
+    WslLiveBinding? interrupted = null;
+    try
+    {
+        await operations.RestartAsync(binding, "pin", "echo MUST_NOT_RUN", pending =>
+        {
+            interrupted = JsonSerializer.Deserialize<WslLiveBinding>(JsonSerializer.Serialize(pending));
+            throw new IOException("Simulated exit after checkpoint, before Linux reservation");
+        });
+        throw new Exception("interrupted restart unexpectedly returned");
+    }
+    catch (IOException) { }
+    if (interrupted is not { IsValid: true, RestartOrigin: not null }) throw new Exception("restart origin was not durable");
+    binding = await operations.ReconcileAsync(interrupted);
+    if (!binding.IsValid || binding.BindingId != beforeRestart.BindingId || binding.Identity != beforeRestart.Identity
+        || binding.Recovery != "missing" || binding.RestartOrigin is not null)
+        throw new Exception("interrupted restart did not restore exact predecessor");
+    var restarted = await operations.RestartAsync(binding, "pin", "sleep 300", _ => Task.CompletedTask);
+    if (restarted.Recovery != "fresh-started" || !restarted.IsValid) throw new Exception("restart after rollback failed");
+    await operations.TerminateAsync(restarted);
+    // A lost success response followed by workload exit still has to publish its
+    // exact new identity, not retain an identity-less, invalid missing binding.
+    var lostReply = restarted with { Identity = null, Pending = true, Recovery = "uncertain",
+        RestartOrigin = new(binding.BindingId, binding.Identity!) };
+    binding = await operations.ReconcileAsync(lostReply);
+    if (!binding.IsValid || binding.Identity != restarted.Identity || binding.Recovery != "missing")
+        throw new Exception("ended restart lost its identity during reconciliation");
+    Console.WriteLine("PASS durable restart rollback, subsequent explicit restart, and ended lost-reply recovery");
     second.Dispose(); second = null;
     var cycleClock = System.Diagnostics.Stopwatch.StartNew();
     using (var inventory = PtyHostClient.Connect(id))

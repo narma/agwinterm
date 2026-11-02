@@ -371,6 +371,28 @@ the compatibility model fixtures or the local control commands.
 
 ## Explicit profile setup and rollback
 
+### PR review recovery corrections (2026-11-02)
+
+Greptile identified three edge cases after the initial acceptance. Pending
+restarts now retain the exact predecessor binding. Reconciliation atomically
+tombstones an unreserved new operation before rolling back, so a delayed request
+cannot launch after rollback; an already committed operation is recovered even
+if its workload has since exited. Explicit restart refreshes the application's
+content-addressed helper at the same saved endpoint, without upgrading ZMX.
+
+The ledger keeps original shell argv separate from each selected restart command,
+so a later shell restart cannot repeat a pin, agent or captured command. Discovery
+uses a daemon-to-operation index for live sockets and retains historical records
+for idempotency instead of imposing a 1,024-operation lifetime limit.
+
+Regression checks cover the pre-reservation interruption, delayed request fence,
+committed restart whose reply was lost, chained command-then-shell restart and
+discovery after 1,025 historical operations. The routed real Rust/WSL harness also
+covers rollback followed by a successful explicit restart and complete terminal
+continuity (`artifacts/wsl-ui/20261102T154749-55cc9a04`).
+
+### Setup
+
 Back up the application's `profiles.json`, `windows/` checkpoints and recent
 history before testing. Configure a separate profile in the isolated test install:
 

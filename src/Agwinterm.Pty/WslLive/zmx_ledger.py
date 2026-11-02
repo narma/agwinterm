@@ -82,6 +82,38 @@ class Ledger:
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
+        if record.get("name") and record.get("identity") and not record.get("external"):
+            self.index_owner(record)
+
+    def index_owner(self, record):
+        # Immutable daemon -> operation lookup keeps discovery proportional to
+        # live sockets. Tombstones stay in the ledger to fence duplicate launches.
+        name = record["name"]
+        if len(name) != 39 or not name.startswith("agterm-") or any(c not in "0123456789abcdef" for c in name[7:]):
+            raise ValueError("invalid owner name")
+        directory = Ledger(str(self.root / "owners")).root
+        raw = record["operation"].encode()
+        path = directory / name
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        except FileExistsError:
+            if self.owner_operation(name) != record["operation"]:
+                raise ValueError("conflicting daemon owner index")
+        else:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+    def owner_operation(self, name):
+        try:
+            fd = os.open(self.root / "owners" / name, os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return None
+        with os.fdopen(fd, "rb") as stream:
+            operation = stream.read(37).decode("ascii")
+        self.path(operation)  # validates UUID, including length
+        return operation
 
     def reserve(self, operation, specification):
         fingerprint = hashlib.sha256(json.dumps(specification, sort_keys=True).encode()).hexdigest()

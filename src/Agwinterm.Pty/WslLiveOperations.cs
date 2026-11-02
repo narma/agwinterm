@@ -36,6 +36,16 @@ public sealed class WslLiveOperations
     public async Task<WslLiveBinding> ReconcileAsync(WslLiveBinding binding, CancellationToken ct = default)
     {
         var location = Location(binding);
+        if (binding.RestartOrigin is { } origin)
+        {
+            var previous = binding with { BindingId = origin.BindingId, Identity = origin.Identity,
+                Pending = false, RestartOrigin = null, TransportTicket = null, AttachmentNonce = null };
+            var reconciled = await _client.InvokeAsync(location, new { verb = "reconcile-restart",
+                ledger = location.Ledger, operation = previous.BindingId, newOperation = binding.BindingId,
+                identity = WireIdentity(previous) }, ct).ConfigureAwait(false);
+            return Apply(reconciled.TryGetProperty("rollback", out var rollback) && rollback.GetBoolean()
+                ? previous : binding, reconciled, "zmx-reattached");
+        }
         var result = await _client.InvokeAsync(location,
             new { verb = "reconcile", ledger = location.Ledger, operation = binding.BindingId }, ct).ConfigureAwait(false);
         return Apply(binding, result, "zmx-reattached");
@@ -58,8 +68,14 @@ public sealed class WslLiveOperations
             throw new InvalidOperationException("Fresh start requires confirmed loss of an owned workload");
         if (source is not ("shell" or "agent" or "pin" or "captured") || source != "shell" && string.IsNullOrWhiteSpace(command))
             throw new ArgumentException("Selected fresh-start source is unavailable");
+        // Checkpoints may point at an older content-addressed application helper.
+        // Install this application's helper without replacing dependencies or
+        // retargeting the recorded distribution/user/ledger/socket endpoint.
+        var location = await _client.RefreshAsync(Location(previous), ct).ConfigureAwait(false);
+        previous = previous with { Endpoint = previous.Endpoint with { HelperPath = location.Helper } };
         var pending = previous with { BindingId = Guid.NewGuid().ToString(), Identity = null, Pending = true,
-            Recovery = "uncertain", TransportTicket = null, Error = null };
+            Recovery = "uncertain", TransportTicket = null, AttachmentNonce = null, Error = null,
+            RestartOrigin = new(previous.BindingId, previous.Identity) };
         await persistReservation(pending).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         var result = await _client.InvokeAsync(Location(previous), new { verb = "restart",
@@ -141,8 +157,8 @@ public sealed class WslLiveOperations
     private static WslLiveBinding Apply(WslLiveBinding binding, JsonElement result, string success)
     {
         string state = result.GetProperty("state").GetString() ?? "uncertain";
-        if (state != "ready") return binding with { Recovery = state is "missing" or "terminated" ? "missing" : "uncertain" };
-        var raw = result.GetProperty("identity");
+        if (!result.TryGetProperty("identity", out var raw))
+            return binding with { Recovery = state is "missing" or "terminated" ? "missing" : "uncertain" };
         static LinuxProcessIncarnation Process(JsonElement p) => new(p.GetProperty("pid").GetInt32(),
             p.GetProperty("boot").GetString()!, ulong.Parse(p.GetProperty("start").GetString()!, System.Globalization.CultureInfo.InvariantCulture),
             p.GetProperty("namespace").GetString()!);
@@ -152,6 +168,8 @@ public sealed class WslLiveOperations
         if (!identity.IsValid || raw.GetProperty("path").GetString() != binding.Endpoint.SocketDirectory + "/" + identity.Name
             || (binding.Identity is not null && binding.Identity != identity))
             throw new InvalidOperationException("Helper returned a different workload incarnation");
-        return binding with { Identity = identity, Pending = false, Recovery = success, Error = null };
+        return binding with { Identity = identity, Pending = false,
+            Recovery = state == "ready" ? success : state is "missing" or "terminated" ? "missing" : "uncertain",
+            Error = null, RestartOrigin = null };
     }
 }
