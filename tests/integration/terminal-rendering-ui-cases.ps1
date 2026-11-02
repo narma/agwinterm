@@ -76,6 +76,29 @@ try {
             if($struck[$i]-ne $blank[$i] -and ($struck[$i]-band 0xffffff)-eq 0x125a9f){$line++}
         }
         Check "SGR 9 draws strikethrough (ligatures=$ligatures)" ($line-gt 50) "line pixels=$line"
+        # Repeated symbols with different pen colours/styles and one-/two-cell clips must
+        # survive warm reuse, LRU churn and a font reset with identical rendered pixels.
+        $cacheScene=$clear+$esc+'[31m⏺X ⏺  🔴中 '+$esc+'[1m⏺X 🔴 '+$esc+'[3m中 '+$esc+'[0;34m⏺X ⏺'
+        $null=Rpc 'session.write' @{text=$cacheScene} $session
+        $cacheReference=RenderPixels "cache-reference-$ligatures"
+        $cacheWarm=RenderPixels "cache-warm-$ligatures"
+        $churn=-join (0x4e00..0x4f40|ForEach-Object {[char]$_})
+        $null=Rpc 'session.write' @{text=($clear+$churn)} $session
+        $null=RenderPixels "cache-churn-$ligatures"
+        $null=Rpc 'session.write' @{text=$cacheScene} $session
+        $cacheAfter=RenderPixels "cache-after-churn-$ligatures"
+        $family=Rpc 'config.get' @{key='font-family'}
+        $null=Rpc 'config.set' @{key='font-family';value='Segoe UI Emoji'}
+        $null=Rpc 'config.set' @{key='font-family';value=$family}
+        $null=Rpc 'session.write' @{text=$cacheScene} $session
+        $cacheReset=RenderPixels "cache-after-reset-$ligatures"
+        foreach($comparison in @(@{name='warm';pixels=$cacheWarm},@{name='churn';pixels=$cacheAfter},@{name='reset';pixels=$cacheReset})) {
+            $mismatches=0
+            for($i=0;$i-lt $cacheReference.Length;$i++) {
+                if($cacheReference[$i]-ne $comparison.pixels[$i]){$mismatches++}
+            }
+            Check "solo glyph pixels survive cache $($comparison.name) (ligatures=$ligatures)" ($mismatches-eq 0) "mismatches=$mismatches"
+        }
         foreach($builtin in 'true','false') {
             $null=Rpc 'config.set' @{key='builtin-glyphs';value=$builtin}
             $ink=$esc+'[38;2;18;90;159m'

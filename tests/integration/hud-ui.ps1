@@ -1,7 +1,7 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','TerminalRendering')][string]$Suite='Hud')
+      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','TerminalRendering','TerminalPerformance')][string]$Suite='Hud')
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test Hud -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -159,6 +159,7 @@ public sealed class HudOwnedJob {
         [Environment]::SetEnvironmentVariable($name,$null)
     }
     $env:AGWINTERM_APP_ID=$appId+'-fallback'
+    if($Suite-eq 'TerminalPerformance'){$env:AGWINTERM_PERF=Join-Path $artifact 'frames.log'}
     $job=[HudOwnedJob]::new()
     $job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe --no-restore",$root)
     function Rpc([string]$verb,$params=@{},[string]$target='active',[switch]$AllowError,[string]$Window='active',[switch]$NoTarget){
@@ -231,6 +232,7 @@ public sealed class HudOwnedJob {
     elseif($Suite-eq 'Presentation') { . "$PSScriptRoot/presentation-ui-cases.ps1" }
     elseif($Suite-eq 'Menu') { . "$PSScriptRoot/menu-bar-ui-cases.ps1" }
     elseif($Suite-eq 'TerminalRendering') { . "$PSScriptRoot/terminal-rendering-ui-cases.ps1" }
+    elseif($Suite-eq 'TerminalPerformance') { . "$PSScriptRoot/terminal-performance-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {
     $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
