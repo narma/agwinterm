@@ -46,6 +46,15 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
         return new ServerSession(this, id, cols, rows);
     }
 
+    /// <summary>Allocate a fresh local transport for an existing-only remote binding. Restarting
+    /// an empty host here does not replay any other sessions or create an origin workload.</summary>
+    public ISession CreateExistingOnlyTransport(string id, int cols, int rows)
+    {
+        _startupClaims.Claim(id);
+        EnsureClient(allowEmptyHostRestart: true);
+        return new ServerSession(this, id, cols, rows);
+    }
+
     /// <summary>One best-effort sweep after restore. Every handle created in this host namespace is a
     /// claim, even before its pane is published. Closed/failed handles stay conservatively claimed
     /// for this sweep; their own exact lifecycle cleanup remains responsible for their child.</summary>
@@ -67,7 +76,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     // Reconciliation must never start a new host or reuse an ambiguous request/reply stream.
     internal PtyHostClient ConnectExisting() => PtyHostClient.Connect(_appId);
 
-    private PtyHostClient EnsureClient()
+    private PtyHostClient EnsureClient(bool allowEmptyHostRestart = false)
     {
         lock (_lock)
         {
@@ -76,7 +85,8 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
             {
                 if (_client.IsUsable) return _client;
                 _client.Dispose();
-                return _client = ConnectExisting(); // a broken host is not an instruction to replay/spawn
+                if (!allowEmptyHostRestart) return _client = ConnectExisting(); // no ordinary replay/spawn
+                _client = null;
             }
             if (!PtyHostClient.IsRunning(_appId))
             {
@@ -184,9 +194,18 @@ public sealed class ServerSession : ISession
 
     // ---- Lifecycle ----
 
-    public async Task StartAsync(string app, string[] commandLine, bool verbatimCommandLine = false,
+    public Task StartAsync(string app, string[] commandLine, bool verbatimCommandLine = false,
         IReadOnlyDictionary<string, string>? extraEnv = null, string? cwd = null, bool deElevate = false,
         bool freshEnv = true, CancellationToken ct = default)
+        => StartCoreAsync(app, commandLine, verbatimCommandLine, extraEnv, cwd, deElevate, freshEnv, ct, null);
+
+    /// <summary>Persist an exact transport ticket before the host may spawn its child.</summary>
+    public Task StartCheckpointedAsync(string app, string[] commandLine, Action<string> persistTicket)
+        => StartCoreAsync(app, commandLine, true, null, null, false, true, default, persistTicket);
+
+    private async Task StartCoreAsync(string app, string[] commandLine, bool verbatimCommandLine,
+        IReadOnlyDictionary<string, string>? extraEnv, string? cwd, bool deElevate,
+        bool freshEnv, CancellationToken ct, Action<string>? persistTicket)
     {
         try
         {
@@ -194,6 +213,8 @@ public sealed class ServerSession : ISession
             {
                 if (_startFence.IsClosed) return;
                 var client = _backend.Client;
+                if (persistTicket is not null && client.CreationRevision < 1)
+                    throw new IOException("Checkpointed transport requires creation tickets");
                 if (client.CreationRevision >= 1)
                 {
                     // A lost preparation reply owns no child. Once this ticket is known, close
@@ -205,6 +226,8 @@ public sealed class ServerSession : ISession
                 }
                 try
                 {
+                    persistTicket?.Invoke(_creationTicket);
+                    if (_startFence.IsClosed) return;
                     int cols = Cols, rows = Rows;
                     client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
                         verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket);
@@ -287,12 +310,19 @@ public sealed class ServerSession : ISession
     /// attach with a repaint, seed the replica from the host's snapshot (scrollback text + modes),
     /// and go live — the child process keeps running untouched. False = nothing to adopt, launch
     /// fresh; an exited leftover is reaped here so the fresh launch starts clean.</summary>
-    public bool TryAdopt(string? expectedCreationTicket = null)
+    public bool TryAdopt(string? expectedCreationTicket = null, bool cancelUnattached = false)
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
         try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? ""); _creationHostPid = client.HostPid; }
-        catch { return false; }                       // no such session (or host unreachable)
+        catch
+        {
+            // Recovery may find a checkpoint written before Create reached publication.
+            // Cancel only its exact reservation/transport, including an in-flight create.
+            if (cancelUnattached && expectedCreationTicket is { Length: > 0 })
+                _backend.Client.CancelCreate(_id, expectedCreationTicket);
+            return false;
+        }
         _creationTicket = att.CreationTicket;
         if (att.HasExited)
         {

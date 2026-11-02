@@ -104,7 +104,7 @@ fn observe(record: &Value) -> Result<Value> {
     if !record["identity"].is_null() && daemon.identity != record["identity"] {
         return Err("daemon incarnation replaced".into());
     }
-    Ok(daemon.identity)
+    Ok(daemon.identity.clone())
 }
 pub(super) fn workload(directory: &str, operation: &str) -> Result<()> {
     let spec = {
@@ -543,7 +543,7 @@ fn borrow(request: &Value) -> Result<Outcome> {
             record["name"] = json!(name);
             record["external"] = json!(true);
             record["state"] = json!("ready");
-            record["identity"] = daemon.identity;
+            record["identity"] = daemon.identity.clone();
             ledger.write(&record)?;
         } else if record["external"] != true || record["identity"] != daemon.identity {
             return Err("external binding operation reused".into());

@@ -71,7 +71,9 @@ internal partial class Program
             && string.IsNullOrWhiteSpace(command) && !deElevate;
         bool liveRequested = hasLiveBinding || newOrdinaryProfile && liveProfile?.Zmx is { Enabled: true } or { Error: not null };
         string? liveError = null;
-        WslLiveBinding? restoredLive = hasLiveBinding ? RestoreState.LoadLiveBinding(liveBinding, out liveError) : null;
+        bool remoteRequested = AgtermRemoteBinding.IsRemote(liveBinding);
+        AgtermRemoteBinding? restoredRemote = remoteRequested ? AgtermRemoteBinding.Load(liveBinding, out liveError) : null;
+        WslLiveBinding? restoredLive = hasLiveBinding && !remoteRequested ? RestoreState.LoadLiveBinding(liveBinding, out liveError) : null;
         if (liveRequested)
         {
             if (!hasLiveBinding)
@@ -84,9 +86,11 @@ internal partial class Program
             try
             {
                 if (liveError is not null) throw new InvalidOperationException(liveError);
-                session = _sessionBackend.Create(paneId, cols, rows);
-                adopted = restoredLive?.TransportTicket is { Length: > 0 } ticket
-                    && session is ServerSession liveServer && liveServer.TryAdopt(ticket);
+                session = (restoredRemote is not null || restoredLive is not null) && _sessionBackend is ServerSessionBackend remoteBackend
+                    ? remoteBackend.CreateExistingOnlyTransport(paneId, cols, rows)
+                    : _sessionBackend.Create(paneId, cols, rows);
+                adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
+                    && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
             }
             catch (Exception ex)
             {
@@ -116,7 +120,7 @@ internal partial class Program
         var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize, LiveBinding = liveBinding,
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
-        if (liveRequested) ConfigureLiveTitle(pane, adopted ? restoredLive?.AttachmentNonce : null);
+        if (liveRequested) ConfigureLiveTitle(pane, adopted ? restoredRemote?.AttachmentNonce ?? restoredLive?.AttachmentNonce : null);
         Observation.ObservePane(pane.Id, session.StatusSignal!);
         // New output snaps this pane back to the live bottom when the buffer ACTUALLY scrolled (a line
         // pushed into history) — not on every repaint. TUIs like Claude Code redraw in place without
@@ -187,6 +191,11 @@ internal partial class Program
         if (liveRequested)
         {
             if (liveError is not null) ShowLiveError(pane, liveError);
+            else if (restoredRemote is not null)
+            {
+                if (adopted) pane.LiveBinding = JsonSerializer.SerializeToElement(restoredRemote with { Recovery = "host-adopted", Error = null });
+                else Post(() => pane.Start = StartRemotePaneAsync(pane, restoredRemote));
+            }
             else if (adopted && restoredLive is not null)
                 pane.LiveBinding = JsonSerializer.SerializeToElement(restoredLive with { Recovery = "host-adopted", Error = null });
             else Post(() => pane.Start = StartLivePaneAsync(pane, restoredLive, liveProfile, cwd, env));
@@ -1697,6 +1706,18 @@ internal partial class Program
     /// (promote it into the main pane). Single-pane sessions keep the exited shell visible. (agterm #121.)</summary>
     private void OnPaneProcessExited(Pane p)
     {
+        if (AgtermRemoteBinding.IsRemote(p.LiveBinding))
+        {
+            if (!p.LiveClosing && AgtermRemoteBinding.Load(p.LiveBinding, out _) is { } remote)
+            {
+                p.LiveBinding = JsonSerializer.SerializeToElement(remote with { Recovery = "unavailable", TransportTicket = null,
+                    Error = "SSH attachment ended; reconnect verifies the same origin workload" });
+                ShowLiveError(p, "Remote connection ended; reconnecting to the same workload");
+                SaveState();
+                _ = ReconnectRemotePaneAsync(p);
+            }
+            return;
+        }
         if (RestoreState.HasLiveBinding(p.LiveBinding))
         {
             if (!p.LiveClosing)

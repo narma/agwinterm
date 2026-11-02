@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $inGuest = $env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount'
 $inCi = $env:GITHUB_ACTIONS -eq 'true' -and $env:CI -eq 'true'
 if ($inGuest -or $inCi) { return $false }
-if ($Test -in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity') -and $env:AGWINTERM_WSL_UI_DESKTOP) {
+if ($Test -in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote') -and $env:AGWINTERM_WSL_UI_DESKTOP) {
     if (-not ('WslUiDesktop' -as [type])) { Add-Type -Path "$PSScriptRoot/wsl-ui-desktop.cs" }
     if (-not [WslUiDesktop]::IsPrivate($env:AGWINTERM_WSL_UI_DESKTOP)) { throw 'WSL desktop marker does not match a private non-input desktop.' }
     return $false
@@ -27,7 +27,7 @@ foreach ($key in $Parameters.Keys) {
 }
 Write-Host "Routing local $Test UI tests to the background test runner."
 try {
-    if ($Test -in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity')) {
+    if ($Test -in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote')) {
         & "$PSScriptRoot/wsl-ui.ps1" -Test $Test -TestParameters $options.TestParameters | Out-Host
     } else {
         & "$PSScriptRoot/sandbox-ui.ps1" @options | Out-Host

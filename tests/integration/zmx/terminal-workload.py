@@ -4,13 +4,16 @@ import select
 import sys
 import time
 import tty
+import termios
 
+original = termios.tcgetattr(0)
 tty.setraw(0)
 def output(text):
     os.write(1, text.encode())
 
 for index in range(90):
-    output(f"HISTORY-{index:03d}\r\n")
+    prefix = "HISTORY-" + (sys.argv[1] + "-" if len(sys.argv) > 1 else "")
+    output(f"{prefix}{index:03d}\r\n")
 
 def alternate():
     output("\x1b[?1049h\x1b[2J\x1b[H\x1b[38;2;12;34;56mCOLOR-界-😀\x1b[0m"
@@ -19,7 +22,11 @@ def alternate():
 alternate()
 while True:
     command = os.read(0, 1)
-    if command == b"n":
+    if command == b"x":
+        output("\x1b[?1049l\x1b[?2004l\x1b[?1l\x1b[<u")
+        termios.tcsetattr(0, termios.TCSANOW, original)
+        break
+    elif command == b"n":
         output("\x1b[?1049l\r\nNORMAL-RESTORED\r\n")
     elif command == b"a":
         alternate()

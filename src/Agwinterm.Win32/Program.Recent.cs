@@ -81,7 +81,8 @@ internal partial class Program : IRecentHost
             string cwd = PrettyCwd(SafeCwd(p));
             if (string.IsNullOrEmpty(cwd)) cwd = p.StartCwd ?? "";
             state.Panes.Add(new() { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed,
-                Ratio = s.StoredRatio(p), Appearance = p.Appearance, RestoreCommand = p.RestoreCommand });
+                Ratio = s.StoredRatio(p), Appearance = p.Appearance, RestoreCommand = p.RestoreCommand,
+                LiveBinding = RecentRemoteBinding(p.LiveBinding) });
         }
         return new(s.CustomName, s.ProfileName, state.Panes[0].Cwd, s.Ws.Id, s.Ws.Name, s.Flagged,
             s.CustomName ?? s.Name, s.Name, s.Id, Recent.NextSequence(), s.Context, state, Id, Guid.NewGuid().ToString());
@@ -213,11 +214,12 @@ internal partial class Program : IRecentHost
     {
         var state = item.State;
         var profile = ResolveProfile(state.Profile);
-        if (state.Profile is not null && !_profileCfg.Profiles.Any(p => p.Name.Equals(state.Profile, StringComparison.OrdinalIgnoreCase)))
+        bool remote = state.Panes.Any(p => AgtermRemoteBinding.IsRemote(p.LiveBinding));
+        if (!remote && state.Profile is not null && !_profileCfg.Profiles.Any(p => p.Name.Equals(state.Profile, StringComparison.OrdinalIgnoreCase)))
             throw new ArgumentException("saved profile is unavailable: " + state.Profile);
-        if (profile?.Elevate == true && !IsElevated()) throw new ArgumentException("elevated profile requires an elevated destination");
+        if (!remote && profile?.Elevate == true && !IsElevated()) throw new ArgumentException("elevated profile requires an elevated destination");
         foreach (var pane in state.Panes)
-            if (pane.Cwd.Length > 0 && !WslIntegration.IsWsl(profile?.Command) && !Directory.Exists(pane.Cwd))
+            if (!RestoreState.HasLiveBinding(pane.LiveBinding) && pane.Cwd.Length > 0 && !WslIntegration.IsWsl(profile?.Command) && !Directory.Exists(pane.Cwd))
                 throw new ArgumentException("saved directory is unavailable: " + pane.Cwd);
         string id = RecentFreeId(state.Id);
         string PaneId(PaneState p) => p.Id == state.Id ? id : RecentFreeId(p.Id);
@@ -228,12 +230,13 @@ internal partial class Program : IRecentHost
             var p = state.Panes[0];
             s = CreateSession(id, state.Name, p.Cwd, ws, false,
                 PaneFontSize.Restore(p.FontSize, (float)_config.FontSize, p.FontZoomed).Size,
-                profileName: state.Profile, paneId: PaneId(p));
+                profileName: state.Profile, paneId: PaneId(p), liveBinding: RecentRemoteBinding(p.LiveBinding));
             s.Axis = RestoreState.LoadAxis(state.Axis);
             if (state.Panes.Count > 1)
             {
                 p = state.Panes[1];
-                AppendPane(s, PaneId(p), p.Cwd, PaneFontSize.Restore(p.FontSize, (float)_config.FontSize, p.FontZoomed).Size);
+                AppendPane(s, PaneId(p), p.Cwd, PaneFontSize.Restore(p.FontSize, (float)_config.FontSize, p.FontZoomed).Size,
+                    liveBinding: RecentRemoteBinding(p.LiveBinding));
             }
             for (int i = 0; i < state.Panes.Count; i++)
             {
