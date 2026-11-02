@@ -38,7 +38,9 @@ internal sealed class SoloGlyphCache : IDisposable
 
     internal static Glyph Create(IDWriteFactory factory, int rune, IDWriteTextFormat format, float width, float height)
     {
-        string text = char.ConvertFromUtf32(rune);
+        // Legacy text-only scrollback can contain individual UTF-16 surrogate cells.
+        // Match RuneStr: let DirectWrite display them instead of throwing every repaint.
+        string text = rune > 0xffff ? char.ConvertFromUtf32(rune) : ((char)rune).ToString();
         var layout = factory.CreateTextLayout(text, format, width, height);
         try
         {

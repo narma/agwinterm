@@ -29,7 +29,8 @@ Assert(cache.Get(factory, 0x1f534, format, 18, 18).Layout.NativePointer != IntPt
 cache.Clear();
 Console.WriteLine("PASS 9 cache lifetime/key checks");
 
-foreach (int rune in new[] { 0x1f534, 0x4e2d, 0x23fa, 0x2714 })
+// Include the separate surrogate cells produced by legacy text-only SeedScrollback.
+foreach (int rune in new[] { 0x1f534, 0x4e2d, 0x23fa, 0x2714, 0xd83d, 0xdd34 })
     foreach (var face in new[] { format, bold })
         foreach (float width in new[] { 9f, 18f })
             foreach (float height in new[] { 18f, 22f })
@@ -39,7 +40,7 @@ foreach (int rune in new[] { 0x1f534, 0x4e2d, 0x23fa, 0x2714 })
                 Assert((actual.Scale, actual.Dx, actual.Dy) == expected, "original ink fit preserved");
             }
 cache.Clear();
-Console.WriteLine("PASS 32 original-fit comparisons");
+Console.WriteLine("PASS 48 original-fit comparisons (including legacy surrogate cells)");
 
 int[] icons = [0x1f534, 0x4e2d, 0x1f535, 0x754c, 0x23fa, 0x2714];
 var results = new List<object>();

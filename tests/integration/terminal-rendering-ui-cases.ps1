@@ -1,4 +1,17 @@
 # Runs through hud-ui.ps1's isolated app and background Sandbox routing.
+function WaitRenderShellQuiet {
+    # A font change resizes ConPTY; cmd can asynchronously repaint its prompt over
+    # session.write's synthetic scene. Wait for that output before injecting pixels.
+    $previous=[string](Rpc 'session.text' @{} $session);$quiet=0
+    for($attempt=0;$attempt-lt 50;$attempt++) {
+        Start-Sleep -Milliseconds 100
+        $next=[string](Rpc 'session.text' @{} $session)
+        if($next-ceq $previous){$quiet++}else{$quiet=0}
+        if($quiet-ge 5){return}
+        $previous=$next
+    }
+    throw 'Shell did not settle after font resize'
+}
 function RenderPixels([string]$name) {
     Start-Sleep -Milliseconds 300
     $oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
@@ -21,6 +34,9 @@ function RenderPixels([string]$name) {
 }
 $esc=[string][char]27
 $null=Rpc 'config.set' @{key='cursor-blink';value='false'}
+# Use a font installed in Sandbox, avoiding missing-user-font notification pixels.
+$null=Rpc 'config.set' @{key='font-family';value='Consolas'}
+WaitRenderShellQuiet
 $null=Rpc 'session.write' @{text=($esc+'[?1049h'+$esc+'[?25l')} $session
 try {
     foreach($ligatures in 'true','false') {
@@ -67,6 +83,7 @@ try {
             Check "coalesced BMP color-font run retains red with a white pen (ligatures=$ligatures)" ($runRed-gt 10) "red=$runRed"
         } finally {
             $null=Rpc 'config.set' @{key='font-family';value=$originalFamily}
+            WaitRenderShellQuiet
         }
         # Spaces isolate the decoration from glyph ink: SGR 9 must add a visible line.
         $null=Rpc 'session.write' @{text=($clear+$esc+'[38;2;18;90;159m'+$esc+'[9m'+(' '*20)+$esc+'[29m')} $session
@@ -90,6 +107,7 @@ try {
         $family=Rpc 'config.get' @{key='font-family'}
         $null=Rpc 'config.set' @{key='font-family';value='Segoe UI Emoji'}
         $null=Rpc 'config.set' @{key='font-family';value=$family}
+        WaitRenderShellQuiet
         $null=Rpc 'session.write' @{text=$cacheScene} $session
         $cacheReset=RenderPixels "cache-after-reset-$ligatures"
         foreach($comparison in @(@{name='warm';pixels=$cacheWarm},@{name='churn';pixels=$cacheAfter},@{name='reset';pixels=$cacheReset})) {
