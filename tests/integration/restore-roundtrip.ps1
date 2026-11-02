@@ -145,7 +145,7 @@ function Stop-StrayChildren {
 # happened. Setup returns what Assert needs (ids); both run inside the try so a throw is reported
 # as the cell's failure rather than ending the suite.
 function Get-TestRustHost($s) {
-    $pipePattern = '--pipe\s+"?' + [regex]::Escape($s.AppId + '-rust') + '"?(\s|$)'
+    $pipePattern = '--pipe\s+"?' + [regex]::Escape($s.Pipe + '-rust') + '"?(\s|$)'
     Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" |
         Where-Object { $_.CommandLine -match $pipePattern }
 }
@@ -479,6 +479,8 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
     Start-Sleep -Seconds 2
     $text = [string](Reply $s @('session', 'text', '--all', '--target', $ctx.Sid)).result
     $marker = 'REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END'
+    $metrics = Reply $s @('session', 'metrics', '--target', $ctx.Sid)
+    Check 'buffer-reflow: widened grid fits the complete marker' ([int]$metrics.result.cols -ge $marker.Length) ($metrics | ConvertTo-Json -Compress)
     Check 'buffer-reflow: restored output joins into one row after widening' ($text.Contains($marker)) $text
     [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 800, 800, 0x0004)
     Start-Sleep -Milliseconds 500
