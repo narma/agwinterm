@@ -14,5 +14,8 @@
     WebPageMeasurements = @{ Path='tools/web-page-measurements.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@(); Outputs=@('Output') }
     WslControl = @{ Path='tests/integration/wsl-control.ps1'; Wsl=$true; Options=@('Distro','NativeHooks','LinuxUser','NoPython','Portable') }
     WslBenchmark = @{ Path='tests/integration/wsl-hook-bench.ps1'; Wsl=$true; Options=@() }
+    WslZmxDependency = @{ Path='tests/integration/wsl-zmx-dependency.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
+    WslZmxSurvival = @{ Path='tests/integration/wsl-zmx-survival.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory','DiagnosticKeepalive','LifetimeGuard','ProfileLive','LifecycleControls','PeerDistro','PeerUser','PeerExecutable') }
+    WslZmxIdentity = @{ Path='tests/integration/wsl-zmx-identity.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
     WebStartupBaseline = @{ Path='tools/web-startup-baseline.ps1'; Exe=$true; Options=@('Runs'); Inputs=@('Installer','Portable'); Outputs=@('Output') }
 }

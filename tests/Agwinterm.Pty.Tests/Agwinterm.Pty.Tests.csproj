@@ -17,6 +17,7 @@
     <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)/build/native/runtimes/x64/OpenConsole.exe" Link="conpty/x64/OpenConsole.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="Fixtures/WslZmx/*" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/Agwinterm.Pty/Agwinterm.Pty.csproj" />
     <!-- agwintermctl arg parsing (FrameShmCli) is unit-tested here; the exe reference is harmless. -->
     <ProjectReference Include="../../src/Agwinterm.Ctl/Agwinterm.Ctl.csproj" />

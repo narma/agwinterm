@@ -15,6 +15,9 @@ command names alone does not establish workflow parity.
 
 ## Related plans and contracts
 
+- The [WSL ZMX and bidirectional agterm roadmap](2026-11-01-wsl-zmx-agterm-roadmap.md)
+  records the user's commitment to all four stages, including remote attachment in
+  both directions and remote presentation. These are separate changes from local web overlays.
 - The [October C0–C8 plan](2026-10-25-control-capabilities.md) documents the preceding
   implementation wave. All stages are marked implemented; its verification reports
   retain the limitations of the shared C6 UI checks. Cookbook recipes and scheduled

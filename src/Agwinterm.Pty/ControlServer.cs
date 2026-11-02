@@ -417,6 +417,25 @@ public sealed partial class ControlServer : IDisposable
             }
 
             var auxiliary = host.AuxiliaryTarget(target);
+            if (cmd.StartsWith("zmx.", StringComparison.Ordinal))
+            {
+                var fields = new HashSet<string>();
+                foreach (var field in root.EnumerateObject())
+                    if (!fields.Add(field.Name) || field.Name is not ("cmd" or "args" or "target" or "window"))
+                        return Err("Unknown or duplicate zmx request field");
+                WslLiveControl.Validate(cmd, args, target);
+                if (windowSel is not null)
+                {
+                    if (_windows is null) return Err("Window routing unavailable");
+                    var open = _windows.Windows().Where(w => w.Open).ToArray();
+                    if (!open.Any(w => w.Id == windowSel)) return Err("An exact open window ID is required");
+                }
+                if (windowSel is not null && auxiliary is not null && !ReferenceEquals(auxiliary, host))
+                    return Err("Target is outside the selected window");
+                return (auxiliary ?? host) is IWslLiveHost live
+                    ? OkRaw(JsonSerializer.Serialize(live.LiveCommand(cmd, args.ValueKind == JsonValueKind.Undefined ? default : args.Clone(), target)))
+                    : Err("WSL live controls unavailable");
+            }
             if (windowSel is not null && (webOverlayRequest || cmd is "session.focus" or "session.resize" or "command.run") &&
                 auxiliary is not null && !ReferenceEquals(auxiliary, host))
                 return Err("target is outside the selected window");
@@ -672,6 +691,13 @@ public sealed partial class ControlServer : IDisposable
             {
                 var s = host.Resolve(target);
                 if (s is null) return Err("no session");
+                if (host is IWslLiveHost liveTerminal && cmd is "session.type" or "session.text" or "surface.cursor")
+                {
+                    if (cmd == "session.text" && !TryTextArgs(args, out _, out var textError)) return Err(textError!);
+                    if (cmd == "session.type" && !GetBool(args, "allow-control")
+                        && FirstControlByte(GetString(args, "text") ?? "") is { } bad) return Err($"session.type refuses control byte 0x{(int)bad:X2}; pass --allow-control if intended");
+                    if (liveTerminal.LiveTerminalCommand(cmd, args, s) is { } authoritative) return OkRaw(authoritative.GetRawText());
+                }
                 return cmd switch
                 {
                     "session.write" => HandleWrite(s, args),
@@ -763,6 +789,8 @@ public sealed partial class ControlServer : IDisposable
                     sb.Append(",\"customName\":").Append(JsonSerializer.Serialize(n.CustomName));
                 if (n.PaneCwds is { } cwds)
                     sb.Append(",\"paneCwds\":").Append(JsonSerializer.Serialize(cwds));
+                if (n.LiveSessions is { Count: > 0 } live)
+                    sb.Append(",\"liveSessions\":").Append(JsonSerializer.Serialize(live));
                 if (n.Overlay) sb.Append(",\"overlay\":true");
                 if (n.Hud is { } hud) sb.Append(",\"hud\":").Append(JsonSerializer.Serialize(hud, SessionHuds.JsonOptions));
                 if (n.ForegroundShells is { } shells)

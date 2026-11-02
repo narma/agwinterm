@@ -15,7 +15,7 @@ namespace Agwinterm.Ctl;
 public static class CtlUsage
 {
     /// <summary>The one-line summary printed with no arguments at all.</summary>
-    public const string Short = "usage: agwintermctl <ping|version|tree|session|surface|image|install> ... (see docs/control-api.md)";
+    public const string Short = "usage: agwintermctl <ping|version|tree|session|zmx|surface|image|install> ... (see docs/control-api.md)";
 
     /// <summary>Every verb and flag, the text <c>--help</c> prints. Moved here from the comment it
     /// used to be; keep it and the code in step, because this is now what users read.</summary>
@@ -28,6 +28,15 @@ public static class CtlUsage
           agwintermctl ping
           agwintermctl version [--json]                  (the CLI that ran + the app serving the pipe)
           agwintermctl tree [--json]
+          agwintermctl zmx list --profile NAME [--window ID] [--json]
+          agwintermctl zmx attach --profile NAME --daemon NAME --incarnation TOKEN [--window ID] [--json]
+          agwintermctl zmx retry|detach|lead --target PANE_ID [--window ID] [--json]
+          agwintermctl zmx terminate --target PANE_ID --force [--window ID] [--json]
+          agwintermctl zmx restart --target PANE_ID --source shell|agent|pin|captured [--window ID] [--json]
+            WSL-only opt-in profiles. Exact pane targets are required; no active/environment fallback.
+            Retry reconnects existing work. Restart requires confirmed loss and one available source.
+            Detach preserves work; terminate stops the exact owned workload for every client.
+            Managed session text/cursor read the daemon; session type acknowledges acceptance, not execution.
           agwintermctl pick [open] [--selected-id ID] [--prompt TEXT] [--query TEXT] [--allow-custom] [--input-format auto|lines|json] [--window ID] [--follow] [--no-block]
             UTF-8 items on stdin; JSON items accept status, color #RRGGBB, shape dot|square|diamond.
           agwintermctl pick result|cancel ID [--window ID] [--json]

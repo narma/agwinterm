@@ -319,6 +319,14 @@ internal partial class Program : ISessionHost, IWindowHost
     {
         public required string Id;
         public required ISession S;
+        public JsonElement LiveBinding;
+        public string? LiveSaveError;
+        public bool LiveClosing;
+        public bool LiveTerminated;
+        public bool LiveFreshStart;
+        public bool LiveClaim;
+        public ZmxRoleState? LiveRole;
+        public readonly WslRecoveryGate LiveRecovery = new();
         public string? StartCwd;   // dir the shell was launched in (fallback cwd when OSC 7 is absent)
         public volatile string? AutomaticName; // last coherent label; used while terminal output holds SyncRoot
         public string? AgentResume; // resumable agent bound to this pane (e.g. "claude") — relaunched on restart
@@ -344,7 +352,7 @@ internal partial class Program : ISessionHost, IWindowHost
         // swap / a survivor promotion move it by construction and ClosePane disposes it with the
         // pane. Unused on a cover pane (an overlay term, scratch, quick) — nothing opens an overlay
         // over an overlay.
-        public readonly OverlaySlot Overlay = new();
+        public OverlaySlot Overlay = new();
         // The pane's StartAsync task (CreatePane's command branches). A start that FAILS sets
         // HasExited without raising Exited — both session kinds catch the spawn failure and keep
         // the surface to show it — so a watcher that needs an end (WatchOverlayExit) observes this

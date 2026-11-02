@@ -11,6 +11,55 @@ Related pages: [launching a session command](session-commands.md), [session HUD]
 [native picker](native-picker.md), [`image frameshm`](specs/image-frameshm.md). The subset agliteterm
 shares is canonical in [`tests/conformance/control-api.json`](../tests/conformance/control-api.json).
 
+## Opt-in WSL live sessions (development)
+
+Rust remains the Windows PTY host. The local ZMX daemon runs only inside the
+configured WSL distribution; SSH and agterm presentation are not supported.
+Provision the pinned dependency explicitly as described in
+[the development guide](wsl-zmx-development.md). This feature is disabled by
+default. The local acceptance matrix is recorded in the development guide;
+packaging and deployment are separate steps.
+
+```powershell
+agwintermctl zmx list --profile "WSL live" --json
+agwintermctl zmx attach --profile "WSL live" --daemon DAEMON --incarnation TOKEN --json
+agwintermctl zmx retry --target PANE_ID --json
+agwintermctl zmx lead --target PANE_ID --json
+agwintermctl zmx detach --target PANE_ID --json
+agwintermctl zmx terminate --target PANE_ID --force --json
+agwintermctl zmx restart --target PANE_ID --source pin --json
+```
+
+Copy the daemon and incarnation token from `list`; attach revalidates both.
+Mutations require an explicit exact pane ID. They never infer a target from the
+active pane or caller environment. Optional `--window ID` must name an open
+window exactly. Exit codes remain 0 success, 1 refusal/transport failure and 2
+invalid CLI usage. Pending recovery/leadership acceptance is not completion;
+read `tree --json` and its per-session `liveSessions[PANE_ID]` map.
+
+Raw commands are `zmx.list/attach/retry/lead/detach/terminate/restart`, with
+`args` containing the corresponding `profile`, `daemon`, `incarnation`,
+`force: true` or `source` fields. Retry, lead and detach take empty args.
+Unknown/duplicate fields refuse. For example:
+`{"cmd":"zmx.restart","target":"PANE_ID","args":{"source":"pin"}}`.
+
+Retry only reconciles/reconnects existing work. Restart requires confirmed loss
+of an owned workload and exactly one available source: `shell`, `agent`, `pin`
+or enabled `captured`. It returns a new binding/incarnation, not survival.
+Detach removes only this attachment and preserves work; owned pane close and
+explicit terminate stop that exact workload for every attached client. Quit
+preserves work. External attachments grant no termination/restart authority.
+Uncertain results must be reconciled; never replay a mutation automatically.
+
+For managed live panes, `session text` (including `--all`/`--lines`) and
+`surface cursor` query the daemon even from followers. Styled-cell queries
+explicitly refuse because the pinned daemon's query protocol exposes text and
+cursor only. `session type` uses acknowledged daemon input and respects readonly
+and control-byte validation. Its `{accepted:true,executionComplete:false}` result
+means queued input, not command completion. A lost acknowledgement is uncertain:
+inspect the workload rather than resending. These operations do not claim
+leadership; `zmx lead` is the explicit claim.
+
 ## Optional web overlays
 
 WebView2 pages occupy a session-wide or independent pane overlay slot. An existing program or web

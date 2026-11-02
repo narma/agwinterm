@@ -2,7 +2,7 @@ using Agwinterm.Pty;
 
 namespace Agwinterm.Pty.Tests;
 
-public class WslIntegrationTests
+public partial class WslIntegrationTests
 {
     [Theory]
     [InlineData("file://localhost/home/me/a%20b/%D1%82%D0%B5%D1%81%D1%82", "/home/me/a b/тест")]
