@@ -31,6 +31,8 @@ public sealed class ScreenBuffer
         {
             CheckBounds(row, col);
             _cells[row * Cols + col] = value;
+            // A later write can replace padding excluded from a wide-glyph wrap.
+            if (WrapLengths[row] >= 0) WrapLengths[row] = Math.Max(WrapLengths[row], col + 1);
         }
     }
 

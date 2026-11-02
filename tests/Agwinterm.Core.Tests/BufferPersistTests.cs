@@ -7,6 +7,32 @@ namespace Agwinterm.Core.Tests;
 /// cell's colour and attributes (vs the old plain-text path that reseeded flat dim text).</summary>
 public class BufferPersistTests
 {
+    internal static void VerifyPaddingOverwrite(ITerminalCore source)
+    {
+        source.Feed(Encoding.UTF8.GetBytes("abcd中\x1b[1;5HX"));
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));
+        var restored = new TerminalEmulator(20, 4);
+        BufferPersist.Restore(restored, saved);
+        Assert.Equal("abcdX中", restored.DumpHistoryRow(0).TrimEnd());
+    }
+
+    internal static void VerifyResizeDoesNotSoftWrap(ITerminalCore source)
+    {
+        source.Feed(Encoding.ASCII.GetBytes("abcde\r\nVWXYZ\x1b[1;1H12345"));
+        source.Resize(3, 4);
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));
+        var restored = new TerminalEmulator(20, 4);
+        BufferPersist.Restore(restored, saved);
+        Assert.Equal("123", restored.DumpHistoryRow(0).TrimEnd());
+        Assert.Equal("VWX", restored.DumpHistoryRow(1).TrimEnd());
+    }
+
+    [Fact]
+    public void PaddingOverwriteSurvivesRestore() => VerifyPaddingOverwrite(new TerminalEmulator(5, 4));
+
+    [Fact]
+    public void ResizeDoesNotInventSoftWrap() => VerifyResizeDoesNotSoftWrap(new TerminalEmulator(5, 4));
+
     private static TerminalEmulator RestoreAt(TerminalEmulator source, int cols)
     {
         Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));

@@ -454,8 +454,6 @@ impl Emulator {
             self.cursor_row = rows - 1;
         }
         if self.cursor_col >= cols {
-            let r = self.cursor_row;
-            self.scr().wraps[r] = Some(cols);
             self.cursor_col = cols - 1;
         }
     }

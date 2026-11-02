@@ -11,6 +11,22 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class RustEmulatorCoreTests
 {
+    [Fact]
+    public void PaddingOverwriteSurvivesRestore()
+    {
+        if (!Available) return;
+        using var source = new RustTerminalCore(5, 4);
+        BufferPersistTests.VerifyPaddingOverwrite(source);
+    }
+
+    [Fact]
+    public void ResizeDoesNotInventSoftWrap()
+    {
+        if (!Available) return;
+        using var source = new RustTerminalCore(5, 4);
+        BufferPersistTests.VerifyResizeDoesNotSoftWrap(source);
+    }
+
     [Theory]
     [InlineData(2)]
     [InlineData(8)]

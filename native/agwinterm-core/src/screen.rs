@@ -39,6 +39,10 @@ impl ScreenBuffer {
     pub fn set(&mut self, row: usize, col: usize, cell: Cell) {
         assert!(row < self.rows && col < self.cols);
         self.cells[row * self.cols + col] = cell;
+        // A later write may replace padding excluded from a previous wide-glyph wrap.
+        if let Some(length) = self.wraps[row] {
+            self.wraps[row] = Some(length.max(col + 1));
+        }
     }
 
     pub fn clear(&mut self) {
