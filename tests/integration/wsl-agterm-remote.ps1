@@ -1,9 +1,10 @@
 param([string]$Distro='Ubuntu', [string]$LinuxUser='alzo', [Parameter(Mandatory)][string]$Destination,
     [Parameter(Mandatory)][string]$AgentSocket, [Parameter(Mandatory)][string]$OriginSocket,
-    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture)
-$ErrorActionPreference='Stop'
+    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge)
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslAgtermRemote -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
+if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock') { throw 'Only an isolated origin fixture socket is accepted' }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
@@ -25,6 +26,10 @@ function Start-Ui {
         if ($LASTEXITCODE -eq 0) { return }
     }
     throw 'Test UI did not become ready'
+}
+function Refuse([string[]]$Command) {
+    $raw=& $ctl @Command --pipe $id --json --timeout 30
+    if ($LASTEXITCODE -eq 0) { throw "Unexpected success: $Command $raw" }
 }
 function Pane-State([string]$pane) {
     foreach ($window in (Ctl @('window','list')).windows | Where-Object open) {
@@ -61,6 +66,11 @@ try {
         Start-Sleep -Milliseconds 500
         $screen=Ctl @('session','text','--target',$pane)
         if ($screen -notlike "*$marker*") { throw 'Authoritative origin read missed acknowledged input' }
+        $null=Ctl @('session','readonly','on','--target',$pane)
+        Refuse @('session','type','SHOULD-NOT-TYPE','--target',$pane)
+        $null=Ctl @('session','readonly','off','--target',$pane)
+        Refuse @('session','text','--styles','--target',$pane)
+        Refuse @('zmx','remote','terminate','--target',$pane)
         Write-Host "PASS borrowed import/input/read $pane role=$($live.role)"
     }
     $ui.Kill(); $ui.WaitForExit()
@@ -114,6 +124,33 @@ try {
     $after=Ctl (@('zmx','remote','list')+$remote)
     if (-not ($after.Sessions | Where-Object { $_.Session.Id -eq $candidate.Session.Id })) { throw 'Origin session lost after detach' }
     Write-Host 'PASS explicit leadership and borrowed detach'
+    for ($race=0;$race -lt 3;$race++) {
+        $closing=Ctl (@('zmx','remote','attach')+$remote+@('--bridge',$Bridge,'--session',$candidate.Session.Id,'--window',$window))
+        $null=Ctl @('session','close',$closing.sessionId)
+        for ($wait=0;$wait -lt 80 -and (Pane-State $closing.panes[0].paneId);$wait++) { Start-Sleep -Milliseconds 100 }
+        Start-Sleep -Milliseconds 250
+        if (Pane-State $closing.panes[0].paneId) { throw 'Late remote start resurrected a closed pane' }
+    }
+    Write-Host 'PASS immediate import/close races do not resurrect panes'
+    if ($FaultBridge) {
+        $partial=Ctl (@('zmx','remote','attach')+$remote+@('--bridge',$FaultBridge,'--session',$candidate.Session.Id,'--window',$window))
+        if ($partial.panes.Count -ne 2) { throw 'Fault fixture needs an origin split' }
+        $left=[string]$partial.panes[0].paneId; $right=[string]$partial.panes[1].paneId
+        $null=Await-Pane $left
+        for ($i=0;$i -lt 60;$i++) {
+            $failed=Pane-State $right
+            if ($failed.recovery -eq 'unavailable') { break }
+            Start-Sleep -Milliseconds 100
+        }
+        if ($failed.recovery -ne 'unavailable' -or $failed.remoteAttach) { throw 'Partial split reported false success' }
+        $suffix=[guid]::NewGuid().ToString('N')
+        Refuse @('session','type',"printf '%s%s\n' 'LOST-ACK-' '$suffix'`n",'--target',$left)
+        Start-Sleep -Milliseconds 300
+        $screen=[string](Ctl @('session','text','--target',$left))
+        if (($screen.Split('LOST-ACK-'+$suffix)).Count -ne 2) { throw 'Input was missing or replayed after lost acknowledgement' }
+        $null=Ctl @('session','close',$partial.sessionId)
+        Write-Host 'PASS partial split failure and single delivery after lost input reply'
+    }
     if ($TerminalFixture) {
         & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture (Join-Path (Split-Path $exe) 'agwinterm-ptyhost.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Remote terminal continuity harness failed' }

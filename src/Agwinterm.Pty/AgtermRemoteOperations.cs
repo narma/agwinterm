@@ -39,9 +39,20 @@ public sealed class AgtermRemoteOperations
     public async Task<JsonElement> TypeAsync(AgtermRemoteBinding binding, string text, CancellationToken ct = default)
     {
         if (Encoding.UTF8.GetByteCount(text) is 0 or > 32768) throw new ArgumentException("Input exceeds limit");
-        try { return await RequestAsync(binding.Target, binding.Bridge, Request(binding, "type", text), ct).ConfigureAwait(false); }
+        try
+        {
+            var result = await RequestAsync(binding.Target, binding.Bridge, Request(binding, "type", text), ct).ConfigureAwait(false);
+            RequireInputAcknowledgement(result);
+            return result;
+        }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or InvalidOperationException or JsonException or KeyNotFoundException)
         { throw new WslRecoveryException("uncertain", "Remote input delivery is uncertain; it was not retried"); }
+    }
+
+    internal static void RequireInputAcknowledgement(JsonElement result)
+    {
+        if (result.ValueKind != JsonValueKind.Object || !result.TryGetProperty("accepted", out var accepted) || accepted.ValueKind != JsonValueKind.True)
+            throw new IOException("Remote input was not acknowledged");
     }
 
     public static string[] AttachmentArgs(AgtermRemoteBinding binding, string nonce, bool claim = false)

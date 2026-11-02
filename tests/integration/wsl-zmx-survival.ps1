@@ -169,6 +169,22 @@ try {
             $row = (Ctl @('tree')).workspaces[0].sessions[0]
             $paneId = @($row.liveSessions.PSObject.Properties.Name)[0]
             $before = $row.liveSessions.$paneId
+            $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
+            if ($retryHosts.Count -ne 1) { throw 'Expected one fixture host before live-UI retry' }
+            Stop-Process -Id $retryHosts[0].ProcessId -Force
+            for ($i=0; $i -lt 100; $i++) {
+                $lost = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
+                if ($lost.recovery -eq 'unavailable') { break }
+                Start-Sleep -Milliseconds 100
+            }
+            $null = Ctl @('zmx','retry','--target',$paneId)
+            for ($i=0; $i -lt 100; $i++) {
+                $retried = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
+                if ($retried.recovery -eq 'zmx-reattached') { break }
+                Start-Sleep -Milliseconds 100
+            }
+            if ($retried.recovery -ne 'zmx-reattached' -or (Inspect) -ne $initial) { throw 'Local retry after host loss did not preserve workload' }
+            Write-Host 'PASS local existing-only retry after Rust-host loss while UI remains open'
             $listed = Ctl @('zmx','list','--profile','ZMX survival')
             $found = @($listed.sessions)[0]
             if ($found.ownership -ne 'owned' -or $found.daemon -ne $before.daemon.Name) { throw 'Inventory lost ownership or daemon identity' }

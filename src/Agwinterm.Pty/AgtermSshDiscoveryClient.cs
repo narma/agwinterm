@@ -59,7 +59,7 @@ public static class AgtermSshDiscoveryClient
     {
         var result = new StringBuilder("'");
         foreach (char c in value)
-            result.Append(c switch { '\\' => "'\\\\'", '\'' => "'\\''", _ => c.ToString() });
+            result.Append(c switch { '\\' => "'\\\\'", '\'' => "'\\''", '!' => "'\\!'", _ => c.ToString() });
         return result.Append('\'').ToString();
     }
 

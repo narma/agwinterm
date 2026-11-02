@@ -2,12 +2,14 @@
 #![cfg(unix)]
 use serde_json::{Value, json};
 use std::os::{
-    fd::{AsRawFd, FromRawFd, OwnedFd},
+    fd::{FromRawFd, OwnedFd},
     unix::{
         fs::{FileTypeExt, MetadataExt},
         net::UnixStream,
     },
 };
+#[cfg(target_os = "macos")]
+use std::os::fd::AsRawFd;
 use std::{
     fs,
     io::{self, Read, Write},
@@ -71,6 +73,10 @@ impl ExactDaemon {
             clients: 0,
         };
         let (workload, parent) = daemon.info()?;
+        // Linux SO_PEERCRED identifies the listener's creator before ZMX forks, not
+        // necessarily its serving daemon. Linux retains the stage-1 double process/
+        // inode observation (and the hook additionally pins the daemon with pidfd).
+        #[cfg(target_os = "macos")]
         if peer_pid(&daemon.channel)? != parent {
             return Err("socket peer is not the observed daemon".into());
         }
@@ -133,24 +139,6 @@ fn peer_pid(channel: &UnixStream) -> Result<i32> {
         return Err(io::Error::last_os_error().into());
     }
     Ok(pid)
-}
-#[cfg(target_os = "linux")]
-fn peer_pid(channel: &UnixStream) -> Result<i32> {
-    let mut peer: libc::ucred = unsafe { std::mem::zeroed() };
-    let mut length = std::mem::size_of_val(&peer) as libc::socklen_t;
-    if unsafe {
-        libc::getsockopt(
-            channel.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            (&mut peer as *mut libc::ucred).cast(),
-            &mut length,
-        )
-    } != 0
-    {
-        return Err(io::Error::last_os_error().into());
-    }
-    Ok(peer.pid)
 }
 fn connect(path: &Path) -> Result<UnixStream> {
     use std::os::unix::ffi::OsStrExt;

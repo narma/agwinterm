@@ -250,6 +250,8 @@ internal partial class Program
     {
         var binding = AgtermRemoteBinding.Load(pane.LiveBinding, out var error);
         return JsonSerializer.SerializeToElement(new { provider = "agterm-ssh", bindingId = binding?.BindingId,
+            transport = "wsl-ssh", distribution = binding?.Target.Distribution, user = binding?.Target.User,
+            destination = binding?.Target.Destination,
             endpoint = binding?.Endpoint, originSession = binding?.OriginSession, originWindow = binding?.OriginWindow,
             originWorkspace = binding?.OriginWorkspace, originPane = binding?.Role, daemon = binding?.Daemon,
             ownership = "borrowed", recovery = binding?.Recovery ?? "unavailable", error = pane.LiveSaveError ?? binding?.Error ?? error,

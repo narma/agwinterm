@@ -38,6 +38,7 @@ public class AgtermSshDiscoveryTests
     [InlineData("a'b", "'a'\\''b'")]
     [InlineData("a\\b", "'a'\\\\'b'")]
     [InlineData("a'\\b", "'a'\\'''\\\\'b'")]
+    [InlineData("a!b", "'a'\\!'b'")]
     public void AccountShellQuotingKeepsMetacharactersLiteral(string input, string expected) =>
         Assert.Equal(expected, AgtermSshDiscoveryClient.QuoteAccountShell(input));
 

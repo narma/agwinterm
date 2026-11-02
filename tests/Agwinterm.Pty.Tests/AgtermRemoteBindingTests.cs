@@ -6,6 +6,16 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermRemoteBindingTests
 {
+    [Theory]
+    [InlineData("{\"accepted\":false,\"uncertain\":true}")]
+    [InlineData("{}")]
+    [InlineData("{\"accepted\":\"true\"}")]
+    public void UnacknowledgedRemoteInputCannotBeReportedAsSuccess(string json)
+    {
+        using var reply = JsonDocument.Parse(json);
+        Assert.Throws<IOException>(() => AgtermRemoteOperations.RequireInputAcknowledgement(reply.RootElement));
+    }
+
     internal static AgtermRemoteBinding Binding()
     {
         string name = "agterm-11111111111111111111111111111111";

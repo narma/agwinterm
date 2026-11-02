@@ -50,9 +50,11 @@ pub fn main() {
     match result {
         Ok(value) => println!("{}", json!({"ok":true,"result":value})),
         Err(error) => {
-            let state = if error.to_string() == "origin ZMX build is not the verified client/daemon pair" {
-                "unsupported"
-            } else { "unavailable" };
+            let state = match error.to_string().as_str() {
+                "origin ZMX build is not the verified client/daemon pair" => "unsupported",
+                "input delivery uncertain" => "uncertain",
+                _ => "unavailable",
+            };
             println!(
                 "{}",
                 json!({"ok":false,"state":state,"error":error.to_string()})
@@ -195,12 +197,12 @@ fn dispatch(request: &Value) -> Result<Value> {
             }
             // Once any bytes are sent, all failures are uncertain; never resend.
             if daemon.send(25, input.as_bytes()).is_err() {
-                return Ok(json!({"accepted":false,"uncertain":true}));
+                return Err("input delivery uncertain".into());
             }
             match daemon.receive(25, 1, 1) {
                 Ok(ack) if ack == [0] => Ok(json!({"accepted":true,"executionComplete":false})),
                 Ok(_) => Err("input rejected".into()),
-                Err(_) => Ok(json!({"accepted":false,"uncertain":true})),
+                Err(_) => Err("input delivery uncertain".into()),
             }
         }
         "screen" => {

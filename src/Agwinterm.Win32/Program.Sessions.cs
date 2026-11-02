@@ -86,7 +86,7 @@ internal partial class Program
             try
             {
                 if (liveError is not null) throw new InvalidOperationException(liveError);
-                session = restoredRemote is not null && _sessionBackend is ServerSessionBackend remoteBackend
+                session = (restoredRemote is not null || restoredLive is not null) && _sessionBackend is ServerSessionBackend remoteBackend
                     ? remoteBackend.CreateExistingOnlyTransport(paneId, cols, rows)
                     : _sessionBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
