@@ -423,7 +423,8 @@ native readiness and four protocol tests; warning-free Windows release build.
 Standalone portable extraction verified the runnable CLI, Windows bridge and
 the exact x64/arm64 ELF payloads from the build inputs.
 The real Rust/WSL harness passed at
-`artifacts/wsl-ui/20261102T162153-7da52b99` (including legacy helper migration),
+`artifacts/wsl-ui/20261102T163411-724f895b` (including legacy helper migration
+and Bash-specific selected-command restart),
 and full lifecycle UI matrix at `artifacts/wsl-ui/20261102T162012-7856fac3`
 (two Linux users, 60-second idle host loss, explicit disposable shutdown).
 These runners use a private desktop, leaving the input desktop unchanged.
@@ -433,6 +434,8 @@ including options with values and combined `-lc` flags. Non-shell profiles keep
 the previous `$SHELL` fallback, with the command passed as a positional argument.
 The real lifecycle test uses Bash `[[ ... ]]` and checks `extglob` remains enabled
 for agent/pin/captured restarts; subsequent shell restart retains original argv.
+Implementation commit `41a4644` passed all CI jobs in run `41454213130` and
+Greptile review `37560633` completed at 5/5 with every finding resolved.
 
 No quantified performance improvement is promised. Rust removes interpreter
 startup and retained interpreter memory; WSL process invocation and daemon

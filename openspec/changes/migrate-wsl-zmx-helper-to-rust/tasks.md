@@ -13,4 +13,9 @@
 ## 3. Acceptance
 
 - [x] 3.1 Verify existing hook behavior, static x64/arm64 payload packaging, strict OpenSpec and release build; record checks and performance limits.
-- [ ] 3.2 Complete Greptile review and green CI on the final commit; keep PR open and unmerged.
+- [x] 3.2 Complete Greptile review and green CI on the final commit; keep PR open and unmerged.
+
+Implementation commit `41a46443fc7c3724ac60a486067cb4ae8d0083e5` passed all jobs
+in CI run `41454213130`. Greptile review `37560633` completed at 5/5, with all
+five PR review threads resolved. Completion-metadata commits are also checked
+before delivery; PR #23 remains open and unmerged.
