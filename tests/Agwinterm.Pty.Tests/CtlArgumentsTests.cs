@@ -10,6 +10,7 @@ public class CtlArgumentsTests
     [InlineData("version")]
     [InlineData("tree")]
     [InlineData("zmx list --profile Linux")]
+    [InlineData("zmx export tree --window w --distribution Ubuntu --user alice --origin app --executable /opt/zmx --socket-directory /tmp/zmx --adapter /opt/attach")]
     [InlineData("zmx attach --profile Linux --daemon agterm-name --incarnation token")]
     [InlineData("zmx retry --target pane")]
     [InlineData("zmx detach --target pane")]

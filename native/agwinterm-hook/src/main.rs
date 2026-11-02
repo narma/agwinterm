@@ -194,6 +194,13 @@ fn main() {
     // closes all process handles on exit. Missing pipes fail immediately.
     let operation = env::args().nth(1).unwrap_or_default();
     #[cfg(target_os = "linux")]
+    if operation == "--zmx-export-provision" || operation == "--zmx-export-disable"
+        || env::current_exe().ok().and_then(|p| p.file_name().map(|s| s.to_owned()))
+            .is_some_and(|n| n == "agtermctl" || n == "attach")
+    {
+        std::process::exit(zmx::export::run());
+    }
+    #[cfg(target_os = "linux")]
     if matches!(operation.as_str(), "--zmx" | "--zmx-install" | "--zmx-workload") {
         // A committed lifetime lease must outlive the ordinary hook watchdog.
         std::process::exit(zmx::run(&operation, env::args().skip(2).collect()));

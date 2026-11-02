@@ -29,6 +29,8 @@ public static class CtlUsage
           agwintermctl version [--json]                  (the CLI that ran + the app serving the pipe)
           agwintermctl tree [--json]
           agwintermctl zmx list --profile NAME [--window ID] [--json]
+          agwintermctl zmx export tree --window ID --distribution DISTRO --user USER --origin APP_ID --executable LINUX_ZMX --socket-directory DIR --adapter PATH [--json]
+            Internal origin projection for an explicitly provisioned WSL adapter; does not install SSH or enable presentation.
           agwintermctl zmx remote list --distribution DISTRO --user USER --host HOST [--agent-socket PATH] [--origin-socket PATH] [--json]
           agwintermctl zmx remote attach --distribution DISTRO --user USER --host HOST --bridge PATH --session ORIGIN_ID --window ID [--agent-socket PATH] [--origin-socket PATH] [--json]
           agwintermctl zmx remote retry|detach|lead --target PANE_ID --window ID [--json]

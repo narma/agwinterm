@@ -425,6 +425,7 @@ public sealed partial class ControlServer : IDisposable
                         return Err("Unknown or duplicate zmx request field");
                 WslLiveControl.Validate(cmd, args, target);
                 if (cmd == "zmx.remote.attach" && windowSel is null) return Err("Remote import requires an exact local window ID");
+                if (cmd == "zmx.export.tree" && windowSel is null) return Err("Origin export requires an exact window ID");
                 if (windowSel is not null)
                 {
                     if (_windows is null) return Err("Window routing unavailable");

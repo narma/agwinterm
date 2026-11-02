@@ -13,6 +13,7 @@ dependencies = [
  "agwinterm-zmx",
  "base64",
  "libc",
+ "serde",
  "serde_json",
  "sha2",
 ]

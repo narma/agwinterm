@@ -60,6 +60,7 @@ jobs:
           python3 tests/integration/zmx/remote-shell-tests.py
           python3 tests/integration/zmx/readiness-tests.py artifacts/wsl-hook/agwinterm-hook-linux-${{ matrix.arch }}
           python3 tests/integration/zmx/native-protocol-tests.py artifacts/wsl-hook/agwinterm-hook-linux-${{ matrix.arch }}
+          python3 tests/integration/zmx/export-protocol-tests.py artifacts/wsl-hook/agwinterm-hook-linux-${{ matrix.arch }}
       - name: Test installers and bootstrap on native Linux
         # Only path conversion is stubbed; Windows interop is exercised by the WSL suite.
         env:

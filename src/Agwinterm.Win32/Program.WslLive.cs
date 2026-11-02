@@ -95,6 +95,7 @@ internal partial class Program : IWslLiveHost
     {
         if (command.StartsWith("zmx.remote.", StringComparison.Ordinal)) return RemoteCommand(command, args, target);
         WslLiveControl.Validate(command, args, target);
+        if (command == "zmx.export.tree") return ExportOriginTree(args);
         if (command is "zmx.list" or "zmx.attach")
         {
             string name = args.GetProperty("profile").GetString()!;
