@@ -7,7 +7,10 @@ predecessor; late requests cannot create work after rollback. Existing new
 operations remain authoritative, including after workload exit. Original shell
 argv is retained separately from the selected restart command. A live-daemon
 owner index avoids scanning historical operations during ordinary discovery;
-idempotency records are not deleted. See `docs/wsl-zmx-development.md` for tests.
+idempotency records are not deleted. The index publishes a flushed temporary
+file atomically without replacing existing owners and flushes the directory,
+so interruption cannot expose partial lookup contents.
+See `docs/wsl-zmx-development.md` for tests.
 
 ## Context
 

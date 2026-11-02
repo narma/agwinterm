@@ -384,6 +384,12 @@ The ledger keeps original shell argv separate from each selected restart command
 so a later shell restart cannot repeat a pin, agent or captured command. Discovery
 uses a daemon-to-operation index for live sockets and retains historical records
 for idempotency instead of imposing a 1,024-operation lifetime limit.
+The owner index is published with an atomic, non-replacing hard link only after
+the complete temporary file is flushed, then the directory is flushed. Process
+exit immediately before or after publication leaves either no lookup or a
+complete lookup; replay can repair the former from the committed operation.
+Regression tests kill the writer at both boundaries and verify recovery plus
+refusal to replace a conflicting owner.
 
 Regression checks cover the pre-reservation interruption, delayed request fence,
 committed restart whose reply was lost, chained command-then-shell restart and

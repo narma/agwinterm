@@ -94,16 +94,25 @@ class Ledger:
         directory = Ledger(str(self.root / "owners")).root
         raw = record["operation"].encode()
         path = directory / name
+        fd, temporary = tempfile.mkstemp(prefix=".pending-", dir=directory)
         try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-        except FileExistsError:
-            if self.owner_operation(name) != record["operation"]:
-                raise ValueError("conflicting daemon owner index")
-        else:
             with os.fdopen(fd, "wb") as stream:
                 stream.write(raw)
                 stream.flush()
                 os.fsync(stream.fileno())
+            # Publish complete contents without replacing an existing owner.
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                if self.owner_operation(name) != record["operation"]:
+                    raise ValueError("conflicting daemon owner index")
+            directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            os.unlink(temporary)
 
     def owner_operation(self, name):
         try:
