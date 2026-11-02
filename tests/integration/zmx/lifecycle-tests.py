@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
     request = {"verb": "create", "ledger": str(root / "ledger"), "operation": operation,
                "specification": {"executable": sys.argv[1], "socketDirectory": str(root / "s"),
                                  "cwd": directory, "environment": {"ZMX_DIR": "/wrong"},
-                                 "argv": ["/bin/sh", "-c",
+                                 "argv": ["/bin/bash", "--noprofile", "--norc", "-O", "extglob", "-c",
                                           "n=0; if [ -f counter ]; then read -r n < counter || :; fi; "
                                           "printf '%s' $((n+1)) > counter; exec /bin/sleep 300"]}}
     identity = None
@@ -185,7 +185,7 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
         for source in ("shell", "agent", "pin", "captured"):
             restart_request = {"verb": "restart", "ledger": request["ledger"], "operation": operation,
                                "newOperation": str(uuid.uuid4()), "identity": identity, "source": source,
-                               "command": None if source == "shell" else shlex.quote(sys.executable) + " -c " + shlex.quote(
+                               "command": None if source == "shell" else "[[ -n $BASH_VERSION ]] && shopt -q extglob && " + shlex.quote(sys.executable) + " -c " + shlex.quote(
                                    "from pathlib import Path; import time; Path('" + source + "-once').open('x').write('1'); time.sleep(300)")}
             restarted = reply(start(restart_request))
             try:

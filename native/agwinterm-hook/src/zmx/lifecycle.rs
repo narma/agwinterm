@@ -324,11 +324,52 @@ fn restart(request: &Value) -> Result<Outcome> {
     spec["shellArgv"] = shell.clone();
     spec["argv"] = shell;
     if source != "shell" {
-        spec["argv"] = json!(["/bin/sh", "-lc", request["command"]]);
+        spec["argv"] = json!(selected_command_argv(
+            &argv(&spec["shellArgv"])?,
+            string(request, "command")?
+        ));
     }
     create(
         &json!({"ledger":request["ledger"],"operation":request["newOperation"],"specification":spec}),
     )
+}
+pub(super) fn selected_command_argv(original: &[String], command: &str) -> Vec<String> {
+    let name = Path::new(&original[0]).file_name().and_then(|s| s.to_str());
+    if !matches!(name, Some("bash" | "sh" | "dash" | "zsh" | "ksh" | "fish")) {
+        return vec![
+            "/bin/sh".into(),
+            "-c".into(),
+            "exec \"${SHELL:-/bin/sh}\" -lc \"$1\"".into(),
+            "agwinterm-restart".into(),
+            command.into(),
+        ];
+    }
+    let mut result = vec![original[0].clone()];
+    let mut value_pending = false;
+    for arg in &original[1..] {
+        if value_pending {
+            result.push(arg.clone());
+            value_pending = false;
+            continue;
+        }
+        if arg == "-c" {
+            break;
+        }
+        if arg.starts_with('-') && !arg.starts_with("--") && arg[1..].contains('c') {
+            let remaining = arg.replace('c', "");
+            if remaining != "-" {
+                result.push(remaining);
+            }
+            break;
+        }
+        if !arg.starts_with('-') {
+            break;
+        }
+        result.push(arg.clone());
+        value_pending = matches!(arg.as_str(), "--rcfile" | "--init-file" | "-O" | "-o");
+    }
+    result.extend(["-c".into(), command.into()]);
+    result
 }
 fn owned_previous(ledger: &Ledger, request: &Value) -> Result<Value> {
     let previous = ledger

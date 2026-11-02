@@ -411,13 +411,13 @@ fallback. Missing bundled helpers leave a recovery error.
 
 Python references now live under `tests/integration/zmx/reference` only. Test
 drivers may still use Python; the actual lifecycle suite invokes the native
-binary with an interpreter-free PATH and an initial `/bin/sh` + `/bin/sleep`
+binary with an interpreter-free PATH and an initial `/bin/bash` + `/bin/sleep`
 workload. Native protocol tests read old Python-written ledgers, recover both
 interrupted and committed restarts, and check inventory after 1,025 operations.
 Native unit tests include actual writer process exits before/after atomic index
 publication. Readiness tests compare native responses against the former contract.
 
-Local verification: 20 Rust tests plus a subprocess-only crash worker; static
+Local verification: 21 Rust tests plus a subprocess-only crash worker; static
 x64/arm64 builds; 76 focused .NET tests; 15 existing WSL hook/install tests;
 native readiness and four protocol tests; warning-free Windows release build.
 Standalone portable extraction verified the runnable CLI, Windows bridge and
@@ -427,6 +427,12 @@ The real Rust/WSL harness passed at
 and full lifecycle UI matrix at `artifacts/wsl-ui/20261102T162012-7856fac3`
 (two Linux users, 60-second idle host loss, explicit disposable shutdown).
 These runners use a private desktop, leaving the input desktop unchanged.
+
+Selected command restarts preserve the original recognized shell and its flags,
+including options with values and combined `-lc` flags. Non-shell profiles keep
+the previous `$SHELL` fallback, with the command passed as a positional argument.
+The real lifecycle test uses Bash `[[ ... ]]` and checks `extglob` remains enabled
+for agent/pin/captured restarts; subsequent shell restart retains original argv.
 
 No quantified performance improvement is promised. Rust removes interpreter
 startup and retained interpreter memory; WSL process invocation and daemon

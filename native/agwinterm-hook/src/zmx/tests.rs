@@ -1,4 +1,65 @@
 use super::*;
+#[test]
+fn selected_commands_preserve_shell_options_and_replace_only_the_creation_command() {
+    let cases: &[(&[&str], &[&str])] = &[
+        (
+            &[
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-O",
+                "extglob",
+                "-c",
+                "old",
+                "arg0",
+            ],
+            &[
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-O",
+                "extglob",
+                "-c",
+                "selected",
+            ],
+        ),
+        (&["zsh", "-lic", "old"], &["zsh", "-li", "-c", "selected"]),
+        (
+            &["bash", "--rcfile", "/tmp/rc file", "-o", "pipefail"],
+            &[
+                "bash",
+                "--rcfile",
+                "/tmp/rc file",
+                "-o",
+                "pipefail",
+                "-c",
+                "selected",
+            ],
+        ),
+        (&["fish", "-l"], &["fish", "-l", "-c", "selected"]),
+        (
+            &["/bin/sh", "script", "old"],
+            &["/bin/sh", "-c", "selected"],
+        ),
+        (
+            &["/usr/bin/custom", "args"],
+            &[
+                "/bin/sh",
+                "-c",
+                "exec \"${SHELL:-/bin/sh}\" -lc \"$1\"",
+                "agwinterm-restart",
+                "selected",
+            ],
+        ),
+    ];
+    for (original, expected) in cases {
+        let original: Vec<_> = original.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            lifecycle::selected_command_argv(&original, "selected"),
+            *expected
+        );
+    }
+}
 pub(super) fn publication_boundary(path: &Path, boundary: &str) {
     if path
         .parent()
