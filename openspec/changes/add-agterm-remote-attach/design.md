@@ -2,12 +2,12 @@
 
 ## Context
 
-See [proposal.md](proposal.md) for motivation and the [roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) for the four-stage boundary. This is planning only. Stage 1 is archived in PR #23; the user explicitly requested leaving that PR unmerged. This branch depends on its reviewed implementation and must be rebased onto `narma` after a separately authorized merge.
+See [proposal.md](proposal.md) for motivation and the [roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) for the four-stage boundary. Implementation was requested on 2026-11-02. Stage 1 is merged in origin/narma at 5552130; the implementation branch starts there. Discovery/transport evidence and pending acceptance are recorded in docs/agterm-remote-development.md.
 
 Observed local seams:
 
 - `ZmxContracts.cs` contains fixture-only `AgtermTree`/origin mappings. It does not decode the real control response envelope, validate every topology field, execute SSH or supply remote identity evidence.
-- `WslLiveClient`, `WslLiveOperations` and the embedded Python helper implement Linux-local ownership, `/proc` identities and pidfd leases. Their ledger must not become authority over a macOS origin.
+- `WslLiveClient`, `WslLiveOperations` and the bundled Rust Linux helper implement Linux-local ownership, `/proc` identities and pidfd leases. Their ledger must not become authority over a macOS origin.
 - `Program.WslLive.cs`, `Program.Sessions.cs` and `RestoreState.cs` already separate a pane, a Rust transport ticket and a live workload, serialize recovery and suppress replay. Reuse these behaviors through a provider boundary rather than interpreting a remote binding as local owned work.
 - `ControlServer` provides authoritative-read interception, explicit window routing and input validation. Existing local `zmx.attach` takes profile/daemon/incarnation; preserve this contract.
 
@@ -78,11 +78,11 @@ Keep local WSL export and presentation false. Report outbound terminal capabilit
 - SSH alias or defaults change -> persist resolved WSL selectors and origin identity; fail on mismatch instead of retargeting.
 - Partial split/network failure -> per-pane outcome, retained metadata, no whole-session success claim and no destructive rollback.
 - Upstream behavior changes -> pin source/build evidence, refresh fixtures and negotiate required capabilities rather than infer from version text.
-- Real peer is not yet supplied -> fixture development can proceed, but integration acceptance remains unchecked. No claim that an agterm host exists in this workspace.
+- A macOS peer is supplied and read-only discovery passes, but its live mode is disabled. Native bridge provisioning and actual terminal acceptance remain pending.
 
 ## Migration Plan
 
-1. Keep stage 1 unchanged and opt-in; finish its PR checks, without merge until separately requested.
+1. Keep the merged stage-1 implementation unchanged and opt-in; retain its native Rust helper and dependency restrictions.
 2. Implement behind explicit remote commands/configuration. Establish real-peer setup and capability proof before enabling attachment.
 3. Run host-free fixtures, routed private-desktop WSL tests, real-peer matrix and ordinary/local-ZMX regressions. Record build hashes and sanitized outcomes.
 4. Disabling remote commands preserves saved metadata as unavailable. Detach viewers before downgrade; back up checkpoints because older versions may ignore new fields. Do not stop origin workloads or modify SSH configuration during rollback.

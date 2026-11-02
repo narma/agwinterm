@@ -1,6 +1,6 @@
 # Tasks
 
-Planning complete; implementation not started. Stage 1 is the dependency in PR #23, deliberately left unmerged at the user's request. A real agterm origin and explicit test setup authorization are prerequisites for runtime acceptance, not assumed available resources.
+Implementation started on 2026-11-02 from `origin/narma` at `5552130` (stage 1 merged). Read-only discovery passes against the supplied macOS peer; its live mode is disabled. Origin bridge provisioning and actual terminal acceptance remain pending. See `docs/agterm-remote-development.md` for evidence and continuation.
 
 ## 1. Origin capability and compatibility gate
 
@@ -13,8 +13,8 @@ Planning complete; implementation not started. Stage 1 is the dependency in PR #
 
 - [ ] 2.1 Add validated remote configuration and binding models separate from local ownership; verify malformed/duplicate fields, changed WSL defaults, roundtrip identity and fail-closed restore tests.
 - [ ] 2.2 Implement structured WSL SSH command construction and remote shell quoting; verify hostile destinations, spaces, apostrophes, backslashes and account-shell fixtures cannot change argument boundaries.
-- [ ] 2.3 Implement finite non-PTY requests with bounded output, deadlines and cancellation; verify failed exit with success-shaped stdout, truncated output, stderr saturation, lost replies and no prompt/configuration changes.
-- [ ] 2.4 Decode real tree envelopes and eligibility/topology; verify empty success, page companions, unknown additive metadata, reversed panes, duplicate roles/IDs, missing endpoint and axis mapping. Document discovery errors and limits.
+- [x] 2.3 Implement finite non-PTY requests with bounded output, deadlines and cancellation; verify failed exit with success-shaped stdout, truncated output, stderr saturation, lost replies and no prompt/configuration changes.
+- [x] 2.4 Decode real tree envelopes and eligibility/topology; verify empty success, page companions, unknown additive metadata, reversed panes, duplicate roles/IDs, missing endpoint and axis mapping. Document discovery errors and limits.
 
 ## 3. Terminal import and borrowed lifetime
 
@@ -41,6 +41,6 @@ Planning complete; implementation not started. Stage 1 is the dependency in PR #
 
 ## Workflow follow-up
 
-- Keep PR #23 unmerged until the user separately authorizes merge. Rebase this branch onto updated `narma` after that merge; do not duplicate stage-1 commits in the stage-2 PR.
+- Stage 1 is already merged in `origin/narma` (`5552130`). Implementation branch `codex/agterm-remote-attach-implementation` starts from that commit and carries the existing proposal without duplicating stage-1 commits.
 - Review and archive this change only after implementation and acceptance are complete. Update the [roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) with evidence and the archive link, fixing relative paths when moved.
 - Propose stage 3 (`export-wsl-sessions-to-agterm`) next; bidirectional presentation remains required stage 4.

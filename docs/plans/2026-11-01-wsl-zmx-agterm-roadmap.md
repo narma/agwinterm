@@ -1,6 +1,6 @@
 # WSL ZMX and bidirectional agterm interoperability
 
-Updated: 2026-11-02. Status: stage 1 implementation and acceptance complete; reviewed and archived, PR #23 open with passing CI, merge deferred by user. Stage 2 planning complete; implementation not started.
+Updated: 2026-11-02. Status: stage 1 merged in origin/narma at 5552130. Stage 2 implementation started: bounded SSH discovery and envelope decoding complete; terminal attachment pending.
 
 ## Committed outcome
 
@@ -14,8 +14,8 @@ Implementation of stage 1 was explicitly requested on 2026-11-02, including the 
 
 | Stage | Deliverable | Status | OpenSpec |
 | --- | --- | --- | --- |
-| 1 | WSL ZMX lifecycle and recovery with Rust PTY host | 29/29 tasks complete; local acceptance and CI passed; disabled by default; [PR #23](https://github.com/narma/agwinterm/pull/23) open, no merge requested; [evidence](../wsl-zmx-development.md) | [add-wsl-zmx-session-recovery](../../openspec/changes/archive/2026-11-02-add-wsl-zmx-session-recovery/proposal.md) |
-| 2 | Agwinterm viewer attaches to agterm origin | Required; proposal/design/specs/tasks ready; 0/22 implementation tasks; real-peer verification pending | [add-agterm-remote-attach](../../openspec/changes/add-agterm-remote-attach/proposal.md) |
+| 1 | WSL ZMX lifecycle and recovery with Rust PTY host | 29/29 tasks complete; local acceptance and CI passed; disabled by default; [PR #23](https://github.com/narma/agwinterm/pull/23) merged; [evidence](../wsl-zmx-development.md) | [add-wsl-zmx-session-recovery](../../openspec/changes/archive/2026-11-02-add-wsl-zmx-session-recovery/proposal.md) |
+| 2 | Agwinterm viewer attaches to agterm origin | In progress; 2/22 tasks complete; real-peer discovery passed, live mode disabled; terminal acceptance pending; [evidence](../agterm-remote-development.md) | [add-agterm-remote-attach](../../openspec/changes/add-agterm-remote-attach/proposal.md) |
 | 3 | agterm viewer attaches to Agwinterm's WSL origin | Required; proposal pending; follows stage 2 | Not created; suggested name `export-wsl-sessions-to-agterm` |
 | 4 | Remote presentation in both directions | Required; proposal pending; follows stages 2 and 3 | Not created; suggested name `add-agterm-remote-presentation` |
 
@@ -63,7 +63,7 @@ For a new chat or after finishing any change:
 4. Draft the next stage's proposal/design/specs/tasks using current upstream and shipped local contracts. Replace its suggested name with an actual link. Do not reopen the already confirmed question of whether stages 2–4 are wanted.
 5. Begin implementation only when requested; keep future planning separate from automatic deployment or service configuration.
 
-Current next action: review the stage-2 proposal on `codex/agterm-remote-attach`, which depends on the unmerged stage-1 branch. Do not merge PR #23 without a new user request. After a separately authorized stage-1 squash merge, rebase the stage-2 branch onto updated `narma`. Stage-2 implementation requires a new apply request; its real-peer capability gate needs an authorized agterm host and cannot be satisfied by fixtures alone.
+Current next action: continue stage 2 on `codex/agterm-remote-attach-implementation`, based on merged stage 1 in `origin/narma`. Implementation was requested on 2026-11-02. Discovery works against the supplied macOS origin; its live mode is disabled. Prepare the native origin bridge and existing-FD client proof before remote provisioning and terminal acceptance. See the development evidence for completed work and outstanding gates.
 
 ## Relationship to older plans
 
