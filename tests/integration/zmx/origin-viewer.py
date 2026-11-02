@@ -95,7 +95,7 @@ def exercise(split):
         else: raise RuntimeError('viewer did not attach: '+repr(text))
         ctl('session','lead','--target',imported,'--pane',pane)
         time.sleep(.5)
-        ctl('session','type',f'printf "{marker}\\n"\n','--target',imported,'--pane',pane)
+        ctl('session','type',"printf '%s%s\\n' 'AW_MAC_VIEWER_' '"+marker.removeprefix('AW_MAC_VIEWER_')+"'\n",'--target',imported,'--pane',pane)
         for _ in range(40):
             text=ctl('session','text','--target',imported,'--pane',pane).get('text','')
             if marker in text: break
@@ -179,7 +179,7 @@ elif action == 'outage':
     ctl('session','lead','--target',info['id'],'--pane','left')
     marker='AW_RECONNECTED_'+uuid.uuid4().hex
     time.sleep(.5)
-    ctl('session','type',f'printf "{marker}\\n"\n','--target',info['id'],'--pane','left')
+    ctl('session','type',"printf '%s%s\\n' 'AW_RECONNECTED_' '"+marker.removeprefix('AW_RECONNECTED_')+"'\n",'--target',info['id'],'--pane','left')
     for _ in range(30):
         if marker in ctl('session','text','--target',info['id'],'--pane','left').get('text',''): break
         time.sleep(.2)

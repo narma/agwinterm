@@ -54,9 +54,10 @@ def attach(value, role='left', success=True):
                 output += data
                 if not data: break
             if not sent and b'zmx-role;' in output:
-                os.write(fd, ('printf "' + marker + '\\n"\r').encode())
+                # The expected marker must not occur in terminal input echo.
+                os.write(fd, ("printf '%s%s\\n' 'AW_ORIGIN_' '" + marker.removeprefix('AW_ORIGIN_') + "'\r").encode())
                 sent = True
-            if success and output.count(marker.encode()) >= 2: break
+            if success and marker.encode() in output: break
             waited, status = os.waitpid(pid, os.WNOHANG)
             if waited:
                 exited = True

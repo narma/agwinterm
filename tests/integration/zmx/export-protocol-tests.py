@@ -54,6 +54,34 @@ class ExportProtocolTests(unittest.TestCase):
         self.invoke([helper,'--zmx-export-disable',self.endpoint])
         self.invoke([cli,'zmx','tree','--json'],ok=False)
 
+    def test_disable_survives_missing_dependencies_and_is_idempotent(self):
+        self.provision()
+        cli=self.endpoint/'agtermctl'
+        remote=self.invoke([cli,'zmx','tree','--json'])['result']['remote']
+        binary=self.binary.read_bytes()
+        self.binary.unlink()
+        self.socket.rmdir()
+        self.invoke([helper,'--zmx-export-disable',self.endpoint])
+        self.invoke([helper,'--zmx-export-disable',self.endpoint])
+        self.binary.write_bytes(binary); self.binary.chmod(0o700)
+        self.socket.mkdir(mode=0o700)
+        self.invoke([cli,'zmx','tree','--json'],ok=False)
+        self.invoke([remote['endpoint']['executable'],'attach','missing'],ok=False)
+
+    def test_disable_still_requires_private_matching_authority(self):
+        self.provision()
+        config=self.endpoint/'config.json'
+        original=config.read_text()
+        value=json.loads(original); value['uid']=os.getuid()+1
+        config.write_text(json.dumps(value))
+        self.invoke([helper,'--zmx-export-disable',self.endpoint],ok=False)
+        self.assertFalse((self.endpoint/'disabled').exists())
+        config.unlink()
+        other=self.root/'other'; other.write_text(original); other.chmod(0o600)
+        config.symlink_to(other)
+        self.invoke([helper,'--zmx-export-disable',self.endpoint],ok=False)
+        self.assertFalse((self.endpoint/'disabled').exists())
+
     def test_failed_provisioning_rolls_back_only_new_directory(self):
         self.cli.write_text('#!/bin/sh\nexit 1\n')
         self.provision(ok=False)

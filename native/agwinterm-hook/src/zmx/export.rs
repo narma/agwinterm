@@ -118,11 +118,9 @@ fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
     }
     Ok(text)
 }
-fn config(root: &Path) -> Result<Value> {
+// Revocation needs trusted endpoint authority, even when its runtime is broken.
+fn config_state(root: &Path) -> Result<Value> {
     secure_directory(root)?;
-    if root.join("disabled").try_exists()? {
-        return Err("origin export is disabled".into());
-    }
     let value = secure_json(&root.join("config.json"))?;
     fields(
         &value,
@@ -155,6 +153,13 @@ fn config(root: &Path) -> Result<Value> {
     }
     for key in ["executable", "socketDirectory", "cli"] {
         linux_path(text(&value, key)?)?;
+    }
+    Ok(value)
+}
+fn config(root: &Path) -> Result<Value> {
+    let value = config_state(root)?;
+    if root.join("disabled").try_exists()? {
+        return Err("origin export is disabled".into());
     }
     secure_directory(Path::new(text(&value, "socketDirectory")?))?;
     readiness::require(text(&value, "executable")?)?;
@@ -450,7 +455,7 @@ fn dispatch() -> Result<Value> {
     }
     if args.first().map(String::as_str) == Some("--zmx-export-disable") && args.len() == 2 {
         let root = linux_path(&args[1])?;
-        config(root)?;
+        config_state(root)?;
         atomic_write(&root.join("disabled"), b"disabled\n", false, 0o600)?;
         return Ok(json!({"disabled":true}));
     }
