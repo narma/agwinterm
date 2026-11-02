@@ -167,7 +167,9 @@ Final SHA-256 values after signing the isolated fixture:
 XcodeGen 2.44.1 resolves to `21ac9944b0ab546a07422dbed86f33dd2ebd76f8`.
 App Ghostty is `683d8db643b95cf229bfb5fe9fab9ae677920343`; ZMX's independent Ghostty pin
 is listed in the build recipe above. Local tests use macOS arm64 and Windows x64 -> Ubuntu
-WSL -> SSH. Linux x64/arm64 helpers and the macOS bridge are additionally built/tested in CI.
+WSL -> SSH. CI executes Linux x64/arm64 helper tests and macOS x64 bridge tests, and checks
+the macOS arm64 compilation target. The Intel macOS runner avoids GitHub's reported ARM
+capacity cancellations; real ARM terminal acceptance remains on the supplied Mac.
 
 Reproduction commands (supply explicit test-only selectors and paths):
 
