@@ -686,6 +686,7 @@ internal partial class Program
         // than the window). Leave this PTY alone rather than telling it it's 1x1.
         if (w < cw || h < ch) return;
         int cols = Math.Max(1, (int)(w / cw)), rows = Math.Max(1, (int)(h / ch));
+        if (term.S.Cols != cols) term.ClearSel(); // restored history can reflow into different physical rows
         if (term.S.Cols != cols || term.S.Rows != rows) term.S.Resize(cols, rows);
         term.ScrollOffset = Math.Clamp(term.ScrollOffset, 0, term.S.Emulator.HistoryCount);
     }

@@ -434,6 +434,33 @@ Cell -Name 'swap-killed' -Kill -Setup {
         "saved=$($saved | ConvertTo-Json -Compress -Depth 4)"
 }
 
+Cell -Name 'buffer-reflow' -Conf @('restore-buffer = true', 'session-host = in-process', 'emulator-core = managed') -Setup {
+    param($s)
+    $sid = Sid $s
+    if (-not (Wait-Prompt $s $sid)) { throw 'shell did not start' }
+    # The command itself does not contain the complete marker, so echo cannot satisfy the assertion.
+    $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END')"
+    Send-Ctl $s @('session', 'type', ($command + [char]13), '--target', $sid) | Out-Null
+    Start-Sleep -Seconds 2
+    $text = [string](Reply $s @('session', 'text', '--all', '--target', $sid)).result
+    Check 'buffer-reflow: long output arrived before saving' ($text.Replace([string][char]13,'').Replace([string][char]10,'') -like '*REFLOW_BEGIN_0123456789*')
+    return @{ Sid = $sid }
+} -Assert {
+    param($s, $ctx)
+    Start-Sleep -Seconds 2
+    [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 2200, 800, 0x0004)
+    Start-Sleep -Seconds 2
+    $text = [string](Reply $s @('session', 'text', '--all', '--target', $ctx.Sid)).result
+    $marker = 'REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END'
+    Check 'buffer-reflow: restored output joins into one row after widening' ($text.Contains($marker)) $text
+    [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 800, 800, 0x0004)
+    Start-Sleep -Milliseconds 500
+    Restart-Sandbox $s | Out-Null
+    [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 2200, 800, 0x0004)
+    Start-Sleep -Seconds 2
+    $text = [string](Reply $s @('session', 'text', '--all', '--target', $ctx.Sid)).result
+    Check 'buffer-reflow: narrow save and second restore retain logical line' ($text.Contains($marker)) $text
+}
 if ($fail) { "restore round-trip: $fail FAILED"; exit 1 }
 "restore round-trip: all passed"
 exit 0

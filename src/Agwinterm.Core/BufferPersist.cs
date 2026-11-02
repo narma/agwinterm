@@ -52,11 +52,11 @@ public static class BufferPersist
         int cols = emu.Screen.Cols;
 
         var rows = new List<PRow>();
-        void AddRow(Func<int, Cell> cellAt)
+        void AddRow(int width, int wrapLength, Func<int, Cell> cellAt)
         {
-            int len = cols;
+            int len = width;
             while (len > 0 && cellAt(len - 1) == Cell.Empty) len--;   // trim trailing empties
-            var pr = new PRow();
+            var pr = new PRow { SoftWrapped = wrapLength >= 0, WrapLength = (uint)Math.Max(0, wrapLength) };
             for (int c = 0; c < len; c++) pr.Cells.Add(ToP(cellAt(c)));
             rows.Add(pr);
         }
@@ -64,13 +64,13 @@ public static class BufferPersist
         for (int h = 0; h < emu.HistoryCount; h++)
         {
             int hi = h;
-            AddRow(c => emu.GetHistoryCell(hi, c));
+            AddRow(emu.GetHistoryRowLength(hi), emu.GetHistoryWrapLength(hi), c => emu.GetHistoryCell(hi, c));
         }
         if (includeVisible)
             for (int r = 0; r < emu.Screen.Rows; r++)
             {
                 int rr = r;
-                AddRow(c => emu.Screen[rr, c]);
+                AddRow(cols, emu.Screen.WrapLengths[rr], c => emu.Screen[rr, c]);
             }
         // Drop trailing all-empty rows, then cap to maxRows (keep the newest).
         while (rows.Count > 0 && rows[^1].Cells.Count == 0) rows.RemoveAt(rows.Count - 1);
@@ -91,8 +91,8 @@ public static class BufferPersist
         catch (InvalidProtocolBufferException) { return false; }
     }
 
-    /// <summary>Reseed the scrollback from a persisted blob with full colour/attributes. Rows wider
-    /// than the current terminal are truncated; narrower rows pad naturally on read.</summary>
+    /// <summary>Restore attributed logical lines at the current width. Missing wrap metadata
+    /// in older blobs means a hard line boundary; guessing would merge unrelated output.</summary>
     public static void Restore(TerminalEmulator emu, PBuffer buffer)
     {
         var rows = new List<Cell[]>(buffer.Rows.Count);
@@ -102,6 +102,6 @@ public static class BufferPersist
             for (int c = 0; c < pr.Cells.Count; c++) row[c] = FromP(pr.Cells[c]);
             rows.Add(row);
         }
-        emu.SeedScrollbackAttributed(rows);
+        emu.SeedScrollbackAttributed(rows, buffer.Rows.Select(pr => pr.SoftWrapped ? checked((int)Math.Min(pr.WrapLength, 32768u)) : -1).ToArray());
     }
 }

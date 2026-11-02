@@ -7,6 +7,107 @@ namespace Agwinterm.Core.Tests;
 /// cell's colour and attributes (vs the old plain-text path that reseeded flat dim text).</summary>
 public class BufferPersistTests
 {
+    private static TerminalEmulator RestoreAt(TerminalEmulator source, int cols)
+    {
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));
+        var target = new TerminalEmulator(cols, 4);
+        BufferPersist.Restore(target, saved);
+        return target;
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(8)]
+    public void SoftWraps_ReflowAcrossHistoryAndScreen_WithoutJoiningHardLines(int rows)
+    {
+        var source = Feed(5, rows, "abcdefghijk\r\n12345\r\nend");
+        var restored = RestoreAt(source, 20);
+        Assert.Equal(3, restored.HistoryCount);
+        Assert.Equal("abcdefghijk", restored.DumpHistoryRow(0).TrimEnd());
+        Assert.Equal("12345", restored.DumpHistoryRow(1).TrimEnd());
+        Assert.Equal("end", restored.DumpHistoryRow(2).TrimEnd());
+        restored.Resize(4, 4);
+        Assert.Equal(6, restored.HistoryCount);
+        restored = RestoreAt(restored, 20);
+        Assert.Equal(3, restored.HistoryCount);
+        Assert.Equal("abcdefghijk", restored.DumpHistoryRow(0).TrimEnd());
+        Assert.Equal("12345", restored.DumpHistoryRow(1).TrimEnd());
+    }
+
+    [Fact]
+    public void Reflow_PreservesWideGlyphsAttributesAndSpaces_WithoutWrapPadding()
+    {
+        var link = new TerminalHyperlink("https://example.com", "id=wide");
+        var source = Feed(5, 4, link.Sequence + "\x1b[31mabcd中  😀z");
+        var restored = RestoreAt(source, 20);
+        Assert.Equal("abcd中  😀z", restored.DumpHistoryRow(0).TrimEnd());
+        Cell[] expected = Enumerable.Range(0, 12).Select(c => restored.GetHistoryCell(0, c)).ToArray();
+        foreach (int width in new[] { 3, 1, 7, 5, 20 })
+        {
+            restored.Resize(width, 4);
+            restored = RestoreAt(restored, width);
+        }
+        Assert.Equal(expected, Enumerable.Range(0, 12).Select(c => restored.GetHistoryCell(0, c)).ToArray());
+        Assert.Equal(link, restored.GetHistoryCell(0, 4).Hyperlink);
+    }
+
+    [Fact]
+    public void Restore_DoesNotJoinLegacyRowsOrNewShellOutput()
+    {
+        var source = Feed(5, 3, "abcde\r\nfghij");
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));
+        // Missing fields in an older protobuf are false/zero.
+        foreach (var row in saved.Rows) { row.SoftWrapped = false; row.WrapLength = 0; }
+        var restored = new TerminalEmulator(5, 2);
+        BufferPersist.Restore(restored, saved);
+        restored.Feed(Encoding.ASCII.GetBytes("new\r\nshell\r\n"));
+        restored.Resize(20, 2);
+        Assert.Equal("abcde", restored.DumpHistoryRow(0).TrimEnd());
+        Assert.Equal("fghij", restored.DumpHistoryRow(1).TrimEnd());
+        Assert.Equal("new", restored.DumpHistoryRow(2).TrimEnd());
+    }
+
+    [Fact]
+    public void EraseAndScroll_DoNotLeaveStaleWraps()
+    {
+        var source = Feed(5, 3, "abcdefghijk\x1b[2J\x1b[Hone\r\ntwo\r\nthree\r\nfour");
+        var restored = RestoreAt(source, 20);
+        Assert.Equal(new[] { "one", "two", "three", "four" },
+            Enumerable.Range(0, restored.HistoryCount).Select(r => restored.DumpHistoryRow(r).TrimEnd()));
+    }
+
+    [Theory]
+    [InlineData("\x1b[2;1H\x1b[L")]
+    [InlineData("\x1b[2;1H\x1b[M")]
+    public void InsertingOrDeletingLines_BreaksContinuationIntoReplacedRow(string edit)
+    {
+        var restored = RestoreAt(Feed(5, 5, "abcdefghijklmnop" + edit), 30);
+        Assert.Equal("abcde", restored.DumpHistoryRow(0).TrimEnd());
+    }
+
+    [Fact]
+    public void Reflow_RespectsHistoryLimitAndKeepsNewestRows()
+    {
+        var restored = new TerminalEmulator(1000, 2) { ScrollbackMax = 10 };
+        restored.SeedScrollback(new[] { new string('x', 998) + "YZ" });
+        restored.Resize(1, 2);
+        Assert.Equal(10, restored.HistoryCount);
+        Assert.Equal("Z", restored.DumpHistoryRow(9));
+        restored.Resize(1000, 2);
+        Assert.Equal("xxxxxxxxYZ", restored.DumpHistoryRow(0).TrimEnd());
+    }
+
+    [Fact]
+    public void LegacyText_WideUnicodeSurvivesRepeatedReflow()
+    {
+        var restored = new TerminalEmulator(3, 3);
+        restored.SeedScrollback(new[] { "ab中😀z" });
+        restored.Resize(20, 3);
+        Assert.Equal("ab中😀z", restored.DumpHistoryRow(0).TrimEnd());
+        Assert.Equal(0, restored.GetHistoryCell(0, 3).Width);
+        Assert.Equal(0x1f600, restored.GetHistoryCell(0, 4).Rune);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -107,17 +208,34 @@ public class BufferPersistTests
         Assert.False(BufferPersist.TryParse(new byte[] { 0xFF, 0xFF, 0x01, 0x02 }, out _));
     }
 
-    [Fact]
-    public void Restore_TruncatesRowsWiderThanTerminal()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Restore_NarrowThenGrow_PreservesEntireAttributedRow(bool saveWhileNarrow)
     {
-        var wide = Feed(120, 3, new string('x', 120) + "\r\n\r\n");
-        byte[] blob = BufferPersist.Serialize(wide);
-        Assert.True(BufferPersist.TryParse(blob, out var pbuf));
+        var link = new TerminalHyperlink("https://example.com", "id=resize");
+        var wide = Feed(120, 3, link.Sequence + "\x1b[31m" + new string('x', 118) + "中" + TerminalHyperlink.Close);
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(wide), out var saved));
+        var narrow = new TerminalEmulator(40, 3);
+        BufferPersist.Restore(narrow, saved);
+        if (saveWhileNarrow)
+        {
+            Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(narrow), out saved));
+            narrow = new TerminalEmulator(40, 3);
+            BufferPersist.Restore(narrow, saved);
+        }
+        narrow.Resize(120, 3);
+        for (int c = 0; c < 120; c++)
+            Assert.Equal(wide.Screen[0, c], narrow.GetHistoryCell(0, c));
+    }
 
-        var narrow = new TerminalEmulator(40, 3);   // restore into a narrower terminal
-        BufferPersist.Restore(narrow, pbuf);
-        // The 120-wide row is truncated to 40; reading col 39 works, col 40+ pads empty.
-        Assert.Equal('x', (char)narrow.GetHistoryCell(0, 39).Rune);
-        Assert.Equal(Cell.Empty, narrow.GetHistoryCell(0, 40));
+    [Fact]
+    public void LegacyTextRestore_NarrowThenGrow_PreservesEntireLine()
+    {
+        var terminal = new TerminalEmulator(5, 3);
+        terminal.SeedScrollback(new[] { "0123456789" });
+        terminal.Resize(10, 3);
+        for (int c = 0; c < 10; c++)
+            Assert.Equal('0' + c, terminal.GetHistoryCell(0, c).Rune);
     }
 }
