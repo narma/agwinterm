@@ -919,10 +919,11 @@ internal partial class Program : ISessionHost, IWindowHost
     private void DrawRun(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, string text, IDWriteTextFormat fmt,
         float rx, float y, float w, float h)
     {
-        if (_config.Ligatures) { rt.DrawText(text, fmt, new Rect(rx, y, rx + w, y + h), brush); return; }
+        // Direct2D defaults to monochrome glyphs; opt in to the font's own colour layers.
+        if (_config.Ligatures) { rt.DrawText(text, fmt, new Rect(rx, y, rx + w, y + h), brush, DrawTextOptions.EnableColorFont); return; }
         using var layout = _dwrite.CreateTextLayout(text, fmt, w, h);
         layout.SetTypography(NoLigTypography(), new TextRange(0, (uint)text.Length));
-        rt.DrawTextLayout(new System.Numerics.Vector2(rx, y), layout, brush);
+        rt.DrawTextLayout(new System.Numerics.Vector2(rx, y), layout, brush, DrawTextOptions.EnableColorFont);
     }
 
     /// <summary>(Re)create the sidebar name/badge fonts from the configured sidebar-font-size. Shared across

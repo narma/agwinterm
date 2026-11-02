@@ -514,7 +514,7 @@ internal partial class Program
                             && (nxt.Rune == ' ' || nxt.Rune == '\0'))
                             clipCells = 2;
                         rt.DrawText(RuneStr(cell.Rune), StyleFmt(fmt, runStyle), new Rect(wx, y, clipCells * cw, ch),
-                            brush, DrawTextOptions.Clip);
+                            brush, DrawTextOptions.Clip | DrawTextOptions.EnableColorFont);
                         DrawDecorations(wx, cell.Width * cw, y, runStyle);
                         c++;
                         continue;

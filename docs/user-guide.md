@@ -82,6 +82,11 @@ The existing opening policy applies: HTTP(S) and file links are supported.
 - Shells are launched with `TERM_PROGRAM=agwinterm` (plus the usual `AGWINTERM_*` variables), so prompt
   engines, tmux and scripts can detect the host terminal, and with `COLORTERM=truecolor`, so apps that size
   their palette from the environment use 24-bit color.
+- New sessions also default `CLAUDE_CODE_FORCE_STRIKETHROUGH=1`, including in WSL. Claude Code
+  2.1.186+ uses this to render `~~text~~` as strikethrough even when it does not recognize the terminal.
+  An inherited value or profile environment setting can override this default. Restart Claude in a
+  new pane after updating; existing shells keep their environment. See the
+  [Claude Code environment variable reference](https://code.claude.com/docs/en/env-vars).
 - **Git Bash working directory**: PowerShell panes report their directory out of the box. A Git Bash
   (or MSYS2) pane does it with a few lines in `~/.bashrc`, so the title shows the directory and the pane
   restores in it after a restart (agwinterm 0.20.11 or later, earlier builds also raised a notification):

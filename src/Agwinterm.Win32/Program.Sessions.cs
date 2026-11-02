@@ -140,6 +140,9 @@ internal partial class Program
             // 24-bit color. Without it (and without TERM, which Windows shells leave unset) apps that
             // size their palette from the environment, Codex among them, fall back to 16 colors (#339).
             ["COLORTERM"] = "truecolor",
+            // Claude Code 2.1.186+ otherwise leaves ~~markers~~ literal for unrecognized terminals.
+            // Our renderer supports SGR 9/29. Preserve an explicit inherited/profile override.
+            ["CLAUDE_CODE_FORCE_STRIKETHROUGH"] = Environment.GetEnvironmentVariable("CLAUDE_CODE_FORCE_STRIKETHROUGH") ?? "1",
             // The theme a pty-host answers OSC 10/11 with while no UI is attached (#339).
             [ThemeColors.EnvVar] = ThemeColors.Format(_theme.DefaultForeground, _theme.DefaultBackground),
         };
