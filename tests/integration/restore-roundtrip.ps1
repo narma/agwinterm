@@ -451,13 +451,20 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
     param($s)
     $sid = Sid $s
     if (-not (Wait-Prompt $s $sid)) { throw 'shell did not start' }
+    # Hosted Windows runners can cap the requested window width. Use a marker that
+    # fits their wide grid, and prove it exceeds the actual narrow grid first.
+    [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 800, 800, 0x0004)
+    Start-Sleep -Seconds 2
+    $marker = 'REFLOW_BEGIN_' + ('0123456789' * 4) + '_REFLOW_END'
+    $metrics = Reply $s @('session', 'metrics', '--target', $sid)
+    Check 'buffer-reflow: source grid forces marker wrapping' ([int]$metrics.result.cols -lt $marker.Length) ($metrics | ConvertTo-Json -Compress)
     if ($reflowCore -eq 'rust') {
         $loaded = @((Get-Process -Id $s.Proc.Id).Modules | Where-Object ModuleName -eq 'agwinterm_core.dll').Count -gt 0
         Check 'buffer-reflow-rust: native core DLL loaded (no managed fallback)' $loaded
         if (-not $loaded) { throw 'Rust core did not load' }
     }
     # The command itself does not contain the complete marker, so echo cannot satisfy the assertion.
-    $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END'); 1..60 | ForEach-Object { Write-Host ('after_' + `$_) }"
+    $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 4) + '_REFLOW_END'); 1..60 | ForEach-Object { Write-Host ('after_' + `$_) }"
     Send-Ctl $s @('session', 'type', ($command + [char]13), '--target', $sid) | Out-Null
     Start-Sleep -Seconds 2
     $text = [string](Reply $s @('session', 'text', '--all', '--target', $sid)).result
@@ -478,7 +485,7 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
     [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 2200, 800, 0x0004)
     Start-Sleep -Seconds 2
     $text = [string](Reply $s @('session', 'text', '--all', '--target', $ctx.Sid)).result
-    $marker = 'REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END'
+    $marker = 'REFLOW_BEGIN_' + ('0123456789' * 4) + '_REFLOW_END'
     $metrics = Reply $s @('session', 'metrics', '--target', $ctx.Sid)
     Check 'buffer-reflow: widened grid fits the complete marker' ([int]$metrics.result.cols -ge $marker.Length) ($metrics | ConvertTo-Json -Compress)
     Check 'buffer-reflow: restored output joins into one row after widening' ($text.Contains($marker)) $text
