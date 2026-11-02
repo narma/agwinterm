@@ -105,6 +105,8 @@ public class BufferPersistTests
     [Theory]
     [InlineData("\x1b[2;1H\x1b[L")]
     [InlineData("\x1b[2;1H\x1b[M")]
+    [InlineData("\x1b[2;5r\x1b[2;1H\x1b[L")]
+    [InlineData("\x1b[2;5r\x1b[2;1H\x1b[M")]
     public void InsertingOrDeletingLines_BreaksContinuationIntoReplacedRow(string edit)
     {
         var restored = RestoreAt(Feed(5, 5, "abcdefghijklmnop" + edit), 30);

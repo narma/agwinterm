@@ -647,7 +647,7 @@ impl Emulator {
         if self.cursor_row < self.scroll_top || self.cursor_row > self.scroll_bottom {
             return;
         }
-        if self.cursor_row > self.scroll_top {
+        if self.cursor_row > 0 {
             let r = self.cursor_row - 1;
             self.scr().wraps[r] = None;
         }
@@ -669,7 +669,7 @@ impl Emulator {
         if self.cursor_row < self.scroll_top || self.cursor_row > self.scroll_bottom {
             return;
         }
-        if self.cursor_row > self.scroll_top {
+        if self.cursor_row > 0 {
             let r = self.cursor_row - 1;
             self.scr().wraps[r] = None;
         }

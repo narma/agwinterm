@@ -1068,7 +1068,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     {
         if (CursorRow < _scrollTop || CursorRow > _scrollBottom) return;
         n = Math.Min(n, _scrollBottom - CursorRow + 1);
-        if (CursorRow > _scrollTop) Screen.WrapLengths[CursorRow - 1] = -1;
+        if (CursorRow > 0) Screen.WrapLengths[CursorRow - 1] = -1;
         int shift = _scrollBottom - CursorRow + 1 - n;
         if (shift > 0) Screen.MoveRows(CursorRow, CursorRow + n, shift);
         for (int r = CursorRow; r < CursorRow + n; r++) Screen.FillRow(r, Blank());
@@ -1078,7 +1078,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     {
         if (CursorRow < _scrollTop || CursorRow > _scrollBottom) return;
         n = Math.Min(n, _scrollBottom - CursorRow + 1);
-        if (CursorRow > _scrollTop) Screen.WrapLengths[CursorRow - 1] = -1;
+        if (CursorRow > 0) Screen.WrapLengths[CursorRow - 1] = -1;
         int shift = _scrollBottom - CursorRow + 1 - n;
         if (shift > 0) Screen.MoveRows(CursorRow + n, CursorRow, shift);
         for (int r = _scrollBottom - n + 1; r <= _scrollBottom; r++) Screen.FillRow(r, Blank());

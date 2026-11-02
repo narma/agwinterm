@@ -11,6 +11,20 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class RustEmulatorCoreTests
 {
+    [Theory]
+    [InlineData("\x1b[L")]
+    [InlineData("\x1b[M")]
+    public void PartialScrollRegionLineEditsBreakPreviousWrap(string edit)
+    {
+        if (!Available) return;
+        using var source = new RustTerminalCore(5, 5);
+        source.Feed(System.Text.Encoding.ASCII.GetBytes("abcdefghijklmnop\x1b[2;5r\x1b[2;1H" + edit));
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));
+        var restored = new TerminalEmulator(30, 5);
+        BufferPersist.Restore(restored, saved);
+        Assert.Equal("abcde", restored.DumpHistoryRow(0).TrimEnd());
+    }
+
     [Fact]
     public void PaddingOverwriteSurvivesRestore()
     {

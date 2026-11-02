@@ -144,6 +144,12 @@ function Stop-StrayChildren {
 # One cell: its own sandbox (own pipe, own minted app-id, own dir), torn down in finally whatever
 # happened. Setup returns what Assert needs (ids); both run inside the try so a throw is reported
 # as the cell's failure rather than ending the suite.
+function Get-TestRustHost($s) {
+    $pipePattern = '--pipe\s+"?' + [regex]::Escape($s.AppId + '-rust') + '"?(\s|$)'
+    Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" |
+        Where-Object { $_.CommandLine -match $pipePattern }
+}
+
 function Cell {
     param([string]$Name, [switch]$Kill, [string[]]$Conf = @(), [scriptblock]$Setup, [scriptblock]$Assert)
     if ($Only -and $Only -ne $Name) { return }
@@ -166,7 +172,10 @@ function Cell {
     } catch {
         Check "$Name ran to completion" $false $_.Exception.Message
     } finally {
-        if ($s) { Stop-Sandbox $s }
+        if ($s) {
+            Get-TestRustHost $s | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            Stop-Sandbox $s
+        }
         Stop-StrayChildren
     }
 }
@@ -434,9 +443,11 @@ Cell -Name 'swap-killed' -Kill -Setup {
         "saved=$($saved | ConvertTo-Json -Compress -Depth 4)"
 }
 
-foreach ($reflowCore in @('managed', 'rust')) {
-$reflowName = if ($reflowCore -eq 'rust') { 'buffer-reflow-rust' } else { 'buffer-reflow' }
-Cell -Name $reflowName -Conf @('restore-buffer = true', 'session-host = in-process', "emulator-core = $reflowCore") -Setup {
+foreach ($reflowCase in @('managed', 'rust', 'rust-host')) {
+$reflowCore = if ($reflowCase -eq 'managed') { 'managed' } else { 'rust' }
+$reflowHost = if ($reflowCase -eq 'rust-host') { 'server-rust' } else { 'in-process' }
+$reflowName = if ($reflowCase -eq 'managed') { 'buffer-reflow' } else { 'buffer-reflow-' + $reflowCase }
+Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowHost", "emulator-core = $reflowCore") -Setup {
     param($s)
     $sid = Sid $s
     if (-not (Wait-Prompt $s $sid)) { throw 'shell did not start' }
@@ -446,15 +457,24 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', 'session-host = in-proce
         if (-not $loaded) { throw 'Rust core did not load' }
     }
     # The command itself does not contain the complete marker, so echo cannot satisfy the assertion.
-    $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END')"
+    $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END'); 1..60 | ForEach-Object { Write-Host ('after_' + `$_) }"
     Send-Ctl $s @('session', 'type', ($command + [char]13), '--target', $sid) | Out-Null
     Start-Sleep -Seconds 2
     $text = [string](Reply $s @('session', 'text', '--all', '--target', $sid)).result
     Check 'buffer-reflow: long output arrived before saving' ($text.Replace([string][char]13,'').Replace([string][char]10,'') -like '*REFLOW_BEGIN_0123456789*')
-    return @{ Sid = $sid }
+    $hostPid = $null
+    if ($reflowHost -eq 'server-rust') {
+        $hostPid = (Get-TestRustHost $s).ProcessId
+        Check 'buffer-reflow-rust-host: separate host is running' ([bool]$hostPid)
+        if (-not $hostPid) { throw 'Rust PTY host did not start' }
+    }
+    return @{ Sid = $sid; HostPid = $hostPid }
 } -Assert {
     param($s, $ctx)
     Start-Sleep -Seconds 2
+    if ($ctx.HostPid) {
+        Check 'buffer-reflow-rust-host: same host survived UI restart' ((Get-TestRustHost $s).ProcessId -eq $ctx.HostPid)
+    }
     [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 2200, 800, 0x0004)
     Start-Sleep -Seconds 2
     $text = [string](Reply $s @('session', 'text', '--all', '--target', $ctx.Sid)).result
