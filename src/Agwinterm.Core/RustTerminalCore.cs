@@ -38,7 +38,10 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
 
     private void Sync()
     {
+        var previous = _info;
         _info = _rust.GetInfo();
+        if (_info.ScrollGeneration - previous.ScrollGeneration > (long)_info.HistoryCount - previous.HistoryCount)
+            _histMirror.Clear();
         int cols = (int)_info.Cols, rows = (int)_info.Rows;
         if (_mirror.Cols != cols || _mirror.Rows != rows)
         {
@@ -90,7 +93,9 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
         _defaultColors = colors;
         if (colors is { } theme) _rust.SetDefaultColors(theme.Foreground, theme.Background);
     }
-    public void Resize(int cols, int rows) { _rust.Resize(cols, rows); Sync(); }
+    public void Resize(int cols, int rows) { _rust.Resize(cols, rows); _histMirror.Clear(); Sync(); }
+    public byte[] SaveBuffer(int maxRows, bool visible) => _rust.SaveBuffer(maxRows, visible);
+    public void RestoreBuffer(byte[] bytes) { _rust.RestoreBuffer(bytes); _histMirror.Clear(); Sync(); }
 
     // ---- cursor / screens ----
     public int CursorRow => (int)_info.CursorRow;

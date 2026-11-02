@@ -159,6 +159,8 @@ pub struct Emulator {
     scroll_bottom: usize,
 
     history: Vec<Vec<Cell>>,
+    history_wraps: Vec<Option<usize>>,
+    restored_rows: usize,
     pub scrollback_max: usize,
     pub scroll_generation: i64,
 
@@ -237,6 +239,8 @@ impl Emulator {
             scroll_top: 0,
             scroll_bottom: rows - 1,
             history: Vec::new(),
+            history_wraps: Vec::new(),
+            restored_rows: 0,
             scrollback_max: 5000,
             scroll_generation: 0,
             marks: Vec::new(),
@@ -439,6 +443,9 @@ impl Emulator {
         if cols == self.main.cols() && rows == self.main.rows() {
             return;
         }
+        if cols != self.main.cols() {
+            self.reflow_restored(cols);
+        }
         self.main.resize(cols, rows);
         self.alt.resize(cols, rows);
         self.scroll_top = 0;
@@ -447,6 +454,8 @@ impl Emulator {
             self.cursor_row = rows - 1;
         }
         if self.cursor_col >= cols {
+            let r = self.cursor_row;
+            self.scr().wraps[r] = Some(cols);
             self.cursor_col = cols - 1;
         }
     }
@@ -460,6 +469,8 @@ impl Emulator {
         }
         let cols = self.screen().cols();
         if self.cursor_col >= cols {
+            let r = self.cursor_row;
+            self.scr().wraps[r] = Some(cols);
             self.cursor_col = 0;
             self.index();
         }
@@ -468,6 +479,7 @@ impl Emulator {
             let b = self.blank();
             let (r, c) = (self.cursor_row, self.cursor_col);
             self.scr().set(r, c, b);
+            self.scr().wraps[r] = Some(c);
             self.cursor_col = 0;
             self.index();
         }
@@ -523,6 +535,7 @@ impl Emulator {
         }
         row.truncate(len);
         self.history.push(row);
+        self.history_wraps.push(self.screen().wraps[0]);
         self.scroll_generation += 1;
         if self.history.len() > self.scrollback_max + TRIM_SLACK {
             self.trim_history();
@@ -540,6 +553,8 @@ impl Emulator {
         }
         let trim = (self.history.len() - self.scrollback_max) as i64;
         self.history.drain(0..trim as usize);
+        self.history_wraps.drain(0..trim as usize);
+        self.restored_rows = self.restored_rows.saturating_sub(trim as usize);
         self.marks.retain_mut(|m| {
             m.prompt_line -= trim;
             if m.command_line >= 0 {
@@ -634,6 +649,10 @@ impl Emulator {
         if self.cursor_row < self.scroll_top || self.cursor_row > self.scroll_bottom {
             return;
         }
+        if self.cursor_row > self.scroll_top {
+            let r = self.cursor_row - 1;
+            self.scr().wraps[r] = None;
+        }
         let n = n
             .min((self.scroll_bottom - self.cursor_row + 1) as i64)
             .max(0) as usize;
@@ -651,6 +670,10 @@ impl Emulator {
     fn delete_lines(&mut self, n: i64) {
         if self.cursor_row < self.scroll_top || self.cursor_row > self.scroll_bottom {
             return;
+        }
+        if self.cursor_row > self.scroll_top {
+            let r = self.cursor_row - 1;
+            self.scr().wraps[r] = None;
         }
         let n = n
             .min((self.scroll_bottom - self.cursor_row + 1) as i64)
@@ -730,6 +753,8 @@ impl Emulator {
     }
 
     fn erase_line(&mut self, mode: i32) {
+        let r = self.cursor_row;
+        self.scr().wraps[r] = None;
         let from = if mode == 0 { self.cursor_col } else { 0 };
         let to = if mode == 1 {
             self.cursor_col
@@ -747,30 +772,24 @@ impl Emulator {
     }
 
     fn erase_display(&mut self, mode: i32) {
-        let (rows, cols) = (self.screen().rows(), self.screen().cols());
+        let rows = self.screen().rows();
         let b = self.blank();
         match mode {
             2 => {
                 for r in 0..rows {
-                    for c in 0..cols {
-                        self.scr().set(r, c, b);
-                    }
+                    self.scr().fill_row(r, b);
                 }
             }
             0 => {
                 self.erase_line(0);
                 for r in self.cursor_row + 1..rows {
-                    for c in 0..cols {
-                        self.scr().set(r, c, b);
-                    }
+                    self.scr().fill_row(r, b);
                 }
             }
             1 => {
                 self.erase_line(1);
                 for r in 0..self.cursor_row {
-                    for c in 0..cols {
-                        self.scr().set(r, c, b);
-                    }
+                    self.scr().fill_row(r, b);
                 }
             }
             _ => {} // modes > 2 (e.g. 3): no-op, like the original
@@ -1230,35 +1249,35 @@ impl Emulator {
     }
 
     pub fn seed_scrollback(&mut self, lines: &[&str]) {
-        let cols = self.screen().cols();
         for line in lines {
-            // Per-UTF-16-unit like the C# char indexing (BMP-only content expected here).
-            // Store only the line's own cells (truncated to width); no trailing pad — reads past
-            // the end return Cell::EMPTY, so the blank right margin of a restored buffer is free.
-            let units: Vec<u16> = line.encode_utf16().collect();
-            let len = units.len().min(cols);
-            let mut row = Vec::with_capacity(len);
-            for &ch in &units[..len] {
-                row.push(Cell {
+            let mut row = Vec::new();
+            for ch in line.chars() {
+                let width = wcwidth::of(ch as u32);
+                if width == 0 {
+                    continue;
+                }
+                let cell = Cell {
                     rune: ch as i32,
-                    foreground: Color::DEFAULT_FOREGROUND,
-                    background: Color::DEFAULT_BACKGROUND,
                     attributes: attrs::DIM,
-                    width: 1,
-                    fg_spec: ColorSpec::DEFAULT,
-                    bg_spec: ColorSpec::DEFAULT,
-                    hyperlink: 0,
-                });
+                    width,
+                    ..Cell::EMPTY
+                };
+                row.push(cell);
+                if width == 2 {
+                    row.push(Cell {
+                        rune: 0,
+                        width: 0,
+                        ..cell
+                    });
+                }
             }
             self.history.push(row);
+            self.history_wraps.push(None);
         }
-        if self.history.len() > self.scrollback_max + TRIM_SLACK {
-            let trim = self.history.len() - self.scrollback_max;
-            self.history.drain(0..trim);
-        }
+        self.restored_rows = self.history.len();
+        self.reflow_restored(self.screen().cols());
     }
 }
-
 /// The emulator + its parser, fed together (mirrors the C# object graph where
 /// TerminalEmulator owns the VtParser and implements IParserPerformer itself).
 pub struct Terminal {
@@ -1310,7 +1329,11 @@ impl Performer for Emulator {
     fn execute(&mut self, control: u8) {
         match control {
             13 => self.cursor_col = 0,
-            10 => self.index(),
+            10 => {
+                let r = self.cursor_row;
+                self.scr().wraps[r] = None;
+                self.index();
+            }
             8 => {
                 if self.cursor_col > 0 {
                     self.cursor_col -= 1;
@@ -1335,9 +1358,15 @@ impl Performer for Emulator {
         match ch {
             b'7' => self.save_cursor(),
             b'8' => self.restore_cursor(),
-            b'D' => self.index(),
+            b'D' => {
+                let r = self.cursor_row;
+                self.scr().wraps[r] = None;
+                self.index();
+            }
             b'M' => self.reverse_index(),
             b'E' => {
+                let r = self.cursor_row;
+                self.scr().wraps[r] = None;
                 self.cursor_col = 0;
                 self.index();
             }
@@ -2378,3 +2407,6 @@ mod tests {
         assert!(!t.emu.dump_modes().contains("\x1b[?1016h"));
     }
 }
+
+#[path = "persistence.rs"]
+mod persistence;

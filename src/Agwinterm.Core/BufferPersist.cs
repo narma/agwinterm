@@ -46,8 +46,10 @@ public static class BufferPersist
     /// whether the live grid is appended after the scrollback (true for full save/restore; false for
     /// pty-host reattach, where the live screen arrives separately via a ConPTY repaint and only the
     /// history should be seeded). Trailing empty cells per row are dropped; it round-trips exactly.</summary>
-    public static byte[] Serialize(TerminalEmulator emu, int maxRows = 500, bool includeVisible = true)
+    public static byte[] Serialize(ITerminalCore core, int maxRows = 500, bool includeVisible = true)
     {
+        if (core is RustTerminalCore rust) return rust.SaveBuffer(maxRows, includeVisible);
+        var emu = (TerminalEmulator)core;
         var buf = new PBuffer { Version = Version, Cols = (uint)emu.Screen.Cols };
         int cols = emu.Screen.Cols;
 
@@ -93,8 +95,10 @@ public static class BufferPersist
 
     /// <summary>Restore attributed logical lines at the current width. Missing wrap metadata
     /// in older blobs means a hard line boundary; guessing would merge unrelated output.</summary>
-    public static void Restore(TerminalEmulator emu, PBuffer buffer)
+    public static void Restore(ITerminalCore core, PBuffer buffer)
     {
+        if (core is RustTerminalCore rust) { rust.RestoreBuffer(buffer.ToByteArray()); return; }
+        var emu = (TerminalEmulator)core;
         var rows = new List<Cell[]>(buffer.Rows.Count);
         foreach (var pr in buffer.Rows)
         {

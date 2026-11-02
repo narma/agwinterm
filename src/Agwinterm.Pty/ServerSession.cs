@@ -334,9 +334,9 @@ public sealed class ServerSession : ISession
         {
             // Prefer the full-fidelity attributed history (colours survive the reattach) over the
             // plain-text seed; the replica emulator is a concrete TerminalEmulator.
-            if (att.ScrollbackBlob is { Length: > 0 } blob && Emulator is TerminalEmulator te
+            if (att.ScrollbackBlob is { Length: > 0 } blob && Emulator is TerminalEmulator or RustTerminalCore
                 && BufferPersist.TryParse(blob, out var pbuf))
-                BufferPersist.Restore(te, pbuf);
+                BufferPersist.Restore(Emulator, pbuf);
             else
                 Emulator.SeedScrollback(att.Scrollback);
             Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(att.Modes));

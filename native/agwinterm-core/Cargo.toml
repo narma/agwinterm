@@ -9,4 +9,5 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+prost = "0.13"
 # (release profile lives in the workspace root Cargo.toml)

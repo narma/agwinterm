@@ -434,10 +434,17 @@ Cell -Name 'swap-killed' -Kill -Setup {
         "saved=$($saved | ConvertTo-Json -Compress -Depth 4)"
 }
 
-Cell -Name 'buffer-reflow' -Conf @('restore-buffer = true', 'session-host = in-process', 'emulator-core = managed') -Setup {
+foreach ($reflowCore in @('managed', 'rust')) {
+$reflowName = if ($reflowCore -eq 'rust') { 'buffer-reflow-rust' } else { 'buffer-reflow' }
+Cell -Name $reflowName -Conf @('restore-buffer = true', 'session-host = in-process', "emulator-core = $reflowCore") -Setup {
     param($s)
     $sid = Sid $s
     if (-not (Wait-Prompt $s $sid)) { throw 'shell did not start' }
+    if ($reflowCore -eq 'rust') {
+        $loaded = @((Get-Process -Id $s.Proc.Id).Modules | Where-Object ModuleName -eq 'agwinterm_core.dll').Count -gt 0
+        Check 'buffer-reflow-rust: native core DLL loaded (no managed fallback)' $loaded
+        if (-not $loaded) { throw 'Rust core did not load' }
+    }
     # The command itself does not contain the complete marker, so echo cannot satisfy the assertion.
     $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END')"
     Send-Ctl $s @('session', 'type', ($command + [char]13), '--target', $sid) | Out-Null
@@ -461,6 +468,8 @@ Cell -Name 'buffer-reflow' -Conf @('restore-buffer = true', 'session-host = in-p
     $text = [string](Reply $s @('session', 'text', '--all', '--target', $ctx.Sid)).result
     Check 'buffer-reflow: narrow save and second restore retain logical line' ($text.Contains($marker)) $text
 }
+}
+
 if ($fail) { "restore round-trip: $fail FAILED"; exit 1 }
 "restore round-trip: all passed"
 exit 0

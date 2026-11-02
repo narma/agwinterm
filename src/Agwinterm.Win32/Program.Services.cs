@@ -1746,10 +1746,9 @@ internal partial class Program
                                 lock (p.S.SyncRoot)
                                 {
                                     buf = p.S.Emulator.DumpBuffer().TakeLast(500).ToList();   // plain-text fallback
-                                    // Full-fidelity attributed blob (colours + styles survive restore). Only the
-                                    // managed core is a TerminalEmulator; a server/rust pane keeps the text path.
-                                    if (p.S.Emulator is TerminalEmulator te)
-                                        blob = Convert.ToBase64String(BufferPersist.Serialize(te));
+                                    // Managed and Rust cores share the full-fidelity attributed buffer schema.
+                                    if (p.S.Emulator is TerminalEmulator or RustTerminalCore)
+                                        blob = Convert.ToBase64String(BufferPersist.Serialize(p.S.Emulator));
                                 }
                             }
                             catch { }
@@ -1936,13 +1935,13 @@ internal partial class Program
                                 var pane = ses.Panes[i];
                                 if (SuppressesRestoreReplay(pane)) continue;
                                 // Prefer the full-fidelity attributed blob; fall back to plain text.
-                                if (pl[i].BufferBlob is { Length: > 0 } b64 && pane.S.Emulator is TerminalEmulator te
+                                if (pl[i].BufferBlob is { Length: > 0 } b64 && pane.S.Emulator is TerminalEmulator or RustTerminalCore
                                     && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))
                                 {
                                     lock (pane.S.SyncRoot)
                                     {
-                                        BufferPersist.Restore(te, pbuf);
-                                        te.SeedScrollback(new[] { "──── restored ────" });
+                                        BufferPersist.Restore(pane.S.Emulator, pbuf);
+                                        pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
                                     }
                                 }
                                 else if (pl[i].Buffer is { Count: > 0 } b)
