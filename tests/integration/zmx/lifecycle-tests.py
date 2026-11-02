@@ -18,16 +18,17 @@ import tempfile
 import time
 import uuid
 
-helper = Path(__file__).resolve().parents[3] / "src/Agwinterm.Pty/WslLive/zmx_helper.py"
-sys.path.insert(0, str(helper.parent))
+helper = Path(sys.argv[2])
+sys.path.insert(0, str(Path(__file__).resolve().parent / "reference"))
 from zmx_exact import ExactDaemon
 from zmx_ledger import Ledger
 clients = []
 
 
 def start(request):
-    child = subprocess.Popen([sys.executable, "-B", str(helper)], stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    child = subprocess.Popen([str(helper), "--zmx"], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             env={**os.environ, "PATH": "/no-interpreters-or-tools"})
     clients.append(child)
     child.stdin.write(json.dumps(request) + "\n")
     child.stdin.close()
@@ -54,7 +55,7 @@ def attach_client(request, cols=80, rows=24):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     encoded = base64.b64encode(json.dumps(request).encode()).decode()
-    child = subprocess.Popen([sys.executable, "-B", str(helper), "--request", encoded],
+    child = subprocess.Popen([str(helper), "--zmx", "--request", encoded],
                              stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     os.close(slave)
     clients.append(child)
@@ -73,9 +74,9 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
     request = {"verb": "create", "ledger": str(root / "ledger"), "operation": operation,
                "specification": {"executable": sys.argv[1], "socketDirectory": str(root / "s"),
                                  "cwd": directory, "environment": {"ZMX_DIR": "/wrong"},
-                                 "argv": [sys.executable, "-c",
-                                          "from pathlib import Path; import time; "
-                                          "p=Path('counter'); p.write_text(str(int(p.read_text())+1) if p.exists() else '1'); time.sleep(300)"]}}
+                                 "argv": ["/bin/sh", "-c",
+                                          "n=0; if [ -f counter ]; then read -r n < counter || :; fi; "
+                                          "printf '%s' $((n+1)) > counter; exec /bin/sleep 300"]}}
     identity = None
     try:
         # The first response is intentionally left unread until retries complete.

@@ -12,14 +12,6 @@ public sealed class WslLiveClient
         string Helper, string SocketDirectory);
     private static readonly JsonSerializerOptions Wire = new() { PropertyNameCaseInsensitive = true };
 
-    private static string Source(string name)
-    {
-        using var stream = typeof(WslLiveClient).Assembly.GetManifestResourceStream("Agwinterm.Pty.WslLive." + name)
-            ?? throw new InvalidOperationException("Missing embedded Linux helper: " + name);
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    }
-
     public async Task<Location> PrepareAsync(ShellProfile profile, string appId, string? cwd, CancellationToken ct)
     {
         // Same application/profile endpoint is stable; distro and user each have their own filesystem.
@@ -42,10 +34,9 @@ public sealed class WslLiveClient
 
     private static async Task<Location> InstallAsync(List<string> args, string endpoint, CancellationToken ct)
     {
-        var modules = new[] { "zmx_helper.py", "zmx_exact.py", "zmx_ledger.py", "zmx_readiness.py" }
-            .ToDictionary(n => n, n => Convert.ToBase64String(Encoding.UTF8.GetBytes(Source(n))));
-        args.AddRange(["--exec", "python3", "-B", "-c", Source("zmx_install.py")]);
-        var result = await RequestAsync(args, new { endpoint, modules }, ct).ConfigureAwait(false);
+        args.AddRange(["--exec", "/bin/sh", "-c", WslIntegration.InstallBootstrap,
+            "agwinterm-helper", CliInstaller.CliDir(), "--zmx-install"]);
+        var result = await RequestAsync(args, new { endpoint }, ct).ConfigureAwait(false);
         if (result.TryGetProperty("error", out var error)) throw new InvalidOperationException(error.GetString());
         var location = result.Deserialize<Location>(Wire) ?? throw new InvalidOperationException("Invalid WSL location");
         _ = WslLiveProfiles.ResolvedSelectors(location.Distribution, location.User);
@@ -57,8 +48,9 @@ public sealed class WslLiveClient
 
     public async Task<JsonElement> InvokeAsync(Location location, object request, CancellationToken ct)
     {
+        location = await EnsureNativeAsync(location, ct).ConfigureAwait(false);
         string[] args = [.. WslLiveProfiles.ResolvedSelectors(location.Distribution, location.User),
-            "--exec", "python3", "-B", location.Helper];
+            "--exec", location.Helper, "--zmx"];
         var response = await RequestAsync(args, request, ct).ConfigureAwait(false);
         if (!response.TryGetProperty("ok", out var ok) || !ok.GetBoolean())
             throw new WslRecoveryException(response.TryGetProperty("state", out var state) ? state.GetString() ?? "uncertain" : "uncertain",
@@ -68,11 +60,17 @@ public sealed class WslLiveClient
 
     public static string[] AttachmentArgs(Location location, object request)
     {
+        if (!IsNative(location)) throw new InvalidOperationException("Reconcile the legacy helper before attachment");
         byte[] raw = JsonSerializer.SerializeToUtf8Bytes(request);
         if (raw.Length > 16000) throw new ArgumentException("Attachment request exceeds Windows command-line limit");
-        return [.. WslLiveProfiles.ResolvedSelectors(location.Distribution, location.User), "--exec", "python3", "-B",
-            location.Helper, "--request", Convert.ToBase64String(raw)];
+        return [.. WslLiveProfiles.ResolvedSelectors(location.Distribution, location.User), "--exec",
+            location.Helper, "--zmx", "--request", Convert.ToBase64String(raw)];
     }
+
+    internal static bool IsNative(Location location) => location.Helper.EndsWith("/agwinterm-hook", StringComparison.Ordinal);
+
+    public Task<Location> EnsureNativeAsync(Location location, CancellationToken ct) =>
+        IsNative(location) ? Task.FromResult(location) : RefreshAsync(location, ct);
 
     private static async Task<JsonElement> RequestAsync(IEnumerable<string> args, object request, CancellationToken ct)
     {

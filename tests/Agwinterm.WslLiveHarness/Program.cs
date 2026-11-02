@@ -4,8 +4,8 @@ using Agwinterm.Pty;
 if (args.Length != 4) throw new ArgumentException("distribution Linux-executable Rust-host-executable terminal-fixture required");
 string id = "aw-live-" + Guid.NewGuid().ToString("N");
 var profile = new ShellProfile { Name = "live-test", Command = "wsl.exe", Cwd = "/tmp",
-    Args = ["-d", args[0], "--exec", "python3", "-c",
-        "from pathlib import Path; import time; Path('/tmp/" + id + "').open('x').write('1'); print('BRIDGE-SENTINEL', flush=True); time.sleep(300)"],
+    Args = ["-d", args[0], "--exec", "/bin/sh", "-c",
+        "set -C; printf 1 > /tmp/" + id + "; printf 'BRIDGE-SENTINEL\\n'; exec /bin/sleep 300"],
     Zmx = new WslZmxConfiguration(true, args[1]) };
 var operations = new WslLiveOperations();
 WslLiveBinding? binding = null;
@@ -20,6 +20,14 @@ try
         return Task.CompletedTask;
     });
     if (binding.Recovery != "fresh-started" || binding.Identity is null) throw new Exception("create did not become ready");
+    // A legacy helper need not exist or have an interpreter. Migration must
+    // preserve the same operation/identity and return a native attachment path.
+    var legacy = binding with { Endpoint = binding.Endpoint with { HelperPath = binding.Endpoint.LedgerDirectory + "/helpers/legacy/zmx_helper.py" } };
+    var migrated = await operations.ReconcileAsync(legacy);
+    if (migrated.Identity != binding.Identity || migrated.BindingId != binding.BindingId
+        || !migrated.Endpoint.HelperPath!.EndsWith("/agwinterm-hook"))
+        throw new Exception("legacy helper migration changed workload identity");
+    binding = migrated;
     first = (ServerSession)backend.Create("pane", 80, 24);
     string[] argv = WslLiveOperations.AttachmentArgs(binding, "first");
     await first.StartAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs, verbatimCommandLine: true);

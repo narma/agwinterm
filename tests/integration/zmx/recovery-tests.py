@@ -9,7 +9,7 @@ import unittest
 import uuid
 from unittest.mock import patch, MagicMock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src/Agwinterm.Pty/WslLive"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "reference"))
 import zmx_helper as helper
 from zmx_ledger import Ledger
 

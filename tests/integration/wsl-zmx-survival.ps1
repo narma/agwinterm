@@ -132,7 +132,7 @@ try {
         $start.UseShellExecute=$false; $start.CreateNoWindow=$true
         $command = @('sleep','90')
         if ($LifetimeGuard) {
-            $guard = (& wsl.exe -d $Distro --exec wslpath -u (Join-Path $repo 'src/Agwinterm.Pty/WslLive/zmx_lifetime.py')).Trim()
+            $guard = (& wsl.exe -d $Distro --exec wslpath -u (Join-Path $repo 'tests/integration/zmx/reference/zmx_lifetime.py')).Trim()
             $command = @('python3',$guard)
             $start.RedirectStandardInput=$true; $start.RedirectStandardOutput=$true
         }

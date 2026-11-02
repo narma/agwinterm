@@ -35,7 +35,8 @@ public sealed class WslLiveOperations
 
     public async Task<WslLiveBinding> ReconcileAsync(WslLiveBinding binding, CancellationToken ct = default)
     {
-        var location = Location(binding);
+        var location = await _client.EnsureNativeAsync(Location(binding), ct).ConfigureAwait(false);
+        binding = binding with { Endpoint = binding.Endpoint with { HelperPath = location.Helper } };
         if (binding.RestartOrigin is { } origin)
         {
             var previous = binding with { BindingId = origin.BindingId, Identity = origin.Identity,
@@ -125,6 +126,8 @@ public sealed class WslLiveOperations
     public async Task<WslLiveBinding> BorrowAsync(WslLiveBinding binding, CancellationToken ct = default)
     {
         if (binding.Ownership == "owned") return await ReconcileAsync(binding, ct).ConfigureAwait(false);
+        var location = await _client.EnsureNativeAsync(Location(binding), ct).ConfigureAwait(false);
+        binding = binding with { Endpoint = binding.Endpoint with { HelperPath = location.Helper } };
         var result = await _client.InvokeAsync(Location(binding), new { verb = "borrow", ledger = binding.Endpoint.LedgerDirectory,
             operation = binding.BindingId, executable = binding.Endpoint.Executable, socketDirectory = binding.Endpoint.SocketDirectory,
             name = binding.Identity!.Name, identity = WireIdentity(binding) }, ct).ConfigureAwait(false);

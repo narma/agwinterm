@@ -6,6 +6,22 @@ namespace Agwinterm.Pty.Tests;
 public partial class WslIntegrationTests
 {
     [Fact]
+    public void LiveAttachmentUsesNativePayloadAndPreservesStructuredRequest()
+    {
+        var location = new WslLiveClient.Location("My Ubuntu", "alice", "/tmp", "/home/alice/ledger",
+            "/home/alice/helper dir/agwinterm-hook", "/tmp/sockets");
+        var args = WslLiveClient.AttachmentArgs(location, new { verb = "attach", text = "quoted ' \" $HOME 😀" });
+        Assert.Equal(new[] { "--distribution", "My Ubuntu", "--user", "alice", "--exec", location.Helper,
+            "--zmx", "--request" }, args[..^1]);
+        using var request = JsonDocument.Parse(Convert.FromBase64String(args[^1]));
+        Assert.Equal("quoted ' \" $HOME 😀", request.RootElement.GetProperty("text").GetString());
+        Assert.Throws<InvalidOperationException>(() => WslLiveClient.AttachmentArgs(
+            location with { Helper = "/home/alice/old/zmx_helper.py" }, new { verb = "attach" }));
+        Assert.DoesNotContain(typeof(WslLiveClient).Assembly.GetManifestResourceNames(),
+            name => name.StartsWith("Agwinterm.Pty.WslLive.") && name.EndsWith(".py"));
+    }
+
+    [Fact]
     public void LiveProfileDefaultsAndArgvStaySeparate()
     {
         var profile = new ShellProfile { Command = "wsl.exe", Zmx = new(true, "/opt/test ' zmx"),

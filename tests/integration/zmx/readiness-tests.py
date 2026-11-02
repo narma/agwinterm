@@ -6,11 +6,33 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+import subprocess
+import sys
+import platform
 
-source = Path(__file__).resolve().parents[3] / "src/Agwinterm.Pty/WslLive/zmx_readiness.py"
+source = Path(__file__).resolve().parent / "reference/zmx_readiness.py"
 spec = importlib.util.spec_from_file_location("readiness", source)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+native = Path(sys.argv.pop(1)) if len(sys.argv) > 1 else (
+    Path(__file__).resolve().parents[3] / "artifacts/wsl-hook" /
+    ("agwinterm-hook-linux-arm64" if platform.machine() in ("aarch64", "arm64") else "agwinterm-hook-linux-x64"))
+reference_probe = module.probe
+
+
+def probe(executable):
+    # Run the production native probe, and independently compare the old wire contract.
+    result = subprocess.run([str(native), "--zmx"],
+                            input=json.dumps({"verb": "probe", "executable": executable}) + "\n",
+                            text=True, capture_output=True, timeout=10, check=True)
+    actual = json.loads(result.stdout)["result"]
+    expected = reference_probe(executable)
+    for key in ("state", "sha256", "missingCapabilities", "capabilities", "remoteAttach", "presentation"):
+        assert actual.get(key) == expected.get(key), (key, actual, expected)
+    return actual
+
+
+module.probe = probe
 
 
 class ReadinessTests(unittest.TestCase):

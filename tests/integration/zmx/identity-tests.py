@@ -11,7 +11,7 @@ import tempfile
 import termios
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src/Agwinterm.Pty/WslLive"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "reference"))
 from zmx_exact import ExactDaemon
 
 zmx = sys.argv[1]

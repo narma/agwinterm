@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import uuid
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src/Agwinterm.Pty/WslLive"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "reference"))
 from zmx_ledger import Ledger
 
 
