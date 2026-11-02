@@ -31,6 +31,25 @@ public class AppUpdateTests
         }
         """;
 
+    [Theory]
+    [InlineData(UpdateChannel.Installed, "setup")]
+    [InlineData(UpdateChannel.Portable, "portable")]
+    public void PickAsset_PreservesRuntimeVariant(UpdateChannel channel, string kind)
+    {
+        var stable = new ReleaseAsset($"agwinterm-{kind}-1.0.exe", "stable", null);
+        var preview = new ReleaseAsset($"agwinterm-net11-{kind}-1.0.exe", "preview", null);
+        var release = new ReleaseInfo("1.0", new[] { stable, preview });
+        Assert.Same(stable, AppUpdate.PickAsset(release, channel, false));
+        Assert.Same(preview, AppUpdate.PickAsset(release, channel, true));
+        Assert.Null(AppUpdate.PickAsset(new("1.0", new[] { stable }), channel, true));
+        Assert.Null(AppUpdate.PickAsset(new("1.0", new[] { preview }), channel, false));
+        Assert.Null(AppUpdate.PickAsset(release, UpdateChannel.PackageManager, true));
+#if NET11_0_OR_GREATER
+        Assert.Same(preview, AppUpdate.PickAsset(release, channel));
+#else
+        Assert.Same(stable, AppUpdate.PickAsset(release, channel));
+#endif
+    }
     [Fact]
     public void ParseRelease_ReadsVersionAssetsAndDigests()
     {
@@ -59,8 +78,8 @@ public class AppUpdateTests
     public void PickAsset_MatchesChannelToArtifact()
     {
         var rel = AppUpdate.ParseRelease(ReleaseJson)!;
-        Assert.Equal("agwinterm-setup-0.14.1.exe", AppUpdate.PickAsset(rel, UpdateChannel.Installed)!.Name);
-        Assert.Equal("agwinterm-portable-0.14.1-win-x64.exe", AppUpdate.PickAsset(rel, UpdateChannel.Portable)!.Name);
+        Assert.Equal("agwinterm-setup-0.14.1.exe", AppUpdate.PickAsset(rel, UpdateChannel.Installed, false)!.Name);
+        Assert.Equal("agwinterm-portable-0.14.1-win-x64.exe", AppUpdate.PickAsset(rel, UpdateChannel.Portable, false)!.Name);
         Assert.Null(AppUpdate.PickAsset(rel, UpdateChannel.PackageManager));   // managers own their files
     }
 

@@ -365,7 +365,7 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable]
+    needs: [windows-tests, bridge-fixtures, portable, net11-publish]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites
