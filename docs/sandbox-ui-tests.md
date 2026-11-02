@@ -58,7 +58,7 @@ Build the C# gate first with
 Launching that gate directly (including `dotnet run`) also routes to background
 Sandbox before its first window is created.
 
-The baseline harness also requires local installer and portable files. Its Git
+The baseline harness optionally accepts local installer and portable files to report package sizes; omit them when measuring a published application folder. Its Git
 commit and SDK version are recorded on the host and passed as data; neither Git
 nor the SDK is required inside Sandbox. Explicit
 `Output` paths receive the exported guest report on the host after success.
