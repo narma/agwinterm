@@ -36,6 +36,9 @@ prefix='<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="сти
 (directory/'hold.html').write_text(prefix+'''<script>
 addEventListener('load',()=>{document.title=getComputedStyle(document.querySelector('#probe')).color==='rgb(12, 34, 56)'?'AW_PAGE_ASSET_OK':'AW_PAGE_ASSET_FAILED'});
 </script>''')
+(directory/'navigate.html').write_text(prefix+'''<script>
+addEventListener('load',()=>{document.title='AW_NAV_START';if(!sessionStorage.visited){sessionStorage.visited='1';setTimeout(()=>location.href='hold.html',300)}});
+</script>''')
 def open_file(file, review=False):
     return native('session','overlay','open','--html',str(directory/file),'--cwd',str(directory),'--js','--navigation',
                   *(['--bridge','review'] if review else []))['pageID']
@@ -52,6 +55,12 @@ try:
     state(page,lambda row:row['state']=='loaded' and row['title']=='AW_PAGE_ASSET_OK')
     native('session','overlay','close'); outcome(page,'dismissed'); page=None
     print('PASS actual Mac file/CSS/Unicode rendering, idle resource channel, hide/show/resize/reload and origin dismissal')
+    page=open_file('navigate.html')
+    state(page,lambda row:row.get('title')=='AW_PAGE_ASSET_OK' and row.get('canGoBack'))
+    native('session','overlay','navigate','back'); state(page,lambda row:row.get('title')=='AW_NAV_START')
+    native('session','overlay','navigate','forward'); state(page,lambda row:row.get('title')=='AW_PAGE_ASSET_OK')
+    native('session','overlay','close'); outcome(page,'dismissed'); page=None
+    print('PASS actual Mac viewer back/forward preserves origin page identity')
 
     for review in [False,True]:
         script='''<script>

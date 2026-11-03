@@ -26,6 +26,37 @@ if action == 'refused':
         print('PASS actual Mac origin refuses a second presenter while Windows holds its grant')
     finally:
         child.kill(); child.wait(timeout=5)
+elif action == 'origin-restart':
+    script='''import json,os,pathlib,signal,socket,struct,subprocess,sys,time
+root=pathlib.Path(sys.argv[1]); control=str(root/'control.sock')
+assert root.parent==pathlib.Path('/tmp') and root.name.startswith('aw-stage4-peer-')
+with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as channel:
+ channel.connect(control); pid=struct.unpack('i',channel.getsockopt(0,2,4))[0]
+executable=subprocess.run(['ps','-p',str(pid),'-o','comm='],capture_output=True,text=True,check=True).stdout.strip()
+assert pathlib.Path(executable).resolve()==(root/'agterm.app/Contents/MacOS/agterm').resolve(),'not the isolated app executable'
+owned=subprocess.run(['lsof','-a','-p',str(pid),'-Fn',str(root/'agterm.lock')],capture_output=True,text=True)
+assert owned.returncode==0,'not the isolated state owner'
+os.kill(pid,signal.SIGTERM)
+for _ in range(100):
+ try: os.kill(pid,0)
+ except ProcessLookupError: break
+ time.sleep(.1)
+else: raise RuntimeError('fixture UI did not stop')
+args=['open','-g','-n',str(root/'agterm.app')]
+for key,value in dict(AGTERM_STATE_DIR=str(root),AGTERM_CONTROL_SOCKET=control,AGTERM_UITEST_ENABLE_ZMX='1',AGTERM_UITEST_FORCE_SIDEBAR_VISIBLE='1',XDG_CONFIG_HOME=str(root/'xdg'),ZDOTDIR=str(root/'zsh')).items(): args+=['--env',key+'='+value]
+args+=['--args','-ApplePersistenceIgnoreState','YES','-NSQuitAlwaysKeepsWindows','NO']
+subprocess.run(args,check=True,timeout=15)
+for _ in range(150):
+ try:
+  with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as channel:
+   channel.connect(control); current=struct.unpack('i',channel.getsockopt(0,2,4))[0]
+  if current!=pid: (root/'app.pid').write_text(str(current)); break
+ except OSError: pass
+ time.sleep(.2)
+else: raise RuntimeError('fixture UI did not restart')
+'''
+    subprocess.run(ssh+[shlex.join(['python3','-c',script,control.removesuffix('/control.sock')])],check=True,timeout=55)
+    print('PASS restarted only the isolated Mac origin UI')
 elif action in ['disconnect','job-disconnect','page-disconnect']:
     listing=subprocess.run(ssh+['ps -axo pid=,args='],text=True,capture_output=True,check=True,timeout=15).stdout
     pids=[]

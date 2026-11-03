@@ -6,6 +6,19 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermPresentationTransportTests
 {
+    [Theory]
+    [InlineData("page.state")]
+    [InlineData("page.closed")]
+    public void ViewerPageResponsesReachThePresentationWriter(string kind)
+    {
+        string? delivered = null;
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(new { page = Guid.NewGuid().ToString(), appliedSeq = 4 });
+        var sender = new AgtermPresentationSender((name, payload) =>
+        { Assert.Equal(body.GetRawText(), payload.GetRawText()); delivered = name; });
+        sender.Send(kind, body);
+        Assert.Equal(kind, delivered);
+    }
+
     private static ProcessStartInfo Fixture(string script)
     {
         var start = new ProcessStartInfo("powershell.exe");

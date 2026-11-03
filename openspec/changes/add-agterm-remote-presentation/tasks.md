@@ -1,6 +1,6 @@
 # Tasks
 
-Apply started on 2026-11-02; 19/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
+Apply started on 2026-11-02; 22/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
 
 ### Apply finding: distinguish presentation loss from job-channel loss
 
@@ -29,7 +29,7 @@ Accessibility follow-up (2026-11-03): after the user granted macOS permissions, 
 
 - [x] 3.1 Connect validated status/context/HUD effects and origin publication to local state; test snapshot clears, pane swaps/removal, remaining HUD lifetime, stale expiry and unchanged terminal geometry, documenting supported rendering options.
 - [x] 3.2 Add live notification and negotiated sound routing with mirrored provenance; test duplicate revisions, reconnect snapshots, multiple viewers and relay-loop suppression, and document loss semantics during outages.
-- [ ] 3.3 Run a routed real-peer passive matrix in both directions with single/split panes, both application restarts and presentation-only disconnect; record peer hashes, unchanged terminal workload identities and absence of duplicate alerts.
+- [x] 3.3 Run a routed real-peer passive matrix in both directions with single/split panes, both application restarts and presentation-only disconnect; record peer hashes, unchanged terminal workload identities and absence of duplicate alerts.
 
 ## 4. Presenter grants and questions
 
@@ -53,7 +53,7 @@ In progress (2026-11-03): origin grants/slots, scoped resources, WebView2 adapta
 
 - [x] 6.1 Add origin page grants and scoped `session overlay page-serve` handling with pinned resource/bridge framing; test single-use expiry, wrong presenter, queue limits, cancellation terminal frames and channel-loss waiter cleanup, documenting caps.
 - [x] 6.2 Adapt local WebView2 resources to remote streams and origin-side containment checks; test sibling assets, Unicode paths, parent/symlink/reparse escapes, cross-page grants and origin paths never being read from viewer disk.
-- [ ] 6.3 Integrate URL/file page options, bridge allowlists and isolated storage; test review/general grant boundaries, URL/subframe denial, target overrides, cross-endpoint storage isolation and missing-runtime refusal, and document supported options.
+- [x] 6.3 Integrate URL/file page options, bridge allowlists and isolated storage; test review/general grant boundaries, URL/subframe denial, target overrides, cross-endpoint storage isolation and missing-runtime refusal, and document supported options.
 - [ ] 6.4 Add ordered page commands/state and origin outcomes; test hide/show/resize/navigation/reload, stale document callbacks, submit/cancel/close races, token secrecy and no implicit page recreation after reconnect.
 - [ ] 6.5 Run real-peer file-assets and URL page matrices in both directions with allowed/refused bridge calls, submission/cancellation, channel loss and reload races; record origin outcomes and viewer cleanup.
 - [ ] 6.6 Reconcile relevant local WebView2 evidence with tasks 1.4, 1.5, 3.3 and 6.3 of add-webview2-cookbook-overlays; attach manual IME and clean/offline installer/portable results when available and keep this acceptance item pending while required evidence is missing. Existing permission to proceed with other work remains in force.
@@ -61,7 +61,7 @@ In progress (2026-11-03): origin grants/slots, scoped resources, WebView2 adapta
 ## 7. Integrated acceptance and review
 
 - [ ] 7.1 Run the full five-family matrix against both actual directions with two viewers, old/partial peers, UI/transport failure, account/endpoint isolation and no stale responses; deliver a sanitized evidence report with exact builds and a supported/refused matrix, keeping any unavailable real-peer cell pending.
-- [ ] 7.2 Run stage-1 WSL recovery and stage-2/stage-3 terminal regressions through wsl-ui.ps1, plus ordinary Windows restore/control and local question/HUD/program/web regressions in background Windows Sandbox; verify no ownership, replay, input-routing or desktop-isolation regressions.
+- [x] 7.2 Run stage-1 WSL recovery and stage-2/stage-3 terminal regressions through wsl-ui.ps1, plus ordinary Windows restore/control and local question/HUD/program/web regressions in background Windows Sandbox; verify no ownership, replay, input-routing or desktop-isolation regressions.
 - [ ] 7.3 Complete Release/native/model checks, strict OpenSpec validation and whitespace checks; verify CI and inspect Greptile feedback for the final PR commit, resolve valid findings and record a clean final review before declaring readiness.
 
 ## Workflow follow-up

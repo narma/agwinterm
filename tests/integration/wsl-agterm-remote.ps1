@@ -6,7 +6,7 @@ if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslAgtermRemote -Parameters $PS
 $PSNativeCommandUseErrorActionPreference=$false
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 $OutputEncoding=[Text.UTF8Encoding]::new($false)
-if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock' -and -not ($PassiveOnly -and $OriginSocket -like '/tmp/aw-stage4-peer-*/control.sock')) { throw 'Only an isolated origin fixture socket is accepted' }
+if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock' -and $OriginSocket -notlike '/tmp/aw-stage4-peer-*/control.sock') { throw 'Only an isolated origin fixture socket is accepted' }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
@@ -125,7 +125,7 @@ public static class RemoteAskProbe {
         $null=Peer-Ctl @('session','status','idle','--target',$origin)
         $null=Await-Presentation { param($row) -not $row.context -and $row.status -eq 'idle' }
         Write-Host 'PASS real agterm -> Agwinterm context/status/HUD updates, expiry and clears'
-        $null=Ctl @('zmx','remote','lead','--target',$import.panes[0].paneId,'--window',$window)
+        foreach($item in $import.panes) { $null=Ctl @('zmx','remote','lead','--target',$item.paneId,'--window',$window) }
         $null=Await-Pane $import.panes[0].paneId
         $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
         # Private-desktop LOCALAPPDATA is redirected; use the shared workspace for WSL input.
@@ -281,6 +281,25 @@ public static class RemoteAskProbe {
         $null=Peer-Ctl @('ask','cancel',$questionId)
         if($geometry -ne (Ctl @('session','metrics','--target',$import.panes[0].paneId) | ConvertTo-Json -Compress)) { throw 'Presentation loss resized terminal' }
         Write-Host 'PASS real Mac-origin presentation-only loss dismisses replica, preserves pending origin question and never replays it'
+        $questionId=$null # The cancelled question belongs to the pre-restart origin registry.
+        $beforeRestart=Ctl (@('zmx','remote','list')+$remote)
+        $null=Peer-Ctl @('session','context','STAGE4_RESTART_CONTEXT','--target',$origin)
+        $null=Await-Presentation { param($row) $row.context -eq 'STAGE4_RESTART_CONTEXT' }
+        $beforeEvents=Pane-State $import.panes[0].paneId
+        & wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" python3 $probe origin-restart $Destination $OriginSocket $origin
+        if($LASTEXITCODE -ne 0) { throw 'Isolated Mac origin restart failed' }
+        $peerRow=@((Peer-Ctl @('tree')).tree.workspaces.sessions | Where-Object id -eq $origin)[0]
+        if($peerRow.context -ne 'STAGE4_RESTART_CONTEXT') { throw 'Origin restart lost its saved context' }
+        $null=Peer-Ctl @('session','context','STAGE4_RESTART_AFTER','--target',$origin)
+        $null=Await-Presentation { param($row) $row.context -eq 'STAGE4_RESTART_AFTER' -and @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        $afterRestart=Ctl (@('zmx','remote','list')+$remote)
+        $beforeDaemons=@($beforeRestart.Sessions | Where-Object {$_.Session.Id -eq $origin})[0].Session.Panes | ConvertTo-Json -Depth 10 -Compress
+        $afterDaemons=@($afterRestart.Sessions | Where-Object {$_.Session.Id -eq $origin})[0].Session.Panes | ConvertTo-Json -Depth 10 -Compress
+        if($beforeDaemons -ne $afterDaemons) { throw 'Origin UI restart changed terminal identities' }
+        $afterEvents=Pane-State $import.panes[0].paneId
+        if($beforeEvents.presentationSoundEvents -ne $afterEvents.presentationSoundEvents -or $beforeEvents.presentationNotificationEvents -ne $afterEvents.presentationNotificationEvents) { throw 'Origin restart replayed alerts' }
+        $null=Peer-Ctl @('session','context','--clear','--target',$origin)
+        Write-Host 'PASS isolated Mac origin restart restores passive state without duplicate alerts or new base terminals'
         $ui.Kill(); $ui.WaitForExit()
         $runtime=$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER
         try {

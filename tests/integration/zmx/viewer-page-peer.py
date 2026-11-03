@@ -33,7 +33,8 @@ def state(predicate, timeout=40):
         rows=[p for w in native('tree')['workspaces'] for s in w['sessions'] if s['id']==config['session'] for p in s.get('htmlOverlays',[]) or []]
         if predicate(rows): return rows
         time.sleep(.2)
-    raise AssertionError(('viewer page state did not converge',rows))
+    diagnostic=[s for w in native('tree')['workspaces'] for s in w['sessions'] if s['id']==config['session']]
+    raise AssertionError(('viewer page state did not converge',rows,diagnostic,peer('tree')))
 def outcome(page, expected):
     deadline=time.monotonic()+30
     while time.monotonic()<deadline:
@@ -52,7 +53,8 @@ submit=prefix+'''<iframe srcdoc="&lt;script&gt;parent.agterm.request('session.ov
  await agterm.request('session.status',{args:{status:'blocked'}});result.status=true;
  await agterm.request('session.overlay.submit',{args:{value:JSON.stringify(result)}});
 });</script>'''
-remote(['python3','-c',"import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); root.mkdir(); [(root/name).write_text(text) for name,text in json.load(sys.stdin).items()]",str(directory)],json.dumps({'hold.html':hold,'submit.html':submit,'стиль %.css':'#probe { color: rgb(12, 34, 56); }'}))
+navigate=prefix+'''<script>addEventListener('load',()=>{document.title='AW_NAV_START';if(!sessionStorage.visited){sessionStorage.visited='1';setTimeout(()=>location.href='hold.html',300)}});</script>'''
+remote(['python3','-c',"import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); root.mkdir(); [(root/name).write_text(text) for name,text in json.load(sys.stdin).items()]",str(directory)],json.dumps({'hold.html':hold,'navigate.html':navigate,'submit.html':submit,'стиль %.css':'#probe { color: rgb(12, 34, 56); }'}))
 def opened(name):
     return peer('session','overlay','open','--html',str(directory/name),'--cwd',str(directory),'--js','--navigation','--target',config['origin'])
 try:
@@ -65,16 +67,23 @@ try:
     state(lambda rows:len(rows)==1 and rows[0]['state']=='loaded' and rows[0].get('title')=='AW_VIEWER_ASSET_OK')
     peer('session','overlay','close','--target',config['origin']); state(lambda rows:not rows)
     print('PASS actual Mac-origin HTML/CSS/Unicode, hide/show/resize/reload and viewer cleanup')
+    opened('navigate.html')
+    state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_VIEWER_ASSET_OK' and rows[0].get('canGoBack'))
+    peer('session','overlay','navigate','back','--target',config['origin']); state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_NAV_START')
+    peer('session','overlay','navigate','forward','--target',config['origin']); state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_VIEWER_ASSET_OK')
+    peer('session','overlay','close','--target',config['origin']); state(lambda rows:not rows)
+    print('PASS actual WebView2 back/forward preserves the origin page')
     opened_page=opened('submit.html')
     assert 'pageID' in opened_page,opened_page
     result=json.loads(outcome(opened_page['pageID'],'submitted')['value'])
     assert result=={'asset':True,'global':True,'target':True,'status':True},result
     state(lambda rows:not rows)
     print('PASS actual WebView2 bridge confines commands to origin page/session and retains Mac submission')
-    peer('session','overlay','open','--url','https://example.com','--navigation','--target',config['origin'])
+    url_page=peer('session','overlay','open','--url','https://example.com','--navigation','--target',config['origin'])
     state(lambda rows:len(rows)==1 and rows[0]['state']=='loaded')
-    peer('session','overlay','close','--target',config['origin']); state(lambda rows:not rows)
-    print('PASS actual Mac-origin URL page and viewer cleanup')
+    native('session','overlay','close','--target',config['session']); state(lambda rows:not rows)
+    outcome(url_page['pageID'],'dismissed')
+    print('PASS actual Mac-origin URL page and viewer close settles origin without a resource channel')
     for loss in ['page-disconnect','disconnect']:
         opened_page=opened('hold.html')
         state(lambda rows:len(rows)==1 and rows[0]['state']=='loaded')

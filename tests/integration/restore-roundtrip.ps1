@@ -471,16 +471,19 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
     Check 'buffer-reflow: long output arrived before saving' ($text.Replace([string][char]13,'').Replace([string][char]10,'') -like '*REFLOW_BEGIN_0123456789*')
     $hostPid = $null
     if ($reflowHost -eq 'server-rust') {
-        $hostPid = (Get-TestRustHost $s).ProcessId
-        Check 'buffer-reflow-rust-host: separate host is running' ([bool]$hostPid)
-        if (-not $hostPid) { throw 'Rust PTY host did not start' }
+        $hosts = @(Get-TestRustHost $s)
+        Check 'buffer-reflow-rust-host: separate host is running' ($hosts.Count -eq 1) ($hosts | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress)
+        if ($hosts.Count -ne 1) { throw 'Expected one isolated Rust PTY host' }
+        $hostPid = $hosts[0].ProcessId
     }
     return @{ Sid = $sid; HostPid = $hostPid }
 } -Assert {
     param($s, $ctx)
     Start-Sleep -Seconds 2
     if ($ctx.HostPid) {
-        Check 'buffer-reflow-rust-host: same host survived UI restart' ((Get-TestRustHost $s).ProcessId -eq $ctx.HostPid)
+        $hosts = @(Get-TestRustHost $s)
+        Check 'buffer-reflow-rust-host: same host survived UI restart' ($hosts.Count -eq 1 -and $hosts[0].ProcessId -eq $ctx.HostPid) `
+            "expected=$($ctx.HostPid) actual=$($hosts | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress)"
     }
     [void][AgwUi]::SetWindowPos($s.Hwnd, [IntPtr]::Zero, 0, 0, 2200, 800, 0x0004)
     Start-Sleep -Seconds 2

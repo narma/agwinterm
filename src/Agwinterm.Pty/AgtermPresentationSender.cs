@@ -11,7 +11,7 @@ public sealed class AgtermPresentationSender
     public bool Granted { get; internal set; }
     public void Send(string kind, JsonElement body = default)
     {
-        if (kind is not ("presenter.acquire" or "ask.resolve" or "ask.rejected" or "overlay.rejected" or "overlay.closed" or "page.rejected"))
+        if (kind is not ("presenter.acquire" or "ask.resolve" or "ask.rejected" or "overlay.rejected" or "overlay.closed" or "page.rejected" or "page.state" or "page.closed"))
             throw new IOException("Unsupported presentation response");
         _send(kind, body);
     }
