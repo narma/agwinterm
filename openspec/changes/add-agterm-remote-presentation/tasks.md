@@ -10,6 +10,8 @@ User approved the upstream behavior on 2026-11-02. Presentation loss revokes the
 
 Read-only environment verification: the supplied macOS arm64 peer is reachable through the existing Ubuntu SSH agent; the prior isolated stage-2 build remains available. No installed application, live session, or old acceptance build was changed. Task 1.1 captured real new-pin envelopes; see tests/Agwinterm.Pty.Tests/Fixtures/Presentation/README.md. This is wire evidence, not bidirectional UI acceptance.
 
+Accessibility follow-up (2026-11-03): after the user granted macOS permissions, routed run `artifacts/wsl-ui/20261103T183505-a1068d93` passed all seven actual Mac question UI cases plus session/right-pane program input and held-surface UI close, with authoritative Windows/WSL outcomes. Existing loss/restart/workload regressions also passed. This strengthens completed tasks 4.4 and 5.4; progress remains 17/27. See the development notes for hashes, AX evidence, unlocked-session prerequisite and the pinned choice-row AXPress limitation.
+
 ## 1. Pinned contracts and identity
 
 - [x] 1.1 Capture actual hello/snapshot/delta, ask, job and page envelopes from an isolated peer at the research pin, including PageServe enum encoding and caps; add provenance fixtures and verify encode/decode against the real CLI rather than inferred JSON.

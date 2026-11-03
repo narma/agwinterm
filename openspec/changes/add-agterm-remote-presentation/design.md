@@ -92,6 +92,8 @@ Implement passive streams first, then presenter/questions, program jobs and page
 
 Keep the old accepted terminal peer build as a regression baseline and build an isolated stage-4 peer at the new research pin. Existing SSH accounts/services may be used only within authorized setup; do not upgrade installed apps or change live sessions. Host-free model tests run directly. WSL UI acceptance goes through `wsl-ui.ps1` on the private non-input desktop; ordinary Windows UI regressions use `sandbox-ui.ps1 ... -Background`. Missing real peer or manual browser evidence stays pending, never replaced with fixture claims.
 
+After user-granted macOS Accessibility permission, the optional acceptance driver may address only the isolated viewer's verified PID and app path. It uses AX controls/native input and validates retained results at the origin, refusing locked sessions and ambiguous targets. This is test infrastructure built with the existing Swift SDK, not a shipped dependency or a protocol extension. The pinned peer's custom choice rows require native keyboard navigation; exposed AXPress alone does not toggle them. Record this limitation with the evidence.
+
 ## Risks / Trade-offs
 
 - Upstream version/kind negotiation does not independently flag every basic interaction -> preserve observed role protocol, use explicit per-request refusals and prove behavior with real peers before advertising presenter readiness.

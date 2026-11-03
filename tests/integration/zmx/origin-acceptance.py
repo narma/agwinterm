@@ -202,21 +202,32 @@ def attach(value, role='left', success=True):
 def peer(action):
     env = {**os.environ, 'SSH_AUTH_SOCK': run['agentSocket']}
     remote_root = '/tmp/aw-stage3-viewer-' + root.name.removeprefix('aw-stage3-origin-')
-    ssh = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', run['destination']]
+    ssh = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ControlMaster=no', '-o', 'ControlPath=none', run['destination']]
     def remote(argv, stdin=None):
         result = subprocess.run(ssh + [shlex.join(argv)], input=stdin, text=True, capture_output=True, env=env, timeout=180)
         if result.returncode: raise RuntimeError((result.returncode, result.stdout, result.stderr))
         return result.stdout
+    if action == 'accessibility-preflight':
+        print(remote(['/usr/bin/swift','-'], '''import ApplicationServices
+import Foundation
+guard AXIsProcessTrusted(), let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+      session["CGSSessionScreenIsLocked"] as? Bool != true else {
+    fputs("Enable Accessibility for SSH and unlock the Mac before the UI run\\n", stderr); exit(1)
+}
+print("PASS Mac Accessibility permission and unlocked graphical session")
+''').strip())
+        return
     if action == 'single':
         source = Path(__file__).with_name('origin-viewer.py').read_text()
-        payload = json.dumps({'source':source, 'config':{**run, 'remoteRoot':remote_root}})
+        payload = json.dumps({'source':source, 'ax':Path(__file__).with_name('mac-accessibility.swift').read_text(), 'config':{**run, 'remoteRoot':remote_root}})
         remote(['python3','-c',
-            'import pathlib,json,sys; d=json.load(sys.stdin); p=pathlib.Path(sys.argv[1]); p.mkdir(mode=0o700); (p/"viewer.py").write_text(d["source"]); (p/"run.json").write_text(json.dumps(d["config"]))', remote_root], payload)
+            'import pathlib,json,sys; d=json.load(sys.stdin); p=pathlib.Path(sys.argv[1]); p.mkdir(mode=0o700); (p/"viewer.py").write_text(d["source"]); (p/"mac-accessibility.swift").write_text(d["ax"]); (p/"run.json").write_text(json.dumps(d["config"]))', remote_root], payload)
     elif action == 'stop':
         # No stop action before this run created its own viewer directory.
         result = subprocess.run(ssh + ['test -f ' + shlex.quote(remote_root+'/run.json')], env=env, timeout=10)
         if result.returncode: return
-    output = remote(['python3',remote_root+'/viewer.py',action,remote_root] + ([run['manualQuestionId']] if action in ['manual-show','question-visible'] else []))
+    needs_id = action in ['manual-show','question-visible'] or (action.startswith('ax-question-') and action!='ax-question-absent')
+    output = remote(['python3',remote_root+'/viewer.py',action,remote_root] + ([run['manualQuestionId']] if needs_id else []))
     (root/('peer-'+action+'.log')).write_text(output)
     print(output.strip())
 

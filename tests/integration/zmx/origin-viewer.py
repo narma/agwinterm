@@ -77,6 +77,25 @@ def imported_surface(kind='left'):
     rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==imported]
     return next(s for s in rows[0]['surfaces'] if s['kind']==kind)
 
+def accessibility(action, text=''):
+    info=json.loads((root/'imported.json').read_text())
+    pid=peer_pid()
+    assert pid==int((root/'app.pid').read_text()), 'isolated viewer PID changed'
+    ctl('window','minimize',info['window'],'off')
+    ctl('window','select',info['window'])
+    time.sleep(.5)
+    driver=root/'mac-accessibility'
+    try:
+        before=subprocess.run([str(driver),str(pid),str(bundle),'dump',''],capture_output=True,text=True,timeout=20)
+        (root/(action+'-ax-before.json')).write_text(before.stdout)
+        assert before.returncode==0, before.stderr
+        result=subprocess.run([str(driver),str(pid),str(bundle),action,text],capture_output=True,text=True,timeout=25)
+        (root/(action+'-ax-result.log')).write_text(result.stdout+result.stderr)
+        if result.returncode: raise RuntimeError(result.stderr)
+        print(result.stdout.strip())
+    finally:
+        ctl('window','minimize',info['window'],'on')
+
 def exercise(split):
     remote,row=discover()
     assert len(row['panes']) == (2 if split else 1), row
@@ -131,6 +150,8 @@ os.execv('/usr/bin/ssh',['ssh']+args)
     (root/'bin/ssh').chmod(0o700)
     hashes={name:hashlib.sha256((bundle/'Contents/MacOS'/name).read_bytes()).hexdigest() for name in ['agterm','agtermctl','zmx']}
     (root/'build-hashes.json').write_text(json.dumps(hashes,indent=2))
+    if config.get('accessibility'):
+        subprocess.run(['/usr/bin/swiftc',str(root/'mac-accessibility.swift'),'-o',str(root/'mac-accessibility')],check=True,timeout=90)
     start()
     imported=exercise(False)
     ctl('session','close','--target',imported)
@@ -138,6 +159,29 @@ os.execv('/usr/bin/ssh',['ssh']+args)
     print('PASS viewer close preserves origin workload')
 elif action == 'split':
     exercise(True)
+elif action == 'ax-question-absent':
+    accessibility('question-absent')
+elif action.startswith('ax-question-'):
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and rows[0].get('ask',{}).get('id')==sys.argv[3] and rows[0]['ask'].get('replica'): break
+        time.sleep(.2)
+    else: raise RuntimeError('exact origin question not present')
+    accessibility(action.removeprefix('ax-'),'AX_MAC_ANSWER')
+elif action in ['ax-job-input','ax-job-pane-input','ax-job-close']:
+    info=json.loads((root/'imported.json').read_text())
+    pane_args=['--pane','right'] if action=='ax-job-pane-input' else []
+    for _ in range(100):
+        try:
+            text=ctl('session','overlay','text','--target',info['id'],*pane_args).get('text','')
+            if 'AX_ORIGIN_READY' in text: break
+        except RuntimeError: pass
+        time.sleep(.2)
+    else: raise RuntimeError('origin input surface missing')
+    accessibility('job-close' if action=='ax-job-close' else 'job-input','AX_MAC_JOB_OK')
+    for pane in ['left','right']:
+        assert 'AX_MAC_JOB_OK' not in ctl('session','text','--target',info['id'],'--pane',pane).get('text',''), 'overlay input leaked into base terminal'
 elif action == 'job-manual-show':
     info=json.loads((root/'imported.json').read_text())
     for _ in range(100):
@@ -170,7 +214,7 @@ elif action in ['job-visible','job-pane-visible']:
         except RuntimeError: pass
         time.sleep(.2)
     else: raise RuntimeError('origin job not rendered on Mac: '+json.dumps(ctl('tree')))
-    print('PASS actual Mac viewer renders origin Linux job with cwd (keyboard input requires manual UI check)')
+    print('PASS actual Mac viewer renders origin Linux job with cwd (input evidence is recorded separately)')
 elif action == 'job-absent':
     info=json.loads((root/'imported.json').read_text())
     for _ in range(100):
