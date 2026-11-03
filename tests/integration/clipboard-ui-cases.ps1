@@ -1,5 +1,8 @@
 # Runs only through hud-ui.ps1 and its background Sandbox routing. The clipboard belongs
 # to the Sandbox. Keyboard injection below is confined to that guest's desktop.
+if ($env:AGWINTERM_SANDBOX_UI -ne '1' -or $env:USERNAME -ne 'WDAGUtilityAccount') {
+    throw 'Clipboard fixture requires the Windows Sandbox guest; host and direct CI execution are forbidden.'
+}
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
