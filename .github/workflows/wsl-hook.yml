@@ -14,6 +14,8 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v6
+      - name: Test remote page document lifecycle (host-free)
+        run: node tests/integration/zmx/page-document-lifecycle-tests.mjs
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: native -> target

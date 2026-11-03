@@ -165,7 +165,7 @@ index 7666d11..6b5257b 100644
      /// start launches the helper and starts reading; a helper that cannot start closes the channel at once.
      func start(_ argv: [String], launcher: RemotePageLauncher) {
 diff --git a/agterm/Views/HtmlOverlayRegistry.swift b/agterm/Views/HtmlOverlayRegistry.swift
-index 8fc36a0..a81eca1 100644
+index 8fc36a0..6ce2567 100644
 --- a/agterm/Views/HtmlOverlayRegistry.swift
 +++ b/agterm/Views/HtmlOverlayRegistry.swift
 @@ -29,6 +29,7 @@ final class HtmlOverlayRegistry {
@@ -216,7 +216,7 @@ index 8fc36a0..a81eca1 100644
 +              bind();
 +            };
 +            addEventListener('pageshow', bindDocument);
-+            addEventListener('popstate', bindDocument);
++            addEventListener('popstate', () => { documentEpoch++; bindDocument(); });
 +            const handler = {postMessage(body) {
 +              const epoch = documentEpoch, started = Date.now();
 +              const token = window.__agtermDocumentToken;
