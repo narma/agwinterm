@@ -74,6 +74,7 @@ public static class WebGateWindow {
         finally { Marshal.FreeHGlobal(memory); }
     }
     public static void Key(IntPtr hwnd,int key) { PostMessageW(hwnd,0x100,(IntPtr)key,(IntPtr)1);PostMessageW(hwnd,0x101,(IntPtr)key,(IntPtr)1); }
+    public static void NativeSpace() { keybd_event(0x20,0x39,0,UIntPtr.Zero);System.Threading.Thread.Sleep(40);keybd_event(0x20,0x39,2,UIntPtr.Zero); }
     public static IntPtr Find(int pid) {
         IntPtr result=IntPtr.Zero;
         EnumWindows((hwnd,arg)=> { GetWindowThreadProcessId(hwnd,out uint owner); var name=new StringBuilder(256); GetClassNameW(hwnd,name,256); var title=new StringBuilder(256); GetWindowTextW(hwnd,title,256);
@@ -268,9 +269,30 @@ try {
     Start-Sleep -Milliseconds 200
     Require ((Call @('tree')).result.workspaces[0].sessions[0].htmlOverlays[0].visible) 'dismissing settings restores browser presentation'
     Require ($valuePattern.Current.Value -eq 'unsaved web draft') 'native modal panels preserve web edits'
+    [WebGateWindow]::FocusForKeys($handle)
+    $editor.SetFocus()
+    $terminalBeforeSwitch=(Call @('session','text','--target',$owner)).result
     $second=Call @('session','new','--name','web-peer')
     Require $second.ok 'second owner session opens'
+    for($i=0;$i -lt 50;$i++) {
+        $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
+        if(-not $ownerSnapshot.htmlOverlays[0].visible){break}
+        Start-Sleep -Milliseconds 100
+    }
+    Require (-not $ownerSnapshot.htmlOverlays[0].visible) 'switching away hides the editor before testing focus return'
     [void](Call @('session','select','--target',$owner))
+    for($i=0;$i -lt 50;$i++) {
+        $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
+        if($ownerSnapshot.htmlOverlays[0].visible){break}
+        Start-Sleep -Milliseconds 100
+    }
+    # Posting directly to a browser HWND or reading DOM/UIA focus can conceal
+    # lost native focus. Deliver ordinary input to Windows' actual focus owner.
+    [WebGateWindow]::NativeSpace()
+    for($i=0;$i -lt 50 -and $valuePattern.Current.Value -ne 'unsaved web draft ';$i++){Start-Sleep -Milliseconds 100}
+    Require ($valuePattern.Current.Value -eq 'unsaved web draft ') 'returning to a session restores actual browser keyboard focus'
+    Require ((Call @('session','text','--target',$owner)).result -ceq $terminalBeforeSwitch) 'restored browser input does not leak into its terminal'
+    $valuePattern.SetValue('unsaved web draft')
     Require ((Call @('session','switch','begin')).ok) 'native switcher opens'
     $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
     Require (-not $ownerSnapshot.htmlOverlays[0].visible) 'switcher hides browser presentation'

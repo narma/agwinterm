@@ -49,6 +49,9 @@ if ($definition.Gate) { $GateExe = (Resolve-Path -LiteralPath $GateExe).Path }
 $inputFiles = @{}
 foreach ($key in @($definition.Inputs) + @($definition.OptionalInputs)) {
     if (-not $key -or ($key -in $definition.OptionalInputs -and -not $TestParameters.ContainsKey($key))) { continue }
+    if (-not $TestParameters.ContainsKey($key) -and $key -notin @('Installer','Portable')) {
+        throw "Test $Test requires TestParameters.$key."
+    }
     $source = if ($TestParameters.ContainsKey($key)) { $TestParameters[$key] } else {
         Join-Path $repo ('installer/Output/' + $(if ($key -eq 'Installer') { 'agwinterm-setup-0.20.14.exe' } else { 'agwinterm-portable-0.20.14-win-x64.exe' }))
     }

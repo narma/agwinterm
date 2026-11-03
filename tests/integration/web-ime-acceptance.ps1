@@ -8,6 +8,8 @@ $report=[ordered]@{outcome='FAIL';commit=$env:AGWINTERM_TEST_COMMIT;os=(Get-CimI
 $process=$null
 try {
     $report.executableSha256=(Get-FileHash -LiteralPath $Exe).Hash
+    $assembly=Join-Path (Split-Path $Exe) 'Agwinterm.Win32.dll'
+    if(Test-Path -LiteralPath $assembly){$report.applicationAssemblySha256=(Get-FileHash -LiteralPath $assembly).Hash}
     $report.cliSha256=(Get-FileHash -LiteralPath $Ctl).Hash
     $report.runtime=@(Get-ChildItem "${env:ProgramFiles(x86)}/Microsoft/EdgeWebView/Application" -Filter msedgewebview2.exe -Recurse | ForEach-Object {$_.VersionInfo.FileVersion})
     $report.network=@(Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name,Status)
@@ -214,8 +216,10 @@ public static class ImeKeys {
     Require ((Call @('session','text','--target',$owner)).result -ceq $before) 'session-wide IME input never reaches the terminal'
     Require ((Call @('session','split','on','--target',$owner)).ok) 'split session opens for pane IME acceptance'
     Start-Sleep -Milliseconds 500
-    $leftBefore=(Call @('session','text','--pane','left','--target',$owner)).result
-    $rightBefore=(Call @('session','text','--pane','right','--target',$owner)).result
+    $paneIds=@((Call @('tree')).result.workspaces[0].sessions[0].paneIds)
+    Require ($paneIds.Count -eq 2) 'split exposes exact pane identities'
+    $leftBefore=(Call @('session','text','--target',$paneIds[0])).result
+    $rightBefore=(Call @('session','text','--target',$paneIds[1])).result
     Require ((Call @('session','overlay','open','--html',$source,'--js','--navigation','--pane','left','--target',$owner)).ok) 'pane-scoped IME page opens'
     $editor=$null
     for($i=0;$i -lt 100;$i++){$editor=Element 'IME editor';if($editor){break};Start-Sleep -Milliseconds 100}
@@ -231,8 +235,8 @@ public static class ImeKeys {
     Require ($value.Current.Value -ceq $paneCommitted) 'pane composition cancels without inserting text'
     $report.events=$log.Current.Value | ConvertFrom-Json
     $null=Call @('session','overlay','close','--pane','left','--target',$owner)
-    Require ((Call @('session','text','--pane','left','--target',$owner)).result -ceq $leftBefore) 'pane IME input does not reach its terminal'
-    Require ((Call @('session','text','--pane','right','--target',$owner)).result -ceq $rightBefore) 'pane IME input does not reach the other pane'
+    Require ((Call @('session','text','--target',$paneIds[0])).result -ceq $leftBefore) 'pane IME input does not reach its terminal'
+    Require ((Call @('session','text','--target',$paneIds[1])).result -ceq $rightBefore) 'pane IME input does not reach the other pane'
     $report.outcome='PASS'
 } catch { $report.error=$_.ToString();throw }
 finally {

@@ -134,7 +134,9 @@ try {
             continue
         }
         $options = @{}
+        foreach($inputKey in $definitions[$testName].Inputs){$options[$inputKey]=$parameters.Exe}
         if ($testName -eq 'WebStartupBaseline') { $options = @{Installer=$parameters.Exe; Portable=$parameters.CtlExe} }
+        if ($testName -eq 'WebReleaseAcceptance') { $options = @{Mode='Portable';Runtime='Absent';Portable=$parameters.CtlExe} }
         if ($testName -eq 'WebOverlayHost') { $options.Cookbook=$true }
         $testOutput = Join-Path $temporary "test-$testName"
         & $runner @parameters -Test $testName -TestParameters $options -WebView2Home (Join-Path $temporary 'webview2') -PythonHome (Join-Path $temporary 'python') -GateExe $parameters.Exe -OutputDirectory $testOutput -PrepareOnly
@@ -144,7 +146,10 @@ try {
         if ($definitions[$testName].Web) { Check "$testName stages an offline WebView2 runtime" (Test-Path (Join-Path $testOutput 'input/webview2/msedgewebview2.exe')) }
         if ($definitions[$testName].Python -or $testName -eq 'WebOverlayHost') { Check "$testName stages an offline Python runtime" (Test-Path (Join-Path $testOutput 'input/python/python.exe')) }
         if ($testName -eq 'WebStartupBaseline') { Check 'baseline records host Git and SDK without staging either tool' ($config.hostMetadata.commit -match '^[0-9a-f]{40}$' -and $config.hostMetadata.sdk) }
+        if ($testName -eq 'WebImeAcceptance') { Check 'IME language source is explicitly staged from a fixture' (Test-Path (Join-Path $testOutput 'input/inputs/LanguageSource')) }
+        if ($testName -eq 'WebReleaseAcceptance') { Check 'release package is explicitly staged from a fixture' (Test-Path (Join-Path $testOutput 'input/inputs/Portable')) }
     }
+    Refuses 'missing IME language source cannot fall back to a local release package' { & $runner @parameters -Test WebImeAcceptance -PrepareOnly } '*requires TestParameters.LanguageSource*'
     Refuses 'unknown tests are rejected before staging' { & $runner @parameters -Test '../arbitrary.ps1' -PrepareOnly } '*Unknown Sandbox UI test*'
     $navigationOutput = Join-Path $temporary 'navigation-only'
     & $runner @parameters -Test WebOverlayHost -TestParameters @{NavigationOnly=$true} -WebView2Home (Join-Path $temporary 'webview2') -PythonHome (Join-Path $temporary 'python') -OutputDirectory $navigationOutput -PrepareOnly
