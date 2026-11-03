@@ -3,8 +3,9 @@
 Current status (2026-11-04): both-direction five-family acceptance is complete.
 Real Chinese Pinyin acceptance passed in Hyper-V and exposed a native web-focus
 restoration defect, corrected in `12256ca`. Local WebView2 is 36/36; stage 4 is
-26/27: corrected packages passed all four offline cells; only final-head CI and
-clean Greptile review remain after the resource-budget fix.
+27/27: corrected packages passed all four offline cells. Implementation commit
+1ec505e passed all 12 CI jobs and clean Greptile review (5/5), including the
+resource-budget correction. Documentation follow-up heads are rechecked before readiness.
 CI for `98c73d6` passed every job. Final-head review and release evidence are
 tracked in [the Hyper-V report](agterm-stage4-hyperv-acceptance.md) and PR #31.
 

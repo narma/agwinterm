@@ -142,3 +142,9 @@ the Windows Release build passes without warnings. Logs are
 `artifacts/stage4-page-budget-tests.log` and
 `artifacts/stage4-budget-release-build.log`. The package/IME runs above predate
 this remote-only correction and are not relabelled as tests of its binary.
+
+Implementation commit `1ec505e62c82b80b2c75515e411a4ba4e395f55c` passed all
+12 jobs in CI run `41736373217`. Greptile review `38128545` completed
+with 5/5 and no actionable findings; all eight earlier findings are resolved.
+Stage 4 is 27/27 and local browser acceptance 36/36. The documentation follow-up
+head is checked again in PR #31 before readiness; no merge or archive is performed.
