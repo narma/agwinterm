@@ -99,7 +99,7 @@ jobs:
           $v = '${{ github.ref_name }}'
           $v = if ($v -match '^v\d') { $v.TrimStart('v') } else { '0.0.0' }
           dotnet publish src/Agwinterm.Ctl/Agwinterm.Ctl.csproj -c Release -r win-x64 `
-            --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=$v `
+            --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:EnableCompressionInSingleFile=true -p:Version=$v `
             -o ctl-publish
           Copy-Item ctl-publish/agwintermctl.exe installer/Output/agwintermctl.exe
 
@@ -256,3 +256,46 @@ jobs:
           # Shared with choco-push.yml (the repush-a-moderated-version path) so the two can't drift.
           $version = '${{ github.ref_name }}'.TrimStart('v')
           ./packaging/chocolatey/publish.ps1 -Version $version -ApiKey $env:CHOCO_API_KEY -Repository '${{ github.repository }}'
+
+  net11-installer:
+    # Publish additional assets after the main job creates the release.
+    needs: [wsl-hook, installer]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: wsl-hook-*
+          merge-multiple: true
+          path: artifacts/wsl-hook
+      - name: Select pinned .NET 11 RC3 SDK
+        shell: pwsh
+        run: |
+          $config = Get-Content global.json -Raw | ConvertFrom-Json
+          $config.sdk.version = '11.0.100-rc.3.26522.148'
+          $config.sdk.rollForward = 'disable'
+          $config.sdk | Add-Member -NotePropertyName allowPrerelease -NotePropertyValue $true
+          $config | ConvertTo-Json -Depth 4 | Set-Content global.json
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build experimental .NET 11 assets
+        shell: pwsh
+        env:
+          AgwintermNet11: 'true'
+        run: |
+          ./installer/build.ps1
+          ./installer/build-portable.ps1
+          # Separate prefix prevents existing stable updaters selecting preview assets.
+          Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
+            Rename-Item -LiteralPath $_.FullName -NewName ($_.Name -replace '^agwinterm-', 'agwinterm-net11-')
+          }
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: installer/Output/agwinterm-net11-*.exe
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: installer/Output/agwinterm-net11-*.exe
+          fail_on_unmatched_files: true

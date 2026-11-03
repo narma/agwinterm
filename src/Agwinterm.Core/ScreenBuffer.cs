@@ -3,6 +3,8 @@ namespace Agwinterm.Core;
 public sealed class ScreenBuffer
 {
     private Cell[] _cells;
+    // -1: hard end; otherwise cells before automatic wrap (excludes wide-glyph padding).
+    internal int[] WrapLengths { get; private set; }
 
     public int Cols { get; private set; }
     public int Rows { get; private set; }
@@ -14,6 +16,7 @@ public sealed class ScreenBuffer
         Cols = cols;
         Rows = rows;
         _cells = new Cell[cols * rows];
+        WrapLengths = new int[rows];
         Clear();
     }
 
@@ -28,10 +31,12 @@ public sealed class ScreenBuffer
         {
             CheckBounds(row, col);
             _cells[row * Cols + col] = value;
+            // A later write can replace padding excluded from a wide-glyph wrap.
+            if (WrapLengths[row] >= 0) WrapLengths[row] = Math.Max(WrapLengths[row], col + 1);
         }
     }
 
-    public void Clear() => Array.Fill(_cells, Cell.Empty);
+    public void Clear() { Array.Fill(_cells, Cell.Empty); Array.Fill(WrapLengths, -1); }
 
     /// <summary>Block-move <paramref name="count"/> whole rows from <paramref name="srcRow"/> to
     /// <paramref name="dstRow"/> (memmove semantics — overlapping regions are safe). Scrolling with
@@ -43,6 +48,7 @@ public sealed class ScreenBuffer
         if ((uint)srcRow >= (uint)Rows || (uint)dstRow >= (uint)Rows) throw new ArgumentOutOfRangeException(nameof(srcRow));
         if (srcRow + count > Rows || dstRow + count > Rows) throw new ArgumentOutOfRangeException(nameof(count));
         Array.Copy(_cells, srcRow * Cols, _cells, dstRow * Cols, count * Cols);
+        Array.Copy(WrapLengths, srcRow, WrapLengths, dstRow, count);
     }
 
     /// <summary>Fill one whole row with <paramref name="cell"/> in a single span fill.</summary>
@@ -50,6 +56,7 @@ public sealed class ScreenBuffer
     {
         if ((uint)row >= (uint)Rows) throw new ArgumentOutOfRangeException(nameof(row));
         _cells.AsSpan(row * Cols, Cols).Fill(cell);
+        WrapLengths[row] = -1;
     }
 
     /// <summary>Copy one whole row into <paramref name="dest"/> (used by scrollback capture).</summary>
@@ -95,6 +102,10 @@ public sealed class ScreenBuffer
         for (int r = 0; r < copyRows; r++)
             for (int c = 0; c < copyCols; c++)
                 next[r * cols + c] = _cells[r * Cols + c];
+        var wraps = new int[rows];
+        Array.Fill(wraps, -1);
+        if (cols == Cols) Array.Copy(WrapLengths, wraps, copyRows);
+        WrapLengths = wraps;
         _cells = next;
         Cols = cols;
         Rows = rows;

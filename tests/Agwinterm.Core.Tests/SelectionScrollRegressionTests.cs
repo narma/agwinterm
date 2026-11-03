@@ -11,6 +11,95 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class SelectionScrollRegressionTests
 {
+    private static bool CoreAvailable(bool rust)
+    {
+        if (!rust) return true;
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Agwinterm.slnx"))) dir = dir.Parent;
+        string dll = Path.Combine(dir!.FullName, "native", "target", "release", "agwinterm_core.dll");
+        if (!File.Exists(dll)) return false;
+        Assert.True(RustEmulatorCore.TryLoad(dll, out var error), error);
+        return true;
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void CopyJoinsSoftWrapsButKeepsSpacesAndHardBreaks(bool rust, bool alt)
+    {
+        if (!CoreAvailable(rust)) return;
+        foreach (int cols in new[] { 5, 80 })
+        {
+            using var f = new Fixture(alt, rust);
+            f.Core.Resize(cols, 20);
+            const string text = "abcd界xyz  abc de  fghijklmnop😀z\r\nsecond\r\n\r\nend";
+            f.Feed("\x1b[2J\x1b[H" + text);
+            f.Select(0, f.Core.CursorRow, to: f.Core.CursorCol - 1);
+            Assert.Equal(text, f.Text());
+            if (alt)
+            {
+                f.Feed("\x1b[2J");
+                Assert.Equal(text, f.Text()); // immutable snapshot retains wrap metadata
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void PartialReverseCopyJoinsWrapsAndExactWidthHardBreakStays(bool rust, bool alt)
+    {
+        if (!CoreAvailable(rust)) return;
+        using var f = new Fixture(alt, rust);
+        f.Core.Resize(5, 6);
+        f.Feed("\x1b[2J\x1b[H0123456789abcdefghij");
+        f.Select(1, 2, from: 2, to: 1);
+        Assert.Equal("789ab", f.Text());
+        f.Select(2, 1, from: 1, to: 2);
+        Assert.Equal("789ab", f.Text());
+        f.Feed("\x1b[2J\x1b[H12345\r\n67890");
+        f.Select(0, 1, to: 4);
+        Assert.Equal("12345\r\n67890", f.Text());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CopyJoinsHistoryAndScreenAcrossWrapsAfterEviction(bool rust)
+    {
+        if (!CoreAvailable(rust)) return;
+        using var f = new Fixture(false, rust);
+        f.Core.Resize(5, 3);
+        f.Core.ScrollbackMax = 2;
+        f.Feed("\x1b[2J\x1b[Hxxxxxabc defghijklmnop\r\nend");
+        f.Select(-f.Core.HistoryCount, f.Core.CursorRow, to: f.Core.CursorCol - 1);
+        Assert.Equal("xxxxxabc defghijklmnop\r\nend", f.Text());
+        // History trims in batches, allowing slack above the configured cap.
+        f.Feed(string.Concat(Enumerable.Repeat("\r\nxxxxx", 600)) + "\r\nend\r\n1234567890\r\nlast");
+        Assert.True(f.Core.HistoryCount < 600);
+        f.Select(-1, f.Core.CursorRow, to: f.Core.CursorCol - 1);
+        Assert.Equal("end\r\n1234567890\r\nlast", f.Text());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void RectangleCopyKeepsPhysicalRows(bool rust, bool alt)
+    {
+        if (!CoreAvailable(rust)) return;
+        using var f = new Fixture(alt, rust);
+        f.Core.Resize(5, 6);
+        f.Feed("\x1b[2J\x1b[Habcdefghij");
+        f.Select(0, 1, to: 4, block: true);
+        Assert.Equal("abcde\r\nfghij", f.Text());
+    }
+
     private static readonly Assembly Ui = Assembly.LoadFrom(SelectionBoundsTests.FindUiAssembly());
     private static readonly Type ProgramType = Ui.GetType("Agwinterm.Win32.Program", true)!;
     private static readonly Type PaneType = ProgramType.GetNestedType("Pane", BindingFlags.NonPublic)!;

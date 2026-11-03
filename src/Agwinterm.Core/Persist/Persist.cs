@@ -29,16 +29,17 @@ namespace Agwinterm.Core.Persist {
             "cxgEIAEoDRINCgV3aWR0aBgFIAEoDRIPCgdmZ19raW5kGAYgASgNEhAKCGZn",
             "X2luZGV4GAcgASgNEg4KBmZnX3JnYhgIIAEoDRIPCgdiZ19raW5kGAkgASgN",
             "EhAKCGJnX2luZGV4GAogASgNEg4KBmJnX3JnYhgLIAEoDRIVCg1oeXBlcmxp",
-            "bmtfdXJpGAwgASgJEhwKFGh5cGVybGlua19wYXJhbWV0ZXJzGA0gASgJIi8K",
-            "BFBSb3cSJwoFY2VsbHMYASADKAsyGC5hZ3dpbnRlcm0ucGVyc2lzdC5QQ2Vs",
-            "bCJPCgdQQnVmZmVyEg8KB3ZlcnNpb24YASABKA0SDAoEY29scxgCIAEoDRIl",
-            "CgRyb3dzGAMgAygLMhcuYWd3aW50ZXJtLnBlcnNpc3QuUFJvd0IZqgIWQWd3",
-            "aW50ZXJtLkNvcmUuUGVyc2lzdGIGcHJvdG8z"));
+            "bmtfdXJpGAwgASgJEhwKFGh5cGVybGlua19wYXJhbWV0ZXJzGA0gASgJIloK",
+            "BFBSb3cSFAoMc29mdF93cmFwcGVkGAIgASgIEhMKC3dyYXBfbGVuZ3RoGAMg",
+            "ASgNEicKBWNlbGxzGAEgAygLMhguYWd3aW50ZXJtLnBlcnNpc3QuUENlbGwi",
+            "TwoHUEJ1ZmZlchIPCgd2ZXJzaW9uGAEgASgNEgwKBGNvbHMYAiABKA0SJQoE",
+            "cm93cxgDIAMoCzIXLmFnd2ludGVybS5wZXJzaXN0LlBSb3dCGaoCFkFnd2lu",
+            "dGVybS5Db3JlLlBlcnNpc3RiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb", "HyperlinkUri", "HyperlinkParameters" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PRow), global::Agwinterm.Core.Persist.PRow.Parser, new[]{ "Cells" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PRow), global::Agwinterm.Core.Persist.PRow.Parser, new[]{ "SoftWrapped", "WrapLength", "Cells" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PBuffer), global::Agwinterm.Core.Persist.PBuffer.Parser, new[]{ "Version", "Cols", "Rows" }, null, null, null, null)
           }));
     }
@@ -734,6 +735,8 @@ namespace Agwinterm.Core.Persist {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public PRow(PRow other) : this() {
+      softWrapped_ = other.softWrapped_;
+      wrapLength_ = other.wrapLength_;
       cells_ = other.cells_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
@@ -742,6 +745,36 @@ namespace Agwinterm.Core.Persist {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public PRow Clone() {
       return new PRow(this);
+    }
+
+    /// <summary>Field number for the "soft_wrapped" field.</summary>
+    public const int SoftWrappedFieldNumber = 2;
+    private bool softWrapped_;
+    /// <summary>
+    /// next physical row continues this logical line
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SoftWrapped {
+      get { return softWrapped_; }
+      set {
+        softWrapped_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "wrap_length" field.</summary>
+    public const int WrapLengthFieldNumber = 3;
+    private uint wrapLength_;
+    /// <summary>
+    /// excludes padding before a wide glyph
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint WrapLength {
+      get { return wrapLength_; }
+      set {
+        wrapLength_ = value;
+      }
     }
 
     /// <summary>Field number for the "cells" field.</summary>
@@ -773,6 +806,8 @@ namespace Agwinterm.Core.Persist {
       if (ReferenceEquals(other, this)) {
         return true;
       }
+      if (SoftWrapped != other.SoftWrapped) return false;
+      if (WrapLength != other.WrapLength) return false;
       if(!cells_.Equals(other.cells_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -781,6 +816,8 @@ namespace Agwinterm.Core.Persist {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
+      if (SoftWrapped != false) hash ^= SoftWrapped.GetHashCode();
+      if (WrapLength != 0) hash ^= WrapLength.GetHashCode();
       hash ^= cells_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -801,6 +838,14 @@ namespace Agwinterm.Core.Persist {
       output.WriteRawMessage(this);
     #else
       cells_.WriteTo(output, _repeated_cells_codec);
+      if (SoftWrapped != false) {
+        output.WriteRawTag(16);
+        output.WriteBool(SoftWrapped);
+      }
+      if (WrapLength != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(WrapLength);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -812,6 +857,14 @@ namespace Agwinterm.Core.Persist {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       cells_.WriteTo(ref output, _repeated_cells_codec);
+      if (SoftWrapped != false) {
+        output.WriteRawTag(16);
+        output.WriteBool(SoftWrapped);
+      }
+      if (WrapLength != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(WrapLength);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -822,6 +875,12 @@ namespace Agwinterm.Core.Persist {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
+      if (SoftWrapped != false) {
+        size += 1 + 1;
+      }
+      if (WrapLength != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(WrapLength);
+      }
       size += cells_.CalculateSize(_repeated_cells_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -834,6 +893,12 @@ namespace Agwinterm.Core.Persist {
     public void MergeFrom(PRow other) {
       if (other == null) {
         return;
+      }
+      if (other.SoftWrapped != false) {
+        SoftWrapped = other.SoftWrapped;
+      }
+      if (other.WrapLength != 0) {
+        WrapLength = other.WrapLength;
       }
       cells_.Add(other.cells_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -859,6 +924,14 @@ namespace Agwinterm.Core.Persist {
             cells_.AddEntriesFrom(input, _repeated_cells_codec);
             break;
           }
+          case 16: {
+            SoftWrapped = input.ReadBool();
+            break;
+          }
+          case 24: {
+            WrapLength = input.ReadUInt32();
+            break;
+          }
         }
       }
     #endif
@@ -880,6 +953,14 @@ namespace Agwinterm.Core.Persist {
             break;
           case 10: {
             cells_.AddEntriesFrom(ref input, _repeated_cells_codec);
+            break;
+          }
+          case 16: {
+            SoftWrapped = input.ReadBool();
+            break;
+          }
+          case 24: {
+            WrapLength = input.ReadUInt32();
             break;
           }
         }

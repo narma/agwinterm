@@ -21,6 +21,7 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
     private readonly RustEmulatorCore _rust;
     private readonly ScreenBuffer _mirror;
     private readonly List<Cell[]> _histMirror = new();
+    private readonly List<int> _historyWraps = new();
     private RustEmulatorCore.NativeCell[] _gridBuf;
     private RustEmulatorCore.NativeCell[] _rowBuf;
     private RustEmulatorCore.Info _info;
@@ -36,9 +37,18 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
         Sync();
     }
 
+    private void ClearHistoryMirror()
+    {
+        _histMirror.Clear();
+        _historyWraps.Clear();
+    }
+
     private void Sync()
     {
+        var previous = _info;
         _info = _rust.GetInfo();
+        if (_info.ScrollGeneration - previous.ScrollGeneration > (long)_info.HistoryCount - previous.HistoryCount)
+            ClearHistoryMirror();
         int cols = (int)_info.Cols, rows = (int)_info.Rows;
         if (_mirror.Cols != cols || _mirror.Rows != rows)
         {
@@ -60,7 +70,7 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
                     _mirror[r, c] = ConvertCell(_gridBuf[r * cols + c]);
 
         int target = (int)_info.HistoryCount;
-        if (target < _histMirror.Count) _histMirror.Clear();   // trimmed — refetch all
+        if (target < _histMirror.Count) ClearHistoryMirror();   // trimmed — refetch all
         for (int h = _histMirror.Count; h < target; h++)
         {
             if (!_rust.CopyHistoryRow(h, _rowBuf)) break;
@@ -69,6 +79,15 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
             _histMirror.Add(row);
         }
 
+        _rust.CopyWrapLengths(target, _mirror.WrapLengths);
+        // History rows are immutable: fetch metadata only for newly cached rows.
+        int missing = target - _historyWraps.Count;
+        if (missing > 0)
+        {
+            var wraps = new int[missing];
+            _rust.CopyWrapLengths(_historyWraps.Count, wraps);
+            _historyWraps.AddRange(wraps);
+        }
         _title = _rust.Title;
         _cwd = _rust.Cwd;
         _marks = _rust.GetMarks();
@@ -90,7 +109,9 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
         _defaultColors = colors;
         if (colors is { } theme) _rust.SetDefaultColors(theme.Foreground, theme.Background);
     }
-    public void Resize(int cols, int rows) { _rust.Resize(cols, rows); Sync(); }
+    public void Resize(int cols, int rows) { _rust.Resize(cols, rows); ClearHistoryMirror(); Sync(); }
+    public byte[] SaveBuffer(int maxRows, bool visible) => _rust.SaveBuffer(maxRows, visible);
+    public void RestoreBuffer(byte[] bytes) { _rust.RestoreBuffer(bytes); ClearHistoryMirror(); Sync(); }
 
     // ---- cursor / screens ----
     public int CursorRow => (int)_info.CursorRow;
@@ -134,6 +155,8 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
     }
     public int HistoryCount => _histMirror.Count;
     public long ScrollGeneration => _info.ScrollGeneration;
+    public int GetRowWrapLength(int line) => line < HistoryCount
+        ? _historyWraps[line] : _mirror.WrapLengths[line - HistoryCount];
 
     public Cell GetHistoryCell(int historyRow, int col)
     {
@@ -146,7 +169,7 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
     {
         if (lines.Count == 0) return;
         _rust.SeedScrollback(string.Join('\n', lines));
-        _histMirror.Clear();   // counts jumped — refetch from scratch
+        ClearHistoryMirror();   // counts jumped — refetch from scratch
         Sync();
     }
 

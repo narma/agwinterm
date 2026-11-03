@@ -24,7 +24,7 @@ New-Item -ItemType Directory -Force $stage, $outDir | Out-Null
 $tools = Join-Path $stage 'tools'
 New-Item -ItemType Directory -Path $tools | Out-Null
 & $dotnet publish (Join-Path $root 'src/Agwinterm.Ctl/Agwinterm.Ctl.csproj') `
-  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true `
   -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=$ver -o $tools
 if ($LASTEXITCODE -ne 0) { throw 'portable CLI publish failed' }
 & cargo build --locked --release --manifest-path (Join-Path $root 'native/Cargo.toml') -p agwinterm-hook
@@ -38,7 +38,7 @@ Compress-Archive -LiteralPath $toolFiles -DestinationPath $archive
 Write-Host "== publish single-file portable exe (v$ver) ==" -ForegroundColor Cyan
 & $dotnet publish (Join-Path $root "src\Agwinterm.Win32\Agwinterm.Win32.csproj") `
   -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true `
+  -p:PublishSingleFile=true -p:PublishReadyToRun=true `
   -p:EnableCompressionInSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true `
   -p:SatelliteResourceLanguages=en `

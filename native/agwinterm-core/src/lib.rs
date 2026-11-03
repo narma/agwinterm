@@ -15,6 +15,7 @@
 
 pub mod cell;
 pub mod emulator;
+pub mod persist;
 pub mod screen;
 pub mod sixel;
 pub mod vtparser;
@@ -27,7 +28,7 @@ use screen::ScreenBuffer;
 /// Bumped whenever the exported C surface changes shape. The C# loader
 /// refuses a mismatch loudly (same hard-handshake philosophy as the
 /// pty-host protocol).
-pub const ABI_VERSION: u32 = 20;
+pub const ABI_VERSION: u32 = 22;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn agwcore_abi_version() -> u32 {
@@ -1021,6 +1022,41 @@ pub unsafe extern "C" fn agwcore_emu_copy_history_row(
     true
 }
 
+/// ABI 22: copy wrap lengths for a range of history + screen absolute rows.
+/// # Safety
+/// `p` from `agwcore_emu_new`; `out` points to `count` writable i32 values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn agwcore_emu_copy_wrap_lengths(
+    p: *mut Terminal,
+    start: u32,
+    out: *mut i32,
+    count: u32,
+) -> bool {
+    let Some(t) = (unsafe { p.as_mut() }) else {
+        return false;
+    };
+    let e = &t.emu;
+    let start = start as usize;
+    let count = count as usize;
+    let history = e.history_count();
+    if out.is_null() || start.saturating_add(count) > history + e.screen().rows() {
+        return false;
+    }
+    for (i, value) in unsafe { core::slice::from_raw_parts_mut(out, count) }
+        .iter_mut()
+        .enumerate()
+    {
+        let row = start + i;
+        let wrap = if row < history {
+            e.history_wraps[row]
+        } else {
+            e.screen().wraps[row - history]
+        };
+        *value = wrap.map_or(-1, |length| length as i32);
+    }
+    true
+}
+
 /// UTF-8 string properties: 0 = title, 1 = cwd, 2 = DumpModes, 3 + id = OSC 8 payload. Free with agwcore_free_buf.
 /// # Safety
 /// `p` from `agwcore_emu_new`; `out_len` writable.
@@ -1058,4 +1094,50 @@ pub unsafe extern "C" fn agwcore_free_buf(ptr: *mut u8, len: u32) {
     if !ptr.is_null() {
         drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len as usize)) });
     }
+}
+
+// ABI 21: full-fidelity persisted buffer, shared protobuf format with the managed core.
+/// # Safety
+/// p is a live terminal; out_len points to writable u32. Free result with agwcore_free_buf.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn agwcore_emu_save_buffer(
+    p: *mut Terminal,
+    max_rows: u32,
+    visible: bool,
+    out_len: *mut u32,
+) -> *mut u8 {
+    let Some(t) = (unsafe { p.as_mut() }) else {
+        return core::ptr::null_mut();
+    };
+    if out_len.is_null() {
+        return core::ptr::null_mut();
+    }
+    let mut bytes = t
+        .emu
+        .serialize_buffer(max_rows as usize, visible)
+        .into_boxed_slice();
+    unsafe {
+        *out_len = bytes.len() as u32;
+    }
+    let ptr = bytes.as_mut_ptr();
+    core::mem::forget(bytes);
+    ptr
+}
+
+/// # Safety
+/// p is a live terminal; bytes points to len readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn agwcore_emu_restore_buffer(
+    p: *mut Terminal,
+    bytes: *const u8,
+    len: u32,
+) -> bool {
+    let Some(t) = (unsafe { p.as_mut() }) else {
+        return false;
+    };
+    if bytes.is_null() {
+        return false;
+    }
+    t.emu
+        .restore_buffer(unsafe { core::slice::from_raw_parts(bytes, len as usize) })
 }

@@ -82,6 +82,86 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     // Scrollback: rows scrolled off the TOP of the MAIN screen (oldest first). Trimmed in batches
     // to amortise the cost, so the count can float up to ScrollbackMax + a small slack.
     private readonly List<Cell[]> _history = new();
+    private readonly List<int> _historyWraps = new();
+    private int _restoredRows;
+    internal int GetHistoryWrapLength(int row) => _historyWraps[row];
+    public int GetRowWrapLength(int line) => line < HistoryCount
+        ? _historyWraps[line] : Screen.WrapLengths[line - HistoryCount];
+
+    // Only the restored prefix belongs to us: the live screen and subsequent history
+    // are repainted by ConPTY. Never join the last saved line to a new shell's output.
+    private void ReflowRestoredHistory(int cols)
+    {
+        if (_restoredRows == 0) return;
+        var rows = new List<Cell[]>();
+        var wraps = new List<int>();
+        var mapping = new int[_restoredRows];
+        var logical = new List<Cell>();
+        var origins = new List<(int Row, int Offset)>();
+        for (int h = 0; h < _restoredRows; h++)
+        {
+            origins.Add((h, logical.Count));
+            int length = _historyWraps[h] >= 0 ? _historyWraps[h] : _history[h].Length;
+            for (int c = 0; c < length; c++) logical.Add(GetHistoryCell(h, c));
+            if (_historyWraps[h] >= 0 && h + 1 < _restoredRows) continue;
+            var row = new List<Cell>();
+            int origin = 0;
+            for (int c = 0; c < logical.Count; c++)
+            {
+                Cell cell = logical[c];
+                int width = cell.Width == 2 && c + 1 < logical.Count && logical[c + 1].Width == 0 ? 2 : 1;
+                if (row.Count > 0 && row.Count + width > cols)
+                {
+                    rows.Add(row.ToArray());
+                    wraps.Add(row.Count);
+                    row.Clear();
+                }
+                while (origin < origins.Count && origins[origin].Offset <= c)
+                    mapping[origins[origin++].Row] = rows.Count;
+                row.Add(cell);
+                if (width == 2) row.Add(logical[++c]);
+            }
+            rows.Add(row.ToArray());
+            wraps.Add(-1);
+            while (origin < origins.Count) mapping[origins[origin++].Row] = rows.Count - 1;
+            logical.Clear();
+            origins.Clear();
+        }
+        int oldCount = _restoredRows;
+        _history.RemoveRange(0, oldCount);
+        _historyWraps.RemoveRange(0, oldCount);
+        _history.InsertRange(0, rows);
+        _historyWraps.InsertRange(0, wraps);
+        _restoredRows = rows.Count;
+        int Map(int line) => line < 0 ? line : line < oldCount ? mapping[line] : line + rows.Count - oldCount;
+        foreach (var mark in _marks)
+        {
+            mark.PromptLine = Map(mark.PromptLine);
+            mark.CommandLine = Map(mark.CommandLine);
+            mark.OutputLine = Map(mark.OutputLine);
+            mark.EndLine = Map(mark.EndLine);
+        }
+        // ScrollGeneration counts actual terminal scrolls, not layout changes. The UI
+        // invalidates physical selections when changing the grid width.
+        if (_history.Count > ScrollbackMax + TrimSlack)
+            TrimHistory(_history.Count - ScrollbackMax);
+    }
+
+    private void TrimHistory(int count)
+    {
+        _history.RemoveRange(0, count);
+        _historyWraps.RemoveRange(0, count);
+        _restoredRows = Math.Max(0, _restoredRows - count);
+        for (int i = _marks.Count - 1; i >= 0; i--)
+        {
+            var m = _marks[i];
+            m.PromptLine -= count;
+            if (m.CommandLine >= 0) m.CommandLine -= count;
+            if (m.OutputLine >= 0) m.OutputLine -= count;
+            if (m.EndLine >= 0) m.EndLine -= count;
+            if (m.PromptLine < 0) _marks.RemoveAt(i);
+        }
+    }
     private const int TrimSlack = 512;
 
     /// <summary>Max scrollback rows to keep (0 disables history; excess is dropped oldest-first).</summary>
@@ -104,6 +184,8 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         return (uint)col < (uint)row.Length ? row[col] : Cell.Empty;
     }
 
+    internal int GetHistoryRowLength(int row) => _history[row].Length;
+
     private void PushHistory()
     {
         int cols = Screen.Cols;
@@ -119,21 +201,12 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         while (len > 0 && full[len - 1] == Cell.Empty) len--;
         var row = len == cols ? full : full[..len];
         _history.Add(row);
+        _historyWraps.Add(Screen.WrapLengths[0]);
         ScrollGeneration++;
         if (_history.Count > ScrollbackMax + TrimSlack)
         {
             int trim = _history.Count - ScrollbackMax;
-            _history.RemoveRange(0, trim);
-            // Marks address buffer-absolute lines (history + live row): shift with the trim.
-            for (int i = _marks.Count - 1; i >= 0; i--)
-            {
-                var m = _marks[i];
-                m.PromptLine -= trim;
-                if (m.CommandLine >= 0) m.CommandLine -= trim;
-                if (m.OutputLine >= 0) m.OutputLine -= trim;
-                if (m.EndLine >= 0) m.EndLine -= trim;
-                if (m.PromptLine < 0) _marks.RemoveAt(i);
-            }
+            TrimHistory(trim);
         }
     }
 
@@ -221,6 +294,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         // on every session switch), and clearing DECSTBM under a full-screen TUI that still thinks
         // its margins are set scrambles the display — with no SIGWINCH to make it redraw.
         if (cols == _main.Cols && rows == _main.Rows) return;
+        if (cols != _main.Cols) ReflowRestoredHistory(cols);
         _main.Resize(cols, rows);
         _alt.Resize(cols, rows);
         _scrollTop = 0;
@@ -275,6 +349,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
 
         if (CursorCol >= Screen.Cols)
         {
+            Screen.WrapLengths[CursorRow] = Screen.Cols;
             CursorCol = 0;
             Index();
         }
@@ -283,6 +358,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         {
             ClearWideEdges(CursorCol, CursorCol + 1);
             Screen[CursorRow, CursorCol] = Blank();
+            Screen.WrapLengths[CursorRow] = CursorCol;
             CursorCol = 0;
             Index();
         }
@@ -299,7 +375,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         switch (control)
         {
             case 13: CursorCol = 0; break;                       // CR
-            case 10: Index(); break;                             // LF
+            case 10: Screen.WrapLengths[CursorRow] = -1; Index(); break;                             // LF
             case 8: if (CursorCol > 0) CursorCol--; break;       // BS
             case 9:                                              // HT
                 CursorCol = Math.Min(Screen.Cols - 1, ((CursorCol / 8) + 1) * 8);
@@ -438,9 +514,9 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         {
             case '7': SaveCursor(); break;       // DECSC
             case '8': RestoreCursor(); break;    // DECRC
-            case 'D': Index(); break;            // IND
+            case 'D': Screen.WrapLengths[CursorRow] = -1; Index(); break; // IND
             case 'M': ReverseIndex(); break;     // RI
-            case 'E': CursorCol = 0; Index(); break; // NEL
+            case 'E': Screen.WrapLengths[CursorRow] = -1; CursorCol = 0; Index(); break; // NEL
             default: Host?.Unhandled("ESC", final.ToString()); break;
         }
     }
@@ -908,6 +984,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
 
     private void EraseLine(int mode)
     {
+        Screen.WrapLengths[CursorRow] = -1;
         int from = mode == 0 ? CursorCol : 0;
         int to = mode == 1 ? CursorCol : Screen.Cols - 1;
         ClearWideEdges(from, to + 1);
@@ -919,20 +996,20 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         if (mode == 2) // whole display, filled with the current background
         {
             for (int r = 0; r < Screen.Rows; r++)
-                for (int c = 0; c < Screen.Cols; c++) Screen[r, c] = Blank();
+                Screen.FillRow(r, Blank());
             return;
         }
         if (mode == 0)
         {
             EraseLine(0);
             for (int r = CursorRow + 1; r < Screen.Rows; r++)
-                for (int c = 0; c < Screen.Cols; c++) Screen[r, c] = Blank();
+                Screen.FillRow(r, Blank());
         }
         else if (mode == 1)
         {
             EraseLine(1);
             for (int r = 0; r < CursorRow; r++)
-                for (int c = 0; c < Screen.Cols; c++) Screen[r, c] = Blank();
+                Screen.FillRow(r, Blank());
         }
     }
 
@@ -993,6 +1070,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     {
         if (CursorRow < _scrollTop || CursorRow > _scrollBottom) return;
         n = Math.Min(n, _scrollBottom - CursorRow + 1);
+        if (CursorRow > 0) Screen.WrapLengths[CursorRow - 1] = -1;
         int shift = _scrollBottom - CursorRow + 1 - n;
         if (shift > 0) Screen.MoveRows(CursorRow, CursorRow + n, shift);
         for (int r = CursorRow; r < CursorRow + n; r++) Screen.FillRow(r, Blank());
@@ -1002,6 +1080,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     {
         if (CursorRow < _scrollTop || CursorRow > _scrollBottom) return;
         n = Math.Min(n, _scrollBottom - CursorRow + 1);
+        if (CursorRow > 0) Screen.WrapLengths[CursorRow - 1] = -1;
         int shift = _scrollBottom - CursorRow + 1 - n;
         if (shift > 0) Screen.MoveRows(CursorRow + n, CursorRow, shift);
         for (int r = _scrollBottom - n + 1; r <= _scrollBottom; r++) Screen.FillRow(r, Blank());
@@ -1207,35 +1286,45 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     /// <summary>Seed the scrollback with already-attributed rows (full colour/attributes) — the
     /// full-fidelity restore path (see <see cref="BufferPersist"/>). Rows are stored as given
     /// (trimmed to content by the caller); reads pad past the end with <see cref="Cell.Empty"/>.</summary>
-    public void SeedScrollbackAttributed(IReadOnlyList<Cell[]> rows)
+    public void SeedScrollbackAttributed(IReadOnlyList<Cell[]> rows, IReadOnlyList<int>? wraps = null)
     {
+        int start = _history.Count;
         foreach (var row in rows)
         {
-            int cols = Screen.Cols;
-            // Truncate a too-wide row to the current terminal width (narrower pads on read).
-            _history.Add(row.Length <= cols ? row : row[..cols]);
+            // The viewport clips reads; preserve hidden cells for a later resize or save.
+            _history.Add(row.ToArray());
+            _historyWraps.Add(wraps?[_history.Count - start - 1] ?? -1);
         }
+        _restoredRows = _history.Count;
+        ReflowRestoredHistory(Screen.Cols);
         if (_history.Count > ScrollbackMax + TrimSlack)
-            _history.RemoveRange(0, _history.Count - ScrollbackMax);
+            TrimHistory(_history.Count - ScrollbackMax);
     }
 
     /// <summary>Seed the scrollback with plain-text lines (dimmed) — restores a prior session's buffer
     /// above the fresh shell without touching the live screen.</summary>
     public void SeedScrollback(IReadOnlyList<string> lines)
     {
-        int cols = Screen.Cols;
         foreach (var line in lines)
         {
-            // Store only the line's own cells (truncated to width); no trailing pad — reads past
+            // Store the entire line, including cells outside the current viewport; no trailing pad — reads past
             // the end return Cell.Empty (GetHistoryCell), so a restored buffer's blank right
             // margin costs nothing instead of a full-width row of dim spaces.
-            int len = Math.Min(cols, line.Length);
-            var row = new Cell[len];
-            for (int c = 0; c < len; c++)
-                row[c] = new Cell(line[c], Color.DefaultForeground, Color.DefaultBackground, CellAttributes.Dim);
-            _history.Add(row);
+            var row = new List<Cell>();
+            foreach (var rune in line.EnumerateRunes())
+            {
+                int width = Wcwidth.Of(rune.Value);
+                if (width == 0) continue;
+                var cell = new Cell(rune.Value, Color.DefaultForeground, Color.DefaultBackground, CellAttributes.Dim, (byte)width);
+                row.Add(cell);
+                if (width == 2) row.Add(cell with { Rune = 0, Width = 0 });
+            }
+            _history.Add(row.ToArray());
+            _historyWraps.Add(-1);
         }
+        _restoredRows = _history.Count;
+        ReflowRestoredHistory(Screen.Cols);
         if (_history.Count > ScrollbackMax + TrimSlack)
-            _history.RemoveRange(0, _history.Count - ScrollbackMax);
+            TrimHistory(_history.Count - ScrollbackMax);
     }
 }

@@ -32,7 +32,7 @@ if ($issText -notmatch '#define\s+AppVersion\s+"([^"]+)"') { throw "AppVersion n
 $ver = $Matches[1]
 
 # Self-contained folder publish (robust for Vortice native libs + the on-disk themes\/assets\).
-$common = @("-c","Release","-r","win-x64","--self-contained","true","-p:PublishSingleFile=false","-p:Version=$ver","-o",$stage)
+$common = @("-c","Release","-r","win-x64","--self-contained","true","-p:PublishSingleFile=false","-p:PublishReadyToRun=true","-p:Version=$ver","-o",$stage)
 
 Write-Host "== publish Agwinterm.Win32 (app) ==" -ForegroundColor Cyan
 & $dotnet publish (Join-Path $root "src\Agwinterm.Win32\Agwinterm.Win32.csproj") @common

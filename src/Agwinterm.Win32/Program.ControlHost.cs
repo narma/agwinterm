@@ -886,7 +886,7 @@ internal partial class Program
         if (!HasLiveSel(p)) return "no selection";
         // Report what actually happened: a live selection over cells a TUI has blanked copies
         // nothing and leaves the clipboard alone, and an agent acting on this reply must not be
-        // told otherwise. Length is not the measure — SelectionText joins rows with CRLF whether
+        // told otherwise. Length is not the measure — SelectionText joins hard-ended rows with CRLF whether
         // or not a row held text.
         return CopySelection(p, out string copied) ? $"copied {copied.Length} chars" : "nothing to copy";
     });

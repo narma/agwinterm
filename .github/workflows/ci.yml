@@ -139,6 +139,20 @@ jobs:
         if: matrix.suite == 'core'
         run: cargo test --locked --manifest-path native/agwinterm-ptyhost/Cargo.toml resize::tests
 
+      - name: Restored history reflow (managed, Rust, live Rust host)
+        if: matrix.suite == 'host'
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          . ./tests/ui/lib.ps1
+          $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
+          if (-not $exe) { throw 'Built app not found' }
+          Copy-Item native/target/release/agwinterm_core.dll,native/target/release/agwinterm-ptyhost.exe (Split-Path $exe) -Force
+          foreach ($case in @('buffer-reflow', 'buffer-reflow-rust', 'buffer-reflow-rust-host')) {
+            ./tests/integration/restore-roundtrip.ps1 -Exe $exe -Strict -Only $case
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
       # The control API is a cross-product contract now: agliteterm ships from its own repository
       # promising to speak this dialect, and its CI runs THIS spec against its own client. Running
       # it here too is what makes "same control API" a gate rather than a claim — a verb reshaped
@@ -365,10 +379,36 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable]
+    needs: [windows-tests, bridge-fixtures, portable, net11-publish]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
+
+  net11-publish:
+    name: .NET 11 RC3 publish
+    runs-on: windows-latest
+    env:
+      AgwintermNet11: 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select .NET 11 RC3
+        shell: pwsh
+        run: |
+          $config = Get-Content global.json -Raw | ConvertFrom-Json
+          $config.sdk.version = '11.0.100-rc.3.26522.148'
+          $config.sdk.rollForward = 'disable'
+          $config.sdk | Add-Member -NotePropertyName allowPrerelease -NotePropertyValue $true
+          $config | ConvertTo-Json -Depth 4 | Set-Content global.json
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Publish app and CLI with ReadyToRun and runtime async
+        shell: pwsh
+        run: |
+          dotnet publish src/Agwinterm.Win32/Agwinterm.Win32.csproj -c Release -r win-x64 --self-contained true -o artifacts/net11-app
+          if ($LASTEXITCODE -ne 0) { throw 'App publish failed' }
+          dotnet publish src/Agwinterm.Ctl/Agwinterm.Ctl.csproj -c Release -r win-x64 --self-contained true -o artifacts/net11-ctl
+          if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed' }
