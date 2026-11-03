@@ -63,15 +63,22 @@ internal static class Gate
             string.Equals(Environment.UserName, "WDAGUtilityAccount", StringComparison.OrdinalIgnoreCase);
         bool ci = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" &&
             Environment.GetEnvironmentVariable("CI") == "true";
-        if (guest || ci) return null;
+        if (guest || ci || HyperVUiIdentity.IsGuest()) return null;
         try
         {
+            if (Environment.GetEnvironmentVariable("AGWINTERM_HYPERV_UI") == "1")
+                throw new InvalidOperationException("Hyper-V UI context does not match a prepared VM and its unlocked interactive desktop.");
             var directory = new DirectoryInfo(AppContext.BaseDirectory);
             while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Agwinterm.slnx"))) directory = directory.Parent;
             if (directory is null) throw new InvalidOperationException("Run the WebView2 gate from its checkout so background Sandbox can be prepared.");
             var start = new System.Diagnostics.ProcessStartInfo("pwsh.exe") { UseShellExecute = false, CreateNoWindow = true };
-            foreach (string argument in new[] { "-NoProfile", "-File", Path.Combine(directory.FullName, "tests", "integration", "sandbox-ui.ps1"),
-                "-Test", "WebViewGate", "-Background", "-GateExe", Path.Combine(AppContext.BaseDirectory, "WebViewHost.Gate.exe") }) start.ArgumentList.Add(argument);
+            string? backend = Environment.GetEnvironmentVariable("AGWINTERM_UI_BACKEND");
+            if (!string.IsNullOrEmpty(backend) && !string.Equals(backend, "HyperV", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(backend, "Sandbox", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Unknown UI backend: " + backend);
+            bool hyperv = string.IsNullOrEmpty(backend) || string.Equals(backend, "HyperV", StringComparison.OrdinalIgnoreCase);
+            foreach (string argument in new[] { "-NoProfile", "-File", Path.Combine(directory.FullName, "tests", "integration", hyperv ? "hyperv-ui.ps1" : "sandbox-ui.ps1"),
+                "-Test", "WebViewGate", "-GateExe", Path.Combine(AppContext.BaseDirectory, "WebViewHost.Gate.exe") }) start.ArgumentList.Add(argument);
+            if (!hyperv) start.ArgumentList.Add("-Background");
             using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Cannot start background Sandbox routing.");
             process.WaitForExit();
             return process.ExitCode;

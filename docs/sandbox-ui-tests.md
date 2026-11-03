@@ -1,11 +1,18 @@
 # Local UI tests in background Windows Sandbox
 
-Local Windows UI entry points automatically route to **background Windows Sandbox** before
+Local Windows UI entry points now default to [Hyper-V](hyperv-ui-tests.md), with a
+prepared shared image and on-demand privileged workers that need no per-run UAC.
+To explicitly select **background Windows Sandbox**, set `AGWINTERM_UI_BACKEND=Sandbox`
+or invoke `sandbox-ui.ps1 -Background`. Routing happens before
 creating windows, touching the clipboard or launching processes. This includes
 `hud-ui.ps1`, `win32-control.ps1`, conformance, restore, CLI/event, split, overlay,
 web and profiling entry points. Failure to prepare Sandbox fails the command;
 there is no fallback to the user's desktop. Host-free unit and fixture tests run
 directly. GitHub Actions still runs real UI tests directly on its own runner.
+
+The Hyper-V default supports parallel worktree sessions with separate VMs. Once
+its host is installed, ordinary sessions need neither backend/image environment
+variables nor administrator privileges.
 
 Tests use the standard Release outputs. From the repository root, build first:
 
@@ -183,6 +190,31 @@ client, closing the viewer leaves the guest running: use the `wsb stop --id <id>
 command printed by the wrapper. With the legacy client, close the Sandbox window.
 The runner refuses a second simultaneous run or an already running Sandbox,
 including a modern CLI environment running without an open viewer.
+
+### Parallel sessions and worktrees
+
+Windows Sandbox currently supports only one running instance at a time, as
+confirmed by the [Microsoft Sandbox FAQ](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-faq#how-do-i-open-multiple-sandbox-instances)
+(checked 2026-11-03). Separate worktrees, distinct `.wsb` files and the modern
+`wsb.exe` environment IDs do not provide independent concurrent Sandbox VMs.
+
+The runner's shared `Local\agwinterm-sandbox-ui` mutex coordinates runs across
+worktrees in the same Windows session. Its process and CLI environment checks
+also reject an existing Sandbox, including a guest retained for inspection after
+an earlier run. Removing these checks would not enable parallel Sandbox support.
+
+Sessions can edit, build and run host-free tests in parallel in separate
+worktrees, but Sandbox UI runs must be scheduled one at a time. Stop the previous
+guest using the command printed by its runner before starting the next run.
+There is currently no automatic queue. A queue would serialize UI runs rather
+than execute them in parallel.
+
+For concurrent isolated Windows UI runs on this host, use the
+[Hyper-V UI runner](hyperv-ui-tests.md) with a prepared Windows image.
+Running multiple suites on the same
+Sandbox desktop would share focus, clipboard and other desktop state, so it is
+not a substitute for independent instances. Do not bypass Sandbox routing to
+run local UI tests on the user's desktop.
 
 To stage and inspect the configuration without opening Sandbox:
 

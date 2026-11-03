@@ -130,7 +130,7 @@ exit 0
         @{name='guest'; user='WDAGUtilityAccount'; marker='1'; github=''; ci='true'; routed=$false},
         @{name='GitHub CI'; user='runner'; marker=''; github='true'; ci='true'; routed=$false}
     )) {
-        $environment = @{USERNAME=$case.user; AGWINTERM_SANDBOX_UI=$case.marker; GITHUB_ACTIONS=$case.github; CI=$case.ci; SANDBOX_DISPATCH_PROBE=(Join-Path $temporary 'entry-probe.json')}
+        $environment = @{AGWINTERM_UI_BACKEND='Sandbox';USERNAME=$case.user; AGWINTERM_SANDBOX_UI=$case.marker; GITHUB_ACTIONS=$case.github; CI=$case.ci; SANDBOX_DISPATCH_PROBE=(Join-Path $temporary 'entry-probe.json')}
         $result = Run-Probe (Join-Path $entry 'target.ps1') @('-Exe','C:\build with spaces\app.exe','-Cookbook') $environment
         Check "$($case.name) chooses the correct execution environment" ($result.code -eq $(if ($case.routed) {7} else {0}))
         if ($case.routed) {
@@ -138,13 +138,28 @@ exit 0
             Check "$($case.name) forwards parameters and forces Background" ($probe.background -and $probe.parameters.Cookbook -and $probe.exe -eq 'C:\build with spaces\app.exe')
         }
     }
-    $failureEnvironment = @{USERNAME='developer'; AGWINTERM_SANDBOX_UI=''; GITHUB_ACTIONS=''; CI=''; SANDBOX_PROVISION_FAIL='1'; SANDBOX_DISPATCH_PROBE=(Join-Path $temporary 'failure-probe.json')}
+    $failureEnvironment = @{AGWINTERM_UI_BACKEND='Sandbox';USERNAME='developer'; AGWINTERM_SANDBOX_UI=''; GITHUB_ACTIONS=''; CI=''; SANDBOX_PROVISION_FAIL='1'; SANDBOX_DISPATCH_PROBE=(Join-Path $temporary 'failure-probe.json')}
     $result = Run-Probe (Join-Path $entry 'target.ps1') @() $failureEnvironment
     Check 'provisioning failure never falls through to the host UI body' ($result.code -eq 1 -and -not (Test-Path $failureEnvironment.SANDBOX_DISPATCH_PROBE))
-    $local = @{USERNAME='developer'; AGWINTERM_SANDBOX_UI=''; GITHUB_ACTIONS=''; CI=''; SANDBOX_DISPATCH_PROBE=(Join-Path $temporary 'hud-default.json')}
+    $local = @{AGWINTERM_UI_BACKEND='Sandbox';USERNAME='developer'; AGWINTERM_SANDBOX_UI=''; GITHUB_ACTIONS=''; CI=''; SANDBOX_DISPATCH_PROBE=(Join-Path $temporary 'hud-default.json')}
     $null = Run-Probe (Join-Path $entry 'sandbox-ui-entry.ps1') @('-Test','Hud') $local
     $probe = Get-Content -LiteralPath $local.SANDBOX_DISPATCH_PROBE -Raw | ConvertFrom-Json
     Check 'direct HUD entry retains its Hud default instead of wrapper Navigation default' ($probe.parameters.Suite -eq 'Hud')
+    @'
+param([string]$Test,[hashtable]$TestParameters,[string]$Exe,[string]$CtlExe)
+@{backend='HyperV';test=$Test;parameters=$TestParameters;exe=$Exe} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
+exit 8
+'@ | Set-Content (Join-Path $entry 'hyperv-ui.ps1')
+    $local.AGWINTERM_UI_BACKEND = ''
+    $result = Run-Probe (Join-Path $entry 'target.ps1') @() $local
+    Check 'local Windows UI defaults to Hyper-V without environment setup' ($result.code -eq 8)
+    $local.AGWINTERM_UI_BACKEND = 'HyperV'
+    $result = Run-Probe (Join-Path $entry 'target.ps1') @('-Exe','C:\worktree B\app.exe','-Cookbook') $local
+    $probe = Get-Content -LiteralPath $local.SANDBOX_DISPATCH_PROBE -Raw | ConvertFrom-Json
+    Check 'Hyper-V selection preserves parameters and the child exit code' ($result.code -eq 8 -and $probe.backend -eq 'HyperV' -and $probe.parameters.Cookbook -and $probe.exe -eq 'C:\worktree B\app.exe')
+    $local.AGWINTERM_UI_BACKEND = 'NotABackend'
+    $result = Run-Probe (Join-Path $entry 'target.ps1') @() $local
+    Check 'unknown backend fails closed before host UI' ($result.code -eq 1 -and $result.output -match 'Unknown UI backend')
     Write-Host "$checks routing checks passed"
 } finally {
     $full = [IO.Path]::GetFullPath($temporary)

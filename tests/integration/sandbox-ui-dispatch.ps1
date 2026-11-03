@@ -1,8 +1,10 @@
 # Runs in a fresh guest PowerShell process; configuration carries data, never code.
-param([Parameter(Mandatory)][string]$WorkDirectory)
+param([Parameter(Mandatory)][string]$WorkDirectory, [string]$SuiteOverride)
 $ErrorActionPreference = 'Stop'
 try {
-    if ($env:AGWINTERM_SANDBOX_UI -ne '1' -or $env:USERNAME -ne 'WDAGUtilityAccount') { throw 'UI dispatch requires Windows Sandbox.' }
+    $isolated = $env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount'
+    if (-not $isolated -and $env:AGWINTERM_HYPERV_UI -eq '1') { $isolated = & "$PSScriptRoot/hyperv-ui-context.ps1" }
+    if (-not $isolated) { throw 'UI dispatch requires Windows Sandbox or a verified Hyper-V UI guest.' }
     $run = Get-Content -LiteralPath (Join-Path $WorkDirectory 'run.json') -Raw | ConvertFrom-Json -AsHashtable
     $tests = Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1"
     $name = if ($run.test) { $run.test } else { 'Hud' }
@@ -26,7 +28,8 @@ try {
     if ($definition.Ctl) { $arguments.Ctl = $ctl }
     if ($definition.Gate) { $arguments.GateExe = Join-Path $WorkDirectory "gate/$($run.gateName)" }
     if ($definition.Strict) { $arguments.Strict = $true }
-    if ($name -eq 'Hud') { $arguments.Suite = $run.suite }
+    if ($SuiteOverride -and $name -ne 'Hud') { throw 'SuiteOverride requires the HUD runner.' }
+    if ($name -eq 'Hud') { $arguments.Suite = if ($SuiteOverride) { $SuiteOverride } else { $run.suite } }
     foreach ($key in $run.inputs) {
         if (-not $key) { throw 'Invalid empty input name' }
         if ($key -notin @($definition.Inputs) + @($definition.OptionalInputs)) { throw "Unsupported input: $key" }
