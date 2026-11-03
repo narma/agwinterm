@@ -519,6 +519,7 @@ internal static class Win32
     // ---- Clipboard ----
     public const uint CF_UNICODETEXT = 13;
     public const uint GMEM_MOVEABLE = 0x0002;
+    [DllImport("user32.dll")] public static extern bool IsClipboardFormatAvailable(uint format);
 
     [DllImport("user32.dll")] public static extern bool OpenClipboard(IntPtr hWndNewOwner);
     [DllImport("user32.dll")] public static extern bool CloseClipboard();

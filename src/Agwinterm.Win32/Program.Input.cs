@@ -1391,6 +1391,7 @@ internal partial class Program
         // Clipboard: Ctrl+Shift+C / Ctrl+C-with-selection copies; Ctrl+V / Ctrl+Shift+V pastes.
         // Uses ActiveSurface() (not _active.ActivePane) so selections in a cover — quick terminal,
         // scratch, overlay — copy too instead of falling through and interrupting the shell.
+        bool clipboardKeyPassthrough = false;
         if (ctrl && !alt && ActiveSurface() is { } ap)
         {
             if (vk == 0x43) // C
@@ -1403,7 +1404,15 @@ internal partial class Program
                 // plain Ctrl+C with no selection, nothing under it, or the option off falls through
                 // to the interrupt below
             }
-            else if (vk == 0x56) { PasteInto(ap); return true; } // Ctrl+V / Ctrl+Shift+V
+            else if (vk == 0x56) // Ctrl+V / Ctrl+Shift+V
+            {
+                if (ap.ReadOnly) { ShowToast("pane is read-only"); return true; }
+                if (IsClipboardFormatAvailable(CF_UNICODETEXT)) { PasteInto(ap); return true; }
+                // Like Ghostty's performable paste: with no text representation, let the
+                // application handle the original key and read its own image clipboard.
+                // Continue through the normal Win32/Kitty/legacy key encoder, exactly once.
+                clipboardKeyPassthrough = true;
+            }
         }
 
         // Ctrl+Tab / Ctrl+Shift+Tab drive the MRU session walk (needs WM_KEYUP to commit, so it lives
@@ -1419,7 +1428,7 @@ internal partial class Program
         // Keymap dispatch: build the chord and run its bound action (defaults overlaid by keymap.conf).
         // Unbound chords fall through to terminal input below.
         string? chord = Keymap.ChordFor(vk, ctrl, alt, shift);
-        if (chord is not null && _keymap.TryGetValue(chord, out var action))
+        if (!clipboardKeyPassthrough && chord is not null && _keymap.TryGetValue(chord, out var action))
         {
             // close_cover only applies while a cover is up, or the focused pane holds an overlay (P5)
             // — otherwise its chord (typically a bare Escape) falls through so the key still reaches
