@@ -158,7 +158,9 @@ function Start-SandboxProcess {
     param([Parameter(Mandatory)]$S, [Parameter(Mandatory)][string[]]$Arguments)
 
     if (-not (($env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount') -or ($env:GITHUB_ACTIONS -eq 'true' -and $env:CI -eq 'true'))) {
-        throw 'Local UI processes require background Windows Sandbox; use tests/integration/sandbox-ui.ps1.'
+        if (-not ($env:AGWINTERM_HYPERV_UI -eq '1' -and (& "$PSScriptRoot/../integration/hyperv-ui-context.ps1"))) {
+            throw 'Local UI processes require Windows Sandbox or a verified Hyper-V UI guest.'
+        }
     }
 
     # A check must never inherit the pane it is being RUN from, or `session type` lands in the
