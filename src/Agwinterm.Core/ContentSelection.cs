@@ -20,6 +20,7 @@ public sealed class ContentSelection
     }
 
     private readonly int _cols, _originalRows;
+    private readonly int[] _wraps;
     private uint[] _frame;
     private readonly Pattern[] _selected, _wholeRows, _patterns;
     private readonly Pattern? _before, _after;
@@ -39,6 +40,7 @@ public sealed class ContentSelection
         screen.CopyTextTo(_frame);
         _lastTop = first;
         _selected = new Pattern[last - first + 1];
+        _wraps = new int[_selected.Length];
         _wholeRows = new Pattern[_selected.Length];
 
         // Intern equal spans once, including their column interval. Repeated lines in a large
@@ -65,6 +67,7 @@ public sealed class ContentSelection
             int to = block ? Math.Max(startCol, endCol) : row == last ? endCol : _cols - 1;
             _selected[row - first] = Intern(row, from, to);
             _wholeRows[row - first] = Intern(row, 0, _cols - 1);
+            _wraps[row - first] = block ? -1 : screen.WrapLengths[row];
         }
         if (first > 0) _before = Intern(first - 1, 0, _cols - 1);
         if (last + 1 < _originalRows) _after = Intern(last + 1, 0, _cols - 1);
@@ -77,7 +80,10 @@ public sealed class ContentSelection
         for (int row = 0; row < Height; row++)
         {
             int lineStart = text.Length;
-            foreach (uint cell in _selected[row].Cells)
+            bool join = row + 1 < Height && _wraps[row] >= 0;
+            var pattern = _selected[row];
+            int length = join ? Math.Clamp(_wraps[row] - pattern.From, 0, pattern.Cells.Length) : pattern.Cells.Length;
+            foreach (uint cell in pattern.Cells.AsSpan(0, length))
             {
                 if ((cell >> 21) == 0) continue;
                 int rune = (int)(cell & 0x1fffff);
@@ -89,8 +95,9 @@ public sealed class ContentSelection
                     text.Append((char)(0xdc00 + (rune & 0x3ff)));
                 }
             }
-            while (text.Length > lineStart && text[^1] == ' ') text.Length--;
-            if (row + 1 < Height) text.Append("\r\n");
+            if (!join)
+                while (text.Length > lineStart && text[^1] == ' ') text.Length--;
+            if (row + 1 < Height && !join) text.Append("\r\n");
         }
         return text.ToString();
     }

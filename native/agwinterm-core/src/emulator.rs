@@ -159,7 +159,7 @@ pub struct Emulator {
     scroll_bottom: usize,
 
     history: Vec<Vec<Cell>>,
-    history_wraps: Vec<Option<usize>>,
+    pub(crate) history_wraps: Vec<Option<usize>>,
     restored_rows: usize,
     pub scrollback_max: usize,
     pub scroll_generation: i64,

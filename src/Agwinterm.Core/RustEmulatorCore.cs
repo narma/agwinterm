@@ -16,7 +16,16 @@ namespace Agwinterm.Core;
 /// </summary>
 public sealed unsafe class RustEmulatorCore : IDisposable
 {
-    public const uint RequiredAbi = 21;
+    public const uint RequiredAbi = 22;
+
+    private delegate bool CopyWrapLengthsFn(nint p, uint start, int* lengths, uint count);
+    private static CopyWrapLengthsFn _copyWrapLengths = null!;
+    internal void CopyWrapLengths(int start, Span<int> lengths)
+    {
+        fixed (int* ptr = lengths)
+            if (!_copyWrapLengths(_handle, (uint)start, ptr, (uint)lengths.Length))
+                throw new InvalidOperationException("Native wrap metadata capture failed");
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Info
@@ -116,6 +125,7 @@ public sealed unsafe class RustEmulatorCore : IDisposable
             _info = Get<EmuInfoFn>("agwcore_emu_info");
             _copyGrid = Get<EmuCopyGridFn>("agwcore_emu_copy_grid");
             _copyHistory = Get<EmuCopyHistoryRowFn>("agwcore_emu_copy_history_row");
+            _copyWrapLengths = Get<CopyWrapLengthsFn>("agwcore_emu_copy_wrap_lengths");
             _getText = Get<EmuGetTextFn>("agwcore_emu_get_text");
             _takeHostActions = Get<EmuTakeHostActionsFn>("agwcore_emu_take_host_actions");
             _freeBuf = Get<FreeBufFn>("agwcore_free_buf");

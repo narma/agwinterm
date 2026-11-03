@@ -28,7 +28,7 @@ use screen::ScreenBuffer;
 /// Bumped whenever the exported C surface changes shape. The C# loader
 /// refuses a mismatch loudly (same hard-handshake philosophy as the
 /// pty-host protocol).
-pub const ABI_VERSION: u32 = 21;
+pub const ABI_VERSION: u32 = 22;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn agwcore_abi_version() -> u32 {
@@ -1018,6 +1018,41 @@ pub unsafe extern "C" fn agwcore_emu_copy_history_row(
     let out = unsafe { core::slice::from_raw_parts_mut(out, cols) };
     for (col, cell) in out.iter_mut().enumerate() {
         *cell = e.get_history_cell(row as usize, col).into();
+    }
+    true
+}
+
+/// ABI 22: copy wrap lengths for a range of history + screen absolute rows.
+/// # Safety
+/// `p` from `agwcore_emu_new`; `out` points to `count` writable i32 values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn agwcore_emu_copy_wrap_lengths(
+    p: *mut Terminal,
+    start: u32,
+    out: *mut i32,
+    count: u32,
+) -> bool {
+    let Some(t) = (unsafe { p.as_mut() }) else {
+        return false;
+    };
+    let e = &t.emu;
+    let start = start as usize;
+    let count = count as usize;
+    let history = e.history_count();
+    if out.is_null() || start.saturating_add(count) > history + e.screen().rows() {
+        return false;
+    }
+    for (i, value) in unsafe { core::slice::from_raw_parts_mut(out, count) }
+        .iter_mut()
+        .enumerate()
+    {
+        let row = start + i;
+        let wrap = if row < history {
+            e.history_wraps[row]
+        } else {
+            e.screen().wraps[row - history]
+        };
+        *value = wrap.map_or(-1, |length| length as i32);
     }
     true
 }

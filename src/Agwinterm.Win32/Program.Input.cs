@@ -908,6 +908,9 @@ internal partial class Program
             {
                 int from = pane.BlockSel ? blkFrom : (line == l0 ? c0 : 0);
                 int to = (pane.BlockSel ? blkTo : (line == l1 ? c1 : cols - 1)) + 1; // inclusive end col
+                int wrap = pane.BlockSel ? -1 : em.GetRowWrapLength(line);
+                bool join = line != l1 && wrap >= 0;
+                if (join) to = Math.Min(to, wrap); // exclude padding before a wide glyph wraps
                 var row = new StringBuilder();
                 for (int c = Math.Max(0, from); c < Math.Min(cols, to); c++)
                 {
@@ -916,8 +919,8 @@ internal partial class Program
                     if (cell.Rune > 0xFFFF) row.Append(char.ConvertFromUtf32(cell.Rune));   // full fidelity for copy
                     else row.Append(cell.Rune == '\0' ? ' ' : (char)cell.Rune);
                 }
-                sb.Append(row.ToString().TrimEnd(' '));
-                if (line != l1) sb.Append("\r\n");
+                sb.Append(join ? row.ToString() : row.ToString().TrimEnd(' '));
+                if (line != l1 && !join) sb.Append("\r\n");
             }
         }
         return sb.ToString();
@@ -1067,8 +1070,8 @@ internal partial class Program
     /// hold no text — the user selected blank cells — and the caller needs to tell
     /// the two apart: plain Ctrl+C must interrupt rather than be swallowed by a copy of nothing.
     ///
-    /// "Nothing" is decided on CONTENT, not on length: SelectionText joins its rows with CRLF
-    /// whether or not a row contributed a character, so a blanked six-row selection is ten
+    /// "Nothing" is decided on CONTENT, not on length: SelectionText joins hard-ended rows with
+    /// CRLF even when a row contributed no character, so a blanked six-row selection is ten
     /// characters of pure separator — non-empty by length, and it would swallow the interrupt in
     /// exactly the case this is here to catch. Clearing stays the caller's decision, so
     /// copy-on-select and mark mode keep the highlight they explicitly asked to keep.</summary>

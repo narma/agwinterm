@@ -85,6 +85,8 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     private readonly List<int> _historyWraps = new();
     private int _restoredRows;
     internal int GetHistoryWrapLength(int row) => _historyWraps[row];
+    public int GetRowWrapLength(int line) => line < HistoryCount
+        ? _historyWraps[line] : Screen.WrapLengths[line - HistoryCount];
 
     // Only the restored prefix belongs to us: the live screen and subsequent history
     // are repainted by ConPTY. Never join the last saved line to a new shell's output.

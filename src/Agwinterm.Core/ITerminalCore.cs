@@ -43,6 +43,8 @@ public interface ITerminalCore
     int HistoryCount { get; }
     long ScrollGeneration { get; }
     Cell GetHistoryCell(int historyRow, int col);
+    /// <summary>Automatic-wrap content length for a history + screen absolute row; -1 for a hard end.</summary>
+    int GetRowWrapLength(int line);
     void SeedScrollback(IReadOnlyList<string> lines);
 
     // ---- marks / identity ----
