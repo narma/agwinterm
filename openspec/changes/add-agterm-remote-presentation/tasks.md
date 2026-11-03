@@ -49,6 +49,8 @@ Approved delegated single-choice policy: initial first item and exclusive nonbla
 
 ## 6. Remote web pages
 
+In progress (2026-11-03): page frame/grant models, bounded resource/bridge server, internal scoped CLI/Rust `page-serve` relay and streaming origin file reads are implemented and model-tested. Page capabilities remain unadvertised: origin slot/presenter integration, viewer WebView2 adaptation and actual-peer acceptance are not complete. Task 6.3's concrete general-bridge command allowlist is awaiting user clarification; the existing local bridge permits broader application commands than the remote target-scope requirement. No checkbox is completed by these infrastructure checks.
+
 - [ ] 6.1 Add origin page grants and scoped `session overlay page-serve` handling with pinned resource/bridge framing; test single-use expiry, wrong presenter, queue limits, cancellation terminal frames and channel-loss waiter cleanup, documenting caps.
 - [ ] 6.2 Adapt local WebView2 resources to remote streams and origin-side containment checks; test sibling assets, Unicode paths, parent/symlink/reparse escapes, cross-page grants and origin paths never being read from viewer disk.
 - [ ] 6.3 Integrate URL/file page options, bridge allowlists and isolated storage; test review/general grant boundaries, URL/subframe denial, target overrides, cross-endpoint storage isolation and missing-runtime refusal, and document supported options.

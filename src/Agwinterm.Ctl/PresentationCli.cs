@@ -20,6 +20,7 @@ public static class PresentationCli
                 ? value : throw new ArgumentException("Missing presentation option: " + key);
             string window = Required("window"), session = Required("target");
             bool jobChannel = positionals[2] == "job";
+            bool pageChannel = positionals[2] == "page";
             if (!Guid.TryParseExact(window, "D", out _) || !Guid.TryParseExact(session, "D", out _))
                 throw new ArgumentException("Exact window and session IDs required");
             var endpoint = JsonSerializer.SerializeToElement(new { distribution = Required("distribution"), user = Required("user"),
@@ -57,17 +58,18 @@ public static class PresentationCli
                 if (!outputLines.Writer.TryWrite((line, done))) throw new IOException("Presentation output unavailable");
                 return done.Task;
             }
-            await writer.WriteLineAsync(JsonSerializer.Serialize(new { cmd = jobChannel ? "zmx.export.job" : "zmx.export.present", window, target = session, args = endpoint,
-                job = jobChannel ? Required("job") : null })).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            await writer.WriteLineAsync(JsonSerializer.Serialize(new { cmd = pageChannel ? "zmx.export.page" : jobChannel ? "zmx.export.job" : "zmx.export.present", window, target = session, args = endpoint,
+                job = jobChannel ? Required("job") : null, token = pageChannel ? Required("token") : null })).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             async Task Copy(TextReader source, Func<string, Task> write)
             {
                 while (true)
                 {
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
-                    deadline.CancelAfter(TimeSpan.FromSeconds(35));
+                    if (!pageChannel) deadline.CancelAfter(TimeSpan.FromSeconds(35));
                     var line = await AgtermPresentationStream.ReadLineAsync(source, deadline.Token).ConfigureAwait(false);
                     if (line is null) return;
-                    if (!jobChannel) _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(line));
+                    if (pageChannel) _ = AgtermPageProtocol.Decode(Encoding.UTF8.GetBytes(line));
+                    else if (!jobChannel) _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(line));
                     else { using var frame = JsonDocument.Parse(line); }
                     Task writing = write(line);
                     try { await writing.WaitAsync(TimeSpan.FromSeconds(5), stop.Token).ConfigureAwait(false); }
@@ -77,7 +79,7 @@ public static class PresentationCli
             // Windows anonymous stdin is synchronous: cancellation cannot release ReadFile while SSH
             // keeps its write end open. A bounded background reader belongs to this short-lived CLI
             // process; it never prevents process exit, and no pending read is disposed underneath it.
-            var lines = Channel.CreateBounded<string>(256);
+            var lines = Channel.CreateBounded<string>(pageChannel ? 8 : 256);
             var inputThread = new Thread(() =>
             {
                 try
@@ -90,9 +92,11 @@ public static class PresentationCli
                         if (ch == '\n')
                         {
                             string value = line.ToString();
-                            if (!jobChannel) _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(value));
+                            if (pageChannel) _ = AgtermPageProtocol.Decode(Encoding.UTF8.GetBytes(value));
+                            else if (!jobChannel) _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(value));
                             else { using var frame = JsonDocument.Parse(value); }
-                            if (!lines.Writer.TryWrite(value)) throw new IOException("Presentation input queue overflow");
+                            if (pageChannel) lines.Writer.WriteAsync(value, stop.Token).AsTask().GetAwaiter().GetResult();
+                            else if (!lines.Writer.TryWrite(value)) throw new IOException("Presentation input queue overflow");
                             line.Clear();
                         }
                         else

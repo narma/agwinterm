@@ -4,11 +4,16 @@ namespace Agwinterm.Pty;
 
 public interface IAgtermPresentationOriginHost
 {
+    AgtermOriginPageLease OpenOverlayPage(string session, string token, System.Text.Json.JsonElement args, string account)
+        => throw new IOException("Origin pages unavailable");
     AgtermOverlayJob OpenOverlayJob(string session, string job, System.Text.Json.JsonElement args, string account)
         => throw new IOException("Origin jobs unavailable");
     AgtermOriginPresentationLease OpenPresentation(string session, System.Text.Json.JsonElement args,
         string account, AgtermPresentationHello hello);
 }
+public sealed record AgtermOriginPageLease(AgtermPageGrant Grant,
+    Func<string, CancellationToken, Task<AgtermPageResource>> Resource,
+    Func<string, CancellationToken, Task<string>> Bridge);
 public sealed record AgtermOriginPresentationLease(AgtermPresentationBroker.Subscription Subscription, Func<bool> IsCurrent,
     Func<AgtermPresentationFrame, CancellationToken, Task>? Receive = null);
 

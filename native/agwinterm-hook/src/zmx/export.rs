@@ -10,6 +10,7 @@ const MAX: usize = 4 * 1024 * 1024;
 const GUARD: &str = "printf '%s\\n' 'agterm: remote session is gone'; exit 1";
 static PRESENTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 mod jobs;
+mod pages;
 
 fn presentation_args(root: &Path, config: &Value, session: &Value) -> Result<Vec<String>> {
     let mut args = vec!["zmx".into(), "export".into(), "present".into(),
@@ -555,6 +556,9 @@ fn dispatch() -> Result<Value> {
     let config = config(directory)?;
     if args.len() == 4 && args[..3] == ["session", "overlay", "run-job"] {
         return jobs::run(directory, &config, &args[3]);
+    }
+    if args.len() == 4 && args[..3] == ["session", "overlay", "page-serve"] {
+        return pages::run(directory, &config, &args[3]);
     }
     if args == ["zmx", "tree", "--json"] {
         return tree(directory, &config);

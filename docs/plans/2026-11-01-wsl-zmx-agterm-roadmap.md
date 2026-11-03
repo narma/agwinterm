@@ -1,6 +1,6 @@
 # WSL ZMX and bidirectional agterm interoperability
 
-Updated: 2026-11-03. Status: stages 1–3 merged and archived, with accepted real-peer terminal evidence. Stage 2 main specs reconciled with stage 3. Stage 4 implementation is in progress (17/27 tasks); transport, scoped broker/adapter, passive events/sound, question conversion/outcomes and origin-run program overlays are implemented, with actual-peer evidence in both directions. Full passive/interactive acceptance remains pending.
+Updated: 2026-11-03. Status: stages 1–3 merged and archived, with accepted real-peer terminal evidence. Stage 2 main specs reconciled with stage 3. Stage 4 implementation is in progress (17/27 tasks); transport, scoped broker/adapter, passive events/sound, question conversion/outcomes and origin-run program overlays are implemented, with actual-peer evidence in both directions. Remote-page channel/grant models, scoped relay and streaming origin reads are now in progress; page capabilities remain unadvertised until UI integration and real-peer acceptance. Full passive/interactive acceptance remains pending.
 
 ## Committed outcome
 

@@ -116,6 +116,89 @@ public sealed class LocalWebSource
         return output.ToArray();
     }
 
+    /// <summary>Streams an origin resource without buffering the complete file in the presentation broker.</summary>
+    public async Task<Stream> OpenReadAsync(string uriPath, CancellationToken cancellation)
+    {
+        string relative = RelativePath(uriPath);
+        cancellation.ThrowIfCancellationRequested();
+        if (_wsl is null)
+        {
+            var stream = new FileStream(Path.Combine(_root, relative.Replace('/', '\\')), FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 65536, FileOptions.Asynchronous);
+            try
+            {
+                if (!FinalPath(stream.SafeFileHandle).StartsWith(_root + "\\", StringComparison.OrdinalIgnoreCase))
+                    throw new UnauthorizedAccessException("resource link escapes the document directory");
+                return stream;
+            }
+            catch { stream.Dispose(); throw; }
+        }
+        // The one-byte acknowledgement follows opened-fd containment/regular-file checks.
+        // A pathname swap after validation cannot redirect the data read from fd 3.
+        const string script = "root=${1%/}; test -f \"$root/$2\" || exit 3; exec 3<\"$root/$2\" || exit 3; actual=$(readlink -f /proc/$$/fd/3) || exit 3; case \"$actual\" in \"$root\"/*) test -f /proc/$$/fd/3 || exit 3; printf 1; cat <&3;; *) exit 4;; esac";
+        var start = new ProcessStartInfo(_wsl.Command) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var arg in WslIntegration.Selectors(_wsl.Args).Concat(new[] { "--exec", "/bin/sh", "-c", script, "web-resource", _root, relative }))
+            start.ArgumentList.Add(arg);
+        var process = Process.Start(start) ?? throw new IOException("WSL could not start");
+        var owned = new WslResourceStream(process);
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            deadline.CancelAfter(TimeSpan.FromSeconds(10));
+            var ack = new byte[1];
+            if (await owned.ReadAsync(ack, deadline.Token).ConfigureAwait(false) != 1 || ack[0] != (byte)'1')
+                throw new IOException("WSL resource unavailable or outside the document grant");
+            return owned;
+        }
+        catch { await owned.DisposeAsync().ConfigureAwait(false); throw; }
+    }
+
+    private sealed class WslResourceStream : Stream
+    {
+        private readonly Process _process;
+        private readonly Stream _output;
+        private readonly Task _stderr;
+        private bool _disposed;
+        public WslResourceStream(Process process)
+        {
+            _process = process; _output = process.StandardOutput.BaseStream;
+            _stderr = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
+        }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (buffer.Length == 0) return 0;
+            int count = await _output.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (count == 0)
+            {
+                await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                await _stderr.ConfigureAwait(false);
+                if (_process.ExitCode != 0) throw new IOException("WSL resource read failed");
+            }
+            return count;
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !_disposed)
+            {
+                _disposed = true;
+                try { if (!_process.HasExited) _process.Kill(true); } catch (InvalidOperationException) { }
+                _process.WaitForExit();
+                _output.Dispose(); _stderr.GetAwaiter().GetResult(); _process.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+        public override bool CanRead => !_disposed;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     private static byte[] RunWsl(ShellProfile profile, string[] command)
     {
         var start = new ProcessStartInfo(profile.Command) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
