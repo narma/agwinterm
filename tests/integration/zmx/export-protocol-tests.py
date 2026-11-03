@@ -54,6 +54,11 @@ class ExportProtocolTests(unittest.TestCase):
         refused=subprocess.run([str(cli),'zmx','present','anything'],input='',text=True,capture_output=True,timeout=10)
         self.assertNotEqual(0,refused.returncode)
         self.assertEqual('',refused.stdout)  # stream errors never become control JSON
+        for token in ['invalid', '11111111-1111-4111-8111-111111111111.'+'a'*32]:
+            refused=subprocess.run([str(cli),'session','overlay','page-serve',token],
+                                   input='',text=True,capture_output=True,timeout=10)
+            self.assertNotEqual(0,refused.returncode)
+            self.assertEqual('',refused.stdout)  # includes failure before a channel is claimed
         self.invoke([helper,'--zmx-export-disable',self.endpoint])
         self.invoke([cli,'zmx','tree','--json'],ok=False)
 

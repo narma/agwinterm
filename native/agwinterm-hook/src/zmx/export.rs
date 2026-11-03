@@ -634,7 +634,9 @@ pub(crate) fn run() -> i32 {
             0
         }
         Err(error) => {
-            if env::args().nth(2).as_deref() == Some("present") { eprintln!("{error}"); }
+            let args: Vec<String> = env::args().skip(1).collect();
+            let page_stream = args.len() >= 3 && args[..3] == ["session", "overlay", "page-serve"];
+            if env::args().nth(2).as_deref() == Some("present") || page_stream { eprintln!("{error}"); }
             else { println!("{}", json!({"ok":false,"error":error.to_string()})); }
             1
         }
