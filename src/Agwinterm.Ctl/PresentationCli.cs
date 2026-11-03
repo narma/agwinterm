@@ -32,7 +32,30 @@ public static class PresentationCli
             await pipe.ConnectAsync(5000, stop.Token).ConfigureAwait(false);
             using var reader = new StreamReader(pipe, new UTF8Encoding(false, true), false, 4096, leaveOpen: true);
             var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
-            using var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false), 4096) { AutoFlush = true };
+            // Anonymous stdout is synchronous on Windows. Its sole owner is a background thread,
+            // just like stdin; a blocked WriteFile must not hold process shutdown or be disposed
+            // concurrently. At most one bounded frame is outstanding and the caller owns its timeout.
+            var outputLines = Channel.CreateBounded<(string Line, TaskCompletionSource Done)>(1);
+            new Thread(() =>
+            {
+                try
+                {
+                    using var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false), 4096) { AutoFlush = true };
+                    while (outputLines.Reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult())
+                        while (outputLines.Reader.TryRead(out var item))
+                        {
+                            try { output.WriteLine(item.Line); item.Done.TrySetResult(); }
+                            catch (Exception ex) { item.Done.TrySetException(ex); return; }
+                        }
+                }
+                catch (Exception ex) { outputLines.Writer.TryComplete(ex); }
+            }) { IsBackground = true, Name = "presentation-stdout" }.Start();
+            Task WriteOutput(string line)
+            {
+                var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (!outputLines.Writer.TryWrite((line, done))) throw new IOException("Presentation output unavailable");
+                return done.Task;
+            }
             await writer.WriteLineAsync(JsonSerializer.Serialize(new { cmd = "zmx.export.present", window, target = session, args = endpoint })).ConfigureAwait(false);
             async Task Copy(TextReader source, Func<string, Task> write)
             {
@@ -45,7 +68,7 @@ public static class PresentationCli
                     _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(line));
                     Task writing = write(line);
                     try { await writing.WaitAsync(TimeSpan.FromSeconds(5), stop.Token).ConfigureAwait(false); }
-                    catch { pipe.Dispose(); try { await writing.ConfigureAwait(false); } catch { } throw; }
+                    catch { pipe.Dispose(); throw; }
                 }
             }
             // Windows anonymous stdin is synchronous: cancellation cannot release ReadFile while SSH
@@ -89,11 +112,12 @@ public static class PresentationCli
                     catch { pipe.Dispose(); try { await writing.ConfigureAwait(false); } catch { } throw; }
                 }
             }
-            var tasks = new[] { CopyInput(), Copy(reader, line => output.WriteLineAsync(line)) };
+            var tasks = new[] { CopyInput(), Copy(reader, WriteOutput) };
             try { await await Task.WhenAny(tasks).ConfigureAwait(false); }
             finally
             {
                 stop.Cancel();
+                outputLines.Writer.TryComplete();
                 pipe.Dispose();
                 try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { }
                 try { writer.Dispose(); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }

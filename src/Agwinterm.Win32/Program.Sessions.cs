@@ -147,16 +147,25 @@ internal partial class Program
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
         AgentStatus lastStatus = session.Status;
+        AgentStatus? explicitSoundStatus = null;
         session.StatusChanged += () =>
         {
             var now = session.Status;
-            if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked) PlayBlockedSound();
+            if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked && explicitSoundStatus != now)
+                Post(() => RouteStatusSound(pane, null, blockedDefault: true));
+            explicitSoundStatus = null;
             lastStatus = now;
             Post(() => { if (OwningSes(pane) is { } owner) PublishOriginPresentation(owner, "status"); });
             RequestRedraw();
         };
         // An explicit --sound on session.status: play its spec (null => default alert).
-        session.SoundRequested += PlayStatusSound;
+        session.SoundRequested += name =>
+        {
+            // SetStatus raises this before StatusChanged; an explicit sound replaces the automatic
+            // blocked sound for that write. A later change to another status cannot inherit it.
+            explicitSoundStatus = session.Status;
+            Post(() => RouteStatusSound(pane, name, blockedDefault: false));
+        };
         session.Emulator.Host = new PaneHost(this, pane, session);   // the host-action seam (see IHostActions)
         session.Exited += code => Post(() =>
         {

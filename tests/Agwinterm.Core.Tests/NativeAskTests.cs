@@ -70,4 +70,22 @@ public class NativeAskTests
         var spec = Parse("""{"fields":[{"id":"x","label":"x","type":"text"}]}""");
         Assert.Throws<ArgumentException>(() => AskOutcome.Answer(spec, "submit", new Dictionary<string, AskValue> { ["x"] = new(new string('x', 4097), [], null) }));
     }
+
+    [Fact] public async Task ConcurrentAnswerCancellationAndOwnerCloseKeepExactlyOneOutcome()
+    {
+        var spec = Parse("{}");
+        for (int attempt = 0; attempt < 50; attempt++)
+        {
+            var registry = new AskRegistry(); var request = registry.Open("window", spec, "session")!;
+            using var start = new ManualResetEventSlim();
+            var answer = Task.Run(() => { start.Wait(); registry.Resolve(request.Id, AskOutcome.Answer(spec, "submit", new Dictionary<string, AskValue>())); });
+            var cancel = Task.Run(() => { start.Wait(); registry.Resolve(request.Id, new("cancelled", "cancel")); });
+            var close = Task.Run(() => { start.Wait(); registry.CloseSession("window", "session"); });
+            start.Set(); await Task.WhenAll(answer, cancel, close);
+            var retained = registry.Find(request.Id)!;
+            Assert.Contains(retained.Outcome.Result, new[] { "answered", "cancelled" });
+            Assert.False(registry.Resolve(request.Id, new("cancelled", "escape")));
+            Assert.Equal(retained, registry.Find(request.Id));
+        }
+    }
 }

@@ -30,6 +30,9 @@ internal partial class Program
             _liveOperations.ObserveOriginAsync).GetAwaiter().GetResult();
         using var document = JsonDocument.Parse(envelope);
         // ControlServer adds the outer ok/result envelope exactly once.
-        return document.RootElement.GetProperty("result").Clone();
+        var result = document.RootElement.GetProperty("result").Deserialize<Dictionary<string, JsonElement>>()!;
+        // Advertise readiness alongside the already verified tree, without a second daemon probe.
+        result["presentation"] = JsonSerializer.SerializeToElement(1);
+        return JsonSerializer.SerializeToElement(result);
     }
 }

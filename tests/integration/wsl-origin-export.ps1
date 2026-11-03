@@ -91,6 +91,21 @@ try {
         $null=Ctl @('session','hud','close','--target',$pane,'--window',$window)
         $null=Ctl @('session','status','idle','--target',$pane,'--window',$window)
         $null=Ctl @('session','context','--clear','--target',$pane,'--window',$window)
+        foreach($loss in @($false,$true)) {
+            $opened='{}' | & $ctl ask open --no-block --target $pane --window $window --pipe $id
+            if($LASTEXITCODE -ne 0) { throw "Question open failed: $opened" }
+            $questionId=($opened|ConvertFrom-Json).id
+            $run.manualQuestionId=$questionId
+            ($run|ConvertTo-Json -Depth 10 -Compress) | & wsl.exe -d $Distro -u $LinuxUser --exec python3 -c 'import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.stdin.read())' "$linuxRoot/run.json"
+            Driver 'peer-question-visible'
+            if($loss) {
+                Driver 'peer-presentation-loss'
+                $result=& $ctl ask result $questionId --window $window --pipe $id | ConvertFrom-Json
+                if($result.result -ne 'pending') { throw 'Presentation loss invented an answer' }
+            }
+            $null=& $ctl ask cancel $questionId --window $window --pipe $id
+            Driver 'peer-question-absent'
+        }
     }
     if ($ManualQuestion) {
         if(-not $Destination) { throw 'Manual question requires the isolated Mac viewer' }

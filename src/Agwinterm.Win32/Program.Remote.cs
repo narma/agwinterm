@@ -269,9 +269,11 @@ internal partial class Program
             remoteAttach = binding?.Recovery is "host-adopted" or "remote-reattached", inboundExport = false,
             presentation = binding?.PresentationVersion is > 0,
             presentationError = owner?.PresentationError,
-            presentationQuestionOutcome = owner?.PresentationQuestionOutcome,
+            presentationQuestionOutcome = owner?.PresentationQuestion.Outcome,
             presentationConnected = owner is not null && _presentationReplicas.TryGetValue(owner, out var replica) && replica.Connected,
             presentationPresenter = owner is not null && _presentationReplicas.TryGetValue(owner, out var presenter) && presenter.Sender?.Granted == true,
+            presentationSoundEvents = owner is not null && _presentationReplicas.TryGetValue(owner, out var sounds) ? sounds.SoundEvents : 0,
+            presentationNotificationEvents = owner is not null && _presentationReplicas.TryGetValue(owner, out var notifications) ? notifications.NotificationEvents : 0,
             terminate = false, restart = false });
     }
 }

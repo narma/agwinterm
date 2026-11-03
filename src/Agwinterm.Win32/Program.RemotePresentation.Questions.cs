@@ -51,11 +51,10 @@ internal partial class Program
                     if (active.Suppress) return;
                     if (ReferenceEquals(_replicaQuestion, active)) _replicaQuestion = null;
                     if (!PresentationCurrent(session, replica)) return;
-                    session.PresentationQuestionOutcome = "awaiting-origin";
-                    session.PresentationQuestionId = question.Id;
+                    long attempt = session.PresentationQuestion.Begin(question.Id);
                     try { sender.Send("ask.resolve", AgtermQuestionAdapter.Answer(question, outcome)); }
-                    catch (IOException) { session.PresentationQuestionOutcome = "uncertain"; }
-                    _ = ReadRemoteQuestionOutcomeAsync(session, replica, question);
+                    catch (IOException) { session.PresentationQuestion.Observe(attempt, "uncertain"); }
+                    _ = ReadRemoteQuestionOutcomeAsync(session, replica, question, attempt);
                 }, session.Id);
             }
             catch { if (ReferenceEquals(_replicaQuestion, active)) _replicaQuestion = null; throw; }
@@ -80,7 +79,7 @@ internal partial class Program
         RequestRedraw();
     }
 
-    private async Task ReadRemoteQuestionOutcomeAsync(Ses session, PresentationReplica replica, AgtermQuestion question)
+    private async Task ReadRemoteQuestionOutcomeAsync(Ses session, PresentationReplica replica, AgtermQuestion question, long deliveryAttempt)
     {
         var ct = replica.Stop.Token;
         try
@@ -99,17 +98,17 @@ internal partial class Program
                 }
                 await PresentationUiAsync(() =>
                 {
-                    if (PresentationCurrent(session, replica) && session.PresentationQuestionId == question.Id) session.PresentationQuestionOutcome = status;
+                    if (PresentationCurrent(session, replica)) session.PresentationQuestion.Observe(deliveryAttempt, status);
                 }, ct).ConfigureAwait(false);
                 return;
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or JsonException or KeyNotFoundException or ArgumentException or OperationCanceledException)
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or JsonException or KeyNotFoundException or ArgumentException or FormatException or OperationCanceledException)
         { /* Read failure leaves uncertainty; never resend the answer. */ }
         try { await PresentationUiAsync(() =>
         {
-            if (PresentationCurrent(session, replica) && session.PresentationQuestionId == question.Id) session.PresentationQuestionOutcome = "uncertain";
+            if (PresentationCurrent(session, replica)) session.PresentationQuestion.Observe(deliveryAttempt, "uncertain");
         }, ct).ConfigureAwait(false); } catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
     }
 }

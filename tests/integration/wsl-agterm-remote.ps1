@@ -4,6 +4,8 @@ param([string]$Distro='Ubuntu', [Parameter(Mandatory)][string]$LinuxUser, [Param
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslAgtermRemote -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$OutputEncoding=[Text.UTF8Encoding]::new($false)
 if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock' -and -not ($PassiveOnly -and $OriginSocket -like '/tmp/aw-stage4-peer-*/control.sock')) { throw 'Only an isolated origin fixture socket is accepted' }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
@@ -125,6 +127,15 @@ public static class RemoteAskProbe {
         $null=Ctl @('zmx','remote','lead','--target',$import.panes[0].paneId,'--window',$window)
         $null=Await-Pane $import.panes[0].paneId
         $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        $probe=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u "$PSScriptRoot/zmx/presentation-peer-probe.py").Trim()
+        & wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" python3 $probe refused $Destination $OriginSocket $origin
+        if($LASTEXITCODE -ne 0) { throw 'Second presenter was not refused' }
+        $beforeEvents=Pane-State $import.panes[0].paneId
+        $null=Peer-Ctl @('notify','STAGE4_EVENT_ONCE','--target',$origin)
+        $null=Peer-Ctl @('session','status','active','--sound','beep','--target',$origin)
+        $null=Await-Presentation { param($row) $live=$row.liveSessions.PSObject.Properties.Value | Select-Object -First 1; $live.presentationSoundEvents -eq ($beforeEvents.presentationSoundEvents+1) -and $live.presentationNotificationEvents -eq ($beforeEvents.presentationNotificationEvents+1) }
+        $null=Peer-Ctl @('session','status','idle','--target',$origin)
+        Write-Host 'PASS real agterm-origin live notification and negotiated presenter sound (viewer event counters, not acoustic capture)'
         foreach ($cancel in @($false,$true)) {
             $opened=Peer-Ctl @('ask','open','Stage4 delegated question','--input','line','--value','prefill','--no-block','--target',$origin)
             $questionId=[string]$opened.id
@@ -144,8 +155,52 @@ public static class RemoteAskProbe {
             }
             if($cancel) { if($result.ask.result -ne 'escaped') { throw "Origin missed cancellation: $($result|ConvertTo-Json -Depth 10)" } }
             elseif($result.ask.result -ne 'answered' -or $result.ask.text -ne 'STAGE4_NATIVE_ANSWER') { throw "Origin missed native answer: $($result|ConvertTo-Json -Depth 10)" }
+            $expected=if($cancel) { 'escaped' } else { 'answered' }
+            $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object { $_.presentationQuestionOutcome -eq $expected }).Count -gt 0 }
         }
         Write-Host 'PASS real agterm-origin delegated input answer/cancellation with authoritative origin results'
+        foreach($shape in @('single','multi','other','multiline')) {
+            $formArgs=if($shape -eq 'multiline') { @('--input','multiline') } else { @('--choice','a=Alpha','--choice','b=Beta') }
+            if($shape -eq 'multi') { $formArgs+=@('--multiple','--checked','b') }
+            if($shape -eq 'other') { $formArgs+=@('--other','Other') }
+            $opened=Peer-Ctl (@('ask','open',('Stage4 form '+$shape),'--no-block','--target',$origin)+$formArgs)
+            $questionId=[string]$opened.id
+            $question=[IntPtr]::Zero
+            for($i=0;$i -lt 60 -and $question -eq [IntPtr]::Zero;$i++) { $question=[RemoteAskProbe]::Find($ui.Id); Start-Sleep -Milliseconds 100 }
+            if($question -eq [IntPtr]::Zero) { throw "No native $shape question" }
+            if($shape -eq 'other') { [void][RemoteAskProbe]::SetWindowTextW([RemoteAskProbe]::GetDlgItem($question,203),'другое') }
+            if($shape -eq 'multiline') { [void][RemoteAskProbe]::SetWindowTextW([RemoteAskProbe]::GetDlgItem($question,200),"строка`r`nnext") }
+            [void][RemoteAskProbe]::SendMessageW([RemoteAskProbe]::GetDlgItem($question,1000),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)
+            for($i=0;$i -lt 40;$i++) { $answer=Peer-Ctl @('ask','result',$questionId); if($answer.result -ne 'pending') { break }; Start-Sleep -Milliseconds 100 }
+            if($answer.result -ne 'answered') { throw "Form answer not retained: $($answer|ConvertTo-Json -Depth 8)" }
+            if($shape -eq 'single' -and ($answer.selected -join ',') -ne 'a') { throw 'Missing initial radio selection' }
+            if($shape -eq 'multi' -and ($answer.selected -join ',') -ne 'b') { throw 'Lost checked IDs' }
+            if($shape -eq 'other' -and ($answer.text -ne 'другое' -or @($answer.selected | Where-Object { $null -ne $_ }).Count -ne 0)) { throw "Other did not exclude radio selection: $($answer|ConvertTo-Json -Depth 8)" }
+            if($shape -eq 'multiline' -and $answer.text -ne "строка`nnext") { throw 'Multiline newline/Unicode mismatch' }
+        }
+        $opened=Peer-Ctl @('ask','open','Stage4 unsupported width','--button','ok=OK','--width','40','--no-block','--target',$origin)
+        $questionId=[string]$opened.id
+        $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object { $_.presentationError -like 'Remote question refused:*' }).Count -gt 0 }
+        if([RemoteAskProbe]::Find($ui.Id) -ne [IntPtr]::Zero) { throw 'Unsupported form opened a changed native dialog' }
+        $answer=Peer-Ctl @('ask','result',$questionId)
+        if($answer.result -ne 'pending') { throw 'Refusal settled the origin question' }
+        $null=Peer-Ctl @('ask','cancel',$questionId)
+        Write-Host 'PASS real Mac-origin radio/multi/Other/multiline and unsupported-width handback'
+        $opened=Peer-Ctl @('ask','open','Stage4 connection loss','--input','line','--no-block','--target',$origin)
+        $questionId=[string]$opened.id
+        for($i=0;$i -lt 60;$i++) { if([RemoteAskProbe]::Find($ui.Id) -ne [IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }
+        if([RemoteAskProbe]::Find($ui.Id) -eq [IntPtr]::Zero) { throw 'Missing pending replica before loss' }
+        & wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" python3 $probe disconnect $Destination $OriginSocket $origin
+        if($LASTEXITCODE -ne 0) { throw 'Cannot isolate presentation loss' }
+        for($i=0;$i -lt 60;$i++) { if([RemoteAskProbe]::Find($ui.Id) -eq [IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }
+        if([RemoteAskProbe]::Find($ui.Id) -ne [IntPtr]::Zero) { throw 'Stale question survived presentation loss' }
+        $answer=Peer-Ctl @('ask','result',$questionId)
+        if($answer.result -ne 'pending') { throw 'Connection loss invented an origin outcome' }
+        $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        if([RemoteAskProbe]::Find($ui.Id) -ne [IntPtr]::Zero) { throw 'Reconnection replayed the question' }
+        $null=Peer-Ctl @('ask','cancel',$questionId)
+        if($geometry -ne (Ctl @('session','metrics','--target',$import.panes[0].paneId) | ConvertTo-Json -Compress)) { throw 'Presentation loss resized terminal' }
+        Write-Host 'PASS real Mac-origin presentation-only loss dismisses replica, preserves pending origin question and never replays it'
         $raw='{}' | & $ctl ask open --no-block --target ([guid]::NewGuid().ToString()) --window $window --pipe $id
         if ($LASTEXITCODE -eq 0) { throw 'Unknown exact session opened a question' }
         $raw='{}' | & $ctl ask open --no-block --target $import.sessionId --window $window --pipe $id

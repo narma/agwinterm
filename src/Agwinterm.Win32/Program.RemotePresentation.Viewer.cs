@@ -8,6 +8,7 @@ internal partial class Program
     {
         public readonly AgtermPassivePresentation State = new();
         public bool Connected;
+        public long SoundEvents, NotificationEvents;
         public AgtermPresentationSender? Sender;
         public void Cancel() { try { Stop.Cancel(); } catch (ObjectDisposedException) { } }
     }
@@ -64,7 +65,7 @@ internal partial class Program
                 try
                 {
                     foreach (var binding in replica.Bindings) await _remoteOperations.RevalidateAsync(binding, ct).ConfigureAwait(false);
-                    await new AgtermPresentationTransport().RunAsync(replica.Bindings[0], ["status", "context", "hud", "notify", "layout", "ask.form", "ask.other"],
+                    await new AgtermPresentationTransport().RunAsync(replica.Bindings[0], ["status", "context", "hud", "notify", "sound", "layout", "ask.form", "ask.other"],
                         async (frame, token) => await PresentationUiAsync(() =>
                         {
                             token.ThrowIfCancellationRequested();
@@ -72,6 +73,16 @@ internal partial class Program
                             var mapping = replica.Bindings.Select((b, i) => (Origin: b.OriginPaneId!.Value, Local: replica.Panes[i].Id))
                                 .ToDictionary(p => p.Origin, p => p.Local);
                             if (ApplyRemoteQuestion(session, replica, frame, mapping)) return;
+                            if (frame.Kind == "sound")
+                            {
+                                var name = AgtermPresentationSound.Read(frame.Body);
+                                if (replica.Sender?.Granted == true)
+                                {
+                                    replica.SoundEvents++;
+                                    if (AgtermPresentationSound.ViewerSound(name, _config.BlockedSound) is { } sound) PlayStatusSound(sound);
+                                }
+                                return;
+                            }
                             var notification = replica.State.Apply(frame, mapping, Environment.TickCount64);
                             if (frame.Kind is "snapshot" or "hud")
                             {
@@ -86,6 +97,7 @@ internal partial class Program
                             }
                             if (notification is not null)
                             {
+                                replica.NotificationEvents++;
                                 var pane = notification.Pane is null ? replica.Panes[0] : replica.Panes.Single(p => p.Id == notification.Pane);
                                 OnNotified(pane, notification.Title, notification.Body, mirrored: true);
                             }
@@ -128,6 +140,7 @@ internal partial class Program
 
     private void ClearRemotePresentation(Ses session, PresentationReplica replica)
     {
+        session.PresentationQuestion.Disconnected();
         DismissReplicaQuestion(replica);
         replica.State.Clear();
         replica.Connected = false;

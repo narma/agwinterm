@@ -8,8 +8,10 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermPresentationPipeTests
 {
-    [Fact]
-    public async Task BundledCliRelaysFramesAndExitsWhenOriginClosesWhileStdinRemainsOpen()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BundledCliExitsWithOpenStdinAndClosedOriginOrStalledStdout(bool stalledOutput)
     {
         string name = "aw-relay-test-" + Guid.NewGuid().ToString("N");
         using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -28,6 +30,16 @@ public class AgtermPresentationPipeTests
             const string hello = "{\"kind\":\"hello\",\"gen\":1,\"rev\":0,\"hello\":{\"version\":1,\"mode\":\"mirror\",\"kinds\":[]}}";
             await child.StandardInput.WriteLineAsync(hello);
             Assert.Equal(hello, await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
+            if (stalledOutput)
+            {
+                // Exceed the anonymous stdout buffer without consuming any output. The relay's
+                // own five-second deadline must end it, while both origin and stdin stay open.
+                string large = JsonSerializer.Serialize(new { kind = "context", gen = 1, rev = 1, context = new string('x', 100_000) });
+                await server.WriteAsync(Encoding.UTF8.GetBytes(large + "\n")).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+                await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(1, child.ExitCode);
+                return;
+            }
             await server.WriteAsync(Encoding.UTF8.GetBytes(hello + "\n"));
             Assert.Equal(hello, await child.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
             server.Disconnect();

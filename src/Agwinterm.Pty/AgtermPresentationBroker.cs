@@ -81,6 +81,16 @@ public sealed class AgtermPresentationBroker
                 foreach (var subscriber in entry.Subscribers) { entry.Grant.Release(subscriber.Generation); subscriber.Complete(); }
     }
 
+    public bool SendSound(AgtermOriginPresentationScope scope, string? name, bool mirrored = false)
+    {
+        if (mirrored) return false;
+        lock (_gate)
+        {
+            if (Presenter(scope) is not { } presenter || !presenter.Subscriber.Kinds.Contains("sound")) return false;
+            return SendPresenter(scope, presenter.Subscriber, presenter.Owner, "sound", JsonSerializer.SerializeToElement(new { name }));
+        }
+    }
+
     private bool AcquirePresenter(AgtermOriginPresentationScope scope, Subscription subscriber)
     {
         lock (_gate)

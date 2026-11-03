@@ -33,6 +33,7 @@ def tree():
     return json.loads(call([adapter, 'zmx', 'tree', '--json']).stdout)['result']['remote']
 
 def presentation():
+    observer=None
     process = subprocess.Popen([str(adapter), 'zmx', 'present', run['pane']], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     frames = queue.Queue()
     def read():
@@ -40,7 +41,7 @@ def presentation():
         frames.put(None)
     threading.Thread(target=read, daemon=True).start()
     try:
-        process.stdin.write(json.dumps({'kind':'hello','gen':0,'rev':0,'hello':{'version':1,'mode':'presenter','kinds':['context','status','hud','layout','ask.form','ask.other']}})+'\n')
+        process.stdin.write(json.dumps({'kind':'hello','gen':0,'rev':0,'hello':{'version':1,'mode':'presenter','kinds':['context','status','hud','layout','notify','sound','ask.form','ask.other']}})+'\n')
         process.stdin.flush()
         hello = frames.get(timeout=15)
         snapshot = frames.get(timeout=15)
@@ -59,7 +60,37 @@ def presentation():
                 if frame['kind']=='ping': send('ack')
                 if frame['kind']==kind: return frame
         send('presenter.acquire'); assert until('presenter.granted')
+        observer=subprocess.Popen([str(adapter),'zmx','present',run['pane']],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        observed=queue.Queue()
+        def observe():
+            for line in observer.stdout: observed.put(json.loads(line))
+            observed.put(None)
+        threading.Thread(target=observe,daemon=True).start()
+        observer.stdin.write(json.dumps({'kind':'hello','gen':0,'rev':0,'hello':{'version':1,'mode':'presenter','kinds':['context','notify','sound']}})+'\n'); observer.stdin.flush()
+        observer_hello=observed.get(timeout=15); assert observer_hello['kind']=='hello'
+        assert observed.get(timeout=15)['kind']=='snapshot'
+        observer.stdin.write(json.dumps({'kind':'presenter.acquire','gen':observer_hello['gen'],'rev':0})+'\n'); observer.stdin.flush()
+        assert observed.get(timeout=10)['kind']=='presenter.refused'
         cli=run['config']['cli']; selectors=['--pipe',run['config']['pipe'],'--window',run['window']]
+        def native(*args):
+            return call([cli,*args,*selectors])
+        native('notify','STAGE4_LIVE_EVENT','--target',run['pane'])
+        assert until('notify')['notify']['body']=='STAGE4_LIVE_EVENT'
+        native('session','status','active','--sound','beep','--target',run['pane'])
+        assert until('sound')['sound']['name']=='beep'
+        native('session','status','blocked','--target',run['pane'])
+        assert until('sound')['sound'].get('name') is None
+        native('session','status','idle','--target',run['pane'])
+        native('session','context','EVENT_BARRIER','--target',run['pane'])
+        secondary=[]
+        while True:
+            event=observed.get(timeout=10); secondary.append(event)
+            if event['kind']=='context' and event['context']=='EVENT_BARRIER': break
+        assert len([e for e in secondary if e['kind']=='notify'])==1,secondary
+        assert not any(e['kind']=='sound' for e in secondary),secondary
+        native('session','context','--clear','--target',run['pane'])
+        observer.kill(); observer.wait(timeout=5); observer=None
+        print('PASS actual Windows origin live notification, explicit sound and blocked viewer-policy marker')
         form={'fields':[{'id':'original-field','label':'Input','type':'text'}]}
         for cancel in [False,True]:
             opened=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input=json.dumps(form),text=True,capture_output=True,timeout=15)
@@ -74,12 +105,49 @@ def presentation():
             if cancel: assert result['result']=='cancelled' and result['reason']=='escape',result
             else: assert result['result']=='answered' and result['values']['original-field']=='AUTHORITATIVE_WSL_ANSWER',result
         print('PASS actual WSL origin presenter grant, input answer/cancel and authoritative retained result')
+        # Native form -> actual bundled relay -> origin validation. IDs stay origin-owned.
+        for kind in ['single','multi','multiline']:
+            field={'id':'original-field','label':'Choose','type':kind}
+            answer_fields={'text':'строка\nnext'} if kind=='multiline' else {'selected':[],'text':'другое'}
+            if kind!='multiline': field.update(allowOther=True,choices=[{'id':'a','label':'A'},{'id':'b','label':'B'}])
+            opened=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input=json.dumps({'fields':[field]}),text=True,capture_output=True,timeout=15)
+            assert opened.returncode==0,(opened.stdout,opened.stderr)
+            ask_id=json.loads(opened.stdout)['id']; request=until('ask.request')['ask']
+            send('ask.resolve',{'id':ask_id,'owner':request['owner'],'button':'submit',**answer_fields}); until('ask.dismiss')
+            result=json.loads(native('ask','result',ask_id).stdout)
+            assert result['result']=='answered',result
+            value=result['values']['original-field']
+            assert (value=='строка\nnext' if kind=='multiline' else value['other']=='другое'),result
+        # Cancellation wins before a late remote answer; the retained outcome cannot be overwritten.
+        opened=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input='{}',text=True,capture_output=True,timeout=15)
+        ask_id=json.loads(opened.stdout)['id']; request=until('ask.request')['ask']
+        native('ask','cancel',ask_id); until('ask.dismiss')
+        send('ask.resolve',{'id':ask_id,'owner':request['owner'],'button':'submit'})
+        result=json.loads(call([cli,'ask','result',ask_id,*selectors],success=False).stdout)
+        assert result['result']=='cancelled',result
+        # Explicit refusal hands the same question back; local modal ownership then refuses another.
+        opened=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input='{}',text=True,capture_output=True,timeout=15)
+        ask_id=json.loads(opened.stdout)['id']; request=until('ask.request')['ask']
+        send('ask.rejected',{'id':ask_id,'owner':request['owner']}); until('ask.dismiss')
+        assert json.loads(call([cli,'ask','result',ask_id,*selectors],success=False).stdout)['result']=='pending'
+        busy=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input='{}',text=True,capture_output=True,timeout=15)
+        assert busy.returncode!=0,busy.stdout
+        native('ask','cancel',ask_id)
+        print('PASS actual Windows origin choice/Other/multiline, cancel-before-late-answer, same-ID handback and busy refusal')
+        opened=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input='{}',text=True,capture_output=True,timeout=15)
+        lost_id=json.loads(opened.stdout)['id']; until('ask.request')
         process.stdin.write('{"cmd":"session.type","target":"active","args":{"text":"UNAUTHORIZED"}}\n')
         process.stdin.flush()
         process.wait(timeout=10)
         assert frames.get(timeout=2) is None
+        result=json.loads(call([cli,'ask','result',lost_id,*selectors],success=False).stdout)
+        assert result['result']=='pending',result
+        native('ask','cancel',lost_id)
+        print('PASS disconnect returns pending question with unchanged origin ID; two viewers receive one notification each and only presenter receives sound')
         print('PASS actual Rust/CLI/broker hello and snapshot; generic command refused')
     finally:
+        if observer is not None:
+            observer.kill(); observer.wait(timeout=5)
         if process.poll() is None: process.kill()
         process.wait(timeout=5)
 
@@ -148,7 +216,7 @@ def peer(action):
         # No stop action before this run created its own viewer directory.
         result = subprocess.run(ssh + ['test -f ' + shlex.quote(remote_root+'/run.json')], env=env, timeout=10)
         if result.returncode: return
-    output = remote(['python3',remote_root+'/viewer.py',action,remote_root] + ([run['manualQuestionId']] if action=='manual-show' else []))
+    output = remote(['python3',remote_root+'/viewer.py',action,remote_root] + ([run['manualQuestionId']] if action in ['manual-show','question-visible'] else []))
     (root/('peer-'+action+'.log')).write_text(output)
     print(output.strip())
 

@@ -77,4 +77,43 @@ public class AgtermQuestionAdapterTests
         var spec = Spec("""{"fields":[{"id":"a","label":"A","type":"text"}]}""");
         Assert.Throws<IOException>(() => AgtermQuestionAdapter.Resolve(spec, "id", 1, JsonSerializer.Deserialize<JsonElement>(raw)));
     }
+
+    [Theory]
+    [InlineData("{\"selected\":[\"missing\"]}")]
+    [InlineData("{\"selected\":[\"a\",\"a\"]}")]
+    [InlineData("{\"selected\":[]}")]
+    [InlineData("{\"selected\":[\"a\"],\"text\":\"other\"}")]
+    [InlineData("{\"selected\":[1]}")]
+    public void InvalidRadioSelectionsNeverSettleAnOriginQuestion(string fields)
+    {
+        var spec = Spec("""{"fields":[{"id":"x","label":"Pick","type":"single","allowOther":true,"choices":[{"id":"a","label":"A"}]}]}""");
+        var body = System.Text.Json.Nodes.JsonNode.Parse(fields)!.AsObject();
+        body["id"] = "q"; body["owner"] = 1; body["button"] = "submit";
+        Assert.Throws<IOException>(() => AgtermQuestionAdapter.Resolve(spec, "q", 1, JsonSerializer.SerializeToElement(body)));
+    }
+
+    [Theory]
+    [InlineData("width", "40")]
+    [InlineData("destructiveID", "\"submit\"")]
+    [InlineData("pane", "\"scratch\"")]
+    [InlineData("defaultID", "\"unknown\"")]
+    [InlineData("owner", "0")]
+    public void UnsupportedPresentationOrAuthorityRefusesBeforeUi(string field, string json)
+    {
+        var wire = AgtermQuestionAdapter.ToOrigin("q", 1, Spec("{}"), Kinds);
+        var body = System.Text.Json.Nodes.JsonNode.Parse(wire.GetRawText())!.AsObject();
+        body[field] = System.Text.Json.Nodes.JsonNode.Parse(json);
+        Assert.Throws<IOException>(() => AgtermQuestionAdapter.FromOrigin(JsonSerializer.SerializeToElement(body), new Dictionary<Guid, string>(), Kinds));
+    }
+
+    [Fact]
+    public void FormBoundaryAndAnswerLimitsRefuseWithoutTruncation()
+    {
+        var native = Spec(JsonSerializer.Serialize(new { fields = new[] { new { id = "x", label = "Pick", type = "single",
+            choices = Enumerable.Range(0, 51).Select(i => new { id = i.ToString(), label = "Item" }).ToArray() } } }));
+        Assert.Throws<IOException>(() => AgtermQuestionAdapter.ToOrigin("q", 1, native, Kinds));
+        native = Spec("""{"fields":[{"id":"x","label":"Text","type":"text"}]}""");
+        var answer = JsonSerializer.SerializeToElement(new { id = "q", owner = 1, button = "submit", text = new string('x', AskSpec.MaxText + 1) });
+        Assert.Throws<IOException>(() => AgtermQuestionAdapter.Resolve(native, "q", 1, answer));
+    }
 }

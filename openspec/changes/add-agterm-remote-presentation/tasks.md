@@ -1,6 +1,6 @@
 # Tasks
 
-Apply started on 2026-11-02; 9/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
+Apply started on 2026-11-02; 12/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
 
 ### Apply finding: distinguish presentation loss from job-channel loss
 
@@ -26,7 +26,7 @@ Read-only environment verification: the supplied macOS arm64 peer is reachable t
 ## 3. Passive presentation in both directions
 
 - [x] 3.1 Connect validated status/context/HUD effects and origin publication to local state; test snapshot clears, pane swaps/removal, remaining HUD lifetime, stale expiry and unchanged terminal geometry, documenting supported rendering options.
-- [ ] 3.2 Add live notification and negotiated sound routing with mirrored provenance; test duplicate revisions, reconnect snapshots, multiple viewers and relay-loop suppression, and document loss semantics during outages.
+- [x] 3.2 Add live notification and negotiated sound routing with mirrored provenance; test duplicate revisions, reconnect snapshots, multiple viewers and relay-loop suppression, and document loss semantics during outages.
 - [ ] 3.3 Run a routed real-peer passive matrix in both directions with single/split panes, both application restarts and presentation-only disconnect; record peer hashes, unchanged terminal workload identities and absence of duplicate alerts.
 
 ## 4. Presenter grants and questions
@@ -34,8 +34,8 @@ Read-only environment verification: the supplied macOS arm64 peer is reachable t
 Approved delegated single-choice policy: initial first item and exclusive nonblank Other, matching agterm; local questions retain their existing semantics. No new public form flags are introduced.
 
 - [x] 4.1 Implement origin grant arbitration separately from terminal leadership and revoke it on stream loss; test two viewers, repeated acquire, old-owner answers and takeover after disconnect while terminal sizes remain unchanged.
-- [ ] 4.2 Add optional exact-session `ask open --target` with immutable window/session ownership and unchanged untargeted behavior; map native buttons and representable single-field input/choice/other/cancel forms in both directions; test legacy calls, wrong-window/session targets, owner removal, exact IDs/types, limits, malformed answers, busy modal slots and explicit multi-field refusal, and document the compatibility subset.
-- [ ] 4.3 Integrate question resolve/reject/dismiss with origin first-completion outcomes; test answer/cancel races, lost acknowledgement, owner close and handback without replay, including exact result retrieval or explicit uncertainty.
+- [x] 4.2 Add optional exact-session `ask open --target` with immutable window/session ownership and unchanged untargeted behavior; map native buttons and representable single-field input/choice/other/cancel forms in both directions; test legacy calls, wrong-window/session targets, owner removal, exact IDs/types, limits, malformed answers, busy modal slots and explicit multi-field refusal, and document the compatibility subset.
+- [x] 4.3 Integrate question resolve/reject/dismiss with origin first-completion outcomes; test answer/cancel races, lost acknowledgement, owner close and handback without replay, including exact result retrieval or explicit uncertainty.
 - [ ] 4.4 Run real-peer question success, cancellation, form refusal and disconnect/late-answer cases in both directions; record authoritative origin results and two-viewer grant behavior.
 
 ## 5. Origin-run program overlays

@@ -442,9 +442,7 @@ fn tree(root: &Path, config: &Value) -> Result<Value> {
                 .into(),
         ]);
         let result = relay(config, &args)?;
-        let mut readiness_args = args.clone();
-        readiness_args[2] = "ready".into();
-        presentation_ready &= relay(config, &readiness_args).is_ok_and(|r| r["presentation"] == 1);
+        presentation_ready &= result["presentation"] == 1;
         for row in result["remote"]["sessions"]
             .as_array()
             .ok_or("invalid origin sessions")?

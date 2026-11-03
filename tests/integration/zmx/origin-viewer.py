@@ -122,7 +122,7 @@ if action == 'single':
 import os,sys,shlex,json,pathlib
 args=sys.argv[1:]
 if '-G' not in args and len(args)>=2 and args[-2] == HOST:
-    if '/manifests/' in args[-1]:
+    if '/manifests/' in args[-1] or 'zmx present ' in args[-1]:
         pathlib.Path(LOG_ROOT+'/ssh-'+str(os.getpid())+'.json').write_text(json.dumps({'pid':os.getpid(),'command':args[-1]}))
     args[-1]=shlex.join(['/usr/bin/env','PATH='+REMOTE_PATH+':/usr/bin:/bin','/bin/sh','-c',args[-1]])
 os.execv('/usr/bin/ssh',['ssh']+args)
@@ -148,7 +148,7 @@ elif action == 'passive':
         (root/'passive-failure.json').write_text(json.dumps(rows,indent=2))
         raise RuntimeError('passive replica did not converge: '+repr(rows))
     print('PASS actual Agwinterm -> agterm context/status/HUD replica')
-elif action == 'manual-show':
+elif action in ['manual-show','question-visible']:
     info=json.loads((root/'imported.json').read_text())
     for _ in range(80):
         rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
@@ -157,10 +157,28 @@ elif action == 'manual-show':
     else:
         (root/'manual-question-failure.json').write_text(json.dumps(rows,indent=2))
         raise RuntimeError('manual question not visible in Mac session state: '+repr(rows))
-    ctl('window','minimize',info['window'],'off')
-    ctl('window','select',info['window'])
+    if action=='manual-show':
+        ctl('window','minimize',info['window'],'off')
+        ctl('window','select',info['window'])
     (root/'manual-ready.json').write_text(json.dumps({'window':info['window'],'session':info['id'],'ask':rows[0]['ask']},indent=2))
-    print('MANUAL MAC READY: Stage 4: manual Mac answer; type STAGE4_MAC_ANSWER and Confirm test; isolated app='+str(bundle))
+    print('PASS actual Mac question replica has exact origin ID' if action=='question-visible' else 'MANUAL MAC READY: Stage 4: manual Mac answer; type STAGE4_MAC_ANSWER and Confirm test; isolated app='+str(bundle))
+elif action in ['question-absent','presentation-loss']:
+    info=json.loads((root/'imported.json').read_text())
+    if action=='presentation-loss':
+        killed=[]
+        for record in root.glob('ssh-*.json'):
+            entry=json.loads(record.read_text())
+            p=subprocess.run(['ps','-p',str(entry['pid']),'-o','comm=','-o','args='],capture_output=True,text=True)
+            if p.returncode==0 and 'ssh' in p.stdout and 'zmx present ' in p.stdout and config['pane'] in p.stdout:
+                os.kill(entry['pid'],signal.SIGTERM); killed.append(entry['pid'])
+        assert killed, 'no isolated presentation SSH process found'
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and not rows[0].get('ask'): break
+        time.sleep(.1)
+    else: raise RuntimeError('stale Mac question replica: '+repr(rows))
+    assert imported_surface().get('lead')=='leader', 'presentation loss changed terminal leadership'
+    print('PASS Mac replica dismissed without changing terminal leadership: '+action)
 elif action == 'follower-resize':
     info=json.loads((root/'imported.json').read_text())
     for _ in range(30):

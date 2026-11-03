@@ -7,7 +7,7 @@ namespace Agwinterm.Win32;
 internal partial class Program : IAgtermPresentationOriginHost
 {
     private readonly AgtermPresentationBroker _presentationBroker = new();
-    private static readonly string[] PassiveKinds = ["layout", "status", "context", "hud", "notify", "ask.form", "ask.other"];
+    private static readonly string[] PassiveKinds = ["layout", "status", "context", "hud", "notify", "sound", "ask.form", "ask.other"];
     private sealed record OriginPresentation(Ses Session, Pane[] Panes, WslLiveBinding[] Bindings, Dictionary<string, Guid> Mapping);
     private readonly Dictionary<AgtermOriginPresentationScope, OriginPresentation> _originPresentations = new();
 
@@ -120,5 +120,18 @@ internal partial class Program : IAgtermPresentationOriginHost
         return session is not null && scope.OriginId == _appId && session.AllPanes.All(p =>
             !p.LiveClosing && !p.S.HasExited && RestoreState.LoadLiveBinding(p.LiveBinding, out _) is { IsValid: true, Ownership: "owned" } binding
             && WslOriginScope.From(binding.Endpoint) == scope);
+    }
+
+    private void RouteStatusSound(Pane pane, string? name, bool blockedDefault)
+    {
+        // This runs on the UI queue so ownership and presenter teardown cannot race the routing decision.
+        var session = OwningSes(pane);
+        if (session is null || pane.LiveClosing || session.Closing) return;
+        string? wireName = blockedDefault ? null : name ?? "default";
+        if (AgtermPresentationSound.Portable(wireName))
+            foreach (var (scope, entry) in _originPresentations.Where(p => ReferenceEquals(p.Value.Session, session)).ToArray())
+                if (OriginPresentationCurrent(scope, entry) && entry.Mapping.ContainsKey(pane.Id)
+                    && _presentationBroker.SendSound(scope, wireName)) return;
+        if (blockedDefault) PlayBlockedSound(); else PlayStatusSound(name);
     }
 }

@@ -444,8 +444,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public long OriginHudGeneration;
         public AgtermPassivePresentation? RemotePresentation;
         public string? PresentationError;
-        public string? PresentationQuestionOutcome;
-        public string? PresentationQuestionId;
+        public readonly AgtermQuestionDelivery PresentationQuestion = new();
         public string? EffectiveContext => Context ?? RemotePresentation?.Context;
         // Wave F2: per-session background watermark (a faint image drawn behind the terminal of every pane).
         public string? BgPath;      // absolute path to the copied image under AppDir\backgrounds (null = none)
