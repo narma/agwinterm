@@ -73,6 +73,7 @@ internal partial class Program
                             var mapping = replica.Bindings.Select((b, i) => (Origin: b.OriginPaneId!.Value, Local: replica.Panes[i].Id))
                                 .ToDictionary(p => p.Origin, p => p.Local);
                             if (ApplyRemoteQuestion(session, replica, frame, mapping)) return;
+                            if (ApplyReplicaJob(session, replica, frame, mapping)) return;
                             if (frame.Kind == "sound")
                             {
                                 var name = AgtermPresentationSound.Read(frame.Body);
@@ -142,6 +143,7 @@ internal partial class Program
     {
         session.PresentationQuestion.Disconnected();
         DismissReplicaQuestion(replica);
+        OrphanReplicaJobs(replica);
         replica.State.Clear();
         replica.Connected = false;
         if (session.HudMirrored) ClearHud(session);

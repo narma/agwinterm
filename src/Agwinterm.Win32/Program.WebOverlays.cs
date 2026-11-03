@@ -104,7 +104,7 @@ internal partial class Program
         {
             if (request.Persistent && _webStorageClearing) throw new ArgumentException("browser storage is being cleared");
             var (owner, pane) = ResolveWebOwner(target, request.Pane, opening: true);
-            if (!request.Companion && (owner.PageParentId is not null || (pane?.Overlay ?? owner.Overlay).Term is not null || _webPages.ContainsKey((object?)pane ?? owner))) throw new ArgumentException("a program or web overlay occupies this slot");
+            if (!request.Companion && (owner.PageParentId is not null || (pane?.Overlay ?? owner.Overlay).Term is not null || (pane?.Overlay ?? owner.Overlay).OriginJob?.Occupied == true || _webPages.ContainsKey((object?)pane ?? owner))) throw new ArgumentException("a program or web overlay occupies this slot");
             if (pane is not null && (request.Percent != 100 || request.Width is not null || request.Height is not null))
                 throw new ArgumentException("pane overlays are always full-pane");
             return (owner, pane, cwd: CwdOf(pane ?? owner.ActivePane), profile: ResolveProfile(owner.ProfileName));
@@ -130,7 +130,7 @@ internal partial class Program
             var page = new WebPage(request, NewWebHost(), pageOwner, pagePane);
             page.Resources = resources;
             page.ImageDocument = imageDocument; page.ImageInfo = imageInfo;
-            if (!_webPages.TryReserve(page.Slot, page, AllSessions().Contains(pageOwner) && (pagePane is null || pageOwner.Panes.Contains(pagePane)), (pagePane?.Overlay ?? pageOwner.Overlay).Term is not null))
+            if (!_webPages.TryReserve(page.Slot, page, AllSessions().Contains(pageOwner) && (pagePane is null || pageOwner.Panes.Contains(pagePane)), (pagePane?.Overlay ?? pageOwner.Overlay).Term is not null || (pagePane?.Overlay ?? pageOwner.Overlay).OriginJob?.Occupied == true))
             {
                 page.Host.Dispose();
                 if (request.Companion) CloseSessionInternal(pageOwner, undoable: false);

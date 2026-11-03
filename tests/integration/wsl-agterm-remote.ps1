@@ -127,7 +127,63 @@ public static class RemoteAskProbe {
         $null=Ctl @('zmx','remote','lead','--target',$import.panes[0].paneId,'--window',$window)
         $null=Await-Pane $import.panes[0].paneId
         $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        $jobCommand='printf "AW_JOB_OS=%s CWD=%s\n" "$(uname -s)" "$PWD"; read answer; printf "AW_JOB_REPLY=%s\n" "$answer"; exit 7'
+        $jobReply=Peer-Ctl @('session','overlay','open',$jobCommand,'--cwd','/tmp','--wait','--size-percent','60','--target',$origin)
+        $jobRow=Await-Presentation { param($row) @($row.overlayDetails).Count -eq 1 }
+        $overlayId=[string]$jobRow.overlayDetails[0].id
+        for($i=0;$i -lt 60;$i++) {
+            $jobText=[string](Ctl @('session','text','--target',$overlayId))
+            if($jobText -match 'AW_JOB_OS=Darwin CWD=/') { break }
+            Start-Sleep -Milliseconds 200
+        }
+        if($jobText -notmatch 'AW_JOB_OS=Darwin CWD=/(private/)?tmp') { throw "Origin job did not run on Mac: $jobText" }
+        $null=Ctl @('session','type',"accepted`r",'--target',$overlayId)
+        $null=Await-Presentation { param($row) $row.overlayDetails[0].exited -eq $true }
+        $jobText=[string](Ctl @('session','text','--target',$overlayId))
+        if($jobText -notmatch 'AW_JOB_REPLY=accepted') { throw "Job PTY input failed: $jobText" }
+        $jobResult=Peer-Ctl @('session','overlay','result','--target',$origin)
+        if($jobResult.exitCode -ne 7) { throw "Incorrect authoritative Mac job result: $($jobResult|ConvertTo-Json -Compress)" }
+        $null=Peer-Ctl @('session','overlay','close','--target',$origin)
+        $null=Await-Presentation { param($row) @($row.overlayDetails | Where-Object { $_ }).Count -eq 0 }
+        Write-Host 'PASS Mac-origin program executes on Darwin, retains cwd, receives PTY input and holds exit before origin close'
         $probe=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u "$PSScriptRoot/zmx/presentation-peer-probe.py").Trim()
+        $null=Peer-Ctl @('session','overlay','open','printf MAPPED_PANE_JOB; sleep 2; exit 3','--pane','left','--wait','--target',$origin)
+        $null=Await-Presentation { param($row) $row.overlayDetails[0].ownerPaneId -eq $import.panes[0].paneId -and $row.overlayDetails[0].exited }
+        if((Peer-Ctl @('session','overlay','result','--pane','left','--target',$origin)).exitCode -ne 3) { throw 'Mapped pane result changed' }
+        $null=Peer-Ctl @('session','overlay','close','--pane','left','--target',$origin)
+        $null=Await-Presentation { param($row) @($row.overlayDetails | Where-Object { $_ }).Count -eq 0 }
+        Write-Host 'PASS actual Mac-origin stable pane mapping and held pane job exit'
+        foreach($loss in @('presentation','job-channel','origin-close')) {
+            $command='printf "JOB_LOSS_READY\n"; read answer; printf "JOB_LOSS_REPLY=%s\n" "$answer"; exit 9'
+            $null=Peer-Ctl @('session','overlay','open',$command,'--wait','--size-percent','50','--target',$origin)
+            $jobRow=Await-Presentation { param($row) @($row.overlayDetails | Where-Object { $_ }).Count -eq 1 }
+            $jobOverlay=[string]$jobRow.overlayDetails[0].id
+            for($i=0;$i -lt 60;$i++) {
+                if([string](Ctl @('session','text','--target',$jobOverlay)) -match 'JOB_LOSS_READY') { break }
+                Start-Sleep -Milliseconds 200
+            }
+            if($i -eq 60) { throw 'Job did not reach ready state' }
+            $null=Peer-Ctl @('session','overlay','resize','--size-percent','70','--target',$origin)
+            $null=Await-Presentation { param($row) $row.overlayDetails[0].geometry.percent -eq 70 }
+            if($loss -eq 'origin-close') { $null=Peer-Ctl @('session','overlay','close','--target',$origin) }
+            else {
+                $fault=if($loss -eq 'presentation') {'disconnect'} else {'job-disconnect'}
+                & wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" python3 $probe $fault $Destination $OriginSocket $origin
+                if($LASTEXITCODE -ne 0) { throw "Could not isolate $loss" }
+                if($loss -eq 'presentation') {
+                    Start-Sleep -Milliseconds 1000
+                    $null=Ctl @('session','type',"after-loss`r",'--target',$jobOverlay)
+                    $null=Await-Presentation { param($row) @($row.overlayDetails | Where-Object { $_ }).Count -eq 0 }
+                    if((Peer-Ctl @('session','overlay','result','--target',$origin)).exitCode -ne 9) { throw 'Orphan job did not finish on its original channel' }
+                } else {
+                    $null=Await-Presentation { param($row) $row.overlayDetails[0].exited -eq $true }
+                    $null=Ctl @('session','overlay','close','--target',$import.sessionId)
+                }
+            }
+            $null=Await-Presentation { param($row) @($row.overlayDetails | Where-Object { $_ }).Count -eq 0 }
+            $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+            Write-Host "PASS actual Mac-origin job resize and $loss preserve base terminal and release viewer surface"
+        }
         & wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" python3 $probe refused $Destination $OriginSocket $origin
         if($LASTEXITCODE -ne 0) { throw 'Second presenter was not refused' }
         $beforeEvents=Pane-State $import.panes[0].paneId

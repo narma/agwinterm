@@ -18,13 +18,13 @@ public sealed partial class ControlServer
         {
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("cmd", out var command)
-                || command.ValueKind != JsonValueKind.String || command.GetString() != "zmx.export.present") return false;
+                || command.ValueKind != JsonValueKind.String || command.GetString() is not ("zmx.export.present" or "zmx.export.job")) return false;
             try
             {
                 if (Encoding.UTF8.GetByteCount(line) > 16384) throw new IOException("Presentation request exceeds limit");
                 AgtermRemoteDiscovery.RejectDuplicates(root);
                 foreach (var field in root.EnumerateObject())
-                    if (field.Name is not ("cmd" or "window" or "target" or "args")) throw new IOException("Unknown presentation option");
+                    if (field.Name is not ("cmd" or "window" or "target" or "args" or "job")) throw new IOException("Unknown presentation option");
                 string window = root.GetProperty("window").GetString()!, session = root.GetProperty("target").GetString()!;
                 if (!Guid.TryParseExact(window, "D", out _) || !Guid.TryParseExact(session, "D", out _)
                     || _windows?.Windows().Any(w => w.Open && w.Id == window) != true)
@@ -39,6 +39,12 @@ public sealed partial class ControlServer
                 _ = WslOriginExportRequest.Parse(args, null);
                 if (_windows.ResolveWindow(window) is not IAgtermPresentationOriginHost host)
                     throw new IOException("Origin presentation unavailable");
+                if (command.GetString() == "zmx.export.job")
+                {
+                    var job = host.OpenOverlayJob(session, root.GetProperty("job").GetString()!, args, account);
+                    await ServeOverlayJobAsync(job, reader, writer, pipe, ct).ConfigureAwait(false);
+                    return true;
+                }
                 using var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 handshake.CancelAfter(TimeSpan.FromSeconds(5));
                 var helloLine = await AgtermPresentationStream.ReadLineAsync(reader, handshake.Token).ConfigureAwait(false)

@@ -19,6 +19,7 @@ public static class PresentationCli
             string Required(string key) => options.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value)
                 ? value : throw new ArgumentException("Missing presentation option: " + key);
             string window = Required("window"), session = Required("target");
+            bool jobChannel = positionals[2] == "job";
             if (!Guid.TryParseExact(window, "D", out _) || !Guid.TryParseExact(session, "D", out _))
                 throw new ArgumentException("Exact window and session IDs required");
             var endpoint = JsonSerializer.SerializeToElement(new { distribution = Required("distribution"), user = Required("user"),
@@ -56,7 +57,8 @@ public static class PresentationCli
                 if (!outputLines.Writer.TryWrite((line, done))) throw new IOException("Presentation output unavailable");
                 return done.Task;
             }
-            await writer.WriteLineAsync(JsonSerializer.Serialize(new { cmd = "zmx.export.present", window, target = session, args = endpoint })).ConfigureAwait(false);
+            await writer.WriteLineAsync(JsonSerializer.Serialize(new { cmd = jobChannel ? "zmx.export.job" : "zmx.export.present", window, target = session, args = endpoint,
+                job = jobChannel ? Required("job") : null })).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             async Task Copy(TextReader source, Func<string, Task> write)
             {
                 while (true)
@@ -65,7 +67,8 @@ public static class PresentationCli
                     deadline.CancelAfter(TimeSpan.FromSeconds(35));
                     var line = await AgtermPresentationStream.ReadLineAsync(source, deadline.Token).ConfigureAwait(false);
                     if (line is null) return;
-                    _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(line));
+                    if (!jobChannel) _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(line));
+                    else { using var frame = JsonDocument.Parse(line); }
                     Task writing = write(line);
                     try { await writing.WaitAsync(TimeSpan.FromSeconds(5), stop.Token).ConfigureAwait(false); }
                     catch { pipe.Dispose(); throw; }
@@ -87,7 +90,8 @@ public static class PresentationCli
                         if (ch == '\n')
                         {
                             string value = line.ToString();
-                            _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(value));
+                            if (!jobChannel) _ = AgtermPresentationProtocol.Decode(Encoding.UTF8.GetBytes(value));
+                            else { using var frame = JsonDocument.Parse(value); }
                             if (!lines.Writer.TryWrite(value)) throw new IOException("Presentation input queue overflow");
                             line.Clear();
                         }

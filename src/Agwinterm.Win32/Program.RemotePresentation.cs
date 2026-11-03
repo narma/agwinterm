@@ -38,10 +38,14 @@ internal partial class Program : IAgtermPresentationOriginHost
             _originPresentations[scope] = entry;
             _presentationBroker.Register(scope, OriginPresentationSnapshot(entry), PassiveKinds, presenterReady: true);
             var subscription = _presentationBroker.Subscribe(scope, hello);
-            subscription.Closed += () => Post(() => ReturnOriginQuestion(scope, subscription));
+            subscription.Closed += () => Post(() => { ReturnOriginQuestion(scope, subscription); OrphanOriginJobs(scope, subscription); });
             return new AgtermOriginPresentationLease(subscription,
                 () => InvokeOnUiQueued(() => OriginPresentationCurrent(scope, entry)),
-                (frame, ct) => PresentationUiAsync(() => ReceiveOriginQuestion(scope, subscription, entry, frame), ct));
+                (frame, ct) => PresentationUiAsync(() =>
+                {
+                    if (frame.Kind.StartsWith("overlay.", StringComparison.Ordinal)) ReceiveOriginJob(scope, subscription, frame);
+                    else ReceiveOriginQuestion(scope, subscription, entry, frame);
+                }, ct));
         });
     }
 

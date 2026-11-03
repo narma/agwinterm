@@ -26,7 +26,7 @@ if action == 'refused':
         print('PASS actual Mac origin refuses a second presenter while Windows holds its grant')
     finally:
         child.kill(); child.wait(timeout=5)
-elif action == 'disconnect':
+elif action in ['disconnect','job-disconnect']:
     listing=subprocess.run(ssh+['ps -axo pid=,args='],text=True,capture_output=True,check=True,timeout=15).stdout
     pids=[]
     for line in listing.splitlines():
@@ -34,7 +34,9 @@ elif action == 'disconnect':
         # Match the executable's argument vector, never a shell command containing its text.
         try: words=shlex.split(args)
         except ValueError: continue
-        if words[0].rsplit('/',1)[-1]=='agtermctl' and words[1:]==['zmx','present',session,'--socket',control]: pids.append(pid)
+        if words[0].rsplit('/',1)[-1]!='agtermctl': continue
+        if action=='disconnect' and words[1:]==['zmx','present',session,'--socket',control]: pids.append(pid)
+        if action=='job-disconnect' and len(words)==7 and words[1:4]==['session','overlay','run-job'] and words[-2:]==['--socket',control]: pids.append(pid)
     assert pids, 'isolated presentation process not found'
     subprocess.run(ssh+[shlex.join(['kill','-TERM',*pids])],check=True,timeout=10)
     print('PASS stopped only isolated origin presentation CLI; terminal processes untouched')

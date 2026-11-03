@@ -27,12 +27,6 @@ internal partial class Program
                 DismissReplicaQuestion(replica);
             return true;
         }
-        if (frame.Kind == "overlay.request")
-        {
-            // Basic role messages have no feature flag. Refuse until the scoped job channel is implemented.
-            sender.Send("overlay.rejected", JsonSerializer.SerializeToElement(new { job = frame.Body.GetProperty("job").GetString() }));
-            return true;
-        }
         if (frame.Kind != "ask.request") return false;
         string id = frame.Body.GetProperty("id").GetString() ?? throw new IOException("Missing remote question ID");
         long owner = frame.Body.GetProperty("owner").GetInt64();

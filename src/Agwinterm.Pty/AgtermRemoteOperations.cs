@@ -5,6 +5,16 @@ namespace Agwinterm.Pty;
 
 public sealed class AgtermRemoteOperations
 {
+    public static SessionCommand OverlayJobCommand(AgtermRemoteBinding binding, string job)
+    {
+        if (!binding.IsValid || job.Length is < 1 or > 256 || job.Any(char.IsControl)) throw new ArgumentException("Invalid job binding or ID");
+        string command = "PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; export PATH; exec agtermctl session overlay run-job "
+            + AgtermSshDiscoveryClient.QuoteAccountShell(job)
+            + (binding.Target.OriginSocket is null ? "" : " --socket " + AgtermSshDiscoveryClient.QuoteAccountShell(binding.Target.OriginSocket));
+        var launch = AgtermSshDiscoveryClient.CommandInfo(binding.Target, true,
+            string.Join(' ', new[] { "/bin/sh", "-c", command }.Select(AgtermSshDiscoveryClient.QuoteAccountShell)));
+        return new(launch.FileName, launch.ArgumentList.ToArray());
+    }
     public async Task<AgtermRemoteBinding> ProbeAsync(AgtermSshTarget target, string bridge, AgtermEndpoint endpoint,
         AgtermSession session, AgtermPane pane, CancellationToken ct = default, int? presentationVersion = null)
     {

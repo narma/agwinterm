@@ -477,6 +477,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <c>--block</c> caller holds the source of the term its own open created.</summary>
     private sealed class OverlaySlot
     {
+        public AgtermOverlayJob? OriginJob;
         public bool Hidden;
         public int? WidthDip, HeightDip;
         public OverlayGeometry Geometry => new(SizePercent, WidthDip, HeightDip);

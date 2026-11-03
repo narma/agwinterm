@@ -122,7 +122,7 @@ if action == 'single':
 import os,sys,shlex,json,pathlib
 args=sys.argv[1:]
 if '-G' not in args and len(args)>=2 and args[-2] == HOST:
-    if '/manifests/' in args[-1] or 'zmx present ' in args[-1]:
+    if '/manifests/' in args[-1] or 'zmx present ' in args[-1] or 'session overlay run-job ' in args[-1]:
         pathlib.Path(LOG_ROOT+'/ssh-'+str(os.getpid())+'.json').write_text(json.dumps({'pid':os.getpid(),'command':args[-1]}))
     args[-1]=shlex.join(['/usr/bin/env','PATH='+REMOTE_PATH+':/usr/bin:/bin','/bin/sh','-c',args[-1]])
 os.execv('/usr/bin/ssh',['ssh']+args)
@@ -138,6 +138,47 @@ os.execv('/usr/bin/ssh',['ssh']+args)
     print('PASS viewer close preserves origin workload')
 elif action == 'split':
     exercise(True)
+elif action == 'job-manual-show':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(100):
+        try:
+            if 'STAGE 4 PROGRAM INPUT TEST' in ctl('session','overlay','text','--target',info['id']).get('text',''): break
+        except RuntimeError: pass
+        time.sleep(.2)
+    else: raise RuntimeError('manual job surface missing')
+    ctl('window','minimize',info['window'],'off')
+    ctl('window','select',info['window'])
+    print('MANUAL JOB READY: STAGE4_JOB_OK then Enter; isolated app='+str(bundle))
+elif action == 'job-channel-loss':
+    info=json.loads((root/'imported.json').read_text())
+    killed=[]
+    for record in root.glob('ssh-*.json'):
+        entry=json.loads(record.read_text())
+        p=subprocess.run(['ps','-p',str(entry['pid']),'-o','comm=','-o','args='],capture_output=True,text=True)
+        if p.returncode==0 and 'ssh' in p.stdout and 'session overlay run-job ' in p.stdout and config['root']+'/endpoint' in p.stdout:
+            os.kill(entry['pid'],signal.SIGTERM); killed.append(entry['pid'])
+    assert killed,'no isolated job SSH found'
+    time.sleep(2)
+    ctl('session','overlay','close','--target',info['id'])
+    print('PASS killed only isolated Mac job channel and closed its held surface')
+elif action in ['job-visible','job-pane-visible']:
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(100):
+        try:
+            text=ctl('session','overlay','text','--target',info['id'],*(['--pane','right'] if action=='job-pane-visible' else [])).get('text','')
+            if 'AW_JOB_OS=Linux CWD=/tmp' in text: break
+        except RuntimeError: pass
+        time.sleep(.2)
+    else: raise RuntimeError('origin job not rendered on Mac: '+json.dumps(ctl('tree')))
+    print('PASS actual Mac viewer renders origin Linux job with cwd (keyboard input requires manual UI check)')
+elif action == 'job-absent':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(100):
+        try: ctl('session','overlay','text','--target',info['id'])
+        except RuntimeError: break
+        time.sleep(.1)
+    else: raise RuntimeError('origin close left Mac job surface')
+    print('PASS actual Mac job surface closed')
 elif action == 'passive':
     imported=json.loads((root/'imported.json').read_text())['id']
     for _ in range(80):

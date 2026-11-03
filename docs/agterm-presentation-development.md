@@ -1,6 +1,6 @@
 # Remote presentation development
 
-Stage 4 is in progress. Capable imported sessions open an independent presentation stream. Provisioned WSL origins advertise v1 only after the Windows endpoint confirms readiness. Presenter grants and the question subset are enabled; program jobs and pages remain unimplemented and unadvertised (basic unflagged overlay requests are explicitly rejected).
+Stage 4 is in progress. Capable imported sessions open an independent presentation stream. Provisioned WSL origins advertise v1 only after the Windows endpoint confirms readiness. Presenter grants, the question subset and origin-run program jobs are enabled. Pages remain unimplemented and unadvertised.
 
 Discovery retains a positive integer `remote.presentation`; absent, null, invalid or nonpositive optional values leave a usable terminal inventory with presentation unavailable. A higher positive version is a maximum-version advertisement; protocol v1 is the only implemented wire version. Persisted old bindings remain terminal-only. The pane UUID comes from the verified daemon name, matching upstream `ZmxSupport.paneIdentity` and `RemoteBinding`, never its left/right role. Presentation target keys include WSL distribution/user, SSH destination, origin control socket, endpoint, session and stable pane. Keys do not replace existing daemon-incarnation verification.
 
@@ -13,7 +13,8 @@ The envelope decoder bounds UTF-8 JSON lines to 256 KiB, rejects duplicate field
 | v1 envelope framing | Implemented, real CLI fixture roundtrip tests |
 | Status/context/HUD/notifications | Passive handlers enabled; bidirectional acceptance in progress |
 | Presenter/questions | Implemented; real-peer question acceptance in progress |
-| Program jobs/pages | Not enabled; no extension capability advertised |
+| Program jobs | Session/mapped-pane PTY jobs, origin context, percent sizing, wait/block/exit/close; point sizing and remote visibility controls refused |
+| Pages | Not enabled; no extension capability advertised |
 | Sound, ask.form, ask.other, overlay.points, page kind group | Only eligible when corresponding handlers are implemented and negotiated |
 | Scratch, info, respawn, arbitrary groups/companions | Out of stage-4 compatibility subset |
 
@@ -58,3 +59,25 @@ Task 4.4 follow-up passed: `artifacts/wsl-ui/20261103T155912-7e3a97ee` adds actu
 Together with the retained manual Mac input result, these runs cover question success/cancel/refusal/loss/late action in both directions and two-connection arbitration against both actual origins. Additional protocol subscribers are test clients, not additional GUI apps; no claim is made about concurrent manual UI input from two viewers. Tasks 3.2 and 4.2–4.4 are complete (13/27 overall). The full passive and five-family integrated matrices (3.3/7.1/7.2), jobs and pages remain pending. Background Sandbox run `artifacts/sandbox/20261103T155444-8bd09c2c` passed 34 native-question UI checks.
 
 PR #31 follow-up: Greptile review of `33abba6` confirmed the first two fixes and identified that Quick terminal sounds were dropped when no owning session exists. Local playback is now preserved for such live panes; only remote delegation requires a session. Release build passed. WorkingSets CI initially failed its six-second save-snapshot assertion; background Sandbox `20261103T160246-7b692369` passed all 35 checks, and the failed CI job was requeued. Quick Sandbox `20261103T160453-37167562` passed 57/59 checks but failed 70%/90% geometry assertions; this is not a passing Quick acceptance run and remains a regression follow-up. No geometry code was changed by the sound fix.
+
+## Origin-run program jobs (2026-11-03)
+
+The origin reserves a session or stable-pane slot for 15 seconds and generates a single-claim ID. The presentation frame contains the job ID, pane and rendering metadata only. Command, cwd and configured profile environment stay at the origin. At most 256 origin records are retained; launch context is capped at 128 KiB. Claims check the Windows SID, exact exported endpoint/window/session and current presenter under the broker lock. Expiry, rejection and pre-claim presenter loss cannot execute a program. Ordinary HUD, web and local program opens respect a reserved slot.
+
+The explicitly provisioned Rust adapter additionally accepts exactly `session overlay run-job JOB`. It verifies its private Linux-account endpoint and current tree, then opens the bundled CLI's internal `zmx export job` channel with the exact scope. This is not a generic command relay. The Linux helper receives the origin context, runs `/bin/sh -lc` under the inherited SSH PTY with a separate foreground process group, forwards terminal input/resize through that PTY and reports exit to the Windows origin. Cancellation/hangup terminates that job group with a bounded TERM/KILL grace. A nonblocking control writer keeps an unavailable Windows relay from blocking PTY supervision. No base ZMX workload is created or owned by this channel, and no new runtime is installed.
+
+Windows viewers launch only the scoped `agtermctl session overlay run-job` SSH command through the Rust PTY host. They do not receive the executable program text or reinterpret its cwd. Stable pane mapping survives role changes; hidden/unknown panes and occupied slots refuse. Session percent sizing, pane full-size, background color, follow and wait are supported. `overlay.points` remains unadvertised; width/height and origin-side delegated hide/show/toggle/text/copy refuse explicitly. Origin `--block` returns its own job outcome; held `--wait` surfaces keep the slot until closed. Existing local overlay behavior and window-wide result behavior remain unchanged.
+
+Presentation-only loss retires unclaimed reservations and closes ended held replicas, but leaves a claimed program on its independent PTY. The orphan closes when that channel exits; reconnect neither adopts it nor retries its command. Origin close, owner removal and job-channel loss settle one retained outcome. A late exit cannot overwrite a prior cancellation. No terminal leadership is obtained by an overlay.
+
+Acceptance evidence:
+
+- `artifacts/wsl-ui/20261103T163630-12d587a4` passed the complete origin regression runner, including actual Mac viewer rendering of a Linux program/cwd/exit 7. The user typed `STAGE4_JOB_OK` in the isolated Mac program overlay; WSL origin retained expected exit 23. This is real keyboard input evidence, not a control-API injection (agterm's `session type` targets the base pane).
+- `artifacts/wsl-ui/20261103T164209-9d9b3194` passed real Rust/CLI/broker claims, duplicate/expired/rejected/pre-claim-loss refusal, origin command/cwd/environment, PTY input and 29x83 resize, held result, presentation-only survival, close and job-channel loss. Actual Mac viewer checked session/right-pane jobs, origin result, presentation orphan cleanup, separate job-SSH loss and origin close. Both application restart and immutable base-terminal regressions passed. WSL evidence root: `/tmp/aw-stage3-origin-r36rj8m4`; matching Mac fixture retains source/binary hashes.
+- `artifacts/wsl-ui/20261103T164213-8c0b224d` passed actual Mac-origin/Windows-viewer command/cwd, PTY input, exit 7, percent resize, presentation-only survival with exit 9, job-channel loss and origin close, plus question/event regressions.
+- Release x64 build passed with zero warnings/errors. 178 focused presentation/ask tests passed. Background Sandbox `artifacts/sandbox/20261103T164458-a204d343` passed ordinary program-overlay controls, hidden block and owner teardown regressions.
+- Windows application DLL SHA-256: `a10c8a72767f4d34c196952b27c98b4f4c0eb3a2aa4de171cda39a7ecd57f5c4`; x64 Linux helper: `b3b0e238e00caa39d13247d4cdf403f869be650ca989b446e894c8a36bef7ae4`.
+
+Early exploratory runs are not full passes: `20261103T163206-b35de12e` used an incorrect null-array test after successful close; `20261103T163328-e287cfd4` attempted Mac CLI input, which addresses the base pane; `20261103T163945-e641a6f8` checked the wrong geometry JSON property. The test assertions/selectors were corrected; manual overlay input is recorded separately above. A stopped isolated Mac origin was restarted before further runs; no installed/user app was modified.
+
+Final job runs on the same implementation passed: Mac-origin artifacts/wsl-ui/20261103T164543-3c254511 adds stable pane mapping; Windows-origin artifacts/wsl-ui/20261103T164554-35ec93bc adds an actual blocking caller (exit 11), with WSL root /tmp/aw-stage3-origin-7i2UdWO3. Tasks 5.1–5.4 are complete, 17/27 overall. Pages and full integrated acceptance remain pending. CI and Greptile must be checked on the new PR head.

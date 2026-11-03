@@ -261,6 +261,7 @@ if mode == 'local':
     assert 'AW_ORIGIN_' in screen['result']['text']
     assert value.get('presentation') == 1
     presentation()
+    print(call(['python3', Path(__file__).with_name('origin-job-acceptance.py'), run_path], timeout=150).stdout.strip())
     for command in [['zmx','kill',name,'--json'],['session','close',run['pane']]]:
         call([adapter,*command],success=False)
     print('PASS single discovery, exact PTY input/read, borrowed close, unsupported controls')

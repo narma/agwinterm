@@ -1,6 +1,6 @@
 # Tasks
 
-Apply started on 2026-11-02; 13/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
+Apply started on 2026-11-02; 17/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
 
 ### Apply finding: distinguish presentation loss from job-channel loss
 
@@ -40,10 +40,10 @@ Approved delegated single-choice policy: initial first item and exclusive nonbla
 
 ## 5. Origin-run program overlays
 
-- [ ] 5.1 Add origin slot reservations, expiring single-claim job records and scoped `session overlay run-job` support in the bundled WSL adapter; test wrong owner/session/account, duplicate claim, timeout and refused-before-spawn with no base workload creation.
-- [ ] 5.2 Add Rust-hosted viewer job surfaces and origin execution/result plumbing; test command/cwd/environment staying on the origin, PTY input/resize, pane mapping, wait/exit/close and supported sizing, and document refused operations.
-- [ ] 5.3 Fence job callbacks and cleanup across presenter loss, failed claim and owner removal; test unclaimed reservation retirement, ended held-surface cleanup, running-job survival on presentation-only loss, orphan cleanup on job-channel exit, no adoption/replay, one settled result, released slots and surviving base ZMX terminals.
-- [ ] 5.4 Run real-peer job creation/input/resize/exit/wait/close and separate presentation-only loss, job-channel loss and explicit-close cases in both directions; prove the program ran only on the origin using markers not satisfiable by echoed input.
+- [x] 5.1 Add origin slot reservations, expiring single-claim job records and scoped `session overlay run-job` support in the bundled WSL adapter; test wrong owner/session/account, duplicate claim, timeout and refused-before-spawn with no base workload creation.
+- [x] 5.2 Add Rust-hosted viewer job surfaces and origin execution/result plumbing; test command/cwd/environment staying on the origin, PTY input/resize, pane mapping, wait/exit/close and supported sizing, and document refused operations.
+- [x] 5.3 Fence job callbacks and cleanup across presenter loss, failed claim and owner removal; test unclaimed reservation retirement, ended held-surface cleanup, running-job survival on presentation-only loss, orphan cleanup on job-channel exit, no adoption/replay, one settled result, released slots and surviving base ZMX terminals.
+- [x] 5.4 Run real-peer job creation/input/resize/exit/wait/close and separate presentation-only loss, job-channel loss and explicit-close cases in both directions; prove the program ran only on the origin using markers not satisfiable by echoed input.
 
 ## 6. Remote web pages
 

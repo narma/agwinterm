@@ -16,6 +16,7 @@ public static class CtlArguments
         ["zmx list"] = "window profile", ["zmx attach"] = "window profile daemon incarnation",
         ["zmx export tree"] = "window distribution user origin executable socket-directory adapter",
         ["zmx export present"] = "window target distribution user origin executable socket-directory adapter",
+        ["zmx export job"] = "window target distribution user origin executable socket-directory adapter job",
         ["zmx export ready"] = "window distribution user origin executable socket-directory adapter",
         ["zmx remote list"] = "window distribution user host agent-socket origin-socket",
         ["zmx remote attach"] = "window distribution user host agent-socket origin-socket bridge session",

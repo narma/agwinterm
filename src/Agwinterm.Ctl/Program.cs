@@ -20,7 +20,7 @@ if (args.Length > 0 && args[0].Equals("pick", StringComparison.OrdinalIgnoreCase
     return Agwinterm.Ctl.PickCli.Run(args);
 if (args.Length > 0 && args[0].Equals("ask", StringComparison.OrdinalIgnoreCase))
     return Agwinterm.Ctl.AskCli.Run(args);
-if (args.Length >= 3 && args[0] == "zmx" && args[1] == "export" && args[2] == "present")
+if (args.Length >= 3 && args[0] == "zmx" && args[1] == "export" && args[2] is "present" or "job")
     return await Agwinterm.Ctl.PresentationCli.RunAsync(args);
 
 if (args.Length == 0)

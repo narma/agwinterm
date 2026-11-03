@@ -4,6 +4,8 @@ namespace Agwinterm.Pty;
 
 public interface IAgtermPresentationOriginHost
 {
+    AgtermOverlayJob OpenOverlayJob(string session, string job, System.Text.Json.JsonElement args, string account)
+        => throw new IOException("Origin jobs unavailable");
     AgtermOriginPresentationLease OpenPresentation(string session, System.Text.Json.JsonElement args,
         string account, AgtermPresentationHello hello);
 }
@@ -43,7 +45,7 @@ public static class AgtermPresentationStream
                     if (frame.Generation != subscription.Generation) continue;
                     if (frame.Kind == "ack") Interlocked.Exchange(ref lastAck, Environment.TickCount64);
                     else if (frame.Kind == "presenter.acquire") subscription.AcquirePresenter();
-                    else if (frame.Kind is "ask.resolve" or "ask.rejected" && receive is not null)
+                    else if (frame.Kind is "ask.resolve" or "ask.rejected" or "overlay.rejected" or "overlay.closed" && receive is not null)
                         await receive(frame, stopped.Token).WaitAsync(stopped.Token).ConfigureAwait(false);
                     else if (frame.Kind == "ping")
                     {

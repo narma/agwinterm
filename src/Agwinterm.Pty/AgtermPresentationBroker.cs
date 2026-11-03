@@ -136,6 +136,15 @@ public sealed class AgtermPresentationBroker
             && entry.Grant.Authorizes(subscriber.Generation, owner);
     }
 
+    public void ClaimJob(AgtermOverlayJob job, Subscription subscriber, long now)
+    {
+        lock (_gate)
+        {
+            if (!Authorizes(job.Scope, subscriber, job.Owner)) throw new IOException("Job presenter retired");
+            job.Claim(job.Scope, subscriber.Generation, job.Owner, now);
+        }
+    }
+
     private void Unsubscribe(AgtermOriginPresentationScope scope, Subscription subscriber)
     {
         lock (_gate)

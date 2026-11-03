@@ -1,5 +1,5 @@
 param([string]$Distro='Ubuntu', [string]$LinuxUser='alzo', [Parameter(Mandatory)][string]$BuildDirectory,
-    [string]$Destination, [string]$AgentSocket, [string]$MacAgentSocket, [string]$MacApp, [string]$PeerHost='wsl', [bool]$ManualQuestion=$false)
+    [string]$Destination, [string]$AgentSocket, [string]$MacAgentSocket, [string]$MacApp, [string]$PeerHost='wsl', [bool]$ManualQuestion=$false, [bool]$ManualJob=$false)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslOriginExport -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -84,6 +84,59 @@ try {
     Driver 'split'
     if ($Destination) { Driver 'peer-split' }
     if ($Destination) {
+        $jobCommand='printf "AW_JOB_OS=%s CWD=%s\n" "$(uname -s)" "$PWD"; sleep 3; exit 7'
+        $job=Ctl @('session','overlay','open',$jobCommand,'--cwd','/tmp','--wait','--size-percent','60','--target',$pane,'--window',$window)
+        Driver 'peer-job-visible'
+        for($i=0;$i -lt 50;$i++) {
+            $result=& $ctl session overlay result --target $pane --window $window --pipe $id --json | ConvertFrom-Json
+            if($result.ok -and $result.result -eq 'exit 7') { break }
+            Start-Sleep -Milliseconds 200
+        }
+        if(-not $result.ok -or $result.result -ne 'exit 7') { throw "Origin job result missing: $($result|ConvertTo-Json -Compress)" }
+        $null=Ctl @('session','overlay','close','--target',$pane,'--window',$window)
+        Driver 'peer-job-absent'
+        Write-Host 'PASS Windows/WSL origin retains authoritative exit 7 after actual Mac PTY program'
+        $null=Ctl @('session','overlay','open',$jobCommand,'--cwd','/tmp','--wait','--pane','right','--target',$pane,'--window',$window)
+        Driver 'peer-job-pane-visible'
+        Start-Sleep -Seconds 4
+        $paneResult=Ctl @('session','overlay','result','--pane','right','--target',$pane,'--window',$window)
+        if($paneResult -ne 'exit 7') { throw "Mapped pane job result mismatch: $paneResult" }
+        $null=Ctl @('session','overlay','close','--pane','right','--target',$pane,'--window',$window)
+        Write-Host 'PASS mapped right-pane program on actual Mac viewer retains origin result'
+        foreach($loss in @('presentation','job-channel','origin-close')) {
+            $duration=if($loss -eq 'presentation') {'5'} else {'300'}
+            $command='printf "AW_JOB_OS=%s CWD=%s\n" "$(uname -s)" "$PWD"; sleep '+$duration+'; exit 9'
+            $null=Ctl @('session','overlay','open',$command,'--cwd','/tmp','--wait','--size-percent','50','--target',$pane,'--window',$window)
+            Driver 'peer-job-visible'
+            $null=Ctl @('session','overlay','resize','--size-percent','70','--target',$pane,'--window',$window)
+            if($loss -eq 'presentation') { Driver 'peer-presentation-loss' }
+            elseif($loss -eq 'job-channel') { Driver 'peer-job-channel-loss' }
+            else { $null=Ctl @('session','overlay','close','--target',$pane,'--window',$window) }
+            Driver 'peer-job-absent'
+            for($i=0;$i -lt 60;$i++) {
+                $outcome=& $ctl session overlay result --target $pane --window $window --pipe $id --json | ConvertFrom-Json
+                if($outcome.ok) { break }
+                Start-Sleep -Milliseconds 200
+            }
+            if(-not $outcome.ok -or ($loss -eq 'presentation' -and $outcome.result -ne 'exit 9') -or ($loss -eq 'origin-close' -and $outcome.result -ne 'closed')) { throw "Job $loss outcome mismatch: $($outcome|ConvertTo-Json -Compress)" }
+            Write-Host "PASS actual Mac viewer $loss settles origin result: $($outcome.result)"
+        }
+        if($ManualJob) {
+            $command='printf "STAGE 4 PROGRAM INPUT TEST\nType STAGE4_JOB_OK then press Enter: "; read answer; printf "\nRECEIVED: %s\n" "$answer"; [ "$answer" = STAGE4_JOB_OK ] && exit 23; exit 24'
+            $null=Ctl @('session','overlay','open',$command,'--cwd','/tmp','--wait','--follow','--size-percent','80','--target',$pane,'--window',$window)
+            Driver 'peer-job-manual-show'
+            Write-Host "MANUAL JOB READY: type STAGE4_JOB_OK then Enter in isolated Mac overlay. Evidence=$linuxRoot"
+            $deadline=[DateTime]::UtcNow.AddMinutes(15)
+            do {
+                $outcome=& $ctl session overlay result --target $pane --window $window --pipe $id --json | ConvertFrom-Json
+                if($outcome.ok -and $outcome.result -like 'exit *') { break }
+                Start-Sleep -Milliseconds 500
+            } while([DateTime]::UtcNow -lt $deadline)
+            if(-not $outcome.ok -or $outcome.result -ne 'exit 23') { throw "Manual job input not confirmed: $($outcome|ConvertTo-Json -Compress)" }
+            Write-Host 'PASS manual Mac overlay input reached the WSL origin; authoritative exit 23'
+            $null=Ctl @('session','overlay','close','--target',$pane,'--window',$window)
+            Driver 'peer-job-absent'
+        }
         $null=Ctl @('session','context','STAGE4_ORIGIN_CONTEXT','--target',$pane,'--window',$window)
         $null=Ctl @('session','status','blocked','--target',$pane,'--window',$window)
         $null=Ctl @('session','hud','open','STAGE4_ORIGIN_HUD','--hide-after','60','--target',$pane,'--window',$window)
