@@ -235,3 +235,6 @@ exit 0
     if (-not $full.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid fixture cleanup path' }
     Remove-Item -LiteralPath $full -Recurse -Force
 }
+# GitHub's pwsh wrapper propagates LASTEXITCODE. The final child probe fails
+# deliberately; only reaching here means every assertion and cleanup succeeded.
+exit 0
