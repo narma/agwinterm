@@ -10,6 +10,9 @@ namespace Agwinterm.Pty.Tests;
 internal sealed class FakeSessionHost : ISessionHost, IWslLiveHost, IAgtermPresentationOriginHost
 {
     public Func<string, System.Text.Json.JsonElement, string, AgtermPresentationHello, AgtermPresentationBroker.Subscription>? PresentationOpen { get; set; }
+    public Func<string, string, System.Text.Json.JsonElement, string, AgtermOverlayJob>? JobOpen { get; set; }
+    public AgtermOverlayJob OpenOverlayJob(string session, string job, System.Text.Json.JsonElement args, string account)
+        => JobOpen?.Invoke(session, job, args, account) ?? throw new IOException("Jobs unavailable");
     public AgtermOriginPresentationLease OpenPresentation(string session, System.Text.Json.JsonElement args, string account, AgtermPresentationHello hello)
         => new(PresentationOpen?.Invoke(session, args, account, hello) ?? throw new IOException("Presentation unavailable"), () => PresentationOpen is not null);
     public int LiveCalls { get; private set; }

@@ -14,8 +14,12 @@ public sealed partial class ControlServer
         async Task Send(object value)
         {
             await writeLock.WaitAsync(stop.Token).ConfigureAwait(false);
-            try { await writer.WriteLineAsync(JsonSerializer.Serialize(value).AsMemory(), stop.Token)
-                .WaitAsync(TimeSpan.FromSeconds(5), stop.Token).ConfigureAwait(false); }
+            try
+            {
+                Task writing = writer.WriteLineAsync(JsonSerializer.Serialize(value).AsMemory(), CancellationToken.None);
+                try { await writing.WaitAsync(TimeSpan.FromSeconds(5), stop.Token).ConfigureAwait(false); }
+                catch { pipe.Dispose(); try { await writing.ConfigureAwait(false); } catch { } throw; }
+            }
             finally { writeLock.Release(); }
         }
         var cancel = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

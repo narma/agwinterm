@@ -9,6 +9,46 @@ namespace Agwinterm.Pty.Tests;
 public class AgtermPresentationPipeTests
 {
     [Theory]
+    [InlineData("exit")]
+    [InlineData("cancel")]
+    [InlineData("stall")]
+    public async Task JobChannelRetainsOutcomeAndBoundsAnUnreadContext(string mode)
+    {
+        var router = new Router();
+        string name = "aw-job-test-" + Guid.NewGuid().ToString("N"), session = Guid.NewGuid().ToString();
+        var scope = new AgtermOriginPresentationScope(WindowsIdentity.GetCurrent().User!.Value, router.Id, session,
+            new("Ubuntu", "alice", "origin", "/usr/bin/zmx", "/tmp/zmx"));
+        var job = new AgtermOverlayJob(scope, 1, 1, null,
+            JsonSerializer.SerializeToElement(new { command = new string('x', mode == "stall" ? 100_000 : 1) }), false, 0);
+        router.Host.JobOpen = (s, id, _, account) =>
+        {
+            Assert.Equal(job.Id, id); job.Claim(scope with { Session = s, Account = account }, 1, 1, 1); return job;
+        };
+        using var server = new ControlServer(router.Host, router, name);
+        server.Start();
+        using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
+        await client.ConnectAsync(2000);
+        var request = JsonSerializer.Serialize(new { cmd = "zmx.export.job", window = router.Id, target = session, job = job.Id,
+            args = new { distribution = "Ubuntu", user = "alice", origin = "origin", executable = "/usr/bin/zmx", socketDirectory = "/tmp/zmx", adapter = "/tmp/adapter" } });
+        await client.WriteAsync(Encoding.UTF8.GetBytes(request + "\n"));
+        if (mode == "stall")
+        {
+            Assert.Equal("channel-lost", await job.Completion.WaitAsync(TimeSpan.FromSeconds(10)));
+            return;
+        }
+        using var reader = new StreamReader(client, Encoding.UTF8, false, 4096, true);
+        Assert.Contains("context", await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
+        if (mode == "cancel")
+        {
+            job.Close();
+            Assert.Contains("cancel", await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
+        }
+        await client.WriteAsync("{\"kind\":\"exit\",\"code\":17}\n"u8.ToArray());
+        Assert.Null(await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.Equal(mode == "cancel" ? "closed" : "exit 17", await job.Completion);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task BundledCliExitsWithOpenStdinAndClosedOriginOrStalledStdout(bool stalledOutput)

@@ -54,6 +54,8 @@ public class SessionInputTests
         program.GetField("_quick", fields)!.SetValue(app, pane);
         var observation = new ControlObservation("quick-window");
         program.GetField("_observation", fields)!.SetValue(app, observation);
+        var jobs = program.GetField("_replicaJobs", fields)!;
+        jobs.SetValue(app, Activator.CreateInstance(jobs.FieldType));
         observation.ObservePane("quick:old", new StatusSignal());
         using var cancel = new CancellationTokenSource();
         var wait = observation.WaitAsync("pane", "quick:old", new HashSet<AgentStatus> { AgentStatus.Completed }, cancellationToken: cancel.Token);
