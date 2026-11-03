@@ -339,6 +339,15 @@ attempts to export partial evidence. Stopping/removing a VM uses its returned ID
 never a process-name wildcard or another session's VM name. If shutdown or export
 fails, the VM/disks are retained and the run fails.
 
+Installed workers preserve any job containing `run/vm` or
+`recovery-required.json`, including after a worker restart. These jobs live in
+`C:\ProgramData\AgwintermUiHost\jobs\slot-<n>\<job-id>` and require administrator
+recovery; they are not automatically deleted. Inspect the job's
+`run/hyperv-run.json`, recover evidence, and stop/remove only its recorded VM.
+After detaching its disks, remove that exact job directory. Retained running VMs
+still count against the shared limit. Updating an existing host also requires
+these retained jobs to be handled first.
+
 Normally the VM and its temporary disks are removed after export, on both passing
 and failing tests. Use `-KeepVM` to retain the **stopped** VM and disks for manual
 inspection. Before restarting a retained VM for diagnosis, detach its payload

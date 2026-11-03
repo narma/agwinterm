@@ -205,6 +205,27 @@ try {
         } finally { $script:vms = $savedVMs }
     }
     Test-AdmissionQueue
+    # Exercise the actual worker cleanup function without starting SYSTEM/IPC.
+    $workerAst = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot/hyperv-ui-worker.ps1", [ref]$null, [ref]$null)
+    $cleanupAst = $workerAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Remove-OwnedJob'}, $true)
+    . ([scriptblock]::Create($cleanupAst.Extent.Text))
+    $slotRoot = Join-Path $temporary 'slot-0'
+    $recoveryJob = Join-Path $slotRoot ([guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path "$recoveryJob/run/vm" -Force
+    'unexported evidence' | Set-Content "$recoveryJob/run/vm/payload.vhdx"
+    Remove-OwnedJob $recoveryJob
+    Check 'worker preserves retained disks and marks administrator recovery' ((Test-Path "$recoveryJob/run/vm/payload.vhdx") -and (Test-Path "$recoveryJob/recovery-required.json"))
+    Remove-OwnedJob $recoveryJob
+    Check 'worker restart cleanup preserves recovery evidence' ((Get-Content "$recoveryJob/run/vm/payload.vhdx") -eq 'unexported evidence')
+    $markedJob = Join-Path $slotRoot ([guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path $markedJob
+    '{}' | Set-Content "$markedJob/recovery-required.json"
+    Remove-OwnedJob $markedJob
+    Check 'recovery marker prevents deletion even without VM files' (Test-Path $markedJob)
+    $completedJob = Join-Path $slotRoot ([guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path "$completedJob/export" -Force
+    Remove-OwnedJob $completedJob
+    Check 'completed worker jobs still clean up automatically' (-not (Test-Path $completedJob))
     # Run the real batch coordinator against script-only probes, never UI.
     $batchFixture = Join-Path $temporary 'batch-worker'
     $null = New-Item -ItemType Directory -Path $batchFixture

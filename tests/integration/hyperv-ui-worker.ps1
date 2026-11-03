@@ -15,6 +15,17 @@ $null = New-Item -ItemType Directory -Path $slotRoot -Force
 function Remove-OwnedJob([string]$Directory) {
     $full = [IO.Path]::GetFullPath($Directory)
     if (-not $full.StartsWith($slotRoot.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase) -or (Split-Path $full -Leaf) -notmatch '^[0-9a-f]{32}$') { throw 'Invalid worker cleanup path.' }
+    # The host removes run/vm only after successful export and cleanup. Its
+    # presence also covers an interrupted worker: never discard unexported data.
+    $recovery = Join-Path $full 'recovery-required.json'
+    if ((Test-Path -LiteralPath $recovery) -or (Test-Path -LiteralPath (Join-Path $full 'run/vm'))) {
+        if (-not (Test-Path -LiteralPath $recovery)) {
+            @{schema=1;reason='VM files retained or worker interrupted; administrator recovery required';utc=[DateTime]::UtcNow.ToString('o')} |
+                ConvertTo-Json | Set-Content -LiteralPath $recovery
+        }
+        Write-Warning "Preserving UI job for administrator recovery: $full"
+        return
+    }
     $manifest = Join-Path $full 'run/hyperv-run.json'
     if (Test-Path $manifest) {
         $run = Get-Content $manifest -Raw | ConvertFrom-Json
@@ -31,7 +42,8 @@ function Remove-OwnedJob([string]$Directory) {
     Remove-Item -LiteralPath $full -Recurse -Force
 }
 # Each slot is a separate IgnoreNew scheduled task. Recover only its own jobs
-# after a host restart or task crash, never another slot/worktree's VMs.
+# after a host restart or task crash. Jobs with VM files or recovery markers
+# remain untouched until an administrator recovers them.
 foreach ($old in Get-ChildItem $slotRoot -Directory) { Remove-OwnedJob $old.FullName }
 
 $security = [IO.Pipes.PipeSecurity]::new()
