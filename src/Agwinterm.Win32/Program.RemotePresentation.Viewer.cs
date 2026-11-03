@@ -65,7 +65,7 @@ internal partial class Program
                 try
                 {
                     foreach (var binding in replica.Bindings) await _remoteOperations.RevalidateAsync(binding, ct).ConfigureAwait(false);
-                    await new AgtermPresentationTransport().RunAsync(replica.Bindings[0], ["status", "context", "hud", "notify", "sound", "layout", "ask.form", "ask.other"],
+                    await new AgtermPresentationTransport().RunAsync(replica.Bindings[0], SupportedPresentationKinds,
                         async (frame, token) => await PresentationUiAsync(() =>
                         {
                             token.ThrowIfCancellationRequested();
@@ -74,6 +74,7 @@ internal partial class Program
                                 .ToDictionary(p => p.Origin, p => p.Local);
                             if (ApplyRemoteQuestion(session, replica, frame, mapping)) return;
                             if (ApplyReplicaJob(session, replica, frame, mapping)) return;
+                            if (ApplyReplicaPage(session, replica, frame, mapping)) return;
                             if (frame.Kind == "sound")
                             {
                                 var name = AgtermPresentationSound.Read(frame.Body);
@@ -144,6 +145,7 @@ internal partial class Program
         session.PresentationQuestion.Disconnected();
         DismissReplicaQuestion(replica);
         OrphanReplicaJobs(replica);
+        CloseReplicaPages(replica);
         replica.State.Clear();
         replica.Connected = false;
         if (session.HudMirrored) ClearHud(session);

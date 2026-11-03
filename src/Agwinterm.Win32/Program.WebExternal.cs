@@ -22,6 +22,7 @@ internal partial class Program
 
     private static void OpenWebInBrowser(WebPage page)
     {
+        if (page.Replica?.FilePath is not null) throw new ArgumentException("Remote files cannot be opened from viewer disk");
         if (page.Resources is null)
         {
             string destination = page.CommittedUrl ?? page.CurrentUrl ?? page.Request.Url!;

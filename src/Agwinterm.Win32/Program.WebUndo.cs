@@ -21,6 +21,9 @@ internal partial class Program
         if (!BrowserPreferences.UndoClose) return false;
         var roots = owners.Where(s => !s.Closing).ToHashSet();
         var members = AllSessions().Where(s => roots.Contains(s) || roots.Any(p => s.PageParentId == p.Id)).ToArray();
+        // A delegated page is ephemeral and cannot be parked/adopted by undo-close.
+        foreach (var page in _webPages.Select(pair => pair.Value).Where(p => (p.Origin is not null || p.Replica is not null) && members.Contains(p.Owner)).ToArray())
+            CloseWebPage(page.Owner, page.Pane);
         var parked = workspace is null ? [] : _softWebCloses.Where(c => c.Members.Any(m => m.Session.Ws == workspace)).ToArray();
         if (!members.Any(s => _webPages.Any(pair => ReferenceEquals(pair.Value.Owner, s))) && parked.Length == 0) return false;
         string? selected = _active?.Id;

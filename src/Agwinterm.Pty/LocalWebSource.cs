@@ -35,7 +35,7 @@ public sealed class LocalWebSource
             }
             if (!path.StartsWith(root.TrimEnd('/') + "/", StringComparison.Ordinal)) throw new ArgumentException("HTML file must be inside cwd");
             var source = new LocalWebSource(root, path[(root.TrimEnd('/').Length + 1)..], WslIntegration.WindowsPath(profile!, path), profile, grant is not null);
-            source.Read("/" + source.EntryUrlPath, maxBytes);
+            source.ValidateEntry(maxBytes);
             return source;
         }
         string full = Path.IsPathFullyQualified(file) ? Path.GetFullPath(file) : Path.GetFullPath(file,
@@ -55,8 +55,16 @@ public sealed class LocalWebSource
         if (!full.StartsWith(canonicalRoot + "\\", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("HTML file must be inside cwd");
         string external = full.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + full[8..] : full.StartsWith(@"\\?\") ? full[4..] : full;
         var result = new LocalWebSource(canonicalRoot, full[(canonicalRoot.Length + 1)..].Replace('\\', '/'), external, null, grant is not null);
-        result.Read("/" + result.EntryUrlPath, maxBytes);
+        result.ValidateEntry(maxBytes);
         return result;
+    }
+
+    private void ValidateEntry(int maxBytes)
+    {
+        if (maxBytes != int.MaxValue) { Read("/" + EntryUrlPath, maxBytes); return; }
+        // Opening a page validates the grant without materializing an arbitrarily large document.
+        using var stream = OpenReadAsync("/" + EntryUrlPath, CancellationToken.None).GetAwaiter().GetResult();
+        _ = stream.ReadByte();
     }
 
     private string RelativePath(string uriPath)

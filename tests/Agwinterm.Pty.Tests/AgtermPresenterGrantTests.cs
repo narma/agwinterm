@@ -4,6 +4,23 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermPresenterGrantTests
 {
+    [Fact] public void PageClaimCannotMoveToAnotherPresenterAfterDisconnect()
+    {
+        var broker = new AgtermPresentationBroker();
+        var scope = new AgtermOriginPresentationScope("account", Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), new("Ubuntu", "alice", "origin", "/usr/bin/zmx", "/tmp/zmx"));
+        broker.Register(scope, JsonSerializer.SerializeToElement(new { }), [], presenterReady: true);
+        var hello = new AgtermPresentationHello(1, [], "presenter");
+        using var first = broker.Subscribe(scope, hello);
+        using var second = broker.Subscribe(scope, hello);
+        Assert.True(first.AcquirePresenter());
+        var grant = new AgtermPageGrant(scope, first.Generation, broker.PresenterOwner(scope, first)!.Value, true, 0);
+        Assert.Throws<IOException>(() => broker.ClaimPage(grant, second, 1));
+        Assert.False(grant.IsClaimed);
+        first.Dispose(); Assert.True(second.AcquirePresenter());
+        Assert.Throws<IOException>(() => broker.ClaimPage(grant, first, 2));
+        Assert.Throws<IOException>(() => broker.ClaimPage(grant, second, 2));
+        Assert.False(grant.IsClaimed);
+    }
     [Fact] public void FirstAcquireWinsUntilDisconnectAndOldAnswersLoseAuthority()
     {
         var grant = new AgtermPresenterGrant();

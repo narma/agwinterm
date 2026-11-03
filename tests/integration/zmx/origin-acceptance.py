@@ -262,7 +262,9 @@ def geometry(value):
         except ProcessLookupError: pass
         os.waitpid(pid,0)
 
-if mode == 'local':
+if mode == 'peer-pages':
+    print(call(['python3', Path(__file__).with_name('origin-page-peer.py'), run_path], timeout=180).stdout.strip())
+elif mode == 'local':
     value = tree()
     assert len(selected(value)['panes']) == 1
     (root/'single.json').write_text(json.dumps(value))
@@ -273,6 +275,7 @@ if mode == 'local':
     assert value.get('presentation') == 1
     presentation()
     print(call(['python3', Path(__file__).with_name('origin-job-acceptance.py'), run_path], timeout=150).stdout.strip())
+    print(call(['python3', Path(__file__).with_name('origin-page-acceptance.py'), run_path], timeout=150).stdout.strip())
     for command in [['zmx','kill',name,'--json'],['session','close',run['pane']]]:
         call([adapter,*command],success=False)
     print('PASS single discovery, exact PTY input/read, borrowed close, unsupported controls')

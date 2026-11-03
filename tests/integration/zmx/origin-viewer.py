@@ -141,7 +141,7 @@ if action == 'single':
 import os,sys,shlex,json,pathlib
 args=sys.argv[1:]
 if '-G' not in args and len(args)>=2 and args[-2] == HOST:
-    if '/manifests/' in args[-1] or 'zmx present ' in args[-1] or 'session overlay run-job ' in args[-1]:
+    if '/manifests/' in args[-1] or 'zmx present ' in args[-1] or 'session overlay run-job ' in args[-1] or 'session overlay page-serve ' in args[-1]:
         pathlib.Path(LOG_ROOT+'/ssh-'+str(os.getpid())+'.json').write_text(json.dumps({'pid':os.getpid(),'command':args[-1]}))
     args[-1]=shlex.join(['/usr/bin/env','PATH='+REMOTE_PATH+':/usr/bin:/bin','/bin/sh','-c',args[-1]])
 os.execv('/usr/bin/ssh',['ssh']+args)
@@ -193,18 +193,19 @@ elif action == 'job-manual-show':
     ctl('window','minimize',info['window'],'off')
     ctl('window','select',info['window'])
     print('MANUAL JOB READY: STAGE4_JOB_OK then Enter; isolated app='+str(bundle))
-elif action == 'job-channel-loss':
+elif action in ['job-channel-loss','page-channel-loss']:
     info=json.loads((root/'imported.json').read_text())
     killed=[]
     for record in root.glob('ssh-*.json'):
         entry=json.loads(record.read_text())
         p=subprocess.run(['ps','-p',str(entry['pid']),'-o','comm=','-o','args='],capture_output=True,text=True)
-        if p.returncode==0 and 'ssh' in p.stdout and 'session overlay run-job ' in p.stdout and config['root']+'/endpoint' in p.stdout:
+        command='session overlay page-serve ' if action=='page-channel-loss' else 'session overlay run-job '
+        if p.returncode==0 and 'ssh' in p.stdout and command in p.stdout and config['root']+'/endpoint' in p.stdout:
             os.kill(entry['pid'],signal.SIGTERM); killed.append(entry['pid'])
-    assert killed,'no isolated job SSH found'
+    assert killed,'no isolated overlay SSH found'
     time.sleep(2)
-    ctl('session','overlay','close','--target',info['id'])
-    print('PASS killed only isolated Mac job channel and closed its held surface')
+    if action=='job-channel-loss': ctl('session','overlay','close','--target',info['id'])
+    print('PASS killed only isolated Mac overlay channel: '+action)
 elif action in ['job-visible','job-pane-visible']:
     info=json.loads((root/'imported.json').read_text())
     for _ in range(100):
@@ -247,6 +248,15 @@ elif action in ['manual-show','question-visible']:
         ctl('window','select',info['window'])
     (root/'manual-ready.json').write_text(json.dumps({'window':info['window'],'session':info['id'],'ask':rows[0]['ask']},indent=2))
     print('PASS actual Mac question replica has exact origin ID' if action=='question-visible' else 'MANUAL MAC READY: Stage 4: manual Mac answer; type STAGE4_MAC_ANSWER and Confirm test; isolated app='+str(bundle))
+elif action == 'page-ready':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(160):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and rows[0].get('presentation',{}).get('state')=='connected': break
+        time.sleep(.25)
+    else: raise RuntimeError('presentation did not reconnect after page loss')
+    assert not rows[0].get('htmlOverlays'), 'page replayed after reconnect'
+    print('PASS Mac presentation reconnected without recreating a page')
 elif action in ['question-absent','presentation-loss']:
     info=json.loads((root/'imported.json').read_text())
     if action=='presentation-loss':

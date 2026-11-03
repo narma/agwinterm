@@ -1,6 +1,6 @@
 # Tasks
 
-Apply started on 2026-11-02; 17/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
+Apply started on 2026-11-02; 19/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
 
 ### Apply finding: distinguish presentation loss from job-channel loss
 
@@ -49,10 +49,10 @@ Approved delegated single-choice policy: initial first item and exclusive nonbla
 
 ## 6. Remote web pages
 
-In progress (2026-11-03): page frame/grant models, bounded resource/bridge server, internal scoped CLI/Rust `page-serve` relay and streaming origin file reads are implemented and model-tested. Page capabilities remain unadvertised: origin slot/presenter integration, viewer WebView2 adaptation and actual-peer acceptance are not complete. Task 6.3's concrete general-bridge command allowlist is awaiting user clarification; the existing local bridge permits broader application commands than the remote target-scope requirement. No checkbox is completed by these infrastructure checks.
+In progress (2026-11-03): origin grants/slots, scoped resources, WebView2 adaptation and the approved page/session-only bridge are integrated; six page kinds are negotiated. Model checks and actual file/CSS/Unicode, URL, submission and channel-loss checks in both directions support completed tasks 6.1/6.2; see the development evidence for exact runs and incomplete regression cells. Remaining page tasks retain their full checks. The requested [manual IME/clean/offline scenario](../../../docs/agterm-stage4-manual-acceptance.md) is prepared for 6.6; preparing it does not complete acceptance.
 
-- [ ] 6.1 Add origin page grants and scoped `session overlay page-serve` handling with pinned resource/bridge framing; test single-use expiry, wrong presenter, queue limits, cancellation terminal frames and channel-loss waiter cleanup, documenting caps.
-- [ ] 6.2 Adapt local WebView2 resources to remote streams and origin-side containment checks; test sibling assets, Unicode paths, parent/symlink/reparse escapes, cross-page grants and origin paths never being read from viewer disk.
+- [x] 6.1 Add origin page grants and scoped `session overlay page-serve` handling with pinned resource/bridge framing; test single-use expiry, wrong presenter, queue limits, cancellation terminal frames and channel-loss waiter cleanup, documenting caps.
+- [x] 6.2 Adapt local WebView2 resources to remote streams and origin-side containment checks; test sibling assets, Unicode paths, parent/symlink/reparse escapes, cross-page grants and origin paths never being read from viewer disk.
 - [ ] 6.3 Integrate URL/file page options, bridge allowlists and isolated storage; test review/general grant boundaries, URL/subframe denial, target overrides, cross-endpoint storage isolation and missing-runtime refusal, and document supported options.
 - [ ] 6.4 Add ordered page commands/state and origin outcomes; test hide/show/resize/navigation/reload, stale document callbacks, submit/cancel/close races, token secrecy and no implicit page recreation after reconnect.
 - [ ] 6.5 Run real-peer file-assets and URL page matrices in both directions with allowed/refused bridge calls, submission/cancellation, channel loss and reload races; record origin outcomes and viewer cleanup.

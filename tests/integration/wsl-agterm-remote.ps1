@@ -61,7 +61,8 @@ function Peer-Ctl([string[]]$Command) {
     $raw=& wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes $Destination $quoted
     $peerExit=$LASTEXITCODE
     $reply=($raw -join "`n") | ConvertFrom-Json -Depth 100
-    if ($peerExit -ne 0 -and -not ($Command[0] -eq 'ask' -and $Command[1] -eq 'result' -and $reply.result -in @('pending','answered','escaped','cancelled'))) { throw "Peer control failed: $raw" }
+    $pageResult=$Command[0] -eq 'session' -and $Command[1] -eq 'overlay' -and $Command[2] -eq 'result' -and $reply.ok -and $reply.result.pageOutcome.outcome -in @('pending','dismissed')
+    if ($peerExit -ne 0 -and -not $pageResult -and -not ($Command[0] -eq 'ask' -and $Command[1] -eq 'result' -and $reply.result -in @('pending','answered','escaped','cancelled'))) { throw "Peer control failed: $raw" }
     if($reply.PSObject.Properties['result'] -and $reply.PSObject.Properties['ok']) { return $reply.result }
     return $reply
 }
@@ -127,6 +128,14 @@ public static class RemoteAskProbe {
         $null=Ctl @('zmx','remote','lead','--target',$import.panes[0].paneId,'--window',$window)
         $null=Await-Pane $import.panes[0].paneId
         $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        # Private-desktop LOCALAPPDATA is redirected; use the shared workspace for WSL input.
+        $pageConfig=Join-Path $repo "artifacts/$id-page-peer.json"
+        $linuxCtl=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u $ctl).Trim()
+        @{socket=$OriginSocket;destination=$Destination;agent=$AgentSocket;cli=$linuxCtl;pipe=$id;window=$window;session=$import.sessionId;origin=$origin} | ConvertTo-Json | Set-Content $pageConfig
+        $linuxConfig=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u $pageConfig).Trim()
+        $pageProbe=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u "$PSScriptRoot/zmx/viewer-page-peer.py").Trim()
+        & wsl.exe -d $Distro -u $LinuxUser --exec python3 $pageProbe $linuxConfig
+        if($LASTEXITCODE -ne 0) { throw 'Actual Mac-origin page acceptance failed' }
         $jobCommand='printf "AW_JOB_OS=%s CWD=%s\n" "$(uname -s)" "$PWD"; read answer; printf "AW_JOB_REPLY=%s\n" "$answer"; exit 7'
         $jobReply=Peer-Ctl @('session','overlay','open',$jobCommand,'--cwd','/tmp','--wait','--size-percent','60','--target',$origin)
         $jobRow=Await-Presentation { param($row) @($row.overlayDetails).Count -eq 1 }
@@ -272,6 +281,24 @@ public static class RemoteAskProbe {
         $null=Peer-Ctl @('ask','cancel',$questionId)
         if($geometry -ne (Ctl @('session','metrics','--target',$import.panes[0].paneId) | ConvertTo-Json -Compress)) { throw 'Presentation loss resized terminal' }
         Write-Host 'PASS real Mac-origin presentation-only loss dismisses replica, preserves pending origin question and never replays it'
+        $ui.Kill(); $ui.WaitForExit()
+        $runtime=$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER
+        try {
+            $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=Join-Path $state 'missing-runtime'
+            Start-Ui
+        } finally { $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime }
+        foreach ($item in $import.panes) { $null=Await-Pane $item.paneId }
+        $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        $openedPage=Peer-Ctl @('session','overlay','open','--url','https://example.com','--target',$origin)
+        for($i=0;$i -lt 50;$i++) {
+            $result=Peer-Ctl @('session','overlay','result','--page',$openedPage.pageID,'--target',$origin)
+            if($result.pageOutcome.outcome -eq 'dismissed') { break }
+            Start-Sleep -Milliseconds 100
+        }
+        if($result.pageOutcome.outcome -ne 'dismissed') { throw 'Missing viewer runtime did not refuse the remote page' }
+        $null=Await-Presentation { param($row) @($row.htmlOverlays | Where-Object { $_ }).Count -eq 0 }
+        $null=Ctl @('session','text','--target',$import.panes[0].paneId)
+        Write-Host 'PASS viewer UI restart preserves terminal; missing WebView2 refuses page and releases origin slot'
         $raw='{}' | & $ctl ask open --no-block --target ([guid]::NewGuid().ToString()) --window $window --pipe $id
         if ($LASTEXITCODE -eq 0) { throw 'Unknown exact session opened a question' }
         $raw='{}' | & $ctl ask open --no-block --target $import.sessionId --window $window --pipe $id

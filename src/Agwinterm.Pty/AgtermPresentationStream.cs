@@ -50,7 +50,7 @@ public static class AgtermPresentationStream
                     if (frame.Generation != subscription.Generation) continue;
                     if (frame.Kind == "ack") Interlocked.Exchange(ref lastAck, Environment.TickCount64);
                     else if (frame.Kind == "presenter.acquire") subscription.AcquirePresenter();
-                    else if (frame.Kind is "ask.resolve" or "ask.rejected" or "overlay.rejected" or "overlay.closed" && receive is not null)
+                    else if (frame.Kind is "ask.resolve" or "ask.rejected" or "overlay.rejected" or "overlay.closed" or "page.rejected" or "page.closed" or "page.state" && receive is not null)
                         await receive(frame, stopped.Token).WaitAsync(stopped.Token).ConfigureAwait(false);
                     else if (frame.Kind == "ping")
                     {

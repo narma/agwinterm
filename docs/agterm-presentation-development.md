@@ -1,6 +1,6 @@
 # Remote presentation development
 
-Stage 4 is in progress. Capable imported sessions open an independent presentation stream. Provisioned WSL origins advertise v1 only after the Windows endpoint confirms readiness. Presenter grants, the question subset and origin-run program jobs are enabled. Pages remain unimplemented and unadvertised.
+Stage 4 is in progress. Capable imported sessions open an independent presentation stream. Provisioned WSL origins advertise v1 only after the Windows endpoint confirms readiness. Presenter grants, the question subset, origin-run program jobs and the six negotiated page kinds are enabled. Full integrated and manual browser acceptance remain pending.
 
 Discovery retains a positive integer `remote.presentation`; absent, null, invalid or nonpositive optional values leave a usable terminal inventory with presentation unavailable. A higher positive version is a maximum-version advertisement; protocol v1 is the only implemented wire version. Persisted old bindings remain terminal-only. The pane UUID comes from the verified daemon name, matching upstream `ZmxSupport.paneIdentity` and `RemoteBinding`, never its left/right role. Presentation target keys include WSL distribution/user, SSH destination, origin control socket, endpoint, session and stable pane. Keys do not replace existing daemon-incarnation verification.
 
@@ -103,7 +103,7 @@ Exploratory runs are not full passes: `181823-6096809b` and `182038-3e4b9078` ex
 
 This replaces the need for manual input in these scoped Mac cases and strengthens tasks 4.4/5.4. Progress stays 17/27; it does not complete remote pages, the full passive/five-family matrices or browser release checks. Final CI and Greptile results belong to the PR head, not the older product acceptance commit.
 
-## Remote page channel groundwork (2026-11-03, incomplete integration)
+## Remote page channel groundwork (2026-11-03, historical pre-integration gate)
 
 The page codec round-trips actual pinned PageServe fixtures independently of presentation frames. It rejects duplicate fields, malformed UTF-8/JSON, invalid IDs, oversized frames and chunks. Limits are 262,144 bytes including newline, 65,536 decoded bytes per chunk, eight concurrent resource requests, eight bridge requests and eight queued output frames. File page grants expire after 30 seconds unless claimed once by their exact endpoint/account/window/session and presenter; URL pages do not claim a resource channel. These models are not yet connected to origin page slot arbitration.
 
@@ -113,4 +113,24 @@ Origin resource streams validate decoded relative paths and the opened file hand
 
 Local validation: Release Win32 x64 build passed with zero warnings/errors; 270 focused presentation/CLI/resource tests passed. A separate 18-test page/resource run explicitly enabled Ubuntu reads and passed. Linux helper tests passed 30/30 with one intentionally ignored subprocess worker. Seven host-free adapter protocol checks also passed, including invalid/missing page claims producing no control JSON on the page stream. Strict OpenSpec validation and whitespace checks passed. No new actual-Mac page or Windows UI acceptance is claimed. Existing question/program acceptance above remains the latest actual-peer evidence.
 
-The concrete general-page bridge command allowlist needs clarification before UI dispatch is connected: local trusted pages can access application-wide commands, while the remote design requires the original page/session scope and rejects target overrides. Review pages remain limited to submit/close. Task progress stays 17/27; manual IME and clean/offline release evidence also remain pending.
+The initial bridge allowlist question was resolved by the user on 2026-11-03; the implementation and evidence below supersede this historical groundwork status.
+
+## Integrated remote pages (2026-11-03)
+
+The origin now reserves the exact page slot and delegates its single-use grant to the current presenter. File resources use a per-page logical path namespace; viewer paths are never opened as local files. Windows WebView2 streams bounded network chunks into temporary response files, then releases each file at end-of-body, cancellation, reload or close. Eight resource and eight bridge requests are admitted independently; cancelled requests retain admission until a terminal frame or channel teardown. File channels have no idle deadline. URL pages have no resource channel or trusted command bridge.
+
+The approved general file-page bridge allows its own close/submit/hide/show/toggle/resize/reload/navigation and originating-session text/output/type/write/status operations. Application settings, batch, session creation/destruction and every target/window/pane/targets override refuse. Review origins retain only submit/close; the pinned wire has no review flag, so the Windows viewer enforces the general upper bound and the origin enforces the exact original grant. Window/pane IDs are supplied by the origin, never by page content. All remote subframes are blocked; file response CSP also blocks workers and objects. Local page permissions are unchanged.
+
+Supported page options are URL or file with an explicit optional resource directory, JavaScript policy, navigation chrome, browse, persistence, chromeless, background, follow, session sizing and stable full-pane placement. Origin-loopback URLs, image/companion delegation, viewer file-manager/browser opening of remote files and sized pane pages refuse. Temporary storage includes a unique viewer page; persistent partitions hash distribution, Linux user, SSH destination, origin socket, endpoint, origin window and origin session. Reconnect does not reuse a page or its grant. Missing viewer WebView2 refuses only the page.
+
+Commands carry monotonic sequence numbers; older state acknowledgements cannot undo newer origin commands. Reload/navigation cancel the previous document's resource/bridge requests and change its bridge token. Submission wins once at the origin even if close races the reply. Presentation/page-channel loss settles dismissal and releases the slot; no page is replayed by reconnect, undo-close or workspace restore.
+
+Actual-peer evidence at the pinned build:
+
+- `artifacts/wsl-ui/20261103T195737-f32ed6d9` passed Windows/WSL origin → actual Mac viewer HTML/CSS/Unicode rendering, idle channel, hide/show/resize/reload, general/review scope, global/target refusal, retained submission and URL dismissal, together with existing question/job/terminal restart regression. WSL evidence: `/tmp/aw-stage3-origin-KRwJGDHM`.
+- `artifacts/wsl-ui/20261103T200419-c87c2f27` passed actual Mac origin → Windows WebView2 file assets, URL, commands, scoped bridge submission, separate page/presentation loss, authoritative dismissal and no recreation, plus existing question/job/passive regressions.
+- `artifacts/wsl-ui/20261103T200340-3d5c038e` passed the added Mac-viewer page/presentation-loss checks. Its later program check exposed a test synchronization gap after reconnect; this run is not a full regression pass.
+- Release Win32 x64 build passed with zero warnings/errors; 302 focused presentation/CLI/resource tests passed with Ubuntu reads enabled, including queue/cancellation teardown, cross-page grants, Windows junctions, WSL symlinks, storage partitions and response-file release.
+- Background Sandbox `artifacts/sandbox/20261103T200359-9f6c8f0a` passed local WebView2, review denial, stale reload/subframe, owner cleanup, crash recovery and missing-runtime checks. `artifacts/sandbox/20261103T200532-2b9a6839` passed all 51 HUD checks. Mixed physical DPI remains unverified on this host; synthetic DPI is not a physical-monitor result.
+
+Tasks 6.1/6.2 are complete (19/27 overall). The remaining page/integrated tasks retain their full acceptance criteria. The requested [manual IME and clean/offline installer/portable scenario](agterm-stage4-manual-acceptance.md) is prepared; no manual pass is claimed. CI and Greptile evidence must refer to the final PR commit.

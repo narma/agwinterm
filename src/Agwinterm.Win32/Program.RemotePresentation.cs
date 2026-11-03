@@ -8,6 +8,7 @@ internal partial class Program : IAgtermPresentationOriginHost
 {
     private readonly AgtermPresentationBroker _presentationBroker = new();
     private static readonly string[] PassiveKinds = ["layout", "status", "context", "hud", "notify", "sound", "ask.form", "ask.other"];
+    private static string[] SupportedPresentationKinds => [.. PassiveKinds, .. PageKinds];
     private sealed record OriginPresentation(Ses Session, Pane[] Panes, WslLiveBinding[] Bindings, Dictionary<string, Guid> Mapping);
     private readonly Dictionary<AgtermOriginPresentationScope, OriginPresentation> _originPresentations = new();
 
@@ -36,14 +37,15 @@ internal partial class Program : IAgtermPresentationOriginHost
                 _presentationBroker.Retire(scope);
             var entry = new OriginPresentation(owner, exact, bindings, exact.Select((p, i) => (p.Id, Origin: mapped[i])).ToDictionary(p => p.Id, p => p.Origin));
             _originPresentations[scope] = entry;
-            _presentationBroker.Register(scope, OriginPresentationSnapshot(entry), PassiveKinds, presenterReady: true);
+            _presentationBroker.Register(scope, OriginPresentationSnapshot(entry), SupportedPresentationKinds, presenterReady: true);
             var subscription = _presentationBroker.Subscribe(scope, hello);
-            subscription.Closed += () => Post(() => { ReturnOriginQuestion(scope, subscription); OrphanOriginJobs(scope, subscription); });
+            subscription.Closed += () => Post(() => { ReturnOriginQuestion(scope, subscription); OrphanOriginJobs(scope, subscription); CloseOriginPages(scope, subscription); });
             return new AgtermOriginPresentationLease(subscription,
                 () => InvokeOnUiQueued(() => OriginPresentationCurrent(scope, entry)),
                 (frame, ct) => PresentationUiAsync(() =>
                 {
                     if (frame.Kind.StartsWith("overlay.", StringComparison.Ordinal)) ReceiveOriginJob(scope, subscription, frame);
+                    else if (frame.Kind.StartsWith("page.", StringComparison.Ordinal)) ReceiveOriginPage(scope, subscription, frame);
                     else ReceiveOriginQuestion(scope, subscription, entry, frame);
                 }, ct));
         });

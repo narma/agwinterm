@@ -87,6 +87,7 @@ try {
     $null=Await-Live $right
     Driver 'split'
     if ($Destination) { Driver 'peer-split' }
+    if ($Destination) { Driver 'peer-pages' }
     if ($Destination) {
         $jobCommand='printf "AW_JOB_OS=%s CWD=%s\n" "$(uname -s)" "$PWD"; sleep 3; exit 7'
         $job=Ctl @('session','overlay','open',$jobCommand,'--cwd','/tmp','--wait','--size-percent','60','--target',$pane,'--window',$window)

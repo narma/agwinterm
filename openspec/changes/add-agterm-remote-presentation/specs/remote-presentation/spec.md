@@ -104,6 +104,7 @@ An origin-created overlay job SHALL be claimed at most once by an authorized pre
 - **THEN** the reservation is retired without execution or the held surface closes, while the base terminal survives
 
 ### Requirement: Web pages use scoped resource and bridge channels
+
 A delegated page SHALL use distinct origin/local IDs and a single-use, expiring channel grant. File resources SHALL remain within the origin's authorized root. Bridge calls SHALL run only under the original page's grants and target scope. Tokens SHALL not appear in public readback or logs. The viewer SHALL NOT reinterpret an origin path as a local file.
 
 #### Scenario: Resource escapes the grant
@@ -113,6 +114,17 @@ A delegated page SHALL use distinct origin/local IDs and a single-use, expiring 
 #### Scenario: Page attempts a broader bridge call
 - **WHEN** a delegated page requests another session or a command outside its original grant
 - **THEN** the bridge refuses and neither viewer nor origin executes that command
+
+### Requirement: Remote page bridges retain a bounded command allowlist
+General file pages SHALL receive only own-page and originating-session authority. Review pages SHALL retain only submit/close. Viewer and origin SHALL reject routing overrides and broader commands. URL documents and subframes SHALL receive no bridge authority. Local trusted-page behavior SHALL remain unchanged.
+
+#### Scenario: General file page invokes an allowed operation
+- **WHEN** the current originating page invokes close/submit/hide/show/toggle/resize/reload/navigation, or its session's text/output/type/write/status
+- **THEN** the bridge applies the operation only to that original page/session
+
+#### Scenario: Page requests broader authority
+- **WHEN** a page supplies target/window/pane/targets overrides, batch, application settings, session creation/destruction or another command outside the allowlist
+- **THEN** the viewer and an Agwinterm origin reject it without dispatch
 
 ### Requirement: Web page controls and outcomes are revision fenced
 Page controls SHALL preserve supported hide/show, reload, navigation, resize and close behavior with ordered command acknowledgement. Navigation or reload SHALL invalidate old document callbacks. Submission and cancellation SHALL retain first origin completion. Missing viewer runtime or unsupported options SHALL refuse explicitly without affecting terminals or opening a substitute page.

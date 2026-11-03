@@ -145,6 +145,15 @@ public sealed class AgtermPresentationBroker
         }
     }
 
+    public void ClaimPage(AgtermPageGrant page, Subscription subscriber, long now)
+    {
+        lock (_gate)
+        {
+            if (!Authorizes(page.Scope, subscriber, page.Owner)) throw new IOException("Page presenter retired");
+            page.Claim(page.Scope, subscriber.Generation, page.Owner, now);
+        }
+    }
+
     private void Unsubscribe(AgtermOriginPresentationScope scope, Subscription subscriber)
     {
         lock (_gate)

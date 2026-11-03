@@ -59,7 +59,7 @@ internal partial class Program
         if (page.OriginLabel != IntPtr.Zero)
         {
             var shown = new Uri(page.CommittedUrl ?? OriginalWebUrl(page));
-            string identity = page.Resources is not null ? Path.GetFileName(page.Resources.ExternalPath) :
+            string identity = page.Replica?.FilePath is not null ? page.Replica.Identity : page.Resources is not null ? Path.GetFileName(page.Resources.ExternalPath) :
                 shown.AbsoluteUri;
             string origin = string.IsNullOrWhiteSpace(page.Title) ? identity : identity + "  ·  " + page.Title;
             if (page.PresentedOrigin != origin) Win32.SetWindowTextW(page.OriginLabel, origin);
@@ -127,7 +127,8 @@ internal partial class Program
                         OpenWebInBrowser(page);
                         break;
                     case 6:
-                        if (page.Resources is null) ClipboardSet(page.CurrentUrl ?? page.Request.Url!);
+                        if (page.Replica?.FilePath is not null) ClipboardSet(page.Replica.Identity);
+                        else if (page.Resources is null) ClipboardSet(page.CurrentUrl ?? page.Request.Url!);
                         else RevealWebFile(page);
                         break;
                 }

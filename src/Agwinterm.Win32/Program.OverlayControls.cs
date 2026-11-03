@@ -38,7 +38,11 @@ internal partial class Program
                 var pages = _webPages.Select(pair => pair.Value).Where(page => ReferenceEquals(page.Owner, allOwner)).ToArray();
                 var slots = allOwner.AllPanes.Select(p => p.Overlay).Append(allOwner.Overlay).Where(slot => slot.Term is not null).ToArray();
                 bool hide = action == "hide" || action == "toggle" && (pages.Any(page => !page.Hidden) || slots.Any(slot => !slot.Hidden));
-                foreach (var page in pages) page.Hidden = hide;
+                foreach (var page in pages)
+                {
+                    page.Hidden = hide;
+                    if (page.Origin is not null) SendOriginPageCommand(page, hide ? "hide" : "show");
+                }
                 foreach (var programSlot in slots) { programSlot.Hidden = hide; if (hide) CancelOverlaySelection(programSlot.Term!); }
                 if (ReferenceEquals(allOwner, _active) && allOwner.Overlay.Term is { } term)
                 { if (hide && ReferenceEquals(_cover, term)) { _ovlOwner = null; HideCover(); } else if (!hide) { _ovlOwner = allOwner; ShowCover(term, 3); } }
@@ -108,11 +112,13 @@ internal partial class Program
                 if (action == "resize")
                 {
                     web.Geometry = web.Geometry.Resize(options.Percent, options.Width, options.Height, options.Full || !options.HasSize);
+                    if (web.Origin is not null) SendOriginPageCommand(web, "resize");
                     UpdateWebPresentation(); RequestRedraw(); return "resized";
                 }
                 if (action is "hide" or "show" or "toggle")
                 {
                     web.Hidden = action == "hide" || action == "toggle" && !web.Hidden;
+                    if (web.Origin is not null) SendOriginPageCommand(web, web.Hidden ? "hide" : "show");
                     UpdateWebPresentation(); RequestRedraw(); return web.Hidden ? "hidden" : "shown";
                 }
                 return ISessionHost.RefusePrefix + "operation is not available for this web overlay";
