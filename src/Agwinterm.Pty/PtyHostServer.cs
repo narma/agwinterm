@@ -353,9 +353,9 @@ public sealed class PtyHostServer : IDisposable
             reply.Modes = s.Emulator.DumpModes();
             // Full-fidelity attributed HISTORY (the live screen arrives via the repaint jiggle, so
             // includeVisible=false). The client seeds from this instead of the plain text above.
-            if (s.Emulator is TerminalEmulator te)
+            if (s.Emulator is TerminalEmulator or RustTerminalCore)
                 reply.ScrollbackBlob = Google.Protobuf.ByteString.CopyFrom(
-                    BufferPersist.Serialize(te, includeVisible: false));
+                    BufferPersist.Serialize(s.Emulator, includeVisible: false));
         }
         reply.Cols = (uint)s.Cols;
         reply.Rows = (uint)s.Rows;

@@ -32,6 +32,8 @@ message PCell {
 }
 
 message PRow {
+  bool soft_wrapped = 2; // next physical row continues this logical line
+  uint32 wrap_length = 3; // excludes padding before a wide glyph
   repeated PCell cells = 1;  // trimmed to the row's content (reads pad with empty)
 }
 

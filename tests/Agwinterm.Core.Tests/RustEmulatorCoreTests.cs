@@ -11,6 +11,78 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class RustEmulatorCoreTests
 {
+    [Theory]
+    [InlineData("\x1b[L")]
+    [InlineData("\x1b[M")]
+    public void PartialScrollRegionLineEditsBreakPreviousWrap(string edit)
+    {
+        if (!Available) return;
+        using var source = new RustTerminalCore(5, 5);
+        source.Feed(System.Text.Encoding.ASCII.GetBytes("abcdefghijklmnop\x1b[2;5r\x1b[2;1H" + edit));
+        Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(source), out var saved));
+        var restored = new TerminalEmulator(30, 5);
+        BufferPersist.Restore(restored, saved);
+        Assert.Equal("abcde", restored.DumpHistoryRow(0).TrimEnd());
+    }
+
+    [Fact]
+    public void PaddingOverwriteSurvivesRestore()
+    {
+        if (!Available) return;
+        using var source = new RustTerminalCore(5, 4);
+        BufferPersistTests.VerifyPaddingOverwrite(source);
+    }
+
+    [Fact]
+    public void ResizeDoesNotInventSoftWrap()
+    {
+        if (!Available) return;
+        using var source = new RustTerminalCore(5, 4);
+        BufferPersistTests.VerifyResizeDoesNotSoftWrap(source);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(8)]
+    public void PersistedReflow_AgreesAcrossCoresAndRepeatedRestarts(int rows)
+    {
+        if (!Available) return;
+        var managed = new TerminalEmulator(5, rows);
+        using var native = new RustTerminalCore(5, rows);
+        var link = new TerminalHyperlink("https://example.com/a;b", "id=reflow");
+        byte[] input = System.Text.Encoding.UTF8.GetBytes(link.Sequence + "\x1b[31mabcd中  😀z" + TerminalHyperlink.Close + "\r\n12345\r\nend");
+        managed.Feed(input); native.Feed(input);
+        Assert.Equal(BufferPersist.Serialize(managed), BufferPersist.Serialize(native));
+        ITerminalCore current = native;
+        foreach (int width in new[] { 20, 3, 1, 7, 20 })
+        {
+            Assert.True(BufferPersist.TryParse(BufferPersist.Serialize(current), out var saved));
+            using var rust = new RustTerminalCore(5, 4);
+            var cs = new TerminalEmulator(5, 4);
+            BufferPersist.Restore(cs, saved); BufferPersist.Restore(rust, saved);
+            cs.Resize(width, 4); rust.Resize(width, 4);
+            Assert.Equal(cs.HistoryCount, rust.HistoryCount);
+            for (int h = 0; h < cs.HistoryCount; h++)
+                for (int c = 0; c < width; c++) Assert.Equal(cs.GetHistoryCell(h,c), rust.GetHistoryCell(h,c));
+            Assert.Equal(BufferPersist.Serialize(cs), BufferPersist.Serialize(rust));
+            // Restore links must not collide with a later OSC 8 allocation.
+            rust.Feed(System.Text.Encoding.UTF8.GetBytes(new TerminalHyperlink("https://new.test").Sequence + "new"));
+            Assert.Equal(link, rust.GetHistoryCell(0, 0).Hyperlink);
+            current = cs;
+        }
+    }
+
+    [Fact]
+    public void LegacyRestore_ReflowsUnicodeAndRetainsFullWidth()
+    {
+        if (!Available) return;
+        using var native = new RustTerminalCore(3, 3);
+        native.SeedScrollback(new[] { "ab中😀z", "explicit" });
+        native.Resize(20, 3);
+        Assert.Equal("ab中😀z", native.DumpHistoryRow(0));
+        Assert.Equal("explicit", native.DumpHistoryRow(1));
+    }
+
     [Fact]
     public void Adapter_Osc8HyperlinksFollowCells()
     {
@@ -35,7 +107,9 @@ public class RustEmulatorCoreTests
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Agwinterm.slnx"))) dir = dir.Parent;
         if (dir is null) return false;
         string dll = Path.Combine(dir.FullName, "native", "target", "release", "agwinterm_core.dll");
-        return RustEmulatorCore.TryLoad(dll, out _);
+        if (!File.Exists(dll)) return false;
+        Assert.True(RustEmulatorCore.TryLoad(dll, out var error), error);
+        return true;
     }
 
     private static void AssertAdapterParity(int cols, int rows, params string[] feeds)

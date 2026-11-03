@@ -1,0 +1,4 @@
+# Native release binaries must load on a clean Windows install without the
+# separately installed Visual C++ runtime (also exercised by Windows Sandbox).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -46,17 +46,19 @@ public static class BufferPersist
     /// whether the live grid is appended after the scrollback (true for full save/restore; false for
     /// pty-host reattach, where the live screen arrives separately via a ConPTY repaint and only the
     /// history should be seeded). Trailing empty cells per row are dropped; it round-trips exactly.</summary>
-    public static byte[] Serialize(TerminalEmulator emu, int maxRows = 500, bool includeVisible = true)
+    public static byte[] Serialize(ITerminalCore core, int maxRows = 500, bool includeVisible = true)
     {
+        if (core is RustTerminalCore rust) return rust.SaveBuffer(maxRows, includeVisible);
+        var emu = (TerminalEmulator)core;
         var buf = new PBuffer { Version = Version, Cols = (uint)emu.Screen.Cols };
         int cols = emu.Screen.Cols;
 
         var rows = new List<PRow>();
-        void AddRow(Func<int, Cell> cellAt)
+        void AddRow(int width, int wrapLength, Func<int, Cell> cellAt)
         {
-            int len = cols;
+            int len = width;
             while (len > 0 && cellAt(len - 1) == Cell.Empty) len--;   // trim trailing empties
-            var pr = new PRow();
+            var pr = new PRow { SoftWrapped = wrapLength >= 0, WrapLength = (uint)Math.Max(0, wrapLength) };
             for (int c = 0; c < len; c++) pr.Cells.Add(ToP(cellAt(c)));
             rows.Add(pr);
         }
@@ -64,13 +66,13 @@ public static class BufferPersist
         for (int h = 0; h < emu.HistoryCount; h++)
         {
             int hi = h;
-            AddRow(c => emu.GetHistoryCell(hi, c));
+            AddRow(emu.GetHistoryRowLength(hi), emu.GetHistoryWrapLength(hi), c => emu.GetHistoryCell(hi, c));
         }
         if (includeVisible)
             for (int r = 0; r < emu.Screen.Rows; r++)
             {
                 int rr = r;
-                AddRow(c => emu.Screen[rr, c]);
+                AddRow(cols, emu.Screen.WrapLengths[rr], c => emu.Screen[rr, c]);
             }
         // Drop trailing all-empty rows, then cap to maxRows (keep the newest).
         while (rows.Count > 0 && rows[^1].Cells.Count == 0) rows.RemoveAt(rows.Count - 1);
@@ -91,10 +93,12 @@ public static class BufferPersist
         catch (InvalidProtocolBufferException) { return false; }
     }
 
-    /// <summary>Reseed the scrollback from a persisted blob with full colour/attributes. Rows wider
-    /// than the current terminal are truncated; narrower rows pad naturally on read.</summary>
-    public static void Restore(TerminalEmulator emu, PBuffer buffer)
+    /// <summary>Restore attributed logical lines at the current width. Missing wrap metadata
+    /// in older blobs means a hard line boundary; guessing would merge unrelated output.</summary>
+    public static void Restore(ITerminalCore core, PBuffer buffer)
     {
+        if (core is RustTerminalCore rust) { rust.RestoreBuffer(buffer.ToByteArray()); return; }
+        var emu = (TerminalEmulator)core;
         var rows = new List<Cell[]>(buffer.Rows.Count);
         foreach (var pr in buffer.Rows)
         {
@@ -102,6 +106,6 @@ public static class BufferPersist
             for (int c = 0; c < pr.Cells.Count; c++) row[c] = FromP(pr.Cells[c]);
             rows.Add(row);
         }
-        emu.SeedScrollbackAttributed(rows);
+        emu.SeedScrollbackAttributed(rows, buffer.Rows.Select(pr => pr.SoftWrapped ? checked((int)Math.Min(pr.WrapLength, 32768u)) : -1).ToArray());
     }
 }

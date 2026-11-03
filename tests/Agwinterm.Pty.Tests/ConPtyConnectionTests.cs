@@ -6,6 +6,30 @@ namespace Agwinterm.Pty.Tests;
 /// <summary>The ConPTY choice (#339) and the connection agwinterm creates itself for it.</summary>
 public class ConPtyConnectionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ScrolledSoftWrapSurvivesRestore(bool bundled)
+    {
+        var api = ConPtyApi.Resolve(bundled, BundledDir);
+        Assert.Equal(bundled, api.Bundled);
+        using var conn = ConPtyConnection.Spawn(api,
+            "powershell.exe -NoProfile -Command \"Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 14) + '_REFLOW_END'); 1..60 | ForEach-Object { Write-Host ('after_' + $_) }; Write-Host done-probing\"",
+            Environment.CurrentDirectory, environment: null, 80, 24, deElevate: false);
+        string output = ReadAsTerminal(conn, "done-probing");
+        Assert.Contains("done-probing", output);
+        var source = new Agwinterm.Core.TerminalEmulator(80, 24);
+        source.Feed(Encoding.UTF8.GetBytes(output));
+        Assert.True(source.HistoryCount > 0);
+        Assert.Contains("REFLOW_BEGIN_", source.DumpHistoryRow(0));
+        Assert.True(Agwinterm.Core.BufferPersist.TryParse(Agwinterm.Core.BufferPersist.Serialize(source), out var saved));
+        var restored = new Agwinterm.Core.TerminalEmulator(200, 24);
+        Agwinterm.Core.BufferPersist.Restore(restored, saved);
+        string history = string.Join("\n", Enumerable.Range(0, restored.HistoryCount).Select(restored.DumpHistoryRow));
+        string marker = "REFLOW_BEGIN_" + string.Concat(Enumerable.Repeat("0123456789", 14)) + "_REFLOW_END";
+        Assert.True(history.Contains(marker), $"History: {history}\nRaw: {System.Text.Json.JsonSerializer.Serialize(output)}");
+    }
+
     [Fact]
     public void Resolve_Inbox_WhenAskedOrWhenTheBundledFilesAreMissing()
     {

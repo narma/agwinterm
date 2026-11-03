@@ -16,7 +16,7 @@ namespace Agwinterm.Core;
 /// </summary>
 public sealed unsafe class RustEmulatorCore : IDisposable
 {
-    public const uint RequiredAbi = 20;
+    public const uint RequiredAbi = 21;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Info
@@ -58,6 +58,25 @@ public sealed unsafe class RustEmulatorCore : IDisposable
     private delegate byte* EmuGetTextFn(nint p, uint which, uint* outLen);
     private delegate byte* EmuTakeHostActionsFn(nint p, uint* outLen);
     private delegate void FreeBufFn(byte* ptr, uint len);
+
+    private delegate byte* SaveBufferFn(nint p, uint maxRows, bool visible, uint* length);
+    private delegate bool RestoreBufferFn(nint p, byte* bytes, uint length);
+    private static SaveBufferFn _saveBuffer = null!;
+    private static RestoreBufferFn _restoreBuffer = null!;
+    public byte[] SaveBuffer(int maxRows, bool visible)
+    {
+        uint length = 0;
+        byte* ptr = _saveBuffer(_handle, (uint)Math.Max(0, maxRows), visible, &length);
+        if (ptr == null) throw new InvalidOperationException("Native buffer capture failed");
+        try { return new ReadOnlySpan<byte>(ptr, checked((int)length)).ToArray(); }
+        finally { _freeBuf(ptr, length); }
+    }
+    public void RestoreBuffer(byte[] bytes)
+    {
+        fixed (byte* ptr = bytes)
+            if (!_restoreBuffer(_handle, ptr, (uint)bytes.Length))
+                throw new InvalidOperationException("Native buffer restore failed");
+    }
 
     private static nint _lib;
     private static EmuNewFn _new = null!;
@@ -113,6 +132,8 @@ public sealed unsafe class RustEmulatorCore : IDisposable
             _setImageData = Get<EmuSetImageDataFn>("agwcore_emu_set_image_data");
             _placeImage = Get<EmuPlaceImageFn>("agwcore_emu_place_image");
             _placeSixel = Get<EmuPlaceSixelFn>("agwcore_emu_place_sixel");
+            _saveBuffer = Get<SaveBufferFn>("agwcore_emu_save_buffer");
+            _restoreBuffer = Get<RestoreBufferFn>("agwcore_emu_restore_buffer");
             _lib = lib;
             return true;
         }

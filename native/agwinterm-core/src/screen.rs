@@ -7,6 +7,7 @@ use crate::cell::Cell;
 
 pub struct ScreenBuffer {
     cells: Vec<Cell>,
+    pub(crate) wraps: Vec<Option<usize>>,
     cols: usize,
     rows: usize,
 }
@@ -17,6 +18,7 @@ impl ScreenBuffer {
         assert!(cols > 0 && rows > 0);
         ScreenBuffer {
             cells: vec![Cell::EMPTY; cols * rows],
+            wraps: vec![None; rows],
             cols,
             rows,
         }
@@ -37,10 +39,15 @@ impl ScreenBuffer {
     pub fn set(&mut self, row: usize, col: usize, cell: Cell) {
         assert!(row < self.rows && col < self.cols);
         self.cells[row * self.cols + col] = cell;
+        // A later write may replace padding excluded from a previous wide-glyph wrap.
+        if let Some(length) = self.wraps[row] {
+            self.wraps[row] = Some(length.max(col + 1));
+        }
     }
 
     pub fn clear(&mut self) {
         self.cells.fill(Cell::EMPTY);
+        self.wraps.fill(None);
     }
 
     /// Block-move `count` whole rows from `src_row` to `dst_row` (memmove semantics —
@@ -51,6 +58,7 @@ impl ScreenBuffer {
         }
         assert!(src_row < self.rows && dst_row < self.rows);
         assert!(src_row + count <= self.rows && dst_row + count <= self.rows);
+        self.wraps.copy_within(src_row..src_row + count, dst_row);
         self.cells.copy_within(
             src_row * self.cols..(src_row + count) * self.cols,
             dst_row * self.cols,
@@ -60,6 +68,7 @@ impl ScreenBuffer {
     pub fn fill_row(&mut self, row: usize, cell: Cell) {
         assert!(row < self.rows);
         self.cells[row * self.cols..(row + 1) * self.cols].fill(cell);
+        self.wraps[row] = None;
     }
 
     pub fn copy_row_to(&self, row: usize, dest: &mut [Cell]) {
@@ -78,6 +87,10 @@ impl ScreenBuffer {
             next[r * cols..r * cols + copy_cols]
                 .copy_from_slice(&self.cells[r * self.cols..r * self.cols + copy_cols]);
         }
+        if cols != self.cols {
+            self.wraps.fill(None);
+        }
+        self.wraps.resize(rows, None);
         self.cells = next;
         self.cols = cols;
         self.rows = rows;
