@@ -1,5 +1,18 @@
 # WebView2 release validation
 
+## Real Hyper-V acceptance (2026-11-04)
+
+The user-authorized Chinese Pinyin acceptance passed on the published application,
+including candidate selection/cancellation, palette/resize/session focus, Tab
+traversal and pane input isolation. It exposed and verified a fix for native
+browser focus after session switching. All four clean/offline installer
+and portable cells with actual present/absent WebView2 passed again on the
+corrected packages, including native session-return focus. Local OpenSpec is now 36/36. Exact provenance,
+package hashes, results and retained failed probes are in
+[the stage-4 Hyper-V report](agterm-stage4-hyperv-acceptance.md).
+
+The older manual deferrals below are historical; real IME evidence now exists.
+
 ## PR review hardening (2026-11-01)
 
 The first Greptile review identified five confirmed defects: same-origin child

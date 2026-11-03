@@ -56,13 +56,13 @@ In progress (2026-11-03): origin grants/slots, scoped resources, WebView2 adapta
 - [x] 6.3 Integrate URL/file page options, bridge allowlists and isolated storage; test review/general grant boundaries, URL/subframe denial, target overrides, cross-endpoint storage isolation and missing-runtime refusal, and document supported options.
 - [x] 6.4 Add negotiated page.bridge-revision envelopes, document activation acknowledgements, legacy file-bridge refusal, ordered page commands/state and origin outcomes; test hide/show/resize/navigation/reload, stale document callbacks, submit/cancel/close races, token secrecy and no implicit page recreation after reconnect.
 - [x] 6.5 Update the isolated test agterm with a reproducible revision-aware protocol patch and run real-peer file-assets and URL page matrices in both directions with allowed/refused bridge calls, submission/cancellation, channel loss and reload races; record origin outcomes and viewer cleanup.
-- [ ] 6.6 Reconcile relevant local WebView2 evidence with tasks 1.4, 1.5, 3.3 and 6.3 of add-webview2-cookbook-overlays; attach real IME and clean/offline installer/portable results and keep this acceptance item pending while required evidence is missing. The user authorized automated Hyper-V acceptance and Chinese IME installation in disposable test guests on 2026-11-03/04; synthetic Unicode input is not IME evidence.
+- [x] 6.6 Reconcile relevant local WebView2 evidence with tasks 1.4, 1.5, 3.3 and 6.3 of add-webview2-cookbook-overlays; attach real IME and clean/offline installer/portable results and keep this acceptance item pending while required evidence is missing. The user authorized automated Hyper-V acceptance and Chinese IME installation in disposable test guests on 2026-11-03/04; synthetic Unicode input is not IME evidence.
 
 ## 7. Integrated acceptance and review
 
 - [x] 7.1 Run the full five-family matrix against both actual directions with two viewers, old/partial peers, UI/transport failure, account/endpoint isolation and no stale responses; deliver a sanitized evidence report with exact builds and a supported/refused matrix, keeping any unavailable real-peer cell pending.
 - [x] 7.2 Run stage-1 WSL recovery and stage-2/stage-3 terminal regressions through wsl-ui.ps1, plus ordinary Windows restore/control and local question/HUD/program/web regressions in background Windows Sandbox; verify no ownership, replay, input-routing or desktop-isolation regressions.
-- [x] 7.3 Complete Release/native/model checks, strict OpenSpec validation and whitespace checks; verify CI and inspect Greptile feedback for the final PR commit, resolve valid findings and record a clean final review before declaring readiness.
+- [ ] 7.3 Complete Release/native/model checks, strict OpenSpec validation and whitespace checks; verify CI and inspect Greptile feedback for the final PR commit, resolve valid findings and record a clean final review before declaring readiness.
 
 ## Workflow follow-up
 

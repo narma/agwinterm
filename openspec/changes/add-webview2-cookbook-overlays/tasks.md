@@ -5,8 +5,10 @@
 Acceptance update (2026-11-04): the user authorized automated Hyper-V checks and
 Chinese IME installation in disposable guests. Actual clean/offline installer and
 portable cells with present/absent WebView2 passed; tasks 1.5 and 6.3 are complete.
-See docs/agterm-stage4-hyperv-acceptance.md. IME interaction is still being checked;
-the historical deferrals below describe the earlier decision.
+Real Chinese Pinyin acceptance also passed, including native focus after session
+switching and pane input isolation. Tasks 1.4 and 3.3 are complete; synthetic DPI
+remains the accepted DPI evidence. See docs/agterm-stage4-hyperv-acceptance.md.
+The historical deferrals below describe the earlier decision.
 
 Acceptance decision (2026-10-31): the user accepts synthetic DPI checks and will
 test IME manually elsewhere. Proceed beyond 1.4 without waiting for that result;
@@ -21,7 +23,7 @@ scope following the upstream audit and explicit user approval of full parity.
 - [x] 1.1 Capture the pre-change Release startup/package baseline using the design's 20-run protocol; deliver machine/version metadata, median/p95 and installer/portable/installed byte counts.
 - [x] 1.2 Add the pinned WebView2 Core dependency, lazy runtime detection and STA host boundary in Win32; verify terminal-only launch creates no browser processes and missing-runtime web requests preserve existing surfaces.
 - [x] 1.3 Build a session-bound local-page vertical slice with asynchronous creation/cancellation and temporary page profiles; verify close-during-create disposal, same-page localStorage after reload and isolation between two pages.
-- [ ] 1.4 Exercise child-HWND hosting against palette/settings/switcher, native ask, clipping, resize, mixed DPI, IME and UIA; deliver interaction evidence and implement/test the design's composition fallback if windowed presentation cannot pass before proceeding.
+- [x] 1.4 Exercise child-HWND hosting against palette/settings/switcher, native ask, clipping, resize, mixed DPI, IME and UIA; deliver interaction evidence and implement/test the design's composition fallback if windowed presentation cannot pass before proceeding.
 - [x] 1.5 Add installer/portable loader packaging and explicit runtime-install entry point; verify clean machines with present/missing runtime and offline terminal operation, then document dependency and extraction behavior in installer/user guidance.
 
 ## 2. Page model and control contracts
@@ -35,7 +37,7 @@ scope following the upstream audit and explicit user approval of full parity.
 
 - [x] 3.1 Implement local HTTPS-origin resource serving and target-context Windows/WSL paths; test sibling assets, Unicode/spaces, unavailable distribution, traversal, junction and symlink escapes with IO off the UI thread.
 - [x] 3.2 Match agterm navigation: default origin pinning, explicit URL-only --browse with readback/current-site identity, chromeless conflicts, confirmed external handoff and popup/redirect/permission/download policy; test default refusals, browse redirects/history, prompt cancellation and unchanged local/review grants.
-- [ ] 3.3 Integrate native navigation strip, chromeless close, DIP sizing and zoom readback; verify clipping, focused editor typing, shortcuts, Tab traversal, IME, screen reader visibility and focus return with no duplicate terminal input.
+- [x] 3.3 Integrate native navigation strip, chromeless close, DIP sizing and zoom readback; verify clipping, focused editor typing, shortcuts, Tab traversal, IME, screen reader visibility and focus return with no duplicate terminal input.
 - [x] 3.4 Add theme variables and agterm aliases through live updates, user-gesture clipboard copy and DOM-preserving hide/show; verify saved notes and unsaved drafts across theme/DPI/resize/session switching, and snapshot copy output.
 - [x] 3.5 Implement renderer failure/reload and complete controller/profile cleanup on close/owner removal; verify stale callbacks cannot update replacement pages and pages are absent after restart, then document lifecycle and navigation limits.
 

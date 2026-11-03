@@ -10,7 +10,7 @@ Observed local seams:
 - `native/agwinterm-hook/src/zmx/export.rs` publishes `presentation: false`, relays bounded tree/screen requests and refuses other commands. Its private endpoint scope and immutable attachment manifests must remain authoritative; do not broaden the existing relay into a generic control proxy.
 - `IPresentationHost` currently handles appearance/configuration, not a streaming presentation protocol. Add a dedicated broker boundary instead of treating that interface as an existing remote hub.
 - `SessionHuds`, `NativeQuestion`, `Program.OverlayControls.cs`, `Program.WebOverlays.cs` and `WebOverlayCommand` provide local surfaces and validation. Native asks allow multiple fields; upstream asks encode one input or choice form, so their schemas are not interchangeable.
-- `add-webview2-cookbook-overlays` has 32/36 tasks complete. Tasks 1.4, 1.5, 3.3 and 6.3 retain manual IME and clean/offline release evidence gaps. Earlier user decisions allow other work to proceed; this proposal does not mark those tasks complete or turn them into a prerequisite for starting passive presentation.
+- At the proposal baseline, `add-webview2-cookbook-overlays` had 32/36 tasks complete; tasks 1.4, 1.5, 3.3 and 6.3 lacked real IME and clean/offline release evidence. The user authorized automated Hyper-V acceptance and Chinese IME installation in disposable guests on 2026-11-03/04. Those actual checks now close the local change at 36/36; stage-4 task 6.6 reconciles their evidence with the final package repeat. See `docs/agterm-stage4-hyperv-acceptance.md`.
 
 ### Refreshed upstream source baseline
 
@@ -82,6 +82,14 @@ Program jobs are reserved at the origin and single-claim, with bounded claim dea
 
 Adapt the existing local resource-provider seam to read from the page channel. Keep per-page bounded resource streams, separate bridge concurrency, cancellation and backpressure; a cancelled request retains its slot until a terminal response or connection teardown. Exact wire/frame/resource caps come from the pinned PageServe codec and are recorded in fixtures before enabling pages.
 
+The Windows viewer additionally bounds retained download storage independently of
+wire framing: 64 MiB per resource, 256 MiB and 64 temporary response files per page.
+Reserve bytes before writing and keep them charged until the backing file closes,
+including completed downloads still retained by WebView2. Exceeding a budget
+refuses that resource and sends the existing cancellation frame; no new protocol
+capability or origin command is introduced. Document cancellation, failed writes,
+browser consumption and page teardown release files and reservations.
+
 Origin grants are single-use, expiring and tied to the current presenter/page. Validate decoded paths and canonical containment, including symlink/reparse escapes, at the origin. File source identity is display data; the viewer must not read that path from its own disk. Scope temporary viewer storage by endpoint/session/page; persistent URL storage requires the existing explicit option and a documented origin partition, never default sharing between unrelated remote endpoints.
 
 Relay bridge requests only to the originating page's original grant and command allowlist. Remote delegation does not upgrade URL pages to trusted local pages, expand review grants, or accept caller target overrides. Document revision and ordered page command sequence fence callbacks and state acknowledgements. Origin retains first submission/cancellation; close after submission keeps the result. Presentation or page-channel loss closes the replica, invalidates token and pending calls, and settles the original page without implicit reopening. Missing WebView2 is a clean page refusal.
@@ -101,7 +109,7 @@ User clarification (2026-11-03): remote general file-page bridges are restricted
 
 Implement passive streams first, then presenter/questions, program jobs and pages. Each milestone remains inside this change unless later split into explicit linked changes; it does not shrink the roadmap. For every family run success/refusal/loss/reconnect on Agwinterm-viewer/agterm-origin and agterm-viewer/Agwinterm-WSL-origin, recording actual binaries and origin outcomes. Two-viewer grant races and wrong endpoint/user/window/session/pane tests are mandatory.
 
-Keep the old accepted terminal peer build as a regression baseline and build an isolated stage-4 peer at the new research pin. Existing SSH accounts/services may be used only within authorized setup; do not upgrade installed apps or change live sessions. Host-free model tests run directly. WSL UI acceptance goes through `wsl-ui.ps1` on the private non-input desktop; ordinary Windows UI regressions use `sandbox-ui.ps1 ... -Background`. Missing real peer or manual browser evidence stays pending, never replaced with fixture claims.
+Keep the old accepted terminal peer build as a regression baseline and build an isolated stage-4 peer at the new research pin. Existing SSH accounts/services may be used only within authorized setup; do not upgrade installed apps or change live sessions. Host-free model tests run directly. WSL UI acceptance goes through `wsl-ui.ps1` on the private non-input desktop; ordinary Windows UI regressions use the installed Hyper-V worker (the current repository default), or explicit `sandbox-ui.ps1 ... -Background`. Real IME and clean/offline acceptance may be automated inside disposable guests, as the user authorized; Unicode injection and simulated runtime absence do not replace those checks. Missing actual-peer or browser evidence stays pending.
 
 After user-granted macOS Accessibility permission, the optional acceptance driver may address only the isolated viewer's verified PID and app path. It uses AX controls/native input and validates retained results at the origin, refusing locked sessions and ambiguous targets. This is test infrastructure built with the existing Swift SDK, not a shipped dependency or a protocol extension. The pinned peer's custom choice rows require native keyboard navigation; exposed AXPress alone does not toggle them. Record this limitation with the evidence.
 

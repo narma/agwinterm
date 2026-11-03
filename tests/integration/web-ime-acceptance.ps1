@@ -225,6 +225,9 @@ public static class ImeKeys {
     for($i=0;$i -lt 100;$i++){$editor=Element 'IME editor';if($editor){break};Start-Sleep -Milliseconds 100}
     Require ($null -ne $editor) 'pane editor is accessible'
     $editor.SetFocus()
+    $rect=$editor.Current.BoundingRectangle
+    [ImeKeys]::Click([int]($rect.Left+20),[int]($rect.Top+20))
+    Start-Sleep -Milliseconds 500
     $value=$editor.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     $log=(Element 'IME events').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     Compose-Again 'Pane-scoped page'

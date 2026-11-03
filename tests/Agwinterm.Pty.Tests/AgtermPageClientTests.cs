@@ -94,6 +94,31 @@ public class AgtermPageClientTests
     }
 
     [Fact]
+    public async Task StorageLimitCancelsAnUnfinishedResourceWithoutClosingTheChannel()
+    {
+        await using var wire = new Wire();
+        var budget = new AgtermPageDownloadBudget(resourceBytes: 4, pageBytes: 4);
+        using var body = budget.Create(() => new MemoryStream());
+        var fetch = wire.Client.FetchToAsync("/unending", body, CancellationToken.None);
+        var request = await wire.Take();
+        await wire.Send(new("head", request.Id, "application/octet-stream"));
+        await wire.Send(new("chunk", request.Id, Data: new byte[4]));
+        await wire.Send(new("chunk", request.Id, Data: new byte[1]));
+        await Assert.ThrowsAsync<IOException>(() => fetch.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(4, body.Length);
+        var cancel = await wire.Take();
+        Assert.Equal("cancel", cancel.Kind); Assert.Equal(request.Id, cancel.Id);
+        // A peer can keep sending after cancellation; discarded bytes never reach storage.
+        await wire.Send(new("chunk", request.Id, Data: new byte[4]));
+        await wire.Send(new("failure", request.Id, "cancelled"));
+        var bridge = wire.Client.BridgeAsync("{}", CancellationToken.None);
+        var next = await wire.Take();
+        await wire.Send(new("reply", next.Id, "ok"));
+        Assert.Equal("ok", await bridge.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(4, body.Length);
+    }
+
+    [Fact]
     public async Task WrongDirectionClosesChannelAndSettlesBridge()
     {
         await using var wire = new Wire();

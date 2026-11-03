@@ -115,6 +115,21 @@ A delegated page SHALL use distinct origin/local IDs and a single-use, expiring 
 - **WHEN** a delegated page requests another session or a command outside its original grant
 - **THEN** the bridge refuses and neither viewer nor origin executes that command
 
+### Requirement: Downloaded page resources have bounded storage
+The Windows viewer SHALL enforce per-resource and per-page byte budgets and a
+retained-file count limit before allocating storage. Completed responses still
+owned by the browser SHALL count against the page budget until their backing
+files close. Refusal SHALL cancel the resource without disrupting terminal access
+or other page-channel operations; teardown SHALL release its reservations.
+
+#### Scenario: Peer streams without ending a resource
+- **WHEN** successive valid chunks would exceed the resource or page storage budget
+- **THEN** the viewer refuses the exceeding chunk before writing it, cancels the request and deletes its partial temporary file
+
+#### Scenario: Browser retains completed response bodies
+- **WHEN** completed downloads have not yet been consumed or disposed by the browser
+- **THEN** they remain charged against both the page byte budget and retained-file count, and later requests cannot evade those limits
+
 ### Requirement: Remote page bridges retain a bounded command allowlist
 General file pages SHALL receive only own-page and originating-session authority. Review pages SHALL retain only submit/close. Viewer and origin SHALL reject routing overrides and broader commands. URL documents and subframes SHALL receive no bridge authority. Local trusted-page behavior SHALL remain unchanged.
 

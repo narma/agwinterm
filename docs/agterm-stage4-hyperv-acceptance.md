@@ -7,8 +7,10 @@ settings, live application sessions or installed base image were changed.
 
 ## Candidate and isolation
 
-- Production candidate: `840fcd59ba23cdcae14fa479d072fd951727afd6`, which merges
-  `origin/narma` (`f17ec00`) into `codex/agterm-remote-presentation`.
+- Production candidate: `12256cae08756c013b7353c1dcdd3f77cf507e9f`, after merging
+  `origin/narma` (`f17ec00`) in `840fcd5`. Test driver head: `98c73d6` plus the
+  pane mouse-focus check. The later remote-download budget fix is validated
+  separately below; these package hashes identify the focus-fixed build.
 - Version: `0.20.18`; Windows 11 Pro `10.0.26300`; .NET SDK `10.0.303`.
 - Independent clean differencing disk per cell, no network adapters, no prior
   Agwinterm installation. Cells were run sequentially through the installed worker.
@@ -22,31 +24,35 @@ settings, live application sessions or installed base image were changed.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `agwinterm-setup-0.20.18.exe` | `127324ADCF79300D5F874E3660287811873F9B673B7C3133B63E70B6CC78C21A` |
-| `agwinterm-portable-0.20.18-win-x64.exe` | `286671D5F6FADB1F5FF4BE477F550EBB77E805412C6C914FD42F1E98B94209BC` |
-| Installed `Agwinterm.Win32.exe` | `2F782F6AABE3F910DED4331E328718CE3FBBE0CEF2917C8A68855660B68F65A8` |
-| Installed `agwintermctl.exe` | `5DBDF578E75E87C4D5C9DF54C8C4735E3D66615DAD0F25606319B476A12FF674` |
+| `agwinterm-setup-0.20.18.exe` | `F6A4EE4702E5D14B39D815AE9001B40463D28F1693C460D558AAF3B86462F243` |
+| `agwinterm-portable-0.20.18-win-x64.exe` | `8AD09399A8D56DA004D2230151B31E7D10BB4FC48CBAE97E8DBFF4430C65A551` |
+| Installed `Agwinterm.Win32.exe` | `0C4C0A54C50B89AF78BB621F47C82C09E399C13F6BE8D2BC49453372240071A5` |
+| Installed `agwintermctl.exe` | `751BA0DDE2C2F9468286E0DAB76908EBDFFD974400EB8F4DF631240ADE3E2804` |
+
+Installed application assembly SHA-256: `E34B709B252EAC7854522C2846A3C6B760AE69C2016EF7CBB9951F12CD46BB55`.
+Installer: 36,006,347 bytes; portable: 91,098,312 bytes.
 
 ## Clean/offline results
 
-All four required offline cells passed, including worker shutdown and evidence
-export. Each result has `worker-result.json`, guest stdout/stderr, initial guest
+All four offline cells passed again on the corrected packages above, including
+worker shutdown and evidence export. Initial passes on `840fcd5` are retained
+separately. Each result has `worker-result.json`, guest stdout/stderr, initial guest
 inventory and `results/artifacts/web-release-acceptance/acceptance.json`.
 
 | Package / runtime | Result | Evidence under `artifacts/hyperv-ui/` |
 | --- | --- | --- |
-| Installer / absent | PASS | `stage4-release-installer-absent` |
-| Portable / absent | PASS | `stage4-release-portable-absent` |
-| Installer / present | PASS | `stage4-release-installer-present-dpi` |
-| Portable / present | PASS | `stage4-release-portable-present-dpi` |
+| Installer / absent | PASS | `stage4-fixed-installer-absent` |
+| Portable / absent | PASS | `stage4-fixed-portable-absent` |
+| Installer / present | PASS | `stage4-fixed-installer-present` |
+| Portable / present | PASS | `stage4-fixed-portable-present` |
 
 Every cell verified terminal and program use, actionable page refusal when
 appropriate, preservation of the existing program, and restoration of terminal
 identity without ephemeral pages. Present-runtime cells additionally ran the full
 published browser-host and cookbook suite: review submit/cancel, local resources,
 navigation, editing/focus, isolation, profile/owner cleanup, and busy-terminal
-dashboard interaction. Dashboard response during terminal output was 50 ms for
-installer and 57 ms for portable. Offline external URL failure stayed within its
+dashboard interaction. Dashboard response during terminal output was 53 ms for
+installer and 39 ms for portable. Offline external URL failure stayed within its
 page.
 
 The native loader came from the installed application directory for installer and
@@ -60,7 +66,9 @@ required clean/offline checks above exercise actual runtime presence/absence.
 
 ## Chinese IME
 
-Status: language installation, real candidate selection and cancellation verified; full focus/interaction acceptance still pending.
+Status: PASS. The complete real Chinese Pinyin run finished with worker exit 0
+in `artifacts/hyperv-ui/stage4-ime-onboarding`, run
+`2180a2c9-2984-47c1-a7c9-1737bf08111e`; guest test time 134.199 seconds.
 Ordinary Latin/Unicode text without composition is not counted as an IME pass.
 
 Language packages are extracted from Microsoft's
@@ -78,8 +86,8 @@ Windows media are not committed to the repository.
 `web-ime-acceptance.ps1` refuses to provision languages outside a verified
 Hyper-V guest. It installs the supplied Microsoft packages, selects Pinyin,
 records native candidate screenshots and DOM input events from scan-code input and checks candidate
-commit, cancellation, focus restoration and pane input isolation. The remaining
-IME item stays pending until this driver succeeds against the real installed IME.
+commit, cancellation, focus restoration and pane input isolation. The complete
+driver passed against the real installed IME.
 
 ## Reproduction and fixture corrections
 
@@ -102,4 +110,35 @@ The installed Pinyin produces a native candidate window: typing NIHAO and choosi
 candidate 2 committed exactly 你号; Escape cancelled ZHONG without adding text.
 This path delivers committed input without DOM composition events. Screenshot
 and input evidence is retained under stage4-ime-candidate-commit and later runs.
-Active preedit consumed palette shortcut attempts; menu/focus checks remain pending.
+Active preedit consumes palette shortcut attempts in this Pinyin mode. The shortcut
+works with Chinese selected outside preedit; the native Navigate → Command Palette
+menu works during preedit and dismissal restores editor focus. Composition then
+passes after palette, resize and session switching, followed by Tab/Shift+Tab and
+pane-scoped commit/cancel. Neither terminal receives any of the editor input.
+The initial native candidate path delivers committed input; later editor phases
+also record genuine DOM compositionstart/update/end events. No Unicode injection
+or synthesized composition event is used.
+
+The run exposed a production focus defect: selection changed before browser
+presentation was updated, and background pages discarded their resume-focus flag.
+`12256ca` retains that flag until the page is visible again. The original build
+failed real input after returning to the session despite reporting UIA editor
+focus; the corrected build passes the same scenario and terminal-isolation checks.
+The ordinary browser-host suite now also tests native input after a session switch,
+without requiring an IME installation. A new pane is focused with an ordinary
+mouse click before its typing test. The optional Bing onboarding button was not
+exposed by UIA in the successful run; no Bing/cloud-suggestion opt-in was performed.
+
+## Remote resource storage review correction
+
+Greptile identified unbounded temporary-file growth from valid remote resource
+chunks. Downloads now enforce 64 MiB per resource, 256 MiB and 64 retained files
+per page, before allocating a file or writing an exceeding chunk. Browser-retained
+responses keep their reservation until disposal. Refusal cancels the request,
+deletes its partial file and leaves the shared channel usable. No wire capability
+or shipped dependency changes. The focused resource/protocol suite passes
+58 tests, including overflow, retained bodies, parallel requests and cancellation;
+the Windows Release build passes without warnings. Logs are
+`artifacts/stage4-page-budget-tests.log` and
+`artifacts/stage4-budget-release-build.log`. The package/IME runs above predate
+this remote-only correction and are not relabelled as tests of its binary.

@@ -1,5 +1,15 @@
 # Remote presentation development
 
+Current status (2026-11-04): both-direction five-family acceptance is complete.
+Real Chinese Pinyin acceptance passed in Hyper-V and exposed a native web-focus
+restoration defect, corrected in `12256ca`. Local WebView2 is 36/36; stage 4 is
+26/27: corrected packages passed all four offline cells; only final-head CI and
+clean Greptile review remain after the resource-budget fix.
+CI for `98c73d6` passed every job. Final-head review and release evidence are
+tracked in [the Hyper-V report](agterm-stage4-hyperv-acceptance.md) and PR #31.
+
+## Historical implementation checkpoints
+
 Stage 4 is in progress. Capable imported sessions open an independent presentation stream. Provisioned WSL origins advertise v1 only after the Windows endpoint confirms readiness. Presenter grants, the question subset, origin-run program jobs and the six negotiated page kinds are enabled. Full integrated and manual browser acceptance remain pending.
 
 Discovery retains a positive integer `remote.presentation`; absent, null, invalid or nonpositive optional values leave a usable terminal inventory with presentation unavailable. A higher positive version is a maximum-version advertisement; protocol v1 is the only implemented wire version. Persisted old bindings remain terminal-only. The pane UUID comes from the verified daemon name, matching upstream `ZmxSupport.paneIdentity` and `RemoteBinding`, never its left/right role. Presentation target keys include WSL distribution/user, SSH destination, origin control socket, endpoint, session and stable pane. Keys do not replace existing daemon-incarnation verification.
@@ -187,4 +197,6 @@ An additional host-free lifecycle regression caught a waiting-call race across s
 
 For implementation commit `7a413431665261816bc89a0de7a039843a01b194`, CI run `41706960217` passed every job, including Windows native/core/control/UI/workspace checks, both Linux architectures, macOS bridge and document lifecycle, portable packaging and .NET 11 publish. Greptile review `38058649` completed with **5/5**, no blocking code findings; all seven review threads are resolved. Strict OpenSpec and whitespace checks pass. Task 7.3 is complete, bringing the change to **26/27** tasks. Any documentation-only follow-up head is rechecked in the PR without relabelling these source-commit results.
 
-Only task 6.6 remains: the prepared manual IME and clean/offline installer/portable scenario has no user-supplied results yet. Keep PR #31 draft and the OpenSpec change unarchived until that required evidence is recorded.
+At this checkpoint only task 6.6 remained: manual IME and clean/offline results were
+missing. The user subsequently authorized automated Hyper-V acceptance and Chinese
+IME provisioning; the current status and evidence above supersede that deferral.

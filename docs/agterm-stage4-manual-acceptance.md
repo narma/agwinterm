@@ -1,6 +1,6 @@
 # Stage 4: manual browser acceptance
 
-Status: automated Hyper-V acceptance in progress following the user's 2026-11-03/04 authorization to install Chinese IME in disposable test guests. No IME pass is recorded yet. Covers task 6.6 and the outstanding IME/clean/offline items in `add-webview2-cookbook-overlays`. Remote-page acceptance remains a separate automated/actual-peer matrix.
+Status: real Chinese IME acceptance and all four clean/offline cells passed through Hyper-V on the focus-fixed packages. No user action is needed; this scenario is retained for reproduction. Results and exact build hashes are in [the automated evidence](agterm-stage4-hyperv-acceptance.md).
 
 Use a separate test machine or disposable VM, not the development machine's live configuration. Chinese IME may be installed from official Microsoft language packages inside the disposable guest; no language/runtime installation on the development host is requested. Run automated Windows UI suites through the installed Hyper-V worker (the repository default), or explicit background Sandbox routing. The automated IME driver requires a verified Hyper-V guest and records native candidate UI and DOM input events from scan-code key input.
 
@@ -21,7 +21,7 @@ For each run record the installer or portable filename, SHA-256 (`Get-FileHash -
 
 3. Open it using the candidate's CLI: `agwintermctl session overlay open --html "C:\test\ime-test.html" --js --navigation --target SESSION_ID`. Replace the file path and ID with the recorded values; do not target an unrelated working session.
 4. In the editor, use the installed IME to compose a multi-character phrase, open the candidate list, change the selected candidate and commit it. Repeat and cancel composition with Escape. Verify committed text appears once; cancelled composition inserts nothing.
-5. Start composition again, open/dismiss the native action palette using its configured shortcut, then return to the editor. Verify focus, existing text and subsequent composition/candidate selection work. Repeat after resizing the window and switching away from/back to the session.
+5. Start composition again, open/dismiss the native action palette through Navigate → Command Palette (Pinyin may consume shortcuts during active preedit); separately test the configured shortcut with no active composition, then return to the editor. Verify focus, existing text and subsequent composition/candidate selection work. Repeat after resizing the window and switching away from/back to the session.
 6. Use Tab/Shift+Tab between editor, button and navigation controls. Close the overlay and verify the underlying terminal received none of the editor's text, composition keys or candidate-selection input.
 7. Repeat for a pane-scoped page in a split session using the exact pane target. Verify the other pane receives no input. Record any difference between session and pane overlays.
 
@@ -59,4 +59,4 @@ PASS / FAIL / NOT RUN:
 Evidence paths:
 ```
 
-Return filled results for each case. Leave unavailable cells NOT RUN. Task 6.6 and linked local browser tasks remain pending until the required evidence is reviewed.
+Return filled results for each case. Leave unavailable cells NOT RUN. Task 6.6 and the linked local browser tasks are complete with the automated evidence above.

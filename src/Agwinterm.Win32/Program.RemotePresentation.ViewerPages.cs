@@ -19,6 +19,7 @@ internal partial class Program
         public readonly AgtermPageTransport? Transport = transport;
         public CancellationTokenSource Document = new();
         public readonly List<Stream> Streams = [];
+        public readonly AgtermPageDownloadBudget Downloads = new();
         public long AppliedSequence;
         public long DocumentNumber;
         public AgtermPageDocumentRequest? ActiveDocument;
@@ -218,14 +219,14 @@ internal partial class Program
             var ct = remote.Document.Token;
             _ = host.RunAsync(async () =>
             {
-                FileStream? stream = null;
+                Stream? stream = null;
                 AgtermPageResponseStream? response = null;
                 try
                 {
                     string path = Uri.UnescapeDataString(new Uri(e.Request.Uri).AbsolutePath);
                     string temporary = Path.Combine(Path.GetTempPath(), "agwinterm-page-" + Guid.NewGuid().ToString("N"));
-                    stream = new(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read | FileShare.Delete, 65536,
-                        FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+                    stream = remote.Downloads.Create(() => new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite,
+                        FileShare.Read | FileShare.Delete, 65536, FileOptions.Asynchronous | FileOptions.DeleteOnClose));
                     string mime = await remote.Transport!.Client.FetchToAsync(path, stream, ct);
                     if (!OwnsWebPage(page.Owner, page) || page.DocumentGeneration != generation || !ReferenceEquals(page.Host, host)) return;
                     if (mime.Any(char.IsControl)) throw new IOException("Invalid page content type");
