@@ -1,6 +1,6 @@
 # Tasks
 
-Apply started on 2026-11-02; 25/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
+Apply started on 2026-11-02; 26/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
 
 ### Apply finding: distinguish presentation loss from job-channel loss
 
@@ -62,7 +62,7 @@ In progress (2026-11-03): origin grants/slots, scoped resources, WebView2 adapta
 
 - [x] 7.1 Run the full five-family matrix against both actual directions with two viewers, old/partial peers, UI/transport failure, account/endpoint isolation and no stale responses; deliver a sanitized evidence report with exact builds and a supported/refused matrix, keeping any unavailable real-peer cell pending.
 - [x] 7.2 Run stage-1 WSL recovery and stage-2/stage-3 terminal regressions through wsl-ui.ps1, plus ordinary Windows restore/control and local question/HUD/program/web regressions in background Windows Sandbox; verify no ownership, replay, input-routing or desktop-isolation regressions.
-- [ ] 7.3 Complete Release/native/model checks, strict OpenSpec validation and whitespace checks; verify CI and inspect Greptile feedback for the final PR commit, resolve valid findings and record a clean final review before declaring readiness.
+- [x] 7.3 Complete Release/native/model checks, strict OpenSpec validation and whitespace checks; verify CI and inspect Greptile feedback for the final PR commit, resolve valid findings and record a clean final review before declaring readiness.
 
 ## Workflow follow-up
 
