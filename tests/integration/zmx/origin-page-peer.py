@@ -37,7 +37,11 @@ prefix='<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="сти
 addEventListener('load',()=>{document.title=getComputedStyle(document.querySelector('#probe')).color==='rgb(12, 34, 56)'?'AW_PAGE_ASSET_OK':'AW_PAGE_ASSET_FAILED'});
 </script>''')
 (directory/'navigate.html').write_text(prefix+'''<script>
-addEventListener('load',()=>{document.title='AW_NAV_START';if(!sessionStorage.visited){sessionStorage.visited='1';setTimeout(()=>location.href='hold.html',300)}});
+addEventListener('pageshow',async()=>{try{await agterm.request('session.status',{args:{status:'idle'}});document.title='AW_NAV_START';if(!sessionStorage.visited){sessionStorage.visited='1';setTimeout(()=>location.href='hold.html',300)}}catch{document.title='AW_NAV_BRIDGE_FAILED'}});
+</script>''')
+(directory/'history.html').write_text(prefix+'''<script>
+addEventListener('load',()=>{history.pushState({},'', '#one');history.pushState({},'', '#two');document.title='AW_HISTORY_READY'});
+addEventListener('popstate',()=>setTimeout(async()=>{try{await agterm.request('session.status',{args:{status:'idle'}});document.title='AW_HISTORY_'+location.hash.slice(1)}catch(e){document.title='AW_HISTORY_FAILED: '+e.message}},150));
 </script>''')
 def open_file(file, review=False):
     return native('session','overlay','open','--html',str(directory/file),'--cwd',str(directory),'--js','--navigation',
@@ -61,6 +65,11 @@ try:
     native('session','overlay','navigate','forward'); state(page,lambda row:row.get('title')=='AW_PAGE_ASSET_OK')
     native('session','overlay','close'); outcome(page,'dismissed'); page=None
     print('PASS actual Mac viewer back/forward preserves origin page identity')
+    page=open_file('history.html'); state(page,lambda row:row.get('title')=='AW_HISTORY_READY')
+    native('session','overlay','navigate','back'); state(page,lambda row:row.get('title')=='AW_HISTORY_one')
+    native('session','overlay','navigate','forward'); state(page,lambda row:row.get('title')=='AW_HISTORY_two')
+    native('session','overlay','close'); outcome(page,'dismissed'); page=None
+    print('PASS actual Mac bridge remains usable after same-document back/forward')
 
     for review in [False,True]:
         script='''<script>

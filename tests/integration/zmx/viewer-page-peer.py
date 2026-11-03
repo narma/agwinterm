@@ -53,8 +53,12 @@ submit=prefix+'''<iframe srcdoc="&lt;script&gt;parent.agterm.request('session.ov
  await agterm.request('session.status',{args:{status:'blocked'}});result.status=true;
  await agterm.request('session.overlay.submit',{args:{value:JSON.stringify(result)}});
 });</script>'''
-navigate=prefix+'''<script>addEventListener('load',()=>{document.title='AW_NAV_START';if(!sessionStorage.visited){sessionStorage.visited='1';setTimeout(()=>location.href='hold.html',300)}});</script>'''
-remote(['python3','-c',"import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); root.mkdir(); [(root/name).write_text(text) for name,text in json.load(sys.stdin).items()]",str(directory)],json.dumps({'hold.html':hold,'navigate.html':navigate,'submit.html':submit,'стиль %.css':'#probe { color: rgb(12, 34, 56); }'}))
+navigate=prefix+'''<script>addEventListener('pageshow',async()=>{try{await agterm.request('session.status',{args:{status:'idle'}});document.title='AW_NAV_START';if(!sessionStorage.visited){sessionStorage.visited='1';setTimeout(()=>location.href='hold.html',300)}}catch{document.title='AW_NAV_BRIDGE_FAILED'}});</script>'''
+history=prefix+'''<button aria-label="Prepare page history" onclick="prepareHistory()">Prepare page history</button><script>
+function prepareHistory(){history.pushState({},'', '#one');history.pushState({},'', '#two');document.title='AW_HISTORY_READY'}
+addEventListener('popstate',()=>setTimeout(async()=>{try{await agterm.request('session.status',{args:{status:'idle'}});document.title='AW_HISTORY_'+location.hash.slice(1)}catch{document.title='AW_HISTORY_FAILED'}},150));
+</script>'''
+remote(['python3','-c',"import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); root.mkdir(); [(root/name).write_text(text) for name,text in json.load(sys.stdin).items()]",str(directory)],json.dumps({'hold.html':hold,'navigate.html':navigate,'history.html':history,'submit.html':submit,'стиль %.css':'#probe { color: rgb(12, 34, 56); }'}))
 def opened(name):
     return peer('session','overlay','open','--html',str(directory/name),'--cwd',str(directory),'--js','--navigation','--target',config['origin'])
 try:
@@ -73,6 +77,12 @@ try:
     peer('session','overlay','navigate','forward','--target',config['origin']); state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_VIEWER_ASSET_OK')
     peer('session','overlay','close','--target',config['origin']); state(lambda rows:not rows)
     print('PASS actual WebView2 back/forward preserves the origin page')
+    opened('history.html'); Path(sys.argv[1]+'.history-click').touch()
+    state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_HISTORY_READY' and rows[0].get('canGoBack'))
+    peer('session','overlay','navigate','back','--target',config['origin']); state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_HISTORY_one')
+    peer('session','overlay','navigate','forward','--target',config['origin']); state(lambda rows:len(rows)==1 and rows[0].get('title')=='AW_HISTORY_two')
+    peer('session','overlay','close','--target',config['origin']); state(lambda rows:not rows)
+    print('PASS actual WebView2 bridge remains usable after same-document back/forward')
     opened_page=opened('submit.html')
     assert 'pageID' in opened_page,opened_page
     result=json.loads(outcome(opened_page['pageID'],'submitted')['value'])

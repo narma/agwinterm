@@ -1,6 +1,6 @@
 # WSL ZMX and bidirectional agterm interoperability
 
-Updated: 2026-11-03. Status: stages 1–3 merged and archived, with accepted real-peer terminal evidence. Stage 2 main specs reconciled with stage 3. Stage 4 implementation is in progress (25/27 tasks); transport, scoped broker/adapter, passive events/sound, question conversion/outcomes and origin-run program overlays are implemented, with actual-peer evidence in both directions. Remote page grants, scoped resources, WebView2 adaptation and restricted bridge dispatch are implemented, with real file/URL acceptance in both directions; revision-aware page bridges and the integrated bidirectional matrix have passed. Manual browser release evidence and final-head CI/review remain pending.
+Updated: 2026-11-03. Status: stages 1–3 merged and archived, with accepted real-peer terminal evidence. Stage 2 main specs reconciled with stage 3. Stage 4 implementation is in progress (25/27 tasks); transport, scoped broker/adapter, passive events/sound, question conversion/outcomes and origin-run program overlays are implemented, with actual-peer evidence in both directions. Remote page grants, scoped resources, WebView2 adaptation and restricted bridge dispatch are implemented, with real file/URL acceptance in both directions; revision-aware page bridges, cached/same-document browser history and the integrated bidirectional matrix have passed. Manual browser release evidence and final-head CI/review remain pending.
 
 ## Committed outcome
 

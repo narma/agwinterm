@@ -134,8 +134,23 @@ public static class RemoteAskProbe {
         @{socket=$OriginSocket;destination=$Destination;agent=$AgentSocket;cli=$linuxCtl;pipe=$id;window=$window;session=$import.sessionId;origin=$origin} | ConvertTo-Json | Set-Content $pageConfig
         $linuxConfig=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u $pageConfig).Trim()
         $pageProbe=(& wsl.exe -d $Distro -u $LinuxUser --exec wslpath -u "$PSScriptRoot/zmx/viewer-page-peer.py").Trim()
-        & wsl.exe -d $Distro -u $LinuxUser --exec python3 $pageProbe $linuxConfig
-        if($LASTEXITCODE -ne 0) { throw 'Actual Mac-origin page acceptance failed' }
+        $null=Ctl @('session','select','--target',$import.sessionId,'--window',$window)
+        $pageJob=Start-ThreadJob -ArgumentList $Distro,$LinuxUser,$pageProbe,$linuxConfig -ScriptBlock {
+            param($distribution,$account,$probe,$config)
+            $ErrorActionPreference='Continue'
+            & wsl.exe -d $distribution -u $account --exec python3 $probe $config 2>&1 | ForEach-Object { "$_" }
+            if($LASTEXITCODE -ne 0) { throw 'Actual Mac-origin page acceptance failed' }
+        }
+        try {
+            while($pageJob.State -in @('NotStarted','Running')) {
+                if(Test-Path -LiteralPath ($pageConfig+'.history-click')) {
+                    $null=& "$PSScriptRoot/wsl-page-history-ui.ps1" -OwnerProcess $ui.Id -RequestPath ($pageConfig+'.history-click')
+                }
+                Start-Sleep -Milliseconds 100
+            }
+            Receive-Job $pageJob -ErrorAction Continue | ForEach-Object { Write-Host $_ }
+            if($pageJob.State -ne 'Completed') { throw 'Actual Mac-origin page acceptance failed' }
+        } finally { Stop-Job $pageJob; Remove-Job $pageJob }
         $jobCommand='printf "AW_JOB_OS=%s CWD=%s\n" "$(uname -s)" "$PWD"; read answer; printf "AW_JOB_REPLY=%s\n" "$answer"; exit 7'
         $jobReply=Peer-Ctl @('session','overlay','open',$jobCommand,'--cwd','/tmp','--wait','--size-percent','60','--target',$origin)
         $jobRow=Await-Presentation { param($row) @($row.overlayDetails).Count -eq 1 }
@@ -145,7 +160,7 @@ public static class RemoteAskProbe {
             if($jobText -match 'AW_JOB_OS=Darwin CWD=/') { break }
             Start-Sleep -Milliseconds 200
         }
-        if($jobText -notmatch 'AW_JOB_OS=Darwin CWD=/(private/)?tmp') { throw "Origin job did not run on Mac: $jobText" }
+        if($jobText -notmatch 'AW_JOB_OS=Darwin CWD=/(private\s*/)?tmp') { throw "Origin job did not run on Mac: $jobText" }
         $null=Ctl @('session','type',"accepted`r",'--target',$overlayId)
         $null=Await-Presentation { param($row) $row.overlayDetails[0].exited -eq $true }
         $jobText=[string](Ctl @('session','text','--target',$overlayId))

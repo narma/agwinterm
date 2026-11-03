@@ -215,7 +215,14 @@ internal partial class Program
                 bool userNavigation = false;
                 string? loadedUrl = null;
                 var blockedNavigations = new Dictionary<ulong, string>();
-                browser.SourceChanged += (_, _) => { if (IsCurrent()) page.CurrentUrl = browser.Source; };
+                browser.SourceChanged += (_, e) =>
+                {
+                    if (!IsCurrent()) return;
+                    page.CurrentUrl = browser.Source;
+                    // Fragment/pushState history does not create a DOM or fire DOMContentLoaded.
+                    if (!e.IsNewDocument && page.Replica?.FilePath is not null && page.BridgeToken is null)
+                        RebindReplicaDocument(page);
+                };
                 browser.ContentLoading += (_, e) => { if (IsCurrent() && !e.IsErrorPage) { page.CommittedUrl = browser.Source; RequestRedraw(); } };
                 browser.NavigationStarting += (_, e) =>
                 {
@@ -281,6 +288,8 @@ internal partial class Program
                         return;
                     }
                     if (e.IsSuccess) loadedUrl = browser.Source;
+                    if (e.IsSuccess && page.Replica?.FilePath is not null && page.BridgeToken is null)
+                        RebindReplicaDocument(page);
                     if (e.IsSuccess && page.ImageInfo is not null)
                     {
                         _ = host.RunAsync(async () =>
