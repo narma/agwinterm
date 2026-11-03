@@ -1,6 +1,6 @@
 # Tasks
 
-Apply started on 2026-11-02; 12/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
+Apply started on 2026-11-02; 13/27 tasks complete. Implementation resumed after user approval of the job-loss policy below and explicit session targeting for questions. See [development notes](../../../docs/agterm-presentation-development.md) for implementation and scoped acceptance evidence. Follow [design.md](design.md) and the two delta specs. Source research pin: `c63e5158e637662ded7ba3a12eac4881b24caef1`; prior real terminal acceptance pin: `9133258994a6cafb330ee354df949b76b1b2834b`.
 
 ### Apply finding: distinguish presentation loss from job-channel loss
 
@@ -36,7 +36,7 @@ Approved delegated single-choice policy: initial first item and exclusive nonbla
 - [x] 4.1 Implement origin grant arbitration separately from terminal leadership and revoke it on stream loss; test two viewers, repeated acquire, old-owner answers and takeover after disconnect while terminal sizes remain unchanged.
 - [x] 4.2 Add optional exact-session `ask open --target` with immutable window/session ownership and unchanged untargeted behavior; map native buttons and representable single-field input/choice/other/cancel forms in both directions; test legacy calls, wrong-window/session targets, owner removal, exact IDs/types, limits, malformed answers, busy modal slots and explicit multi-field refusal, and document the compatibility subset.
 - [x] 4.3 Integrate question resolve/reject/dismiss with origin first-completion outcomes; test answer/cancel races, lost acknowledgement, owner close and handback without replay, including exact result retrieval or explicit uncertainty.
-- [ ] 4.4 Run real-peer question success, cancellation, form refusal and disconnect/late-answer cases in both directions; record authoritative origin results and two-viewer grant behavior.
+- [x] 4.4 Run real-peer question success, cancellation, form refusal and disconnect/late-answer cases in both directions; record authoritative origin results and two-viewer grant behavior.
 
 ## 5. Origin-run program overlays
 

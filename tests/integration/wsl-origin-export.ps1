@@ -91,6 +91,15 @@ try {
         $null=Ctl @('session','hud','close','--target',$pane,'--window',$window)
         $null=Ctl @('session','status','idle','--target',$pane,'--window',$window)
         $null=Ctl @('session','context','--clear','--target',$pane,'--window',$window)
+        $multi=@{fields=@(@{id='a';label='First';type='text'},@{id='b';label='Second';type='text'})}
+        $opened=($multi|ConvertTo-Json -Depth 6 -Compress) | & $ctl ask open --no-block --target $pane --window $window --pipe $id
+        if($LASTEXITCODE -ne 0) { throw "Local multi-field fallback failed: $opened" }
+        $multiId=($opened|ConvertFrom-Json).id
+        Driver 'peer-question-absent'
+        $result=& $ctl ask result $multiId --window $window --pipe $id | ConvertFrom-Json
+        if($result.result -ne 'pending') { throw 'Unsupported form lost its original pending outcome' }
+        $null=& $ctl ask cancel $multiId --window $window --pipe $id
+        Write-Host 'PASS multi-field refusal leaves original question local and actual Mac viewer unchanged'
         foreach($loss in @($false,$true)) {
             $opened='{}' | & $ctl ask open --no-block --target $pane --window $window --pipe $id
             if($LASTEXITCODE -ne 0) { throw "Question open failed: $opened" }

@@ -126,9 +126,9 @@ internal partial class Program : IAgtermPresentationOriginHost
     {
         // This runs on the UI queue so ownership and presenter teardown cannot race the routing decision.
         var session = OwningSes(pane);
-        if (session is null || pane.LiveClosing || session.Closing) return;
+        if (pane.LiveClosing || session?.Closing == true) return;
         string? wireName = blockedDefault ? null : name ?? "default";
-        if (AgtermPresentationSound.Portable(wireName))
+        if (session is not null && AgtermPresentationSound.Portable(wireName))
             foreach (var (scope, entry) in _originPresentations.Where(p => ReferenceEquals(p.Value.Session, session)).ToArray())
                 if (OriginPresentationCurrent(scope, entry) && entry.Mapping.ContainsKey(pane.Id)
                     && _presentationBroker.SendSound(scope, wireName)) return;

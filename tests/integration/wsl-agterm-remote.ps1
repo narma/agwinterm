@@ -186,6 +186,21 @@ public static class RemoteAskProbe {
         if($answer.result -ne 'pending') { throw 'Refusal settled the origin question' }
         $null=Peer-Ctl @('ask','cancel',$questionId)
         Write-Host 'PASS real Mac-origin radio/multi/Other/multiline and unsupported-width handback'
+        $opened=Peer-Ctl @('ask','open','Stage4 cancelled before late click','--input','line','--no-block','--target',$origin)
+        $questionId=[string]$opened.id
+        $question=[IntPtr]::Zero
+        for($i=0;$i -lt 60 -and $question -eq [IntPtr]::Zero;$i++) { $question=[RemoteAskProbe]::Find($ui.Id); Start-Sleep -Milliseconds 100 }
+        if($question -eq [IntPtr]::Zero) { throw 'No replica for cancellation race' }
+        $oldButton=[RemoteAskProbe]::GetDlgItem($question,1000)
+        $null=Peer-Ctl @('ask','cancel',$questionId)
+        # The click was queued by a user before they observed dismissal; whether the native
+        # HWND has already disappeared or the callback runs, the origin cancellation must win.
+        [void][RemoteAskProbe]::SendMessageW($oldButton,0xf5,[IntPtr]::Zero,[IntPtr]::Zero)
+        $answer=Peer-Ctl @('ask','result',$questionId)
+        if($answer.result -ne 'cancelled') { throw "Late native click overwrote cancellation: $($answer|ConvertTo-Json)" }
+        for($i=0;$i -lt 60;$i++) { if([RemoteAskProbe]::Find($ui.Id) -eq [IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }
+        if([RemoteAskProbe]::Find($ui.Id) -ne [IntPtr]::Zero) { throw 'Cancelled replica stayed visible' }
+        Write-Host 'PASS actual Mac origin cancellation wins over a late Windows viewer button action'
         $opened=Peer-Ctl @('ask','open','Stage4 connection loss','--input','line','--no-block','--target',$origin)
         $questionId=[string]$opened.id
         for($i=0;$i -lt 60;$i++) { if([RemoteAskProbe]::Find($ui.Id) -ne [IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }
