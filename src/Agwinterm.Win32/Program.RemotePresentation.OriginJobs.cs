@@ -67,10 +67,7 @@ internal partial class Program
                 completion.TrySetResult(t.Result);
                 Post(() =>
                 {
-                    if (ReferenceEquals(slot.OriginJob, job))
-                    {
-                        if (pane is null) _lastOverlayExit = t.Result; else slot.LastResult = t.Result;
-                    }
+                    RecordOriginJobResult(slot, job, pane is null, t.Result);
                     if (!job.Occupied) _originJobs.Remove(job.Id);
                 });
             }, TaskScheduler.Default);
@@ -83,6 +80,15 @@ internal partial class Program
             return job.Id;
         }
         return null;
+    }
+
+    private void RecordOriginJobResult(OverlaySlot slot, AgtermOverlayJob job, bool sessionWide, string result)
+    {
+        lock (_overlayExitLock)
+        {
+            if (!ReferenceEquals(slot.OriginJob, job) || slot.Term is not null) return;
+            if (sessionWide) _lastOverlayExit = result; else slot.LastResult = result;
+        }
     }
 
     private string? OriginJobControl(OverlaySlot slot, string action, int size, OverlayOptions options)

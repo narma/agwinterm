@@ -1035,6 +1035,8 @@ internal partial class Program
         // window-wide `overlay result` (_lastOverlayExit); for a pane slot it is the slot's own.
         lock (_overlayExitLock)
         {
+            // A delayed origin completion must not write into this new local program's slot.
+            slot.OriginJob = null;
             if (pane is null) _lastOverlayExit = "no overlay"; else slot.LastResult = OverlayPanes.NoResult;
             slot.Term = term;
         }
