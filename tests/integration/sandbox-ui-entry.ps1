@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 $inGuest = $env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount'
 $inCi = $env:GITHUB_ACTIONS -eq 'true' -and $env:CI -eq 'true'
 if ($inGuest -or $inCi) { return $false }
+if ($env:AGWINTERM_HYPERV_UI -eq '1' -and (& "$PSScriptRoot/hyperv-ui-context.ps1")) { return $false }
 if ($Test -in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote','WslOriginExport') -and $env:AGWINTERM_WSL_UI_DESKTOP) {
     if (-not ('WslUiDesktop' -as [type])) { Add-Type -Path "$PSScriptRoot/wsl-ui-desktop.cs" }
     if (-not [WslUiDesktop]::IsPrivate($env:AGWINTERM_WSL_UI_DESKTOP)) { throw 'WSL desktop marker does not match a private non-input desktop.' }
@@ -29,6 +30,11 @@ Write-Host "Routing local $Test UI tests to the background test runner."
 try {
     if ($Test -in @('WslControl','WslBenchmark','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote','WslOriginExport')) {
         & "$PSScriptRoot/wsl-ui.ps1" -Test $Test -TestParameters $options.TestParameters | Out-Host
+    } elseif (-not $env:AGWINTERM_UI_BACKEND -or $env:AGWINTERM_UI_BACKEND -eq 'HyperV') {
+        $options.Remove('Background')
+        & "$PSScriptRoot/hyperv-ui.ps1" @options | Out-Host
+    } elseif ($env:AGWINTERM_UI_BACKEND -and $env:AGWINTERM_UI_BACKEND -ne 'Sandbox') {
+        throw "Unknown UI backend: $env:AGWINTERM_UI_BACKEND"
     } else {
         & "$PSScriptRoot/sandbox-ui.ps1" @options | Out-Host
     }

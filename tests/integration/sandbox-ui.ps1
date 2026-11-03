@@ -16,6 +16,7 @@ param(
     [ValidateRange(2048,65536)][int]$MemoryInMB = 4096,
     [switch]$DisableVGpu,
     [switch]$Background,
+    [switch]$TrimRuntime,
     [switch]$PrepareOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -89,6 +90,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $PowerShellHome 'pwsh.exe'))) {
     throw 'PowerShellHome must contain a portable Windows x64 PowerShell 7 installation.'
 }
 $needsRuntime = $false
+$runtimeBands = @{}
 $binaries = @($Exe, $CtlExe)
 if ($definition.Gate) { $binaries += $GateExe }
 foreach ($binary in $binaries) {
@@ -96,6 +98,15 @@ foreach ($binary in $binaries) {
     if (Test-Path -LiteralPath $runtimeConfig) {
         $options = (Get-Content -LiteralPath $runtimeConfig -Raw | ConvertFrom-Json).runtimeOptions
         if ($options.framework -or $options.frameworks) { $needsRuntime = $true }
+        foreach ($framework in @($options.framework) + @($options.frameworks)) {
+            if (-not $framework) { continue }
+            $version = $null
+            if (-not [version]::TryParse($framework.version, [ref]$version)) { if ($TrimRuntime) { throw 'Cannot select a stable runtime for this runtimeconfig.' }; continue }
+            $runtimeBands["$($version.Major).$($version.Minor)"] = $true
+        }
+        if ($TrimRuntime -and $options.rollForward -in @('LatestMajor','Major','LatestMinor','Minor')) {
+            throw 'TrimRuntime requires runtimeconfigs that use the installed major/minor version.'
+        }
     }
 }
 if ($needsRuntime) {
@@ -205,7 +216,18 @@ try {
         $null = New-Item -ItemType Directory -Path $runtimeDirectory
         Copy-Item -LiteralPath (Join-Path $DotnetHome 'dotnet.exe') -Destination $runtimeDirectory
         foreach ($part in @('host','shared')) {
-            Copy-Directory (Join-Path $DotnetHome $part) (Join-Path $runtimeDirectory $part)
+            if ($part -eq 'shared' -and $TrimRuntime) {
+                foreach ($framework in Get-ChildItem (Join-Path $DotnetHome 'shared') -Directory) {
+                    foreach ($installed in Get-ChildItem $framework.FullName -Directory) {
+                        $version = $null
+                        if ([version]::TryParse($installed.Name, [ref]$version) -and $runtimeBands.ContainsKey("$($version.Major).$($version.Minor)")) {
+                            Copy-Directory $installed.FullName (Join-Path $runtimeDirectory "shared/$($framework.Name)/$($installed.Name)")
+                        }
+                    }
+                }
+            } else {
+                Copy-Directory (Join-Path $DotnetHome $part) (Join-Path $runtimeDirectory $part)
+            }
         }
     }
     $parameters = @{}
