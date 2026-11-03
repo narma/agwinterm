@@ -4,8 +4,20 @@
 request ID. `--no-block` returns `{"id":"..."}` immediately. `ask result ID` reads an
 outcome and `ask cancel ID` cancels a pending request. All CLI output is JSON, including
 without `--json`. `--pipe`/`--socket` select transport; `--window` selects an owner or
-restricts result/cancel lookup. No session target or caller-session fallback is used.
+restricts result/cancel lookup. Optional `ask open --target EXACT_SESSION_UUID` pins
+the question to a session in that selected window. Names, prefixes and `active` are
+refused for this option; the window and session are resolved before the question opens.
+Closing that session (including soft-close or workspace disposal) settles the question
+as `cancelled` with reason `owner-closed`; result retrieval keeps its original ownership.
+Without `--target`, questions retain window-only ownership, with no caller/active-session
+fallback. `ask result ID` and `ask cancel ID` still use exact question IDs, never session IDs.
 `--follow` requests Windows activation; omission preserves foreground policy.
+
+An explicitly session-targeted question may be delegated to that exported session's
+presenter. The supported remote subset is one field, up to six buttons and fifty choices.
+Delegated single-choice questions follow agterm: the first item starts selected and
+nonblank Other excludes a normal selection. These rules do not change locally presented
+forms. Unsupported forms remain local; window-only questions are never exported.
 
 ```json
 {

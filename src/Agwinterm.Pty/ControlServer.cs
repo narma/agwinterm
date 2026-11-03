@@ -144,7 +144,7 @@ public sealed partial class ControlServer : IDisposable
         {
             using var clientCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
             using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
-            using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
+            var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
             Task<string?>? nextRead = null;
             try
             {
@@ -153,6 +153,7 @@ public sealed partial class ControlServer : IDisposable
                 while ((line = await nextRead.ConfigureAwait(false)) != null)
                 {
                     if (line.Length == 0) { nextRead = reader.ReadLineAsync(clientCancellation.Token).AsTask(); continue; }
+                    if (await TryPresentationStreamAsync(line, pipe, reader, writer, clientCancellation.Token).ConfigureAwait(false)) break;
                     using var observationCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     var reply = DispatchAsync(line, observationCancellation.Token);
                     // Exactly one reader, retained across replies. EOF releases a pending observer;
@@ -185,6 +186,7 @@ public sealed partial class ControlServer : IDisposable
                     try { await nextRead.ConfigureAwait(false); }
                     catch (OperationCanceledException) { }
                     catch (IOException) { }
+                try { writer.Dispose(); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }
             }
         }
     }
@@ -221,7 +223,8 @@ public sealed partial class ControlServer : IDisposable
                 if ((_windows as IAskHost ?? _host as IAskHost) is not { } asks) return Err("native questions unavailable");
                 if (cmd == "ask.open")
                 {
-                    if (root.TryGetProperty("target", out var at) && at.ValueKind != JsonValueKind.Null) return Err("ask.open does not accept a session target");
+                    if (target is not null && (!Guid.TryParseExact(target, "D", out var sessionId) || sessionId == Guid.Empty))
+                        return Err("ask.open target requires an exact session ID");
                     AskSpec.Properties(args, "form", "follow");
                     if (!args.TryGetProperty("form", out var form)) return Err("ask.open requires form");
                     bool follow = false;
@@ -230,7 +233,7 @@ public sealed partial class ControlServer : IDisposable
                         if (af.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return Err("ask follow must be boolean");
                         follow = af.GetBoolean();
                     }
-                    return OkRaw(JsonSerializer.Serialize(new { id = asks.OpenAsk(AskSpec.Parse(form), windowSel, follow) }));
+                    return OkRaw(JsonSerializer.Serialize(new { id = asks.OpenAsk(AskSpec.Parse(form), windowSel, follow, target) }));
                 }
                 if (string.IsNullOrEmpty(target)) return Err("ask.result/cancel require an exact ask id");
                 if (args.ValueKind != JsonValueKind.Undefined) AskSpec.Properties(args);
@@ -425,7 +428,7 @@ public sealed partial class ControlServer : IDisposable
                         return Err("Unknown or duplicate zmx request field");
                 WslLiveControl.Validate(cmd, args, target);
                 if (cmd == "zmx.remote.attach" && windowSel is null) return Err("Remote import requires an exact local window ID");
-                if (cmd == "zmx.export.tree" && windowSel is null) return Err("Origin export requires an exact window ID");
+                if ((cmd is "zmx.export.tree" or "zmx.export.ready") && windowSel is null) return Err("Origin export requires an exact window ID");
                 if (windowSel is not null)
                 {
                     if (_windows is null) return Err("Window routing unavailable");

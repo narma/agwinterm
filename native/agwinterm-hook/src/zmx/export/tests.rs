@@ -1,5 +1,32 @@
 use super::*;
 
+#[test]
+fn presentation_frames_are_bounded_and_never_complete_partial_lines() {
+    let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let mut output = Vec::new();
+    let frame = b"{\"kind\":\"ping\",\"gen\":1,\"rev\":2}\n";
+    relay_frames(&frame[..], &mut output, progress.clone(), Instant::now()).unwrap();
+    assert_eq!(output, frame);
+    for bad in [vec![b'x'; 262145], b"partial".to_vec(), vec![0xff, b'\n']] {
+        let mut output = Vec::new();
+        assert!(relay_frames(&bad[..], &mut output, progress.clone(), Instant::now()).is_err());
+        assert!(output.is_empty());
+    }
+}
+
+#[test]
+fn presentation_relay_arguments_are_exact_and_do_not_forward_commands() {
+    let config = json!({"distribution":"Ubuntu","user":"alice","origin":"origin",
+        "executable":"/usr/bin/zmx","socketDirectory":"/tmp/zmx","pipe":"test"});
+    let session = json!({"windowID":"11111111-1111-1111-1111-111111111111","id":"22222222-2222-2222-2222-222222222222"});
+    let args = presentation_args(Path::new("/tmp/adapter"), &config, &session).unwrap();
+    assert_eq!(&args[..3], &["zmx", "export", "present"]);
+    assert!(args.windows(2).any(|p| p == ["--target", "22222222-2222-2222-2222-222222222222"]));
+    assert!(args.windows(2).any(|p| p == ["--adapter", "/tmp/adapter/agtermctl"]));
+    assert!(!args.contains(&"--json".into()));
+    assert!(present(Path::new("/missing"), &config, "active").is_err());
+}
+
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {

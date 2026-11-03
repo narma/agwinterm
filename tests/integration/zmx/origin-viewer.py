@@ -68,7 +68,7 @@ def stop(crash=False):
 def discover():
     remote=ctl('zmx','tree',config['peerHost'])['remote']
     row=next(s for s in remote['sessions'] if s['id']==config['pane'])
-    assert remote.get('presentation') is None
+    assert remote.get('presentation') == 1
     assert '/manifests/' in remote['endpoint']['executable']
     return remote,row
 
@@ -107,7 +107,7 @@ def exercise(split):
 
 if action == 'single':
     source=Path(config['macApp']).resolve()
-    if not str(source).startswith('/private/tmp/aw-stage2-build-'):
+    if not str(source).startswith(('/private/tmp/aw-stage2-build-', '/private/tmp/aw-stage4-build-')):
         raise RuntimeError('only the isolated pinned build is allowed')
     subprocess.run(['ditto',str(source),str(bundle)],check=True,timeout=120)
     (root/'settings.json').write_text(json.dumps({'restoreMode':'live'}))
@@ -138,6 +138,29 @@ os.execv('/usr/bin/ssh',['ssh']+args)
     print('PASS viewer close preserves origin workload')
 elif action == 'split':
     exercise(True)
+elif action == 'passive':
+    imported=json.loads((root/'imported.json').read_text())['id']
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==imported]
+        if rows and rows[0].get('context')=='STAGE4_ORIGIN_CONTEXT' and rows[0].get('status')=='blocked' and rows[0].get('hud',{}).get('message')=='STAGE4_ORIGIN_HUD': break
+        time.sleep(.25)
+    else:
+        (root/'passive-failure.json').write_text(json.dumps(rows,indent=2))
+        raise RuntimeError('passive replica did not converge: '+repr(rows))
+    print('PASS actual Agwinterm -> agterm context/status/HUD replica')
+elif action == 'manual-show':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and rows[0].get('ask',{}).get('id')==sys.argv[3] and rows[0]['ask'].get('replica'): break
+        time.sleep(.25)
+    else:
+        (root/'manual-question-failure.json').write_text(json.dumps(rows,indent=2))
+        raise RuntimeError('manual question not visible in Mac session state: '+repr(rows))
+    ctl('window','minimize',info['window'],'off')
+    ctl('window','select',info['window'])
+    (root/'manual-ready.json').write_text(json.dumps({'window':info['window'],'session':info['id'],'ask':rows[0]['ask']},indent=2))
+    print('MANUAL MAC READY: Stage 4: manual Mac answer; type STAGE4_MAC_ANSWER and Confirm test; isolated app='+str(bundle))
 elif action == 'follower-resize':
     info=json.loads((root/'imported.json').read_text())
     for _ in range(30):

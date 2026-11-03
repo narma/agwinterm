@@ -55,6 +55,7 @@ internal partial class Program
         {
             DetachSessionUi(session);
             session.Closing = true;
+            CloseSessionQuestion(session);
             foreach (var (_, page) in _webPages.Where(pair => ReferenceEquals(pair.Value.Owner, session))) CancelWebExternal(page);
             lock (_workspaces) session.Ws.Sessions.Remove(session);
             _selectedIds.Remove(session.Id); _mru.Remove(session.Id);

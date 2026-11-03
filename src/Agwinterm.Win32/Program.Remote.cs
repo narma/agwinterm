@@ -50,14 +50,14 @@ internal partial class Program
             var destination = AgtermRemoteControl.Target(args);
             var inventory = AgtermSshDiscoveryClient.DiscoverAsync(destination).GetAwaiter().GetResult();
             if (command == "zmx.remote.list") return new { provider = "agterm-ssh", inventory.Endpoint, inventory.Sessions,
-                terminalAttachmentVerified = false, inboundExport = false, presentation = false };
+                terminalAttachmentVerified = false, inboundExport = false, presentation = inventory.PresentationVersion is > 0, presentationVersion = inventory.PresentationVersion };
             var selected = inventory.Sessions.SingleOrDefault(s => s.Session.Id == args.GetProperty("session").GetString())
                 ?? throw new InvalidOperationException("Exact origin session is missing");
             if (!selected.CanImportTerminal) throw new InvalidOperationException(selected.UnsupportedReason);
             string bridge = args.GetProperty("bridge").GetString()!;
             // All identities/topology are resolved before a single local pane is published.
             var bindings = selected.Session.Panes.Select(p => _remoteOperations.ProbeAsync(destination, bridge,
-                inventory.Endpoint, selected.Session, p).GetAwaiter().GetResult()).ToArray();
+                inventory.Endpoint, selected.Session, p, presentationVersion: inventory.PresentationVersion).GetAwaiter().GetResult()).ToArray();
             return InvokeOnUiQueued<object>(() =>
             {
                 lock (_registry) if (!_registry.Values.Contains(this))
@@ -255,9 +255,10 @@ internal partial class Program
         return JsonSerializer.SerializeToElement(text.TrimEnd('\n'));
     }
 
-    private static JsonElement RemoteReadback(Pane pane)
+    private JsonElement RemoteReadback(Pane pane)
     {
         var binding = AgtermRemoteBinding.Load(pane.LiveBinding, out var error);
+        var owner = OwningSes(pane);
         return JsonSerializer.SerializeToElement(new { provider = "agterm-ssh", bindingId = binding?.BindingId,
             transport = "wsl-ssh", distribution = binding?.Target.Distribution, user = binding?.Target.User,
             destination = binding?.Target.Destination,
@@ -266,6 +267,11 @@ internal partial class Program
             ownership = "borrowed", recovery = binding?.Recovery ?? "unavailable", error = pane.LiveSaveError ?? binding?.Error ?? error,
             role = pane.LiveRole?.Role ?? "unknown", closeAction = "disconnect-attachment",
             remoteAttach = binding?.Recovery is "host-adopted" or "remote-reattached", inboundExport = false,
-            presentation = false, terminate = false, restart = false });
+            presentation = binding?.PresentationVersion is > 0,
+            presentationError = owner?.PresentationError,
+            presentationQuestionOutcome = owner?.PresentationQuestionOutcome,
+            presentationConnected = owner is not null && _presentationReplicas.TryGetValue(owner, out var replica) && replica.Connected,
+            presentationPresenter = owner is not null && _presentationReplicas.TryGetValue(owner, out var presenter) && presenter.Sender?.Granted == true,
+            terminate = false, restart = false });
     }
 }

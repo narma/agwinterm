@@ -16,8 +16,8 @@
     WslBenchmark = @{ Path='tests/integration/wsl-hook-bench.ps1'; Wsl=$true; Options=@() }
     WslZmxDependency = @{ Path='tests/integration/wsl-zmx-dependency.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
     WslZmxSurvival = @{ Path='tests/integration/wsl-zmx-survival.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory','DiagnosticKeepalive','LifetimeGuard','ProfileLive','LifecycleControls','PeerDistro','PeerUser','PeerExecutable') }
-    WslAgtermRemote = @{ Path='tests/integration/wsl-agterm-remote.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','Destination','AgentSocket','OriginSocket','Bridge','TerminalFixture','FaultBridge') }
-    WslOriginExport = @{ Path='tests/integration/wsl-origin-export.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','BuildDirectory','Destination','AgentSocket','MacAgentSocket','MacApp','PeerHost') }
+    WslAgtermRemote = @{ Path='tests/integration/wsl-agterm-remote.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','Destination','AgentSocket','OriginSocket','Bridge','TerminalFixture','FaultBridge','PassiveOnly') }
+    WslOriginExport = @{ Path='tests/integration/wsl-origin-export.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','BuildDirectory','Destination','AgentSocket','MacAgentSocket','MacApp','PeerHost','ManualQuestion') }
     WslZmxIdentity = @{ Path='tests/integration/wsl-zmx-identity.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
     WebStartupBaseline = @{ Path='tools/web-startup-baseline.ps1'; Exe=$true; Options=@('Runs'); Inputs=@('Installer','Portable'); Outputs=@('Output') }
 }

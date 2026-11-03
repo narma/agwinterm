@@ -27,6 +27,7 @@ internal sealed class NativeQuestion : IDisposable
     private bool _ended, _disposing, _building, _layouting;
     public PendingAsk Request { get; }
     private AskField? Field => Request.Spec.Fields.Count == 0 ? null : Request.Spec.Fields[_page];
+    private int DefaultButton => Math.Max(0, Request.Spec.Buttons.ToList().FindIndex(b => b.Id == Request.Spec.DefaultButtonId));
 
     [DllImport("user32.dll")] private static extern IntPtr GetNextDlgTabItem(IntPtr dialog, IntPtr control, bool previous);
     [DllImport("user32.dll")] private static extern bool EnableWindow(IntPtr hwnd, bool enabled);
@@ -75,7 +76,7 @@ internal sealed class NativeQuestion : IDisposable
         {
             var b = Request.Spec.Buttons[i];
             string label = b.Label.Replace("&", "&&") + (b.Hotkey is null ? "" : " (Alt+" + b.Hotkey + ")");
-            _buttons.Add(Child("BUTTON", label, WS_TABSTOP | (i == 0 ? 1u : 0u), 1000 + i));
+            _buttons.Add(Child("BUTTON", label, WS_TABSTOP | (i == DefaultButton ? 1u : 0u), 1000 + i));
         }
         _cancel = Child("BUTTON", "Cancel", WS_TABSTOP, 2);
         UpdateFont(); BuildPage();
@@ -120,7 +121,7 @@ internal sealed class NativeQuestion : IDisposable
             ShowWindow(_otherLabel, f?.AllowOther == true ? 5 : 0);
             if (f is not null)
             {
-                var value = _values.GetValueOrDefault(f.Id) ?? AskValue.Empty(f);
+                var value = _values.GetValueOrDefault(f.Id) ?? Request.Spec.InitialValues?.GetValueOrDefault(f.Id) ?? AskValue.Empty(f);
                 if (f.Type is "text" or "multiline")
                 {
                     uint style = WS_TABSTOP | 0x800000 | (f.Type == "multiline" ? 0x1004u | WS_VSCROLL : ES_AUTOHSCROLL);
@@ -163,7 +164,13 @@ internal sealed class NativeQuestion : IDisposable
             var ids = new List<string>(); int selected = (int)SendMessageW(_field, 0x188, IntPtr.Zero, IntPtr.Zero);
             for (int i = 0; i < f.Choices.Count; i++)
                 if (f.Type == "multi" ? SendMessageW(_field, 0x187, (IntPtr)i, IntPtr.Zero).ToInt64() > 0 : selected == i) ids.Add(f.Choices[i].Id);
-            _values[f.Id] = new("", ids, f.AllowOther ? Read(_other, AskSpec.MaxText) : null);
+            string? other = f.AllowOther ? Read(_other, AskSpec.MaxText) : null;
+            if (Request.Spec.DelegatedChoices && f.Type == "single")
+            {
+                if (!string.IsNullOrWhiteSpace(other)) ids.Clear();
+                else if (ids.Count == 0) ids.Add(f.Choices[0].Id);
+            }
+            _values[f.Id] = new("", ids, other);
         }
     }
     private void Page(int delta)
@@ -254,6 +261,17 @@ internal sealed class NativeQuestion : IDisposable
         else if (id == 4) Page(1);
         else if (id >= 1000 && id < 1000 + _buttons.Count) Submit(id - 1000);
     }
+
+    private void ChoiceChanged(int id, int notification)
+    {
+        if (_building || !Request.Spec.DelegatedChoices || Field is not { Type: "single", AllowOther: true }) return;
+        if (id == 203 && notification == 0x300) // EN_CHANGE: Other is the radio selection while nonblank.
+        {
+            if (!string.IsNullOrWhiteSpace(Read(_other, AskSpec.MaxText))) SendMessageW(_field, 0x186, (IntPtr)(-1), IntPtr.Zero);
+            else if ((int)SendMessageW(_field, 0x188, IntPtr.Zero, IntPtr.Zero) < 0) SendMessageW(_field, 0x186, IntPtr.Zero, IntPtr.Zero);
+        }
+        else if (id == 200 && notification == 1) SetWindowTextW(_other, ""); // LBN_SELCHANGE
+    }
     private static IntPtr WindowProc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l)
     {
         if (!Roots.TryGetValue(hwnd, out var form))
@@ -264,7 +282,8 @@ internal sealed class NativeQuestion : IDisposable
             {
                 case WM_CLOSE: form.End(new("cancelled", "closed")); return IntPtr.Zero;
                 case WM_COMMAND:
-                    if (((long)w >> 16 & 0xffff) == 0) form.Command((int)((long)w & 0xffff)); return IntPtr.Zero;
+                    int notification = (int)((long)w >> 16 & 0xffff), id = (int)((long)w & 0xffff);
+                    if (notification == 0) form.Command(id); else form.ChoiceChanged(id, notification); return IntPtr.Zero;
                 case WM_SIZE: form.Layout(); break;
                 case 0x115: form.Scroll((int)((long)w & 0xffff)); return IntPtr.Zero; // WM_VSCROLL
                 case WM_MOUSEWHEEL:
@@ -305,7 +324,7 @@ internal sealed class NativeQuestion : IDisposable
                 if (key == VK_RETURN && !(hwnd == _field && Field?.Type == "multiline"))
                 {
                     if (hwnd == _cancel) Command(2); else if (hwnd == _back) Command(3); else if (hwnd == _next) Command(4);
-                    else { int button = _buttons.IndexOf(hwnd); Submit(button < 0 ? 0 : button); }
+                    else { int button = _buttons.IndexOf(hwnd); Submit(button < 0 ? DefaultButton : button); }
                     return IntPtr.Zero;
                 }
                 if ((hwnd == _other || (hwnd == _field && Field?.Type is "text" or "multiline")) && key == 65 && (GetKeyState(VK_CONTROL) & 0x8000) != 0)

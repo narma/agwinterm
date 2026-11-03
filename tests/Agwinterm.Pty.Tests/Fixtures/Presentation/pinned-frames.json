@@ -1,0 +1,329 @@
+[
+  {
+    "channel": "presentation",
+    "direction": "viewer",
+    "frame": {
+      "kind": "hello",
+      "gen": 0,
+      "rev": 0,
+      "hello": {
+        "version": 1,
+        "kinds": [
+          "status",
+          "hud",
+          "notify",
+          "context",
+          "layout",
+          "ask.form",
+          "ask.other",
+          "overlay.points",
+          "page.request",
+          "page.rejected",
+          "page.close",
+          "page.closed",
+          "page.command",
+          "page.state"
+        ],
+        "mode": "presenter"
+      }
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "hello": {
+        "kinds": [
+          "status",
+          "hud",
+          "notify",
+          "context",
+          "layout",
+          "ask.form",
+          "ask.other",
+          "overlay.points",
+          "page.request",
+          "page.rejected",
+          "page.close",
+          "page.closed",
+          "page.command",
+          "page.state"
+        ],
+        "mode": "presenter",
+        "version": 1
+      },
+      "kind": "hello",
+      "rev": 0
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "kind": "snapshot",
+      "rev": 1,
+      "snapshot": {
+        "layout": {
+          "panes": [
+            "00000000-0000-0000-0000-000000000001"
+          ],
+          "primary": "00000000-0000-0000-0000-000000000001",
+          "shown": false
+        },
+        "respawns": {
+          "epoch": "00000000-0000-0000-0000-000000000002",
+          "generations": {}
+        },
+        "status": {
+          "blink": false,
+          "changedAt": 1793648973.3288012,
+          "pane": "00000000-0000-0000-0000-000000000001",
+          "status": "active"
+        }
+      }
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "viewer",
+    "frame": {
+      "kind": "presenter.acquire",
+      "gen": 4,
+      "rev": 0
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "kind": "presenter.granted",
+      "rev": 2
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "kind": "status",
+      "rev": 3,
+      "status": {
+        "blink": false,
+        "changedAt": 1793649010.404453,
+        "pane": "00000000-0000-0000-0000-000000000001",
+        "status": "active"
+      }
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "context": "stage-4 protocol fixture",
+      "gen": 4,
+      "kind": "context",
+      "rev": 4
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "ask": {
+        "align": "right",
+        "buttons": [
+          {
+            "id": "ok",
+            "label": "OK"
+          },
+          {
+            "id": "cancel",
+            "label": "Cancel"
+          }
+        ],
+        "cancelID": "cancel",
+        "defaultID": "ok",
+        "id": "00000000-0000-0000-0000-000000000003",
+        "input": {
+          "mode": "line",
+          "value": "fixture"
+        },
+        "owner": 7,
+        "style": "terminal",
+        "title": "Stage-4 fixture"
+      },
+      "gen": 4,
+      "kind": "ask.request",
+      "rev": 5
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "viewer",
+    "frame": {
+      "kind": "ask.resolve",
+      "gen": 4,
+      "rev": 0,
+      "ask": {
+        "id": "00000000-0000-0000-0000-000000000003",
+        "owner": 7,
+        "button": "ok",
+        "text": "fixture answer"
+      }
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "ask": {
+        "id": "00000000-0000-0000-0000-000000000003",
+        "owner": 7
+      },
+      "gen": 4,
+      "kind": "ask.dismiss",
+      "rev": 6
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "kind": "overlay.request",
+      "overlay": {
+        "follow": false,
+        "job": "00000000-0000-0000-0000-000000000004",
+        "wait": false
+      },
+      "rev": 7
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "viewer",
+    "frame": {
+      "kind": "overlay.rejected",
+      "gen": 4,
+      "rev": 0,
+      "overlay": {
+        "job": "00000000-0000-0000-0000-000000000004",
+        "reason": "fixture records request without execution"
+      }
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "kind": "page.request",
+      "page": {
+        "browse": false,
+        "chromeless": false,
+        "follow": false,
+        "identity": "fixture.html",
+        "javascript": false,
+        "navigation": false,
+        "page": "00000000-0000-0000-0000-000000000005",
+        "persistent": false,
+        "source": {
+          "file": {
+            "grantRoot": "/tmp/aw-stage4-peer-fixture",
+            "path": "/tmp/aw-stage4-peer-fixture/fixture.html"
+          }
+        },
+        "token": "REDACTED-SINGLE-USE-TOKEN"
+      },
+      "rev": 8
+    }
+  },
+  {
+    "channel": "page",
+    "direction": "viewer",
+    "frame": {
+      "kind": "resource",
+      "id": 1,
+      "path": "/tmp/aw-stage4-peer-fixture/fixture.html"
+    }
+  },
+  {
+    "channel": "page",
+    "direction": "origin",
+    "frame": {
+      "id": 1,
+      "kind": "head",
+      "mimeType": "text/html"
+    }
+  },
+  {
+    "channel": "page",
+    "direction": "origin",
+    "frame": {
+      "data": "PCFkb2N0eXBlIGh0bWw+PHRpdGxlPlN0YWdlIDQ8L3RpdGxlPjxwPmZpeHR1cmU8L3A+",
+      "id": 1,
+      "kind": "chunk"
+    }
+  },
+  {
+    "channel": "page",
+    "direction": "origin",
+    "frame": {
+      "id": 1,
+      "kind": "end"
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "viewer",
+    "frame": {
+      "kind": "page.closed",
+      "gen": 4,
+      "rev": 0,
+      "page": {
+        "page": "00000000-0000-0000-0000-000000000005"
+      }
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "origin",
+    "frame": {
+      "gen": 4,
+      "kind": "page.request",
+      "page": {
+        "browse": false,
+        "chromeless": false,
+        "follow": false,
+        "identity": "https://example.invalid",
+        "javascript": false,
+        "navigation": false,
+        "page": "00000000-0000-0000-0000-000000000006",
+        "persistent": false,
+        "source": {
+          "url": {
+            "_0": "https://example.invalid/stage4"
+          }
+        },
+        "token": "REDACTED-SINGLE-USE-TOKEN"
+      },
+      "rev": 9
+    }
+  },
+  {
+    "channel": "presentation",
+    "direction": "viewer",
+    "frame": {
+      "kind": "page.rejected",
+      "gen": 4,
+      "rev": 0,
+      "page": {
+        "page": "00000000-0000-0000-0000-000000000006",
+        "reason": "fixture records URL without navigation"
+      }
+    }
+  }
+]

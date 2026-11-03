@@ -7,8 +7,11 @@ namespace Agwinterm.Pty.Tests;
 /// <summary>An in-memory <see cref="ISessionHost"/> for testing the control-API JSON contract without the
 /// Win32 UI: real workspace→session state + window flags, so tree/window.state/lifecycle verbs can be
 /// asserted end-to-end. Peripheral verbs return sensible constants.</summary>
-internal sealed class FakeSessionHost : ISessionHost, IWslLiveHost
+internal sealed class FakeSessionHost : ISessionHost, IWslLiveHost, IAgtermPresentationOriginHost
 {
+    public Func<string, System.Text.Json.JsonElement, string, AgtermPresentationHello, AgtermPresentationBroker.Subscription>? PresentationOpen { get; set; }
+    public AgtermOriginPresentationLease OpenPresentation(string session, System.Text.Json.JsonElement args, string account, AgtermPresentationHello hello)
+        => new(PresentationOpen?.Invoke(session, args, account, hello) ?? throw new IOException("Presentation unavailable"), () => PresentationOpen is not null);
     public int LiveCalls { get; private set; }
     public Func<string, System.Text.Json.JsonElement, string?, object>? LiveHandler { get; set; }
     public Func<string, System.Text.Json.JsonElement, ISession, System.Text.Json.JsonElement?>? LiveTerminalHandler { get; set; }

@@ -1,6 +1,6 @@
 # Outbound agterm attachment development
 
-Updated 2026-11-02. OpenSpec: `add-agterm-remote-attach`. Implementation and real-peer acceptance are complete; PR checks and review are tracked in [PR #25](https://github.com/narma/agwinterm/pull/25).
+Updated 2026-11-02. OpenSpec: [archived add-agterm-remote-attach](../openspec/changes/archive/2026-11-02-add-agterm-remote-attach/proposal.md). Implementation and real-peer acceptance are complete; [PR #25](https://github.com/narma/agwinterm/pull/25) was squash-merged as `41cc0d9` on 2026-11-02.
 
 ## Implemented slice
 
@@ -124,7 +124,7 @@ must target only those explicit test directories. Primary user state is not a ro
   background Windows Sandbox.
 
 Terminal continuity and the expanded fault matrix passed on the exact application pin.
-CI and review status must be read from the PR for its current head.
+Archive verification (2026-11-02): all check runs for final PR head `06898429d81f414c1559c234beb0b6ab1141a870` succeeded, including Greptile. The Greptile connector confirms a clean 5/5 final review and both earlier findings addressed. Main specs now include agterm-remote-sessions and the combined stage-2/stage-3 capability contract. This is historical acceptance for the pinned build, not a new runtime test or a claim about newer upstream versions.
 
 
 The initial copied-app signed ZMX pair had SHA-256 `bee4afb0bd75bdd06f21fb2f73e5031e2ccbddb43b1e0b50bb367a6985602345`. The final pinned-app hashes are recorded below.

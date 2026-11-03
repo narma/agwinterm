@@ -13,6 +13,8 @@ import termios
 import sys
 import time
 import uuid
+import queue
+import threading
 
 mode = sys.argv[1]
 run_path = Path(sys.argv[2])
@@ -29,6 +31,57 @@ def call(argv, success=True, env=None, timeout=35):
 
 def tree():
     return json.loads(call([adapter, 'zmx', 'tree', '--json']).stdout)['result']['remote']
+
+def presentation():
+    process = subprocess.Popen([str(adapter), 'zmx', 'present', run['pane']], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    frames = queue.Queue()
+    def read():
+        for line in process.stdout: frames.put(json.loads(line))
+        frames.put(None)
+    threading.Thread(target=read, daemon=True).start()
+    try:
+        process.stdin.write(json.dumps({'kind':'hello','gen':0,'rev':0,'hello':{'version':1,'mode':'presenter','kinds':['context','status','hud','layout','ask.form','ask.other']}})+'\n')
+        process.stdin.flush()
+        hello = frames.get(timeout=15)
+        snapshot = frames.get(timeout=15)
+        assert hello['kind']=='hello' and snapshot['kind']=='snapshot', (hello,snapshot)
+        assert snapshot['snapshot']['layout']['panes'], snapshot
+        generation=hello['gen']
+        def send(kind, payload=None):
+            frame={'kind':kind,'gen':generation,'rev':0}
+            if payload is not None: frame['ask']=payload
+            process.stdin.write(json.dumps(frame)+'\n'); process.stdin.flush()
+        def until(kind):
+            deadline=time.monotonic()+15
+            while True:
+                frame=frames.get(timeout=max(.01,deadline-time.monotonic()))
+                assert frame is not None, 'presentation EOF'
+                if frame['kind']=='ping': send('ack')
+                if frame['kind']==kind: return frame
+        send('presenter.acquire'); assert until('presenter.granted')
+        cli=run['config']['cli']; selectors=['--pipe',run['config']['pipe'],'--window',run['window']]
+        form={'fields':[{'id':'original-field','label':'Input','type':'text'}]}
+        for cancel in [False,True]:
+            opened=subprocess.run([cli,'ask','open','--no-block','--target',run['pane'],*selectors],input=json.dumps(form),text=True,capture_output=True,timeout=15)
+            assert opened.returncode==0,(opened.stdout,opened.stderr)
+            ask_id=json.loads(opened.stdout)['id']
+            request=until('ask.request')['ask']; assert request['id']==ask_id
+            answer={'id':ask_id,'owner':request['owner']}
+            if not cancel: answer.update(button='submit',text='AUTHORITATIVE_WSL_ANSWER')
+            send('ask.resolve',answer); until('ask.dismiss')
+            outcome=subprocess.run([cli,'ask','result',ask_id,*selectors],text=True,capture_output=True,timeout=10)
+            result=json.loads(outcome.stdout)
+            if cancel: assert result['result']=='cancelled' and result['reason']=='escape',result
+            else: assert result['result']=='answered' and result['values']['original-field']=='AUTHORITATIVE_WSL_ANSWER',result
+        print('PASS actual WSL origin presenter grant, input answer/cancel and authoritative retained result')
+        process.stdin.write('{"cmd":"session.type","target":"active","args":{"text":"UNAUTHORIZED"}}\n')
+        process.stdin.flush()
+        process.wait(timeout=10)
+        assert frames.get(timeout=2) is None
+        print('PASS actual Rust/CLI/broker hello and snapshot; generic command refused')
+    finally:
+        if process.poll() is None: process.kill()
+        process.wait(timeout=5)
 
 def selected(value):
     return next(s for s in value['sessions'] if s['id'] == run['pane'])
@@ -95,7 +148,7 @@ def peer(action):
         # No stop action before this run created its own viewer directory.
         result = subprocess.run(ssh + ['test -f ' + shlex.quote(remote_root+'/run.json')], env=env, timeout=10)
         if result.returncode: return
-    output = remote(['python3',remote_root+'/viewer.py',action,remote_root])
+    output = remote(['python3',remote_root+'/viewer.py',action,remote_root] + ([run['manualQuestionId']] if action=='manual-show' else []))
     (root/('peer-'+action+'.log')).write_text(output)
     print(output.strip())
 
@@ -138,7 +191,9 @@ if mode == 'local':
     assert name == selected(tree())['panes'][0]['daemon']
     screen = json.loads(call([adapter,'zmx','screen',name,'--json']).stdout)
     assert 'AW_ORIGIN_' in screen['result']['text']
-    for command in [['zmx','kill',name,'--json'],['zmx','present',run['pane']],['session','close',run['pane']]]:
+    assert value.get('presentation') == 1
+    presentation()
+    for command in [['zmx','kill',name,'--json'],['session','close',run['pane']]]:
         call([adapter,*command],success=False)
     print('PASS single discovery, exact PTY input/read, borrowed close, unsupported controls')
 elif mode == 'split':

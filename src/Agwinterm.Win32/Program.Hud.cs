@@ -40,6 +40,7 @@ internal partial class Program
                 spec = spec with { AnchorPaneId = anchor };
             }
             var previous = ses.Hud;
+            ses.HudMirrored = false;
             lock (_workspaces) ses.Hud = action == "update" ? spec with { BackgroundColor = ses.Hud!.BackgroundColor } : spec;
             ses.HudDeadline = SessionHuds.Deadline(Environment.TickCount64, spec.HideAfter);
             if (previous is null || previous with { Document = null } != ses.Hud with { Document = null } || spec.HideAfter > 0)
@@ -53,6 +54,7 @@ internal partial class Program
     {
         if (ses.Hud is null) return;
         var anchor = ses.Hud.AnchorPaneId;
+        ses.HudMirrored = false;
         lock (_workspaces) ses.Hud = null;
         ses.HudDeadline = null;
         SurfaceEvent("hud", "closed", ses, reason: reason, anchorPaneId: anchor);

@@ -8,7 +8,8 @@ public class AskDispatchTests
     private sealed class Host : IWindowHost, IAskHost
     {
         public int Calls; public string? Window; public bool Follow; public AskSpec? Spec;
-        public string OpenAsk(AskSpec spec,string? window,bool follow) {Calls++;Spec=spec;Window=window;Follow=follow;return "ask-id";}
+        public string? Session;
+        public string OpenAsk(AskSpec spec,string? window,bool follow,string? session = null) {Calls++;Spec=spec;Window=window;Follow=follow;Session=session;return "ask-id";}
         public AskOutcome ReadAsk(string id,string? window) {Calls++;Window=window;return new("pending");}
         public void CancelAsk(string id,string? window) {Calls++;Window=window;}
         public ISessionHost? ResolveWindow(string? selector) => throw new Exception("picker must not resolve a session host");
@@ -32,6 +33,7 @@ public class AskDispatchTests
     }
 
     [Theory]
+    [InlineData("{\"cmd\":\"ask.open\",\"target\":\"00000000-0000-0000-0000-000000000000\",\"args\":{\"form\":{}}}")]
     [InlineData("{\"cmd\":\"ask.result\"}")][InlineData("{\"cmd\":\"ask.cancel\",\"target\":3}")]
     [InlineData("{\"cmd\":\"ask.result\",\"target\":\"id\",\"window\":\"\"}")]
     [InlineData("{\"cmd\":\"ask.open\",\"target\":\"active\",\"args\":{\"form\":{}}}")]
@@ -39,4 +41,13 @@ public class AskDispatchTests
     [InlineData("{\"cmd\":\"ask.open\",\"args\":{\"form\":{},\"follow\":\"true\"}}")]
     public void InvalidRequestNeverCallsHost(string raw)
     {var host=new Host();Assert.False(Call(host,raw).GetProperty("ok").GetBoolean());Assert.Equal(0,host.Calls);}
+
+    [Fact] public void OpenPreservesExplicitSessionAndLegacyOmission()
+    {
+        var host = new Host(); string session = Guid.NewGuid().ToString();
+        Assert.True(Call(host, JsonSerializer.Serialize(new { cmd = "ask.open", target = session, window = "w1", args = new { form = new { } } })).GetProperty("ok").GetBoolean());
+        Assert.Equal(session, host.Session); Assert.Equal("w1", host.Window);
+        Assert.True(Call(host, """{"cmd":"ask.open","args":{"form":{}}}""").GetProperty("ok").GetBoolean());
+        Assert.Null(host.Session);
+    }
 }

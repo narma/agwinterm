@@ -201,7 +201,7 @@ internal partial class Program
             // never a second line and never changes rowH — DrawSidebar computes ONE rowH per paint and
             // every consumer of _sidebarRows (click, RowAt, the rename EDIT, drag, UIA) assumes it.
             // The palette's Secondary line is where the long form lives.
-            if (s.Context is string ctx && ctx.Length > 0)
+            if (s.EffectiveContext is string ctx && ctx.Length > 0)
             {
                 float nameW = MathF.Min(MeasureText(name, _sidebarFont), nameAvail);
                 float ctxX = nameX + nameW + 6f, ctxW = nameAvail - nameW - 6f;
@@ -858,7 +858,7 @@ internal partial class Program
                         string cwd = PrettyCwd(SafeCwd(sx));
                         // session.context (P3) leads the dimmed line — "<context>  ·  <workspace>  ·  <cwd>" —
                         // and is searchable, so a palette query finds a session by what it is for.
-                        string ctx = sx.Context ?? "";
+                        string ctx = sx.EffectiveContext ?? "";
                         string secondary = cwd.Length > 0 ? $"{sx.Ws.Name}  ·  {cwd}" : sx.Ws.Name;
                         if (ctx.Length > 0) secondary = $"{ctx}  ·  {secondary}";
                         _palAll.Add(new PalItem

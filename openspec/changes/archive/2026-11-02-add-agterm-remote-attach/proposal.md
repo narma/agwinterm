@@ -2,7 +2,7 @@
 
 ## Why
 
-Stage 1 preserves local WSL workloads, but Agwinterm cannot yet view a session owned by agterm on another machine. Stage 2 of the [required roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) adds that outbound direction while retaining Rust hosting and the existing workload's identity.
+Stage 1 preserves local WSL workloads, but Agwinterm cannot yet view a session owned by agterm on another machine. Stage 2 of the [required roadmap](../../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) adds that outbound direction while retaining Rust hosting and the existing workload's identity.
 
 ## What Changes
 

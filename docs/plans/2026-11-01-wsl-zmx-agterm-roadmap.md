@@ -1,6 +1,6 @@
 # WSL ZMX and bidirectional agterm interoperability
 
-Updated: 2026-11-02. Status: stage 1 merged in origin/narma at 5552130. Stage 2 implementation and pinned real-peer acceptance complete; current-head CI and Greptile review tracked in PR #25.
+Updated: 2026-11-02. Status: stages 1–3 merged and archived, with accepted real-peer terminal evidence. Stage 2 main specs reconciled with stage 3. Stage 4 implementation is in progress (9/27 tasks); independent transport, scoped broker/adapter and status/context/HUD are implemented, with scoped actual-peer evidence in both directions. Full passive/interactive acceptance remains pending.
 
 ## Committed outcome
 
@@ -15,11 +15,11 @@ Implementation of stage 1 was explicitly requested on 2026-11-02, including the 
 | Stage | Deliverable | Status | OpenSpec |
 | --- | --- | --- | --- |
 | 1 | WSL ZMX lifecycle and recovery with Rust PTY host | 29/29 tasks complete; local acceptance and CI passed; disabled by default; [PR #23](https://github.com/narma/agwinterm/pull/23) merged; [evidence](../wsl-zmx-development.md) | [add-wsl-zmx-session-recovery](../../openspec/changes/archive/2026-11-02-add-wsl-zmx-session-recovery/proposal.md) |
-| 2 | Agwinterm viewer attaches to agterm origin | 22/22 tasks complete; real pinned macOS origin single/split, recovery, fault and terminal continuity acceptance passed; shared `agwinterm-zmx` member; [PR #25](https://github.com/narma/agwinterm/pull/25) checks/review in progress; [evidence](../agterm-remote-development.md) | [add-agterm-remote-attach](../../openspec/changes/add-agterm-remote-attach/proposal.md) |
+| 2 | Agwinterm viewer attaches to agterm origin | 22/22 tasks complete; pinned real macOS origin single/split, recovery, faults and terminal continuity accepted; [PR #25](https://github.com/narma/agwinterm/pull/25) squash-merged as `41cc0d9`; final-head checks passed and Greptile 5/5; synced and archived; [evidence](../agterm-remote-development.md) | [add-agterm-remote-attach](../../openspec/changes/archive/2026-11-02-add-agterm-remote-attach/proposal.md) |
 | 3 | agterm viewer attaches to Agwinterm's WSL origin | 9/9 tasks complete; native adapter/provisioning, pinned actual Mac single/split/reconnect/restarts and stage-2/local WSL/ordinary Windows regressions passed; [PR #26](https://github.com/narma/agwinterm/pull/26) squash-merged as `35e9024`; CI passed and Greptile 5/5; archived; [evidence](../wsl-origin-export-development.md) | [export-wsl-sessions-to-agterm](../../openspec/changes/archive/2026-11-02-export-wsl-sessions-to-agterm/proposal.md) |
-| 4 | Remote presentation in both directions | Required; proposal pending; follows stages 2 and 3 | Not created; suggested name `add-agterm-remote-presentation` |
+| 4 | Remote presentation in both directions | Implementation in progress; 9/27 tasks; passive smoke passed in both directions, session-targeted native asks verified; notification/sound matrix, delegated questions, jobs and pages remain pending; all five families are required | [add-agterm-remote-presentation](../../openspec/changes/add-agterm-remote-presentation/proposal.md) · [design](../../openspec/changes/add-agterm-remote-presentation/design.md) · [tasks](../../openspec/changes/add-agterm-remote-presentation/tasks.md) · [evidence](../agterm-presentation-development.md) |
 
-The remaining suggested stage-4 name is a reservation only, not an existing change. Create it through the OpenSpec CLI when drafting its actual proposal. A stage may need several focused changes; track all of them here rather than shrinking the stage to match one implementation.
+Stage 4 has a CLI-created OpenSpec change with proposal, design, remote-presentation and wsl-origin-export delta specs, and 27 tracked tasks. The approved job-loss policy follows agterm: a claimed job survives presentation-only loss on its existing PTY channel, with no adoption/replay. Explicit `ask open --target` session ownership is approved and implemented; untargeted questions retain their previous window ownership. A stage may need several focused changes; track all of them here rather than shrinking the stage to match one implementation.
 
 ## 1. Local WSL live sessions and recovery
 
@@ -63,7 +63,11 @@ For a new chat or after finishing any change:
 4. Draft the next stage's proposal/design/specs/tasks using current upstream and shipped local contracts. Replace its suggested name with an actual link. Do not reopen the already confirmed question of whether stages 2–4 are wanted.
 5. Begin implementation only when requested; keep future planning separate from automatic deployment or service configuration.
 
-Current next action: propose stage 4 against both verified terminal directions. Stage 3 is squash-merged in `narma` as `35e9024` through [PR #26](https://github.com/narma/agwinterm/pull/26), with passing CI and clean Greptile 5/5 review, synced main specs and an archive link above. Preserve stage-2 evidence and check its archive status independently. Stage 4 remains required and separate; no stage-4 implementation or automatic SSH deployment is included in stage 3.
+Current next action: review the stage-4 planning artifacts, then start `openspec-apply-change add-agterm-remote-presentation` only on a subsequent implementation request. The current request authorized planning only. Stage 2 is archived after merging its outbound capability scenario with the stage-3 provisioned-export scenario; neither direction was lost. Stage 3 remains squash-merged in `narma` as `35e9024` through [PR #26](https://github.com/narma/agwinterm/pull/26), with passing CI and clean Greptile 5/5 review.
+
+Stage-4 source research was refreshed at agterm `c63e5158e637662ded7ba3a12eac4881b24caef1` (v0.40.0); this is not new real-peer acceptance. Preserve terminal regression evidence at `9133258994a6cafb330ee354df949b76b1b2834b`. The plan separates presentation streams, origin program-job PTYs and web resource/bridge channels, with sole-presenter grants and generation/revision fencing. Status/context/HUD, notifications, questions, program overlays and web overlays each require real-peer evidence in both directions; a passive-only milestone does not finish the stage.
+
+Local WebView2 tasks 1.4, 1.5, 3.3 and 6.3 remain pending in [add-webview2-cookbook-overlays](../../openspec/changes/add-webview2-cookbook-overlays/tasks.md). Existing permission to proceed with other work remains in force; stage-4 task 6.6 tracks the relevant IME and clean/offline release evidence rather than treating it as already passed. No automatic SSH setup, new installed runtime, or stage-4 implementation is part of this planning update.
 
 ## Relationship to older plans
 

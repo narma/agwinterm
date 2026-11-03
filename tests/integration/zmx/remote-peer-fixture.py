@@ -11,8 +11,8 @@ import sys
 import time
 
 root = Path(sys.argv[2]).absolute()
-if root.parent != Path('/tmp') or not root.name.startswith('aw-stage2-peer-'):
-    raise SystemExit('a dedicated /tmp/aw-stage2-peer-* directory is required')
+if root.parent != Path('/tmp') or not root.name.startswith(('aw-stage2-peer-', 'aw-stage4-peer-')):
+    raise SystemExit('a dedicated /tmp/aw-stage2-peer-* or aw-stage4-peer-* directory is required')
 control = str(root / 'control.sock')
 cli = '/usr/local/bin/agtermctl'
 
@@ -30,7 +30,7 @@ if sys.argv[1] == 'start':
     (root/'zsh/.zshrc').write_text('')
     bundle = '/Applications/agterm.app'
     source_bundle = Path(sys.argv[4]).resolve() if len(sys.argv) > 4 else Path(bundle)
-    if len(sys.argv) > 4 and not str(source_bundle).startswith('/private/tmp/aw-stage2-build-'):
+    if len(sys.argv) > 4 and not str(source_bundle).startswith(('/private/tmp/aw-stage2-build-', '/private/tmp/aw-stage4-build-')):
         raise RuntimeError('only an isolated pinned build may replace the fixture source app')
     if len(sys.argv) > 3:
         client = Path(sys.argv[3]).resolve()
@@ -40,6 +40,10 @@ if sys.argv[1] == 'start':
         subprocess.run(['ditto', str(source_bundle), bundle], check=True, timeout=120)
         shutil.copy2(client, Path(bundle)/'Contents/MacOS/zmx')
         subprocess.run(['codesign','--force','--deep','--sign','-',bundle], check=True, timeout=60)
+    if root.name.startswith('aw-stage4-peer-'):
+        cli = str(Path(bundle) / 'Contents/MacOS/agtermctl')
+        if len(sys.argv) <= 4 or not Path(cli).is_file():
+            raise RuntimeError('stage 4 requires the isolated pinned app and its own CLI')
     env = dict(AGTERM_STATE_DIR=str(root), AGTERM_CONTROL_SOCKET=control,
         AGTERM_UITEST_ENABLE_ZMX='1', AGTERM_UITEST_FORCE_SIDEBAR_VISIBLE='1',
         XDG_CONFIG_HOME=str(root/'xdg'), ZDOTDIR=str(root/'zsh'))

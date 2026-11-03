@@ -1,10 +1,10 @@
 param([string]$Distro='Ubuntu', [Parameter(Mandatory)][string]$LinuxUser, [Parameter(Mandatory)][string]$Destination,
     [Parameter(Mandatory)][string]$AgentSocket, [Parameter(Mandatory)][string]$OriginSocket,
-    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge)
+    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge, [bool]$PassiveOnly=$false)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslAgtermRemote -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
-if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock') { throw 'Only an isolated origin fixture socket is accepted' }
+if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock' -and -not ($PassiveOnly -and $OriginSocket -like '/tmp/aw-stage4-peer-*/control.sock')) { throw 'Only an isolated origin fixture socket is accepted' }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
@@ -51,6 +51,26 @@ function Await-Pane([string]$pane) {
     }
     throw "Remote attachment failed: $($value | ConvertTo-Json -Depth 12)"
 }
+function Peer-Ctl([string[]]$Command) {
+    $peerCli=$OriginSocket.Replace('/control.sock','/agterm.app/Contents/MacOS/agtermctl')
+    $words=@($peerCli)+$Command+@('--socket',$OriginSocket,'--json')
+    $escape="'"+[char]34+"'"+[char]34+"'"
+    $quoted=($words | ForEach-Object { "'"+$_.Replace("'", $escape)+"'" }) -join ' '
+    $raw=& wsl.exe -d $Distro -u $LinuxUser --exec env "SSH_AUTH_SOCK=$AgentSocket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes $Destination $quoted
+    $peerExit=$LASTEXITCODE
+    $reply=($raw -join "`n") | ConvertFrom-Json -Depth 100
+    if ($peerExit -ne 0 -and -not ($Command[0] -eq 'ask' -and $Command[1] -eq 'result' -and $reply.result -in @('pending','answered','escaped','cancelled'))) { throw "Peer control failed: $raw" }
+    if($reply.PSObject.Properties['result'] -and $reply.PSObject.Properties['ok']) { return $reply.result }
+    return $reply
+}
+function Await-Presentation([scriptblock]$Check) {
+    for ($i=0; $i -lt 80; $i++) {
+        $row=@((Ctl @('tree','--window',$window)).workspaces.sessions | Where-Object id -eq $import.sessionId)[0]
+        if (& $Check $row) { return $row }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "Presentation condition timed out: $($row | ConvertTo-Json -Depth 30 -Compress)"
+}
 try {
     $null=New-Item -ItemType Directory -Path $state
     @('session-host = server-rust','restore-commands = true','restore-buffer = true') | Set-Content (Join-Path $state 'agwinterm.conf')
@@ -61,6 +81,91 @@ try {
     $candidate=@($inventory.Sessions | Where-Object CanImportTerminal)[0]
     if (-not $candidate) { throw 'No isolated origin terminal available' }
     $import=Ctl (@('zmx','remote','attach')+$remote+@('--bridge',$Bridge,'--session',$candidate.Session.Id,'--window',$window))
+    if ($PassiveOnly) {
+        Add-Type @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class RemoteAskProbe {
+    delegate bool Visit(IntPtr h, IntPtr p);
+    [DllImport("user32.dll")] static extern bool EnumWindows(Visit callback, IntPtr p);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, StringBuilder b, int length);
+    [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h,int id);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr h,uint msg,IntPtr w,string text);
+    public static bool SetWindowTextW(IntPtr h,string text) => SendMessageW(h,12,IntPtr.Zero,text)!=IntPtr.Zero;
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h,uint msg,IntPtr w,IntPtr l);
+    public static IntPtr Find(uint pid) {
+        IntPtr found=IntPtr.Zero;
+        EnumWindows((h,p)=>{ uint owner; GetWindowThreadProcessId(h,out owner); var name=new StringBuilder(100); GetClassNameW(h,name,100);
+            if(owner==pid && name.ToString()=="Agwinterm.NativeQuestion") {found=h;return false;} return true; },IntPtr.Zero);
+        return found;
+    }
+}
+'@
+        foreach ($item in $import.panes) { $null=Await-Pane $item.paneId }
+        $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationConnected).Count -gt 0 }
+        $origin=[string]$candidate.Session.Id
+        $peerRow=@((Peer-Ctl @('tree')).tree.workspaces.sessions | Where-Object id -eq $origin)[0]
+        if($peerRow.ask.id) { $null=Peer-Ctl @('ask','cancel',[string]$peerRow.ask.id) }
+        $geometry=Ctl @('session','metrics','--target',$import.panes[0].paneId) | ConvertTo-Json -Compress
+        $null=Peer-Ctl @('session','context','STAGE4_PASSIVE_CONTEXT','--target',$origin)
+        $null=Await-Presentation { param($row) $row.context -eq 'STAGE4_PASSIVE_CONTEXT' }
+        $null=Peer-Ctl @('session','status','blocked','--target',$origin)
+        $null=Await-Presentation { param($row) $row.status -eq 'blocked' }
+        $null=Peer-Ctl @('session','hud','open','STAGE4_PASSIVE_HUD','--target',$origin,'--hide-after','3')
+        $null=Await-Presentation { param($row) $row.hud.message -eq 'STAGE4_PASSIVE_HUD' }
+        $withHud=Ctl @('session','metrics','--target',$import.panes[0].paneId) | ConvertTo-Json -Compress
+        if ($geometry -ne $withHud) { throw 'Passive presentation changed terminal geometry' }
+        $null=Await-Presentation { param($row) $null -eq $row.hud }
+        $null=Peer-Ctl @('session','context','--clear','--target',$origin)
+        $null=Peer-Ctl @('session','status','idle','--target',$origin)
+        $null=Await-Presentation { param($row) -not $row.context -and $row.status -eq 'idle' }
+        Write-Host 'PASS real agterm -> Agwinterm context/status/HUD updates, expiry and clears'
+        $null=Ctl @('zmx','remote','lead','--target',$import.panes[0].paneId,'--window',$window)
+        $null=Await-Pane $import.panes[0].paneId
+        $null=Await-Presentation { param($row) @($row.liveSessions.PSObject.Properties.Value | Where-Object presentationPresenter).Count -gt 0 }
+        foreach ($cancel in @($false,$true)) {
+            $opened=Peer-Ctl @('ask','open','Stage4 delegated question','--input','line','--value','prefill','--no-block','--target',$origin)
+            $questionId=[string]$opened.id
+            $question=[IntPtr]::Zero
+            for($i=0;$i -lt 60 -and $question -eq [IntPtr]::Zero;$i++) { $question=[RemoteAskProbe]::Find($ui.Id); Start-Sleep -Milliseconds 100 }
+            if($question -eq [IntPtr]::Zero) { throw 'No delegated native question in the isolated viewer' }
+            if($cancel) { [void][RemoteAskProbe]::SendMessageW($question,0x10,[IntPtr]::Zero,[IntPtr]::Zero) }
+            else {
+                [void][RemoteAskProbe]::SetWindowTextW([RemoteAskProbe]::GetDlgItem($question,200),'STAGE4_NATIVE_ANSWER')
+                [void][RemoteAskProbe]::SendMessageW([RemoteAskProbe]::GetDlgItem($question,1000),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)
+            }
+            for($i=0;$i -lt 40;$i++) {
+                $result=Peer-Ctl @('ask','result',$questionId)
+                if(-not $result.PSObject.Properties['ask']) { $result=@{ask=$result} }
+                if($result.ask.result -ne 'pending') { break }
+                Start-Sleep -Milliseconds 100
+            }
+            if($cancel) { if($result.ask.result -ne 'escaped') { throw "Origin missed cancellation: $($result|ConvertTo-Json -Depth 10)" } }
+            elseif($result.ask.result -ne 'answered' -or $result.ask.text -ne 'STAGE4_NATIVE_ANSWER') { throw "Origin missed native answer: $($result|ConvertTo-Json -Depth 10)" }
+        }
+        Write-Host 'PASS real agterm-origin delegated input answer/cancellation with authoritative origin results'
+        $raw='{}' | & $ctl ask open --no-block --target ([guid]::NewGuid().ToString()) --window $window --pipe $id
+        if ($LASTEXITCODE -eq 0) { throw 'Unknown exact session opened a question' }
+        $raw='{}' | & $ctl ask open --no-block --target $import.sessionId --window $window --pipe $id
+        if ($LASTEXITCODE -ne 0) { throw "Targeted question failed: $raw" }
+        $ask=($raw | ConvertFrom-Json).id
+        $null=Ctl @('session','close','--target',$import.sessionId,'--window',$window)
+        for($i=0;$i -lt 80;$i++) {
+            $raw=& $ctl ask result $ask --window $window --pipe $id
+            $outcome=$raw | ConvertFrom-Json
+            if($outcome.result -ne 'pending') { break }
+            Start-Sleep -Milliseconds 100
+        }
+        if ($LASTEXITCODE -ne 2 -or $outcome.reason -ne 'owner-closed') { throw "Targeted question survived owner removal: $raw" }
+        $raw='{}' | & $ctl ask open --no-block --window $window --pipe $id
+        if ($LASTEXITCODE -ne 0) { throw "Legacy window-only question failed: $raw" }
+        $legacy=($raw | ConvertFrom-Json).id
+        $null=& $ctl ask cancel $legacy --window $window --pipe $id
+        Write-Host 'PASS native targeted question owner-close, unknown-session refusal and legacy window-only open'
+        return
+    }
     foreach ($item in $import.panes) {
         $pane=[string]$item.paneId
         $live=Await-Pane $pane
@@ -219,6 +324,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Remote terminal continuity harness failed' }
     }
 } finally {
+    if ($PassiveOnly -and $questionId) { try { $null=Peer-Ctl @('ask','cancel',$questionId) } catch { Write-Warning $_ } }
     if ($ui -and -not $ui.HasExited) { $ui.Kill(); $ui.WaitForExit() }
     # The enclosing private desktop job reaps all remaining test-owned local transports.
 }

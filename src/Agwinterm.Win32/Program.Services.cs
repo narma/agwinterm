@@ -69,9 +69,11 @@ internal partial class Program
     }
 
     /// <summary>A pane raised a desktop notification. Runs on the UI thread (marshaled from the pump).</summary>
-    private void OnNotified(Pane p, string title, string body, NotificationCategory category = NotificationCategory.Attention)
+    private void OnNotified(Pane p, string title, string body, NotificationCategory category = NotificationCategory.Attention, bool mirrored = false, bool controlOrigin = false)
     {
         var ses = OwningSes(p);
+        // OSC notifications already travel with terminal output; republishing would deliver them twice.
+        if (ses is not null && controlOrigin) PublishOriginNotification(ses, p, title, body, mirrored);
         // Count it against the session unless you're looking at that pane right now (app focused AND it's
         // the active surface). If the app is in the background, even the active pane accrues a badge — which
         // then clears on refocus (agterm #164).
@@ -148,18 +150,23 @@ internal partial class Program
 
     /// <summary>Session status for display: the most attention-worthy status across ALL panes
     /// (Blocked &gt; Completed &gt; Active &gt; Idle) — a background pane's state must not be invisible.</summary>
-    private static AgentStatus AggStatus(Ses s) => StatusAggregate.Winner(s.AllPanes.Select(p => p.S));
+    private static AgentStatus AggStatus(Ses s) => AggStatusAndAt(s).Status;
 
     /// <summary><see cref="AggStatus"/> together with the epoch seconds of the last status write on
     /// the pane that won it, from one pass — so the tree's age describes the status the tree actually
     /// reports, not some other pane's, even when a hook writes between the two reads. Where several
     /// panes tie at the winning severity the most recent wins.</summary>
     private static (AgentStatus Status, long ChangedAt) AggStatusAndAt(Ses s)
-        => StatusAggregate.WinnerAndChangedAt(s.AllPanes.Select(p => p.S));
+    {
+        var local = StatusAggregate.WinnerAndChangedAt(s.AllPanes.Select(p => p.S));
+        return s.RemotePresentation?.Status is { } remote && StatusAggregate.Severity(remote.Status) >= StatusAggregate.Severity(local.Status)
+            ? (remote.Status, remote.ChangedAt) : local;
+    }
 
     /// <summary>True if any pane of the session has an attention-worthy status with blink set.</summary>
     private static bool AggBlink(Ses s)
     {
+        if (s.RemotePresentation?.Status is { Blink: true, Status: not AgentStatus.Idle }) return true;
         foreach (var p in s.AllPanes)
             if (p.S.Blink && p.S.Status is AgentStatus.Blocked or AgentStatus.Active or AgentStatus.Completed) return true;
         return false;
@@ -383,7 +390,7 @@ internal partial class Program
         if (ActiveSurface() is { ReadOnly: true }) Pill("READ-ONLY", new Color4(0.45f, 0.45f, 0.5f, 0.95f));
         float pillsW = pills.Count == 0 ? 0f : 10f + pills.Sum(p => p.w + 6f) - 6f;   // leading gap, the pills, the gaps between them
         float titleShare = titleAvail - pillsW;   // what the title and the context divide
-        string? ctx = _active?.Context;
+        string? ctx = _active?.EffectiveContext;
         float ctxGap = 8f, ctxMeasured = 0f, ctxReserve = 0f;
         if (ctx is not null)
         {

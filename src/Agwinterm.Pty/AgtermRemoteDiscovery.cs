@@ -11,7 +11,8 @@ public sealed record AgtermRemoteSession(AgtermSession Session, string? Content,
         Parent is not null ? "Companion import is not supported" : null;
 }
 
-public sealed record AgtermRemoteInventory(AgtermEndpoint Endpoint, IReadOnlyList<AgtermRemoteSession> Sessions);
+public sealed record AgtermRemoteInventory(AgtermEndpoint Endpoint, IReadOnlyList<AgtermRemoteSession> Sessions,
+    int? PresentationVersion = null);
 
 public sealed class AgtermDiscoveryException(string reason) : IOException(reason);
 
@@ -36,6 +37,10 @@ public static class AgtermRemoteDiscovery
             if (Required(root, "ok").ValueKind != JsonValueKind.True)
                 throw new AgtermDiscoveryException("Origin refused discovery");
             var remote = Required(Required(root, "result"), "remote");
+            // Optional presentation metadata cannot invalidate an otherwise usable terminal inventory.
+            int? presentation = remote.TryGetProperty("presentation", out var advertised)
+                && advertised.ValueKind == JsonValueKind.Number && advertised.TryGetInt32(out var version)
+                && version > 0 ? version : null;
             var endpoint = Required(remote, "endpoint");
             var executable = Text(endpoint, "executable", 4096);
             var socket = Text(endpoint, "socketDirectory", 4096);
@@ -80,7 +85,7 @@ public static class AgtermRemoteDiscovery
                     ? [panes["left"], panes["right"]] : [panes["left"]];
                 sessions.Add(new(new(id, name, window, windowName, workspace, workspaceName, cwd, axis, ordered), content, parent));
             }
-            return new(new(executable, socket), sessions.AsReadOnly());
+            return new(new(executable, socket), sessions.AsReadOnly(), presentation);
         }
         catch (JsonException) { throw new AgtermDiscoveryException("Malformed remote discovery response"); }
     }

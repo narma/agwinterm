@@ -43,6 +43,25 @@ public class NativeAskTests
         for (int i = 0; i < 32; i++) { var p = r.Open("w" + i, spec)!; r.CloseWindow(p.Window); }
         Assert.Null(r.Find(ids[^1]));
     }
+    [Fact] public void SessionOwnershipIsImmutableAndClosureIsScoped()
+    {
+        var registry = new AskRegistry(); var spec = Parse("{}");
+        var targeted = registry.Open("window-a", spec, "session-a")!;
+        Assert.Equal("session-a", registry.Find(targeted.Id)!.Session);
+        Assert.Null(registry.CloseSession("window-b", "session-a"));
+        Assert.Null(registry.CloseSession("window-a", "session-b"));
+        Assert.Equal("pending", registry.Find(targeted.Id)!.Outcome.Result);
+        Assert.Equal(targeted.Id, registry.CloseSession("window-a", "session-a"));
+        Assert.False(registry.Resolve(targeted.Id, AskOutcome.Answer(spec, "submit", new Dictionary<string, AskValue>())));
+        registry.CloseWindow("window-a");
+        var retained = registry.Find(targeted.Id)!;
+        Assert.Equal("session-a", retained.Session); Assert.Equal("window-a", retained.Window);
+        Assert.Equal("owner-closed", retained.Outcome.Reason);
+        var legacy = registry.Open("window-a", spec)!;
+        Assert.Null(registry.CloseSession("window-a", "session-a"));
+        Assert.Null(registry.Find(legacy.Id)!.Session);
+        Assert.Equal("pending", registry.Find(legacy.Id)!.Outcome.Result);
+    }
     [Fact] public void CollectionAndTextLimitsRefuse()
     {
         var f = new { id = "x", label = "x", type = "text" };

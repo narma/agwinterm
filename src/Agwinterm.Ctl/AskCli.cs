@@ -18,7 +18,7 @@ public static class AskCli
             string key = word[2..];
             if (key is "follow" or "no-block" or "json")
             { if (!flags.Add(key)) throw new ArgumentException("duplicate ask option: " + word); continue; }
-            if (key is not ("window" or "pipe" or "socket")) throw new ArgumentException("unknown ask option: " + word);
+            if (key is not ("window" or "pipe" or "socket" or "target")) throw new ArgumentException("unknown ask option: " + word);
             if (++i >= argv.Length || argv[i].StartsWith("--", StringComparison.Ordinal) || argv[i].Length == 0 || !values.TryAdd(key, argv[i]))
                 throw new ArgumentException("missing or duplicate ask option: " + word);
         }
@@ -26,6 +26,8 @@ public static class AskCli
         if (verb is not ("open" or "result" or "cancel") || (verb == "open" ? pos.Count > 1 : pos.Count != 2 || pos[1].Length == 0))
             throw new ArgumentException("ask open reads a JSON form from stdin; result/cancel require one exact ID");
         if (verb != "open" && flags.Any(f => f != "json")) throw new ArgumentException("open-only ask option");
+        if (values.TryGetValue("target", out var target) && (verb != "open" || !Guid.TryParseExact(target, "D", out var session) || session == Guid.Empty))
+            throw new ArgumentException("--target is open-only and requires an exact session ID");
         if (values.ContainsKey("pipe") && values.ContainsKey("socket")) throw new ArgumentException("choose --pipe or --socket");
         return new(verb, verb == "open" ? null : pos[1], values, flags);
     }
@@ -85,7 +87,7 @@ public static class AskCli
                 if (options.Verb == "cancel") { output(JsonSerializer.Serialize(new { id = options.Id, cancelled = true })); return 0; }
                 var outcome = Outcome(result); output(outcome.GetRawText()); return Code(outcome);
             }
-            var opened = Success(send(Request("open", window: window, args: new { form, follow = options.Flags.Contains("follow") })));
+            var opened = Success(send(Request("open", id: options.Values.GetValueOrDefault("target"), window: window, args: new { form, follow = options.Flags.Contains("follow") })));
             if (opened.ValueKind != JsonValueKind.Object || !opened.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(id.GetString()))
                 throw new InvalidOperationException("ask.open reply missing id; creation may have occurred");
             pending = id.GetString();

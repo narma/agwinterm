@@ -152,6 +152,7 @@ internal partial class Program
             var now = session.Status;
             if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked) PlayBlockedSound();
             lastStatus = now;
+            Post(() => { if (OwningSes(pane) is { } owner) PublishOriginPresentation(owner, "status"); });
             RequestRedraw();
         };
         // An explicit --sound on session.status: play its spec (null => default alert).
@@ -1854,6 +1855,9 @@ internal partial class Program
 
     private void DisposeSessionResources(Ses ses)
     {
+        RetireRemotePresentation(ses);
+        RetireOriginPresentations(ses);
+        CloseSessionQuestion(ses);
         // Also covers failed Recent/startup construction before the posted
         // live start runs. A retired pane must never start a late attachment.
         foreach (var pane in ses.AllPanes) { pane.LiveClosing = true; pane.LiveRecovery.Cancel(); }

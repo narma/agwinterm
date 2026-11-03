@@ -49,8 +49,11 @@ class ExportProtocolTests(unittest.TestCase):
         self.assertEqual([],result['sessions'])
         self.assertNotIn('presentation',result)
         self.assertTrue(Path(result['endpoint']['executable']).is_file())
-        for args in [('zmx','kill','anything'),('zmx','present','anything'),('session','close'),('zmx','tree','--json','extra')]:
+        for args in [('zmx','kill','anything'),('session','close'),('zmx','tree','--json','extra')]:
             self.invoke([cli,*args],ok=False)
+        refused=subprocess.run([str(cli),'zmx','present','anything'],input='',text=True,capture_output=True,timeout=10)
+        self.assertNotEqual(0,refused.returncode)
+        self.assertEqual('',refused.stdout)  # stream errors never become control JSON
         self.invoke([helper,'--zmx-export-disable',self.endpoint])
         self.invoke([cli,'zmx','tree','--json'],ok=False)
 

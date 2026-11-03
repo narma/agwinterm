@@ -220,7 +220,7 @@ internal partial class Program
                         PaneIds: s.Panes.Select(p => p.Id).ToList(),
                         RestoreCommands: s.Panes.Select(p => p.RestoreCommand ?? "").ToList(),
                         StatusChangedAt: statusChangedAt,
-                        Context: s.Context,
+                        Context: s.EffectiveContext,
                         CapturedCommands: s.Panes.Select(p => p.CapturedCommand ?? "").ToList(),
                         Axis: s.Axis,
                         // The open PANE slots as their words, in pane order (P5): a swap reorders the
@@ -541,6 +541,7 @@ internal partial class Program
             var ses = FindSesForTarget(target);
             if (ses is null) return ISessionHost.RefusePrefix + SessionContexts.NoSession;
             ses.Context = context;
+            PublishOriginPresentation(ses, "context");
             RequestRedraw(); SaveState();
             return SessionContexts.Reply(ses.Id, ses.Context);
         });
@@ -1073,12 +1074,12 @@ internal partial class Program
     {
         if (target is not null && FindHiddenPaneByExactId(target) is { } hidden)
         {
-            PostVerb(() => OnNotified(hidden.pane, title ?? "", body, category));
+            PostVerb(() => OnNotified(hidden.pane, title ?? "", body, category, controlOrigin: true));
             return true;
         }
         var ses = FindSesForTarget(target);
         if (ses is null) return false;
-        PostVerb(() => OnNotified(ses.ActivePane, title ?? "", body, category));
+        PostVerb(() => OnNotified(ses.ActivePane, title ?? "", body, category, controlOrigin: true));
         return true;
     }
 

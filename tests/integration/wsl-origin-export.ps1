@@ -1,5 +1,5 @@
 param([string]$Distro='Ubuntu', [string]$LinuxUser='alzo', [Parameter(Mandatory)][string]$BuildDirectory,
-    [string]$Destination, [string]$AgentSocket, [string]$MacAgentSocket, [string]$MacApp, [string]$PeerHost='wsl')
+    [string]$Destination, [string]$AgentSocket, [string]$MacAgentSocket, [string]$MacApp, [string]$PeerHost='wsl', [bool]$ManualQuestion=$false)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslOriginExport -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -83,6 +83,36 @@ try {
     $null=Await-Live $right
     Driver 'split'
     if ($Destination) { Driver 'peer-split' }
+    if ($Destination) {
+        $null=Ctl @('session','context','STAGE4_ORIGIN_CONTEXT','--target',$pane,'--window',$window)
+        $null=Ctl @('session','status','blocked','--target',$pane,'--window',$window)
+        $null=Ctl @('session','hud','open','STAGE4_ORIGIN_HUD','--hide-after','60','--target',$pane,'--window',$window)
+        Driver 'peer-passive'
+        $null=Ctl @('session','hud','close','--target',$pane,'--window',$window)
+        $null=Ctl @('session','status','idle','--target',$pane,'--window',$window)
+        $null=Ctl @('session','context','--clear','--target',$pane,'--window',$window)
+    }
+    if ($ManualQuestion) {
+        if(-not $Destination) { throw 'Manual question requires the isolated Mac viewer' }
+        $form=@{title='Stage 4: manual Mac answer';prompt='Type STAGE4_MAC_ANSWER and click Confirm test. This is an isolated interoperability test.';fields=@(@{id='manual-text';label='Test answer';type='text'});buttons=@(@{id='confirm';label='Confirm test'})}
+        $opened=($form|ConvertTo-Json -Depth 10 -Compress) | & $ctl ask open --no-block --target $pane --window $window --pipe $id
+        if($LASTEXITCODE -ne 0) { throw "Manual question open failed: $opened" }
+        $manualId=($opened|ConvertFrom-Json).id
+        $run.manualQuestionId=$manualId
+        ($run|ConvertTo-Json -Depth 10 -Compress) | & wsl.exe -d $Distro -u $LinuxUser --exec python3 -c 'import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.stdin.read())' "$linuxRoot/run.json"
+        Driver 'peer-manual-show'
+        Write-Host "MANUAL READY: Mac dialog 'Stage 4: manual Mac answer'; type STAGE4_MAC_ANSWER and Confirm test. Origin question=$manualId; evidence=$linuxRoot"
+        $deadline=[DateTime]::UtcNow.AddMinutes(15)
+        do {
+            $raw=& $ctl ask result $manualId --window $window --pipe $id
+            $outcome=$raw|ConvertFrom-Json
+            if($outcome.result -ne 'pending') { break }
+            Start-Sleep -Milliseconds 500
+        } while([DateTime]::UtcNow -lt $deadline)
+        ($outcome|ConvertTo-Json -Depth 20 -Compress) | & wsl.exe -d $Distro -u $LinuxUser --exec python3 -c 'import pathlib,sys; pathlib.Path(sys.argv[1]).write_text(sys.stdin.read())' "$linuxRoot/manual-question-result.json"
+        if($outcome.result -ne 'answered' -or $outcome.button -ne 'confirm' -or $outcome.values.'manual-text' -ne 'STAGE4_MAC_ANSWER') { throw "Manual origin outcome did not match: $raw" }
+        Write-Host 'PASS manual actual agterm viewer answer retained on Windows origin with exact button/field IDs'
+    }
     $ui.Kill(); $ui.WaitForExit()
     Driver 'ui-down'
     Start-Ui

@@ -1,6 +1,6 @@
 # Tasks
 
-Implementation started on 2026-11-02 from `origin/narma` at `5552130` (stage 1 merged). The origin bridge and shared agwinterm-zmx member are implemented. Real-client single/split and recovery acceptance passes against an isolated macOS origin; expanded faults and pinned-build acceptance passed; current-head CI and Greptile review remain in progress. See `docs/agterm-remote-development.md` for evidence and continuation.
+Implementation started on 2026-11-02 from `origin/narma` at `5552130` (stage 1 merged). The origin bridge and shared agwinterm-zmx member are implemented. Real-client single/split and recovery acceptance passes against an isolated macOS origin; expanded faults and pinned-build acceptance passed; PR #25 was squash-merged as 41cc0d9 after passing CI and a clean Greptile 5/5 review on 06898429d81f414c1559c234beb0b6ab1141a870. See `docs/agterm-remote-development.md` for evidence and continuation.
 
 ## 1. Origin capability and compatibility gate
 
@@ -42,5 +42,5 @@ Implementation started on 2026-11-02 from `origin/narma` at `5552130` (stage 1 m
 ## Workflow follow-up
 
 - Stage 1 is already merged in `origin/narma` (`5552130`). Implementation branch `codex/agterm-remote-attach-implementation` starts from that commit and carries the existing proposal without duplicating stage-1 commits.
-- Review and archive this change only after implementation and acceptance are complete. Update the [roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) with evidence and the archive link, fixing relative paths when moved.
-- Propose stage 3 (`export-wsl-sessions-to-agterm`) next; bidirectional presentation remains required stage 4.
+- Archived on 2026-11-02 after syncing agterm-remote-sessions and reconciling wsl-live-sessions with the already merged stage-3 export requirements. All scenarios from both stages are retained; see the [roadmap](../../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md).
+- Stage 3 is already merged and archived. The next change is [add-agterm-remote-presentation](../../add-agterm-remote-presentation/proposal.md); implementation requires a separate request.
