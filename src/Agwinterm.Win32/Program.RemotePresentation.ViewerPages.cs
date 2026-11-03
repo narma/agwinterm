@@ -20,6 +20,9 @@ internal partial class Program
         public CancellationTokenSource Document = new();
         public readonly List<Stream> Streams = [];
         public long AppliedSequence;
+        public long DocumentNumber;
+        public AgtermPageDocumentRequest? ActiveDocument;
+        public Task? DocumentReady;
         public string? LastState;
     }
 
@@ -42,6 +45,13 @@ internal partial class Program
             try
             {
                 string action = body.GetProperty("action").GetString()!;
+                remote.AppliedSequence = seq;
+                if (action is "reloadOriginal" or "reloadCurrent" or "back" or "forward")
+                {
+                    existing.BridgeToken = null;
+                    ResetReplicaDocument(existing);
+                    BeginReplicaDocument(existing);
+                }
                 switch (action)
                 {
                     case "hide": existing.Hidden = true; break;
@@ -50,8 +60,8 @@ internal partial class Program
                         if (existing.Pane is not null) throw new ArgumentException("Pane page is full-pane");
                         existing.Geometry = new(PageSize(body, "sizePercent", 100) ?? 0, PageSize(body, "width", 16384), PageSize(body, "height", 16384)); break;
                     case "reloadOriginal": case "reloadCurrent": ReloadWebPage(session, existing, action == "reloadCurrent"); break;
-                    case "back": if (existing.Host.Page.CanGoBack) existing.Host.Page.GoBack(); break;
-                    case "forward": if (existing.Host.Page.CanGoForward) existing.Host.Page.GoForward(); break;
+                    case "back": if (existing.Host.Page.CanGoBack) existing.Host.Page.GoBack(); else RebindReplicaDocument(existing); break;
+                    case "forward": if (existing.Host.Page.CanGoForward) existing.Host.Page.GoForward(); else RebindReplicaDocument(existing); break;
                     case "browser": OpenWebInBrowser(existing); break;
                     default: throw new ArgumentException("Unsupported page command");
                 }
@@ -76,6 +86,8 @@ internal partial class Program
             {
                 file = value.GetProperty("path").GetString();
                 if (file is null || !file.StartsWith('/') || file.Any(char.IsControl)) throw new IOException("Invalid origin path");
+                if (!sender.Kinds.Contains(AgtermPageDocument.Capability))
+                    throw new IOException("Remote file bridge requires page.bridge-revision support");
             }
             else url = source.GetProperty("url").GetProperty("_0").GetString();
             Pane? pane = null;
@@ -140,6 +152,29 @@ internal partial class Program
         remote.Document.Cancel(); remote.Document.Dispose(); remote.Document = new();
         foreach (var stream in remote.Streams) stream.Dispose();
         remote.Streams.Clear();
+    }
+
+    private static void BeginReplicaDocument(WebPage page)
+    {
+        if (page.Replica is not { Transport: { } transport } remote) return;
+        var document = new AgtermPageDocumentRequest(checked(++remote.DocumentNumber), remote.AppliedSequence, null);
+        remote.ActiveDocument = document;
+        remote.DocumentReady = Activate();
+        // Observe failed activation even when the page never invokes its bridge.
+        _ = remote.DocumentReady.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        async Task Activate()
+        {
+            string answer = await transport.Client.BridgeAsync(document.Encode(), remote.Document.Token);
+            using var response = JsonDocument.Parse(answer);
+            if (!response.RootElement.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.True)
+                throw new IOException("Origin refused document activation");
+        }
+    }
+
+    private static void RebindReplicaDocument(WebPage page)
+    {
+        page.BridgeToken = Guid.NewGuid().ToString("N");
+        page.Host.Page.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "review-bind", token = page.BridgeToken }));
     }
 
     private void EndReplicaPage(WebPage page)
@@ -240,11 +275,19 @@ internal partial class Program
                 string json = JsonSerializer.Serialize(new { cmd = request.Method, args = request.Args });
                 _ = AgtermPageBridge.Parse(json, false);
                 var ct = remote.Document.Token;
+                var document = remote.ActiveDocument ?? throw new IOException("Document not activated");
+                var ready = remote.DocumentReady ?? throw new IOException("Document not activated");
                 _ = host.RunAsync(async () =>
                 {
                     string response;
-                    try { response = await remote.Transport!.Client.BridgeAsync(json, ct); }
-                    catch (Exception ex) when (ex is IOException or OperationCanceledException) { response = "{\"ok\":false,\"error\":\"Page request unavailable\"}"; }
+                    try
+                    {
+                        await ready.WaitAsync(ct);
+                        ct.ThrowIfCancellationRequested();
+                        response = await remote.Transport!.Client.BridgeAsync((document with { Request = json }).Encode(), ct);
+                    }
+                    catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or InvalidOperationException)
+                    { response = "{\"ok\":false,\"error\":\"Page request unavailable\"}"; }
                     if (!Current(generation)) return;
                     try
                     {

@@ -8,7 +8,7 @@ internal partial class Program : IAgtermPresentationOriginHost
 {
     private readonly AgtermPresentationBroker _presentationBroker = new();
     private static readonly string[] PassiveKinds = ["layout", "status", "context", "hud", "notify", "sound", "ask.form", "ask.other"];
-    private static string[] SupportedPresentationKinds => [.. PassiveKinds, .. PageKinds];
+    private static string[] SupportedPresentationKinds => [.. PassiveKinds, .. PageKinds, AgtermPageDocument.Capability];
     private sealed record OriginPresentation(Ses Session, Pane[] Panes, WslLiveBinding[] Bindings, Dictionary<string, Guid> Mapping);
     private readonly Dictionary<AgtermOriginPresentationScope, OriginPresentation> _originPresentations = new();
 

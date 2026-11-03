@@ -3,6 +3,7 @@
 set -euo pipefail
 root=${1:?new /tmp/aw-stage4-build-* root required}
 baseline=${2:?existing stage-2 build root required}
+revision_patch=${3:-}
 [[ $root == /tmp/aw-stage4-build-* && ! -e "$root" && $root != *'/../'* ]]
 [[ $baseline == /tmp/aw-stage2-build-* && -x "$baseline/bin/zmx-existing-client" ]]
 mkdir -m 700 "$root"
@@ -14,6 +15,11 @@ git -C "$root/agterm" remote add origin https://github.com/umputun/agterm
 git -C "$root/agterm" fetch --depth 1 origin "$pin"
 git -C "$root/agterm" checkout -q FETCH_HEAD
 [[ $(git -C "$root/agterm" rev-parse HEAD) == "$pin" ]]
+if [[ -n $revision_patch ]]; then
+    git -C "$root/agterm" apply --check "$revision_patch"
+    git -C "$root/agterm" apply "$revision_patch"
+    shasum -a 256 "$revision_patch" > "$root/protocol-patch.sha256"
+fi
 # Reuse only identical libghostty inputs; preserve the verified ZMX regression pair.
 diff -r "$baseline/agterm/scripts/ghostty-patches" "$root/agterm/scripts/ghostty-patches"
 grep -q 'GHOSTTY_REV="683d8db643b95cf229bfb5fe9fab9ae677920343"' "$root/agterm/scripts/setup.sh"

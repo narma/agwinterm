@@ -14,7 +14,7 @@ assert root.parent == Path('/tmp') and root.name.startswith('aw-stage3-origin-')
 adapter = str(root/'endpoint/agtermctl')
 cli = run['config']['cli']
 selectors = ['--pipe', run['config']['pipe'], '--window', run['window'], '--target', run['pane'], '--json']
-kinds = ['page.request','page.rejected','page.close','page.closed','page.command','page.state']
+kinds = ['page.request','page.rejected','page.close','page.closed','page.command','page.state','page.bridge-revision']
 
 def native(*args):
     routing=selectors[:4]+selectors[6:] if args[0]=='tree' else selectors
@@ -91,12 +91,19 @@ def fetch(channel, path, ident=1):
 def bridge(channel, command, args=None, ident=20, **routing):
     request={'cmd':command,**routing}
     if args is not None: request['args']=args
-    channel.send({'kind':'bridge','id':ident,'request':json.dumps(request)})
+    channel.send({'kind':'bridge','id':ident,'request':json.dumps({'document':channel.document,'appliedSeq':channel.applied,'request':request})})
     frame=channel.take(); assert frame['id']==ident
     return json.loads(frame['response']) if frame['kind']=='reply' else None
 
+def activate(channel, document=1, applied=0, expected=True):
+    channel.send({'kind':'bridge','id':70,'request':json.dumps({'document':document,'appliedSeq':applied})})
+    frame=channel.take(); assert frame['id']==70
+    assert (frame['kind']=='reply') == expected, frame
+    if expected: channel.document,channel.applied=document,applied
+
 try:
     page,request=opened(); channel=claim(request)
+    activate(channel)
     path=request['source']['file']['path']; prefix=path.rsplit('/',1)[0]
     assert b'origin document' in fetch(channel,path)
     assert fetch(channel,prefix+'/стиль %.css',2)==b'body { color: green; }'
@@ -117,17 +124,25 @@ try:
     assert row['hidden'] and row.get('title')!='STALE',row
     native('session','overlay','show'); command=take('page.command'); assert command['action']=='show' and command['seq']==2
     native('session','overlay','reload'); command=take('page.command'); assert command['action']=='reloadOriginal' and command['seq']==3
+    assert bridge(channel,'session.overlay.submit',{'value':'STALE_AFTER_RELOAD'}) is None
+    activate(channel,99,2,False)
+    activate(channel,2,3)
+    activate(channel,3,3)  # HTML-initiated navigation, without an origin command.
+    channel.document=2
+    assert bridge(channel,'session.overlay.submit',{'value':'STALE_AFTER_SELF_NAVIGATION'}) is None
+    channel.document=3
     send('page.state',{'page':request['page'],'appliedSeq':3,'hidden':False,'load':'loaded','title':'CURRENT',
                        'address':path,'canGoBack':False,'canGoForward':False})
     # Submission remains authoritative even when its bridge reply loses a race with page.close.
-    channel.send({'kind':'bridge','id':50,'request':json.dumps({'cmd':'session.overlay.submit','args':{'value':'origin accepted'}})})
+    channel.send({'kind':'bridge','id':50,'request':json.dumps({'document':3,'appliedSeq':3,'request':{'cmd':'session.overlay.submit','args':{'value':'origin accepted'}}})})
     assert outcome(page,'submitted')['value']=='origin accepted'
     take('page.close')
     print('PASS origin page assets/Unicode, traversal/symlink/cross-grant refusal, single claim, bridge scope, commands and retained submit')
 
     page,request=opened(True); channel=claim(request)
+    activate(channel)
     assert bridge(channel,'session.status',{'status':'idle'}) is None
-    channel.send({'kind':'bridge','id':21,'request':json.dumps({'cmd':'session.overlay.close'})})
+    channel.send({'kind':'bridge','id':21,'request':json.dumps({'document':1,'appliedSeq':0,'request':{'cmd':'session.overlay.close'}})})
     outcome(page,'dismissed'); take('page.close')
     print('PASS review page refuses general bridge commands and retains close-only authority')
 
@@ -137,6 +152,17 @@ try:
     page,request=opened(); send('page.rejected',{'page':request['page'],'reason':'fixture refusal'}); outcome(page,'dismissed'); take('page.close')
     page,request=opened(); presenter.stop(); outcome(page,'dismissed')
     print('PASS page channel loss, viewer rejection and presentation loss release origin slots without reopening')
+    presenter=Channel('zmx','present',run['pane'])
+    presenter.send({'kind':'hello','gen':0,'rev':0,'hello':{'version':1,'mode':'presenter','kinds':kinds[:-1]}})
+    generation=presenter.take()['gen']; assert presenter.take()['kind']=='snapshot'
+    send('presenter.acquire'); take('presenter.granted')
+    refused=subprocess.run([cli,'session','overlay','open','--html',str(directory/'index.html'),*selectors],text=True,capture_output=True,timeout=25)
+    assert refused.returncode!=0 and 'page.bridge-revision' in refused.stdout,refused.stdout
+    page=native('session','overlay','open','--url','https://example.com')['pageID']
+    request=take('page.request'); assert 'url' in request['source']
+    native('session','overlay','reload'); assert take('page.command')['action']=='reloadOriginal'
+    native('session','overlay','close'); take('page.close'); outcome(page,'dismissed')
+    print('PASS legacy presenter explicitly refuses file bridge while URL reload and terminal remain available')
 finally:
     for channel in channels:
         if channel.process.poll() is None: channel.stop()

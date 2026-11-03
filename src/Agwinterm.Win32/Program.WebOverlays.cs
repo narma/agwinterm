@@ -232,6 +232,7 @@ internal partial class Program
                     page.BridgeToken = null;
                     ResetReplicaDocument(page);
                     page.BeginDocument();
+                    BeginReplicaDocument(page);
                 };
                 browser.NewWindowRequested += (_, e) =>
                 {

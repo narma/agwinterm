@@ -15,6 +15,7 @@ internal partial class Program
         public readonly OriginPagePresenter Presenter = presenter;
         public readonly AgtermPageFiles? Files = files;
         public long Sequence, AppliedSequence;
+        public readonly AgtermPageDocument Document = new();
     }
     private readonly Dictionary<string, WebPage> _originPages = new(StringComparer.Ordinal);
 
@@ -39,6 +40,8 @@ internal partial class Program
         var grant = new AgtermPageGrant(presenter.Scope, presenter.Subscriber.Generation, presenter.Owner,
             page.Resources is not null, Environment.TickCount64);
         var files = page.Resources is null ? null : new AgtermPageFiles(grant.Page, page.Resources);
+        if (files is not null && !presenter.Subscriber.Kinds.Contains(AgtermPageDocument.Capability))
+            throw new IOException("Remote file bridge requires page.bridge-revision support");
         page.Origin = new(grant, presenter, files);
         _originPages.Add(grant.Token, page);
         grant.Ended += () => Post(() => { if (OwnsWebPage(page.Owner, page)) CloseWebPage(page.Owner, page.Pane); });
@@ -77,15 +80,25 @@ internal partial class Program
 
     private Task<string> DispatchOriginPageBridge(WebPage page, string json, CancellationToken ct)
     {
-        var request = AgtermPageBridge.Parse(json, page.Request.Bridge == "review");
-        long generation = InvokeOnUiQueued(() =>
-        { if (!CurrentOriginPage(page)) throw new IOException("Page retired"); return page.DocumentGeneration; });
+        var document = AgtermPageDocumentRequest.Parse(json);
+        if (document.Request is null)
+        {
+            InvokeOnUiQueued(() =>
+            {
+                if (!CurrentOriginPage(page)) throw new IOException("Page retired");
+                page.Origin!.Document.Activate(document, page.Origin.Sequence);
+                return true;
+            });
+            return Task.FromResult("{\"ok\":true}");
+        }
+        var request = AgtermPageBridge.Parse(document.Request, page.Request.Bridge == "review");
         return Task.Run(() =>
         {
             Action guard = () =>
             {
                 ct.ThrowIfCancellationRequested();
-                if (!CurrentOriginPage(page) || page.DocumentGeneration != generation) throw new IOException("Page document retired");
+                if (!CurrentOriginPage(page)) throw new IOException("Page document retired");
+                page.Origin!.Document.RequireCurrent(document);
             };
             string? envelope = InvokeOnUiQueued(() =>
             {
@@ -139,7 +152,11 @@ internal partial class Program
         if (action is not ("hide" or "show" or "resize" or "reloadCurrent" or "reloadOriginal" or "back" or "forward" or "browser"))
             throw new ArgumentException("Unsupported remote page operation");
         if (action == "browser" && page.Resources is not null) throw new ArgumentException("Remote file cannot be opened from viewer disk");
-        if (action is "reloadCurrent" or "reloadOriginal" or "back" or "forward") page.BeginDocument();
+        if (action is "reloadCurrent" or "reloadOriginal" or "back" or "forward")
+        {
+            page.BeginDocument();
+            remote.Document.Invalidate(checked(remote.Sequence + 1));
+        }
         var geometry = page.Geometry;
         var payload = JsonSerializer.SerializeToElement(new { page = remote.Grant.Page, seq = ++remote.Sequence, action,
             sizePercent = action == "resize" ? geometry.Percent : (int?)null,

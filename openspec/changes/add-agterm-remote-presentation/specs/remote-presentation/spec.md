@@ -133,6 +133,18 @@ Page controls SHALL preserve supported hide/show, reload, navigation, resize and
 - **WHEN** a stale document submits after a new document revision is active
 - **THEN** its callback cannot complete the current page and accepted earlier outcomes remain unchanged
 
+#### Scenario: Legacy file bridge lacks document identity
+- **WHEN** either peer has not negotiated `page.bridge-revision`
+- **THEN** remote file-page bridge operations are explicitly refused while URL pages retain navigation without bridge authority and terminal access remains available
+
+#### Scenario: Document activation crosses an origin reload
+- **WHEN** an activation or bridge request carries an applied command sequence older than the origin's latest navigation command
+- **THEN** the origin refuses it even if its document revision is numerically newer
+
+#### Scenario: HTML initiates navigation or activation acknowledgement is lost
+- **WHEN** a top-level document navigates itself or the viewer cannot confirm activation of its new revision
+- **THEN** callbacks retain their original document identity, the new document cannot send commands before activation acknowledgement, and no command is retried into another document
+
 #### Scenario: Missing WebView2 runtime
 - **WHEN** a negotiated page reaches a Windows viewer without an available runtime
 - **THEN** the origin receives a page refusal, no runtime is installed, and terminal and passive presentation remain available
