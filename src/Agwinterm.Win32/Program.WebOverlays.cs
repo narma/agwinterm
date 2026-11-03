@@ -422,8 +422,10 @@ internal partial class Program
             }
             bool visible = paneVisible && ReferenceEquals(owner, _active) && !page.Hidden && _cover is null &&
                 !_dashboardOpen && _palette == PaletteKind.None && !_setOpen && !_helpOpen && !_mruWalking && !NativeDialogOpen;
-            if (page.Visible && !visible && page.Host.HasFocus && ReferenceEquals(owner, _active)) page.ResumeFocus = true;
-            if (!ReferenceEquals(owner, _active)) page.ResumeFocus = false;
+            // SetActive changes the owner before presentation is updated. Remember
+            // the focused page while its session is hidden, so returning restores
+            // native keyboard/IME focus rather than only the DOM's focused element.
+            if (page.Visible && !visible && page.Host.HasFocus) page.ResumeFocus = true;
             page.Bounds = new Rectangle((int)box.x, (int)box.y, (int)box.w, (int)box.h);
             page.Visible = visible;
             var documentBounds = PresentWebNavigation(page);

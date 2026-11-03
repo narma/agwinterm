@@ -38,7 +38,7 @@ $label = if ($Test -eq 'Hud') { $Suite } else { $Test }
 $requiresPython = $definition.Python -or ($Test -eq 'WebOverlayHost' -and ($TestParameters.Cookbook -or $TestParameters.CookbookOnly -or $TestParameters.NavigationOnly))
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $hostMetadata = @{}
-if ($Test -eq 'WebStartupBaseline') {
+if ($Test -in @('WebStartupBaseline','WebReleaseAcceptance','WebImeAcceptance')) {
     $commit = & git -C $repo rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Cannot record the host commit for the startup baseline.' }
     $sdk = & dotnet --version

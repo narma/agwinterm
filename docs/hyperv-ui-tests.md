@@ -433,6 +433,23 @@ From an elevated PowerShell 7 in this worktree:
 ./tests/integration/hyperv-ui.ps1 -BaseVhd 'D:\HyperV\Bases\agwinterm-optimized-01.vhdx' -Suite Quick,Navigation
 ```
 
+## Clean/offline web and IME acceptance
+
+`WebReleaseAcceptance` tests published packages against actual installed or absent
+WebView2 in a disposable guest with no network adapters. Use `TestParameters`
+`Mode=Installer|Portable`, `Runtime=Present|Absent`, and `Installer` or `Portable`
+with the package path. Run the four cells separately. The present-runtime cells
+also run the browser cookbook against the installed/extracted binaries.
+
+`WebImeAcceptance` takes the published `-Exe` and `-CtlExe` plus
+`TestParameters.LanguageSource`, a ZIP of matching official Windows language,
+Basic typing and Hans font CABs. It installs Chinese Pinyin only after checking
+the Hyper-V guest identity, then drives native scan-code input and records
+candidate selection, cancellation, focus and terminal isolation. It never
+installs a language on the host or modifies the base image. See
+[the stage-4 evidence](agterm-stage4-hyperv-acceptance.md) for package provenance,
+hashes and acceptance status; Windows media are not part of the repository.
+
 ## Host-free validation
 
 ```powershell

@@ -1,8 +1,8 @@
 # Stage 4: manual browser acceptance
 
-Status: scenario prepared; no manual pass recorded. Covers task 6.6 and the outstanding IME/clean/offline items in `add-webview2-cookbook-overlays`. Remote-page acceptance remains a separate automated/actual-peer matrix.
+Status: automated Hyper-V acceptance in progress following the user's 2026-11-03/04 authorization to install Chinese IME in disposable test guests. No IME pass is recorded yet. Covers task 6.6 and the outstanding IME/clean/offline items in `add-webview2-cookbook-overlays`. Remote-page acceptance remains a separate automated/actual-peer matrix.
 
-Use a separate test machine or disposable VM, not the development machine's live configuration. IME must already be installed on the test machine: no language/runtime installation on the development host is requested. Run automated Windows UI suites only through the repository's background Sandbox routing.
+Use a separate test machine or disposable VM, not the development machine's live configuration. Chinese IME may be installed from official Microsoft language packages inside the disposable guest; no language/runtime installation on the development host is requested. Run automated Windows UI suites through the installed Hyper-V worker (the repository default), or explicit background Sandbox routing. The automated IME driver requires a verified Hyper-V guest and records native candidate UI and DOM input events from scan-code key input.
 
 ## Record the build and environment
 

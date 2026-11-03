@@ -56,7 +56,7 @@ In progress (2026-11-03): origin grants/slots, scoped resources, WebView2 adapta
 - [x] 6.3 Integrate URL/file page options, bridge allowlists and isolated storage; test review/general grant boundaries, URL/subframe denial, target overrides, cross-endpoint storage isolation and missing-runtime refusal, and document supported options.
 - [x] 6.4 Add negotiated page.bridge-revision envelopes, document activation acknowledgements, legacy file-bridge refusal, ordered page commands/state and origin outcomes; test hide/show/resize/navigation/reload, stale document callbacks, submit/cancel/close races, token secrecy and no implicit page recreation after reconnect.
 - [x] 6.5 Update the isolated test agterm with a reproducible revision-aware protocol patch and run real-peer file-assets and URL page matrices in both directions with allowed/refused bridge calls, submission/cancellation, channel loss and reload races; record origin outcomes and viewer cleanup.
-- [ ] 6.6 Reconcile relevant local WebView2 evidence with tasks 1.4, 1.5, 3.3 and 6.3 of add-webview2-cookbook-overlays; attach manual IME and clean/offline installer/portable results when available and keep this acceptance item pending while required evidence is missing. Existing permission to proceed with other work remains in force.
+- [ ] 6.6 Reconcile relevant local WebView2 evidence with tasks 1.4, 1.5, 3.3 and 6.3 of add-webview2-cookbook-overlays; attach real IME and clean/offline installer/portable results and keep this acceptance item pending while required evidence is missing. The user authorized automated Hyper-V acceptance and Chinese IME installation in disposable test guests on 2026-11-03/04; synthetic Unicode input is not IME evidence.
 
 ## 7. Integrated acceptance and review
 
