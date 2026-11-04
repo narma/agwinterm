@@ -67,7 +67,7 @@ public static class SurfaceText
                 while (last >= 0)
                 {
                     var cell = At(last);
-                    if (cell.Width != 0 && !(cell.Rune <= char.MaxValue && char.IsWhiteSpace((char)cell.Rune))) break;
+                    if (cell.Width != 0 && (cell.Grapheme is not null || !(cell.Rune <= char.MaxValue && char.IsWhiteSpace((char)cell.Rune)))) break;
                     last--;
                 }
 
@@ -93,7 +93,8 @@ public static class SurfaceText
                     if (text.Length > 0 && (style.Attributes != cell.Attributes ||
                         style.FgSpec != cell.FgSpec || style.BgSpec != cell.BgSpec)) Flush();
                     if (text.Length == 0) { start = c; style = cell; }
-                    if (cell.Rune > char.MaxValue) text.Append(char.ConvertFromUtf32(cell.Rune));
+                    if (cell.Grapheme is { } cluster) text.Append(cluster);
+                    else if (cell.Rune > char.MaxValue) text.Append(char.ConvertFromUtf32(cell.Rune));
                     else text.Append((char)cell.Rune);
                     end = Math.Min(cols, c + cell.Width);
                 }

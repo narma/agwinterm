@@ -1,0 +1,125 @@
+# Ghostty VT migration: initial audit and implementation decisions
+
+Status: reproducible Windows build, native adapter, opt-in renderer integration and executable contract tests. **Not a complete replacement backend or rollout acceptance.** No production default changes. Tracking: [#34](https://github.com/narma/agwinterm/issues/34).
+
+## Destination and scope
+
+The destination is a single libghostty-vt engine. Managed and Rust are temporary rollout/oracle backends, not a permanent compatibility architecture. Prefer Ghostty's state, grapheme, input, selection and snapshot semantics over reproducing limitations of the existing interface. Keep Win32/Direct2D/DirectWrite, ConPTY, PTY host, WSL/ZMX, control API and agent lifecycle. Sixel is excluded. Upstream VT maintenance is the purpose of this migration: do not add a second general parser in the adapter.
+
+Parity with agterm means relevant terminal behavior and feature coverage, not embedding its macOS UI or rendering stack. It needs an explicit executable workload comparison; sharing Ghostty alone is not evidence of parity. Preserve the application-specific presentation and remote contracts already shipped here.
+
+## Source evidence
+
+Local audit starts at `b48dbb9` (2026-11-04). Ghostty build revision: `ee02d019e8459ed4d09fac55753ad2363c5a8b01`, resolved from upstream HEAD and read by immutable raw URLs. Its `build.zig.zon` requires Zig **0.17.0**. The unmodified source builds with `-Demit-lib-vt=true -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -j4`. The official Zig archive is SHA-256 pinned in `native/ghostty-vt/pin.json`; the build records both output DLL hashes. MSVC-target output initially required a VC runtime absent from the clean test image; GNU-target output passes clean-Windows loading. The managed loader verifies provenance and both hashes before loading, then checks exports, ABI layouts and revision.
+
+- [Pinned terminal API](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/terminal.h)
+- [Pinned render API](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/render.h)
+- [Pinned snapshots](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/snapshot.h)
+- [Pinned graphics API](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/kitty_graphics.h)
+- [Pinned modes](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/modes.h)
+- [Microsoft native interop guidance](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/best-practices)
+
+## Existing coupling that must change
+
+`ITerminalCore.Screen` exposes a mutable concrete `ScreenBuffer`. `RustTerminalCore.Sync` copies and converts the full native grid after every Feed/Resize, caches history and resolves links. `Program.Render.RenderTerminal` then copies the viewport again under the session lock. Moving that design to Ghostty would retain unnecessary work on every PTY chunk, including hidden panes.
+
+`Cell.Rune` holds one scalar, not a grapheme. A native parser alone cannot fix combined emoji or combining marks throughout DirectWrite, selection, dumps, search and accessibility. The frame/text representation must carry complete clusters with an ASCII fast path and explicit column widths.
+
+Persistence bypasses the interface: `BufferPersist.Serialize/Restore` special-case Rust and cast everything else to `TerminalEmulator`. Additional type gates exist in `ServerSession`, `PtyHostServer` and `Program.Services`. `PtyHostServer` has a managed-specific bundled-ConPTY repaint path. These are migration work, not safe places to silently treat Ghostty as managed. `ShellMark` is also nested inside `TerminalEmulator`.
+
+The interface comments saying Rust lacks images and callbacks are stale; the actual implementation supports both. Use implementation and executable checks as evidence.
+
+## Initial contract map
+
+Classification is about API availability, not tested parity. **Direct** still needs a binding and lifetime validation. **Adapter** means representation/ownership translation. **Sidecar** means application-owned state. **Unverified** is a blocking investigation, not an assertion that upstream cannot do it.
+
+| Existing contract | Classification and direction |
+| --- | --- |
+| Feed, Resize | Direct: terminal VT write and resize; inspect processing errors. Configure ConPTY resize-pull behavior explicitly. |
+| Screen | Adapter: render-state capture and changed-row bulk export; retire mutable ScreenBuffer as the universal read contract. |
+| CursorRow/Col/Visible/Shape, IsAltScreen | Direct: terminal cursor and active-screen data; capture consistently with the frame. |
+| ScrollTop/Bottom | Unverified: no matching scalar terminal-data getter found in inspected header; inspect screen API before deciding whether consumers need these values. |
+| MouseReporting/ReportsMotion/Click/Drag/Motion/Sgr/SgrPixels | Adapter: tracking data plus modes; validate native mouse encoder, including pixel coordinates. |
+| BracketedPaste, FocusReporting, KeyboardFlags | Direct mode/keyboard data; input encoder integration still needs application tests. |
+| SynchronizedOutput | Adapter: render-hold callback, captured pre-hold frame, bounded timeout. Updating render state unconditionally defeats the hold. |
+| Win32InputMode | Unverified: no 9001/win32 entry found in the inspected modes header, `src/terminal/modes.zig` or C terminal implementation. Check stream handling and exercise the mode before concluding unsupported. If necessary add only a bounded Windows-specific recognizer with split-input tests. |
+| DynamicBg and theme colors | Adapter: upstream colors/palette to application default/indexed/RGB semantics; avoid using RGB zero as absence. |
+| ScrollbackMax, HistoryCount | Direct line-limit and scrollback-row data; verify trimming/reflow semantics. |
+| ScrollGeneration | Adapter: application invalidation epoch; do not infer all changes from history count. |
+| GetHistoryCell, GetRowWrapLength | Adapter: `grid_ref.h` exposes cell/row/grapheme/style/link access; `screen.h` exposes WRAP and WRAP_CONTINUATION. Validate translation to the current wrap-content-length convention, especially wide-character edge padding. Never reconstruct wraps from trailing spaces. |
+| SeedScrollback | Adapter: legacy import; do not replay untrusted restored text as executable escape sequences. |
+| Marks | Adapter: semantic-prompt callback to application command boundaries; tracked grid references are a candidate for surviving reflow, with explicit invalidation on trim. Validate exact prompt/output/exit boundaries. |
+| Title, Cwd | Direct data and effects; preserve host handling. |
+| Host.Respond/Bell/Notify/Progress/ClipboardWrite/DefaultColors | Direct effects plus adapter dispatch. Never enable clipboard-read callbacks. |
+| Host.CommandFinished | Sidecar: authenticated application shell-completion protocol; retain token/sequence validation. |
+| Host.Unhandled | Adapter: upstream unknown-sequence callback; header documents OSC/APC, not a universal CSI debug hook. |
+| Images, Placements, HasImage | Adapter: native Kitty store to existing Direct2D cache, with identity/generation tracking and bounded resources. |
+| SetImageData, PlaceImage, ClearPlacements | Sidecar or verified direct native import: preserve host shared-memory frame path without base64 recoding. Investigate native injection API before choosing. |
+| PlaceSixel | Unsupported by migration policy; no emulation/fallback implementation. |
+| CellPixelWidth/Height | Adapter: update terminal pixel geometry used by graphics and mouse input. |
+| DumpRow/HistoryRow/Buffer | Adapter: cluster-aware text extraction; distinguish logical text from physical rows. |
+| DumpModes | Adapter: existing reattach contract must be audited against native state/snapshot semantics, not guessed escape sequences. |
+| Dispose | Native ownership: release render state, terminal, callback roots and image references in a defined order. |
+| BufferPersist / PTY reattach | Adapter: versioned Ghostty snapshot envelope and one-way legacy import; full snapshot is not equivalent to history-only ConPTY repaint. |
+
+## Interop decision
+
+Use source-generated `LibraryImport` bindings for small ordinary C API calls. Prefer `SafeHandle` ownership, exact C-width fields (`nuint` for size_t, explicit byte for C bool where appropriate), sequential blittable structures and explicit calling conventions. Pin input spans only for the duration of synchronous calls; avoid string/StringBuilder marshalling in the hot path. Returned borrowed memory must not outlive its documented owner/update boundary. Callback exceptions must never cross into native code.
+
+Use a small C/Zig shim only where a bulk operation is needed: export changed rows, style identifiers, grapheme bytes and link identifiers in bounded reusable buffers. Keep loops over cells on the native side instead of thousands of managed/native transitions per frame. No VT parsing, Unicode width logic or reflow algorithm belongs in that shim. Confirm this tradeoff with measured capture cost before freezing the ABI.
+
+Expose a shim handshake containing ABI version, struct sizes, required capability bits and pinned upstream revision. Validate before creating sessions. Library failure may select managed for **new** sessions during transition; never switch a live native handle to another engine. Do not apply SuppressGCTransition to writes/capture/resize or any callback-capable operation.
+
+Callbacks run synchronously on the feeding thread. Queue bounded host effects and dispatch in order through the existing host seam; never reenter Feed or synchronously wait on UI. Register callbacks and userdata with lifetimes covering the terminal. The render-hold callback needs the special upstream-prescribed pre-hold capture path, not delayed capture after the entire write.
+
+## Frame ownership
+
+Feed updates authoritative native state and cheap host/mode metadata, not a managed full-grid mirror. On a visible capture, hold `session.SyncRoot` for `begin_update` and matching terminal metadata, then release it before `end_update`, conversion and drawing. Only one consumer may mutate a particular render state. A frame keeps its own row/cluster storage alive through painting; no borrowed terminal pointers escape the lock. Clean dirty state only after successful consumption; force invalidation after resize, viewport/theme changes and device loss. Unchanged rows can reuse cached data.
+
+Text/control/UIA reads require a separate explicit read/capture path under the session lock. They must stay correct for hidden panes without forcing paint or persistent full-screen duplication. A temporary adapter for old cores is acceptable; do not build a permanent pluggable-engine framework.
+
+## Regression gates and measurements
+
+[#28](https://github.com/narma/agwinterm/pull/28) fixed attributed restore/reflow and PTY-host reattach. [#29](https://github.com/narma/agwinterm/pull/29) fixed soft-wrap selection copying. Port their behavioral fixtures: widen/narrow/restart, preserved colors/links/spaces/wide cells, surviving host PID, partial/reverse selections, hard breaks, and rectangular selection. Do not compare to old cores where their behavior is itself incorrect.
+
+Use `tools/vt-bench` for repeatable headless adapter measurements. It reports raw samples and honestly separates its scope from UI/GPU/PTY measurements. A complete baseline still needs worker-routed Windows/WSL visible/hidden runs, latency, idle and churn. No performance claim or default-switch decision is justified yet.
+
+### Initial headless run, 2026-11-04
+
+Both backends completed 54 configurations × five samples (540 samples total). Build: Release, .NET 10.0.11, Windows 10.0.26300 X64, 32 logical processors; source `b48dbb9` plus this harness. Native core was built from source with `cargo build --release --manifest-path native/Cargo.toml -p agwinterm-core --offline`, ABI 23, DLL SHA-256 `2EE716EB4834B0CAA8E5D7902D8FCE6916401C373927CDA87C3A5DA3A8D460CC`. No UI or PTY was started. Managed ran first, Rust second; these are exploratory single-process-launch results, not acceptance measurements.
+
+For the Rust adapter's one-session sparse-update workload (four payload repetitions), median elapsed milliseconds were:
+
+| Grid | 64-byte chunks | 4096-byte chunks |
+| --- | ---: | ---: |
+| 120×40 | 10.4990 | 0.3558 |
+| 240×100 | 55.9424 | 1.3950 |
+| 400×200 | 187.2340 | 4.4989 |
+
+This is consistent with the source-level full-grid-copy cost scaling with both grid size and Feed frequency. It is not a Ghostty speed prediction. Managed short samples show warm-up/tiering sensitivity and sometimes zero process-CPU timer ticks; do not present precise cross-backend speedup ratios from this run. Calibrated longer measurements are still required.
+
+Local raw reports: `artifacts/vt-managed.json`, `artifacts/vt-rust.json`; invariant-culture CSV medians: `artifacts/vt-summary.csv`. These generated files are ignored artifacts; rerun the documented commands to reproduce the experiment. Release harness build passed without warnings; native Release build passed; missing-native-library validation refused the Rust run without fallback; summary validation accepted all 108 configurations.
+
+## Next reviewable increments
+
+1. Finish the API gaps above, verify Windows x64 build/toolchain/license provenance, run the headless baseline and extend isolated UI measurements. Record results and limitations.
+2. Add native binding/shim lifetime and ABI tests, chunked write/resize smoke tests, and opt-in new-session selection. Include enough frame integration to avoid a per-Feed full mirror from the start.
+3. Migrate frame/text/grapheme consumers and input/host contracts, then graphics and versioned restore. Keep every regression gate executable.
+4. Measure everyday agent/TUI workloads and agterm parity, then switch default and remove old cores when the regression gates pass. The user explicitly authorizes removal earlier when old interfaces obstruct the destination architecture; no separate permission checkpoint is required. Preserve legacy saved-data import where useful; no requirement to preserve old internal abstractions.
+
+## Implemented Windows/native increment
+
+- Build script, source/toolchain pin, SHA-256 provenance and source-generated `LibraryImport` bindings with `SafeHandle` ownership. Upstream source remains unmodified; no extra runtime is installed or shipped.
+- Bounded native allocations and host-effect queues; dirty-row bulk export, UTF-8 clusters and snapshot-owned hyperlink metadata. Feed does not copy the grid. The live renderer begins capture under the session lock and converts/draws outside it. Control/text reads have separate reusable buffers and do not mutate in-flight paint frames. History painting still uses the explicit locked read path.
+- Pre-hold render snapshots, independent cursor coordinates and hyperlink data, a one-second hold deadline, and UI deadline redraw scheduling independent of cursor blinking. Capture abort preserves dirty state after a failed transfer.
+- Native snapshots with parser continuation and tracked OSC 133 command boundaries, revision/integrity envelope, bounded decoding and atomic replacement. Native restore failure leaves the current terminal intact. These snapshots are not yet wired into application restart/history-only persistence.
+- Selection endpoints use upstream tracked references across reflow and eviction, with immutable logical copy text checked after mutations. This matters because a partial-region deletion can clamp a tracked coordinate to different content. Common copy extraction now preserves complete clusters, soft-wrap lengths/wide padding, hard breaks, reverse endpoints and rectangles. A tracked top-row probe supplies a scroll-change epoch without assuming history count grows. Anchor release retains the allocator owner and queues pin destruction for a serialized native operation; finalizers do not wait on managed UI/session locks.
+- Experimental `emulator-core = ghostty`, glyph-cluster drawing/copying, exact cluster-aware content selection, host callbacks and a narrowly scoped bounded Windows-mode/application-OSC observer. Sixel is deliberately unsupported.
+- Cursor shape/blink comes from the captured native state, with live user defaults delegated to Ghostty. Host foreground/background defaults are synchronized before parsing color queries; explicit OSC overrides survive theme changes. The legacy DynamicBg presence bit preserves explicit black. The public upstream API currently cannot distinguish an override equal to the configured default; that transparency edge case remains an API gap, not a reason to add an OSC color parser.
+- Windows CI job for pinned compilation and the host-free native contract harness. The workflow is added locally; a hosted CI run has not yet been observed.
+
+Validation: Release application build without warnings; 640 existing core tests pass; 82 native contract checks pass, including chunk boundaries, snapshots, invalid package rejection, held-frame ownership, resize during hold, grapheme selection, 100 concurrent paint/write/control-read iterations, and 100 terminal lifetimes. Hyper-V fixture passes 8/8 checks with clean DLL loading, ConPTY input, alternate-screen text, clusters, hyperlinks, frame capture and return to the primary shell. Screenshot inspection confirms one composed emoji in DEC mode 2027; without that mode upstream intentionally uses legacy scalar-width behavior. The final smoke run, including native selection integration, is under `artifacts/ghostty-ui-anchors/results`. It is a launch/render/control smoke suite; detailed selection/reflow/eviction cases run in the host-free native harness, not through mouse automation.
+
+The Ghostty ingestion benchmark completed 54 configurations × five samples. Latest raw report, including tracked scroll probes: `artifacts/vt-ghostty-current.json`; combined medians: `artifacts/vt-current-summary.csv`. The one-session sparse-update samples allocate zero managed bytes during Feed. Timings are below a millisecond and retain the warm-up/timer limitations above; do not turn them into precise speedup claims or claim renderer/latency parity.
+
+Remaining replacement blockers: remaining margin metadata and expanded selection UI acceptance; complete palette/theme integration and cursor metadata for non-paint consumers; native Kitty images and host-image lifetimes; native input encoders; history-only restore/legacy import and server replica integration; search/accessibility cluster coordinate audits; deterministic session/core teardown; complete third-party notice packaging; full Windows/WSL/agterm parity and calibrated end-to-end performance checks. Old engines remain only because these consumers have not yet migrated, not to preserve a permanent multi-backend architecture.

@@ -1,0 +1,48 @@
+# Ghostty VT Windows adapter
+
+This is an experimental opt-in integration, not the default terminal core.
+The upstream source is unmodified and pinned by `pin.json`. The build uses
+Zig's Windows GNU target so the DLLs do not require a separately installed
+Visual C++ redistributable. Zig is build tooling, not a runtime dependency.
+
+From the repository root:
+
+```powershell
+./native/ghostty-vt/build.ps1
+dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin
+dotnet build src/Agwinterm.Win32/Agwinterm.Win32.csproj -c Release
+./tests/integration/hyperv-ui.ps1 -Suite Ghostty -Exe ./src/Agwinterm.Win32/bin/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe
+```
+
+Use `-SkipDownload` once the pinned sources/toolchain are available. Local
+upstream modifications are rejected. The build records source/toolchain IDs,
+targets, and both DLL hashes in `artifacts/ghostty-build/provenance.json`.
+Build after generating the DLLs to copy them alongside the application;
+`emulator-core = ghostty` selects the experimental core for new sessions.
+
+`agwvt.c` owns terminals, render states, tracked command marks, and bounded
+allocations. Feed never exports a grid. Capture begins under the terminal's
+external lock and finishes using snapshot-owned data. Linked cells retain
+their own URI bytes, so concurrent writes cannot change an older frame.
+Only one capture consumer is allowed; disposal must wait for that consumer.
+Callbacks copy bounded host effects into a managed queue; they never reenter
+the terminal or throw across the C boundary.
+
+Native snapshots retain parser continuation and tracked command boundaries.
+The managed envelope includes the upstream revision, bounded Windows input
+sidecar state, lengths, and a SHA-256 integrity check. Decode builds a separate
+terminal and commits only after validation. This is a low-level snapshot
+contract; application restart/history-only persistence is not yet migrated.
+
+The application adapter still has migration gaps: remaining margin metadata,
+complete palette/theme integration, native Kitty image extraction, input
+encoders, history-only import/reattach, and deterministic session teardown.
+Live renderer conversion runs outside the session lock; history painting still
+uses the locked explicit read path. Do not enable this core by default or remove the old cores
+until those consumers have migrated. Sixel will not be implemented in this
+backend. See the migration audit for the complete contract map.
+
+The Windows CI contract job builds the pinned source and runs the host-free
+harness. Local desktop checks must use the existing Hyper-V worker. License
+copies emitted here cover Ghostty and Zig; release packaging still needs the
+complete third-party notice inventory before distributing this integration.

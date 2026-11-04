@@ -19,6 +19,14 @@
       <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
     </ItemGroup>
   </Target>
+  <ItemGroup Condition="Exists('..\..\artifacts\ghostty-build\bin\agwinterm_ghostty.dll')">
+    <None Include="..\..\artifacts\ghostty-build\bin\agwinterm_ghostty.dll;..\..\artifacts\ghostty-build\bin\ghostty-vt.dll;..\..\artifacts\ghostty-build\bin\ghostty-vt.provenance.json">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+  </ItemGroup>
   <ItemGroup Condition="'$(PortableToolsArchive)' != ''">
     <EmbeddedResource Include="$(PortableToolsArchive)" LogicalName="agwinterm.tools.zip" />
   </ItemGroup>

@@ -16,6 +16,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ghostty-contract:
+    name: Ghostty Windows native contract
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Cache pinned build toolchain
+        uses: actions/cache@v5
+        with:
+          path: artifacts/toolchains
+          key: ghostty-zig-windows-${{ hashFiles('native/ghostty-vt/pin.json') }}
+      - name: Build pinned Ghostty and adapter
+        shell: pwsh
+        run: ./native/ghostty-vt/build.ps1
+      - name: Exercise the native contract
+        shell: pwsh
+        run: dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin
+      - name: Upload build provenance
+        uses: actions/upload-artifact@v6
+        with:
+          name: ghostty-windows-provenance
+          path: |
+            artifacts/ghostty-build/provenance.json
+            artifacts/ghostty-build/licenses
+
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
 

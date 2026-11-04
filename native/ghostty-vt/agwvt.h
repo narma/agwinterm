@@ -1,0 +1,55 @@
+#pragma once
+#include <stddef.h>
+#include <stdint.h>
+#ifdef _WIN32
+#define AGWVT_API __declspec(dllexport)
+#else
+#define AGWVT_API __attribute__((visibility("default")))
+#endif
+
+typedef struct AgwVt AgwVt;
+// All public fields are fixed-width, without C bool, enums or borrowed pointers.
+typedef struct {
+    uint32_t rune, fg, bg, attrs, width;
+    uint32_t fg_kind, fg_value, bg_kind, bg_value;
+    uint32_t text_offset, text_length;
+    uint32_t link_offset, link_length;
+} AgwVtCell;
+typedef struct {
+    uint32_t cols, rows, cursor_col, cursor_row, cursor_visible, alt_screen;
+    uint32_t history, keyboard_flags, modes, background, default_background;
+    uint64_t scroll_epoch;
+} AgwVtInfo;
+typedef struct { int32_t prompt, command, output, end, exit_code, has_exit_code; } AgwVtMark;
+typedef void (*AgwVtEvent)(void* context, uint32_t kind, const uint8_t* data, size_t len);
+
+AGWVT_API uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size);
+AGWVT_API const char* agwvt_revision(void);
+AGWVT_API int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, AgwVt** out);
+AGWVT_API void agwvt_free(AgwVt* vt);
+AGWVT_API int agwvt_feed(AgwVt* vt, const uint8_t* bytes, size_t len);
+AGWVT_API int agwvt_resize(AgwVt* vt, uint32_t cols, uint32_t rows, uint32_t cw, uint32_t ch);
+AGWVT_API int agwvt_info(AgwVt* vt, AgwVtInfo* out);
+AGWVT_API int agwvt_scrollback(AgwVt* vt, size_t lines);
+AGWVT_API int agwvt_begin(AgwVt* vt);
+AGWVT_API int agwvt_end(AgwVt* vt);
+AGWVT_API int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uint32_t* shape);
+AGWVT_API int agwvt_cursor_default(AgwVt* vt, uint32_t style, uint32_t blink);
+AGWVT_API int agwvt_colors(AgwVt* vt, uint32_t foreground, uint32_t background);
+// Only dirty rows are written. Text offsets refer to this call's UTF-8 arena.
+// Call clean only after a successful transfer; OUT_OF_SPACE permits retry.
+AGWVT_API int agwvt_cells(AgwVt* vt, AgwVtCell* cells, size_t capacity,
+    uint8_t* dirty, int32_t* wraps, size_t rows, uint8_t* text, size_t text_capacity, size_t* text_used);
+AGWVT_API int agwvt_clean(AgwVt* vt);
+// Release a failed transfer without consuming its dirty rows.
+AGWVT_API int agwvt_abort(AgwVt* vt);
+AGWVT_API int agwvt_read_row(AgwVt* vt, uint32_t row, uint32_t history, AgwVtCell* cells,
+    size_t capacity, int32_t* wrap, uint8_t* text, size_t text_capacity, size_t* text_used);
+AGWVT_API int agwvt_text(AgwVt* vt, uint32_t kind, uint8_t* text, size_t capacity, size_t* length);
+AGWVT_API int agwvt_marks(AgwVt* vt, AgwVtMark* marks, size_t capacity, size_t* count);
+AGWVT_API int agwvt_anchor_new(AgwVt* vt, uint32_t col, uint32_t row, void** anchor);
+AGWVT_API int agwvt_anchor_point(void* anchor, uint32_t* col, uint32_t* row);
+AGWVT_API void agwvt_anchor_free(void* anchor);
+AGWVT_API int agwvt_snapshot(AgwVt* vt, uint8_t** bytes, size_t* length);
+AGWVT_API void agwvt_snapshot_free(AgwVt* vt, uint8_t* bytes, size_t length);
+AGWVT_API int agwvt_restore(AgwVt* vt, const uint8_t* bytes, size_t length);

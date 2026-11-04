@@ -17,6 +17,21 @@ namespace Agwinterm.Win32;
 /// <summary>Session/workspace management: panes, MRU, covers, overlays, splits, reopen-closed, watermarks.</summary>
 internal partial class Program
 {
+    private void ScheduleSyncRedraw(Pane pane)
+    {
+        if (Interlocked.CompareExchange(ref pane.SyncRedrawPending, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            // Expire a stalled producer even with cursor blinking disabled.
+            await Task.Delay(1050);
+            Interlocked.Exchange(ref pane.SyncRedrawPending, 0);
+            if (!IsSurfaceVisible(pane)) return;
+            RequestRedraw();
+            // A newer hold may have begun before this deadline. Schedule its
+            // expiry too; concurrent output can safely win the pending flag.
+            if (pane.S.Emulator.SynchronizedOutput) ScheduleSyncRedraw(pane);
+        });
+    }
     // ---- Session/workspace management (UI thread) ----
 
     private List<Ses> AllSessions()
@@ -148,6 +163,7 @@ internal partial class Program
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
             // blink interval, so a crash that leaves ?2026 open can't freeze the pane for long.
             if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput) RequestRedraw();
+            else if (session.Emulator is GhosttyTerminalCore && IsSurfaceVisible(pane)) ScheduleSyncRedraw(pane);
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
         AgentStatus lastStatus = session.Status;

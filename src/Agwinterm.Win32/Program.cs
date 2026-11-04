@@ -372,6 +372,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public float Ratio = 1f;   // this pane's OWN share of the session's extent along its axis (width when vertical, height when horizontal); PaneLayout normalises by the sum
         public int ScrollOffset;   // lines scrolled up from the live bottom (0 = live; clamped to HistoryCount)
         public long LastScrollGen; // emulator ScrollGeneration last seen on output (detects real scroll vs in-place repaint)
+        public int SyncRedrawPending;
         public int Unread;         // unread desktop-notification count (OSC 9/777 / notify) since last visit
         public NotificationCategory UnreadCategory; // highest priority among unread notifications
         public bool ReadOnly;      // block keyboard input to this pane (protect a running agent from stray keys)
@@ -393,8 +394,17 @@ internal partial class Program : ISessionHost, IWindowHost
         public bool SelAlt, SelTrackable;
         public bool BlockSel;   // rectangular (Alt+drag) selection: clip each row to [minCol,maxCol]
         public ContentSelection? SelContent;
+        public GhosttySelection? SelNative;
         public bool SelContentVisible = true;
-        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; }
+        public void ReleaseSelectionAnchors()
+        {
+            if (SelNative is null) return;
+            lock (S.SyncRoot)
+            {
+                SelNative?.Dispose(); SelNative = null;
+            }
+        }
+        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); }
         public int UiaAnnouncedAbs = -1;   // absolute buffer line (history + cursor row) last spoken to a screen reader
     }
 
@@ -857,6 +867,20 @@ internal partial class Program : ISessionHost, IWindowHost
     /// Any failure falls back to the managed emulator — visibly, never silently.</summary>
     private static void ResolveEmulatorCore()
     {
+        if (_config.EmulatorCore == "ghostty")
+        {
+            if (GhosttyTerminalCore.TryLoad(AppContext.BaseDirectory, out string? error))
+            {
+                Agwinterm.Pty.TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows, _config.CursorStyle, _config.CursorBlink);
+                _emulatorCoreNote = "emulator-core = ghostty (EXPERIMENTAL) — new sessions use libghostty-vt";
+            }
+            else
+            {
+                Agwinterm.Pty.TerminalSession.CoreFactory = null;
+                _emulatorCoreNote = "emulator-core = ghostty unavailable (" + error + ") — using managed";
+            }
+            return;
+        }
         if (_config.EmulatorCore != "rust") { Agwinterm.Pty.TerminalSession.CoreFactory = null; return; }
         string? err = null;
         foreach (var dll in new[]

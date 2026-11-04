@@ -486,7 +486,7 @@ public sealed class TerminalConfig
                     break;
                 case "fresh-env": cfg.FreshEnv = ParseBool(val, cfg.FreshEnv); break;
                 case "emulator-core":
-                    if (val is "managed" or "rust") cfg.EmulatorCore = val;
+                    if (val is "managed" or "rust" or "ghostty") cfg.EmulatorCore = val;
                     break;
                 case "word-delimiters": cfg.WordDelimiters = val; break;
                 case "desktop-notifications": cfg.DesktopNotifications = ParseBool(val, cfg.DesktopNotifications); break;

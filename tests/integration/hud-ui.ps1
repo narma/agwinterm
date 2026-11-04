@@ -1,7 +1,7 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance')][string]$Suite='Hud')
+      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','Ghostty')][string]$Suite='Hud')
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test Hud -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -137,6 +137,7 @@ public sealed class HudOwnedJob {
     # Every pane uses a harmless cmd /d shell: never the user's PowerShell profile or agent hooks.
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
     @('session-host = in-process','claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
+    if($Suite-eq 'Ghostty'){'emulator-core = ghostty'|Add-Content (Join-Path $appDir 'agwinterm.conf')}
     'map f12 = close_pane'|Set-Content (Join-Path $appDir 'keymap.conf')
     if($Suite-eq 'Clipboard'){'map f8 = paste'|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'WorkingSets'){'map f8 = toggle_workspace_filter'|Add-Content (Join-Path $appDir 'keymap.conf')}
@@ -235,6 +236,7 @@ public sealed class HudOwnedJob {
     elseif($Suite-eq 'Clipboard') { . "$PSScriptRoot/clipboard-ui-cases.ps1" }
     elseif($Suite-eq 'TerminalRendering') { . "$PSScriptRoot/terminal-rendering-ui-cases.ps1" }
     elseif($Suite-eq 'TerminalPerformance') { . "$PSScriptRoot/terminal-performance-ui-cases.ps1" }
+    elseif($Suite-eq 'Ghostty') { . "$PSScriptRoot/ghostty-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {
     $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'

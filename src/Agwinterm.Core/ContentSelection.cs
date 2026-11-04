@@ -27,6 +27,7 @@ public sealed class ContentSelection
     private int _lastTop;
     private bool _hasResult = true, _lastVisible = true;
     private string? _text;
+    private readonly SelectionTextMap _textMap = new();
     public int Height => _selected.Length;
 
     // A drag replaces its anchor on every pointer move. Build the copy string only when needed,
@@ -37,7 +38,7 @@ public sealed class ContentSelection
     {
         _cols = screen.Cols; _originalRows = screen.Rows;
         _frame = new uint[_cols * _originalRows];
-        screen.CopyTextTo(_frame);
+        screen.CopyTextTo(_frame, _textMap, add: true);
         _lastTop = first;
         _selected = new Pattern[last - first + 1];
         _wraps = new int[_selected.Length];
@@ -87,6 +88,7 @@ public sealed class ContentSelection
             {
                 if ((cell >> 21) == 0) continue;
                 int rune = (int)(cell & 0x1fffff);
+                if (_textMap.Grapheme((uint)rune) is { } cluster) { text.Append(cluster); continue; }
                 if (rune <= 0xffff) text.Append(rune == 0 ? ' ' : (char)rune);
                 else
                 {
@@ -115,7 +117,7 @@ public sealed class ContentSelection
             bool present = false;
             var word = _selected[0];
             for (int row = 0; row < rows && !present; row++)
-                present = screen.TextMatches(row, word.From, word.Cells);
+                present = screen.TextMatches(row, word.From, word.Cells, _textMap);
             if (!present) { _hasResult = false; return false; }
         }
         if (_frame.Length != rows * _cols)
@@ -124,7 +126,7 @@ public sealed class ContentSelection
             foreach (var pattern in _patterns) pattern.Matches = new sbyte[rows];
             _hasResult = false;
         }
-        bool changed = screen.CopyTextTo(_frame);
+        bool changed = screen.CopyTextTo(_frame, _textMap);
         // Cache negative results too: a hidden/ambiguous selection need not be searched again
         // on every cursor blink. Styling changes do not affect text identity.
         if (!changed && _hasResult) return _lastVisible;

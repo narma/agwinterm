@@ -83,7 +83,8 @@ internal partial class Program
                 {
                     Cell cell = CellAbs(em, hist, rows, cols, line, c);
                     if (cell.Width == 0 && cell.Rune == '\0') continue;
-                    if (cell.Rune > 0xFFFF) row.Append(char.ConvertFromUtf32(cell.Rune));
+                    if (cell.Grapheme is { } cluster) row.Append(cluster);
+                    else if (cell.Rune > 0xFFFF) row.Append(char.ConvertFromUtf32(cell.Rune));
                     else row.Append(cell.Rune == '\0' ? ' ' : (char)cell.Rune);
                 }
                 sb.Append(row.ToString().TrimEnd(' '));
@@ -777,6 +778,7 @@ internal partial class Program
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
         {
+            p.ReleaseSelectionAnchors();
             p.SelGen = em.ScrollGeneration;
             p.SelHist = em.HistoryCount;
             p.SelAlt = em.IsAltScreen;
@@ -787,12 +789,29 @@ internal partial class Program
                              && em.ScrollTop == 0 && em.ScrollBottom == em.Screen.Rows - 1;
             p.SelContent = null;
             p.SelContentVisible = true;
+            if (em is GhosttyTerminalCore held && held.SynchronizedOutput)
+            {
+                NormSel(p, out int first, out int from, out int last, out int to);
+                var frame = held.LastPaintFrame;
+                if (first >= em.HistoryCount && last < em.HistoryCount + frame.Rows)
+                {
+                    p.SelContent = new ContentSelection(frame, first - em.HistoryCount, Math.Clamp(from, 0, frame.Cols - 1),
+                        last - em.HistoryCount, Math.Clamp(to, 0, frame.Cols - 1), p.BlockSel);
+                    p.SelContentVisible = false;
+                    return;
+                }
+            }
             if ((!p.SelTrackable || em.MouseReporting) && ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
             {
                 NormSel(p, out int first, out int from, out int last, out int to);
                 if (first >= em.HistoryCount)
                     p.SelContent = new ContentSelection(em.Screen, first - em.HistoryCount, from,
                         last - em.HistoryCount, to, p.BlockSel);
+            }
+            if (em is GhosttyTerminalCore ghostty && p.SelContent is null &&
+                ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
+            {
+                p.SelNative = ghostty.CreateSelection(p.SelAncLine, p.SelAncCol, p.SelFocLine, p.SelFocCol, p.BlockSel);
             }
         }
     }
@@ -825,6 +844,16 @@ internal partial class Program
         }
         // The alt screen is a different buffer: an index into one names unrelated text in the other.
         if (alt != p.SelAlt) { p.ClearSel(); return false; }
+        if (p.SelNative is { } nativeSelection)
+        {
+            if (em.SynchronizedOutput) { p.SelContentVisible = false; return true; }
+            if (!nativeSelection.TryLocate(out int anchorRow, out int anchorCol, out int focusRow, out int focusCol))
+            { p.ClearSel(); return false; }
+            p.SelContentVisible = true;
+            p.SelAncLine = anchorRow; p.SelAncCol = anchorCol;
+            p.SelFocLine = focusRow; p.SelFocCol = focusCol;
+            return ClampSel(p, hist, rows, cols, alt);
+        }
         if (p.SelContent is { } content)
         {
             // Never reconcile against half of a synchronized redraw. Copy still uses the
@@ -894,36 +923,14 @@ internal partial class Program
 
     private static string SelectionText(Pane pane)
     {
-        var em = pane.S.Emulator;
-        var sb = new StringBuilder();
         lock (pane.S.SyncRoot)
         {
             if (!HasLiveSel(pane)) return "";
             if (pane.SelContent is { } content) return content.Text;
-            int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
-            NormSel(pane, out int l0, out int c0, out int l1, out int c1);
-            // Block selection: every row uses the same [minCol, maxCol] column span (rectangle).
-            int blkFrom = Math.Min(pane.SelAncCol, pane.SelFocCol), blkTo = Math.Max(pane.SelAncCol, pane.SelFocCol);
-            for (int line = l0; line <= l1; line++)
-            {
-                int from = pane.BlockSel ? blkFrom : (line == l0 ? c0 : 0);
-                int to = (pane.BlockSel ? blkTo : (line == l1 ? c1 : cols - 1)) + 1; // inclusive end col
-                int wrap = pane.BlockSel ? -1 : em.GetRowWrapLength(line);
-                bool join = line != l1 && wrap >= 0;
-                if (join) to = Math.Min(to, wrap); // exclude padding before a wide glyph wraps
-                var row = new StringBuilder();
-                for (int c = Math.Max(0, from); c < Math.Min(cols, to); c++)
-                {
-                    Cell cell = CellAbs(em, hist, rows, cols, line, c);
-                    if (cell.Width == 0) continue; // trailing spacer of a wide glyph
-                    if (cell.Rune > 0xFFFF) row.Append(char.ConvertFromUtf32(cell.Rune));   // full fidelity for copy
-                    else row.Append(cell.Rune == '\0' ? ' ' : (char)cell.Rune);
-                }
-                sb.Append(join ? row.ToString() : row.ToString().TrimEnd(' '));
-                if (line != l1 && !join) sb.Append("\r\n");
-            }
+            if (pane.SelNative is { } nativeSelection) return nativeSelection.Text;
+            return TerminalSelectionText.Read(pane.S.Emulator, pane.SelAncLine, pane.SelAncCol,
+                pane.SelFocLine, pane.SelFocCol, pane.BlockSel);
         }
-        return sb.ToString();
     }
 
     // ---- Keyboard mark mode (WT's markMode): build a selection without the mouse ----

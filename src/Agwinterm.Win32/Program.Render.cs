@@ -416,17 +416,21 @@ internal partial class Program
         bool hasSel;
         int sl0 = 0, sc0 = 0, sl1 = 0, sc1 = 0;
         (int PromptLine, int? ExitCode)[] marks;
+        GhosttyTerminalCore? nativePaint = null;
         lock (session.SyncRoot)
         {
             // Reconcile and capture the cells in the same frame under the same lock.
             hasSel = selPane is not null && HasLiveSel(selPane) && selPane.SelContentVisible;
             if (hasSel) NormSel(selPane!, out sl0, out sc0, out sl1, out sc1);
             em.CellPixelWidth = Math.Max(1, (int)cw); em.CellPixelHeight = Math.Max(1, (int)ch);  // for sixel cell-span
-            var screen = em.Screen;
-            cols = screen.Cols; rows = screen.Rows;
             hist = em.HistoryCount;
             bool isAlt = em.IsAltScreen;
             off = isAlt ? 0 : Math.Clamp(scrollOffset, 0, hist);
+            nativePaint = off == 0 ? em as GhosttyTerminalCore : null;
+            // Explicit text/history reads have separate storage. A live Ghostty
+            // paint never materializes that query screen under the PTY lock.
+            var screen = nativePaint is null ? em.Screen : null;
+            cols = nativePaint?.Cols ?? screen!.Cols; rows = nativePaint?.Rows ?? screen!.Rows;
             cursorVisible = em.CursorVisible; cursorCol = em.CursorCol; cursorRow = em.CursorRow;
             cursorShape = em.CursorShape;   // DECSCUSR (0 = use user config)
             drawImages = !_noImages && em.Placements.Count > 0 && off == 0;
@@ -434,21 +438,35 @@ internal partial class Program
                 ? em.Marks.Select(m => (m.PromptLine, m.ExitCode)).ToArray()
                 : Array.Empty<(int, int?)>();
             if (_cellSnap.Length < rows * cols) _cellSnap = new Cell[rows * cols];
+            if (nativePaint is not null)
+            {
+                nativePaint.SetCursorDefault(_config.CursorStyle, _config.CursorBlink);
+                nativePaint.BeginPaint();
+            }
+            else
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
                 {
                     // Visible row r maps into [history ++ live grid], shifted up by `off`.
                     Cell v;
-                    if (off <= 0) v = screen[r, c];
+                    if (off <= 0) v = screen![r, c];
                     else
                     {
                         int vi = hist - off + r;
                         if (vi < 0) v = Cell.Empty;
                         else if (vi < hist) v = em.GetHistoryCell(vi, c);
-                        else { int live = vi - hist; v = live < rows ? screen[live, c] : Cell.Empty; }
+                        else { int live = vi - hist; v = live < rows ? screen![live, c] : Cell.Empty; }
                     }
                     _cellSnap[r * cols + c] = v;
                 }
+        }
+        if (nativePaint is not null)
+        {
+            var screen = nativePaint.CompletePaint();
+            (cursorCol, cursorRow, cursorVisible) = nativePaint.PaintCursor;
+            cursorShape = nativePaint.PaintCursorShape;
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++) _cellSnap[r * cols + c] = screen[r, c];
         }
         // Drawing below reads only the snapshot + UI-thread state — no session lock held.
         {
@@ -512,12 +530,21 @@ internal partial class Program
                 while (c < cols)  // Pass 2: coalesced same-colour, same-style text runs
                 {
                     Cell cell = CellAt(r, c);
-                    bool startBlank = cell.Rune == ' ' || cell.Rune == '\0';
+                    bool startBlank = cell.Grapheme is null && (cell.Rune == ' ' || cell.Rune == '\0');
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
                     Color runFg = EffectiveFg(cell, localBackground);
                     CellAttributes runStyle = DisplayStyle(cell);
+                    if (cell.Grapheme is { } cluster)
+                    {
+                        float x = ox + c * cw;
+                        brush.Color = C4(runFg);
+                        rt.DrawText(cluster, StyleFmt(fmt, runStyle), new Rect(x, y, cell.Width * cw, ch),
+                            brush, DrawTextOptions.Clip | DrawTextOptions.EnableColorFont);
+                        DrawDecorations(x, cell.Width * cw, y, runStyle);
+                        c++; continue;
+                    }
                     // Only claim the vector renderer's implemented set. Other glyphs retain the
                     // normal font-fallback, style and clipping rules below.
                     if (_config.BuiltinGlyphs && BuiltinBoxGlyphs.Supports(cell.Rune))
@@ -558,7 +585,7 @@ internal partial class Program
                     while (c < cols)
                     {
                         Cell cc = CellAt(r, c);
-                        if (cc.Width == 2 || cc.Width == 0 || cc.Rune > 0xFFFF) break;
+                        if (cc.Grapheme is not null || cc.Width == 2 || cc.Width == 0 || cc.Rune > 0xFFFF) break;
                         if (_config.BuiltinGlyphs && BuiltinBoxGlyphs.Supports(cc.Rune)) break; // same consumed set as the outer dispatch
                         bool blank = cc.Rune == ' ' || cc.Rune == '\0';
                         if (!blank && !GridTrue(cc.Rune)) break;   // fallback glyph → its own solo draw
