@@ -567,21 +567,29 @@ internal partial class Program
     private void SendMouseTo(Pane pane, (float ox, float oy, float cw, float ch) view,
         int btn, int dipX, int dipY, int deviceX, int deviceY, bool press)
     {
-        string seq;
+        byte[] bytes;
         lock (pane.S.SyncRoot)
         {
             var em = pane.S.Emulator;
             if (em is null || !em.MouseReporting) return;
             var (ox, oy, cw, ch) = view;
-            // Native dimensions are metadata. Reading Screen here would materialize
-            // the entire query grid on mouse motion after every output chunk.
-            int cols = em is GhosttyTerminalCore native ? native.Cols : em.Screen.Cols;
-            int rows = em is GhosttyTerminalCore ghostty ? ghostty.Rows : em.Screen.Rows;
-            seq = MouseReport.EncodePointer(
+            if (em is GhosttyTerminalCore native)
+            {
+                var point = MouseReport.MapCoordinates(dipX, dipY, deviceX, deviceY,
+                    ox, oy, cw, ch, Scale, native.Cols, native.Rows);
+                uint cellWidth = (uint)Math.Max(1, (int)MathF.Round(cw * Scale));
+                uint cellHeight = (uint)Math.Max(1, (int)MathF.Round(ch * Scale));
+                uint button = (btn & ~32) switch { 0 => 1, 1 => 3, 2 => 2, 64 => 4, 65 => 5, _ => 0 };
+                uint mods = (KeyDown(VK_SHIFT) ? 1u : 0) | (KeyDown(VK_CONTROL) ? 2u : 0) | (KeyDown(VK_MENU) ? 4u : 0);
+                bytes = native.EncodeMouse((btn & 32) != 0 ? 2u : press ? 0u : 1u, button, mods,
+                    em.MouseSgrPixels ? point.PixelX : point.Column * cellWidth,
+                    em.MouseSgrPixels ? point.PixelY : point.Row * cellHeight, cellWidth, cellHeight);
+            }
+            else bytes = Encoding.UTF8.GetBytes(MouseReport.EncodePointer(
                 btn, dipX, dipY, deviceX, deviceY, ox, oy, cw, ch, Scale,
-                cols, rows, press, em.MouseSgr, em.MouseSgrPixels);
+                em.Screen.Cols, em.Screen.Rows, press, em.MouseSgr, em.MouseSgrPixels));
         }
-        pane.S.Write(Encoding.UTF8.GetBytes(seq));
+        if (bytes.Length != 0) pane.S.Write(bytes);
     }
 
     // ---- Clickable links: Ctrl+hover underlines a URL (hand cursor); Ctrl+click opens it ----
@@ -1169,10 +1177,19 @@ internal partial class Program
                 : "The clipboard text contains control characters. Paste anyway?";
             if (MessageBoxW(_hwnd, msg, "Paste", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
         }
-        t = t.Replace("\r\n", "\r").Replace("\n", "\r");
-        if (pane.S.Emulator.BracketedPaste) t = "\x1b[200~" + t + "\x1b[201~";
+        byte[] bytes;
+        lock (pane.S.SyncRoot)
+        {
+            if (pane.S.Emulator is GhosttyTerminalCore native) bytes = native.EncodePaste(t);
+            else
+            {
+                t = t.Replace("\r\n", "\r").Replace("\n", "\r");
+                if (pane.S.Emulator.BracketedPaste) t = "\x1b[200~" + t + "\x1b[201~";
+                bytes = Encoding.UTF8.GetBytes(t);
+            }
+        }
         pane.ScrollOffset = 0; pane.S.NotifyActivity();
-        pane.S.Write(Encoding.UTF8.GetBytes(t));
+        pane.S.Write(bytes);
         RequestRedraw();
     }
 

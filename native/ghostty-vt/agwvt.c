@@ -92,6 +92,8 @@ struct AgwVt {
     GhosttyRenderStateImageIterator images;
     GhosttyKeyEncoder key_encoder;
     GhosttyKeyEvent key_event;
+    GhosttyMouseEncoder mouse_encoder;
+    GhosttyMouseEvent mouse_event;
     uint64_t held_since, held_serial, capture_serial, last_serial;
     int holding, render_invalidated, capture_busy, last_valid;
     SRWLOCK capture_guard;
@@ -423,6 +425,8 @@ void agwvt_free(AgwVt* vt) {
     ghostty_render_state_image_iterator_free(vt->images);
     ghostty_key_event_free(vt->key_event);
     ghostty_key_encoder_free(vt->key_encoder);
+    ghostty_mouse_event_free(vt->mouse_event);
+    ghostty_mouse_encoder_free(vt->mouse_encoder);
     free_links(vt, vt->held_links); free_links(vt, vt->render_links);
     ghostty_render_state_free(vt->held);
     ghostty_render_state_free(vt->render);
@@ -478,6 +482,8 @@ int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, Agw
     if (!result) result = ghostty_render_state_image_iterator_new(&vt->allocator, &vt->images);
     if (!result) result = ghostty_key_encoder_new(&vt->allocator, &vt->key_encoder);
     if (!result) result = ghostty_key_event_new(&vt->allocator, &vt->key_event);
+    if (!result) result = ghostty_mouse_encoder_new(&vt->allocator, &vt->mouse_encoder);
+    if (!result) result = ghostty_mouse_event_new(&vt->allocator, &vt->mouse_event);
     if (!result) result = configure_terminal(vt, 1);
     GhosttyPoint top = { .tag = GHOSTTY_POINT_TAG_ACTIVE, .value = { .coordinate = { .x = 0, .y = 0 } } };
     if (!result) result = ghostty_terminal_grid_ref_track(vt->terminal, top, &vt->scroll_probe);
@@ -637,7 +643,7 @@ int agwvt_info(AgwVt* vt, AgwVtInfo* out) {
     out->keyboard_flags = keyboard; out->background = rgb(bg);
     out->default_background = rgb(default_bg);
     out->scroll_epoch = vt->scroll_epoch;
-    const uint16_t modes[] = {1000,1002,1003,1006,1016,2004,1004,2026};
+    const uint16_t modes[] = {1000,1002,1003,1006,1016,2004,1004,2026,9};
     for (unsigned i = 0; i < sizeof(modes)/sizeof(modes[0]); i++) {
         GhosttyTerminalModeConfig mode = { .mode = ghostty_mode_new(modes[i], false) };
         TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_MODE, &mode));
@@ -817,6 +823,33 @@ static GhosttyKey windows_key(uint32_t vk) {
         case VK_OEM_102: return GHOSTTY_KEY_INTL_BACKSLASH;
         default: return GHOSTTY_KEY_UNIDENTIFIED;
     }
+}
+int agwvt_mouse(AgwVt* vt, uint32_t action, uint32_t button, uint32_t mods,
+    float x, float y, uint32_t cw, uint32_t ch, uint8_t* output, size_t capacity, size_t* length) {
+    if (!vt || action > 2 || button > 11 || mods > 1023 || !cw || !ch || cw > 65535 || ch > 65535 ||
+        (!output && capacity) || !length) return GHOSTTY_INVALID_VALUE;
+    uint16_t cols, rows;
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_COLS, &cols));
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_ROWS, &rows));
+    GhosttyMouseEncoderSize size = { .size = sizeof(size), .screen_width = cols * cw,
+        .screen_height = rows * ch, .cell_width = cw, .cell_height = ch };
+    ghostty_mouse_encoder_setopt_from_terminal(vt->mouse_encoder, vt->terminal);
+    TRY(ghostty_mouse_encoder_setopt(vt->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size));
+    bool pressed = action != GHOSTTY_MOUSE_ACTION_RELEASE && button >= 1 && button <= 3;
+    TRY(ghostty_mouse_encoder_setopt(vt->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &pressed));
+    TRY(ghostty_mouse_event_set_action(vt->mouse_event, (GhosttyMouseAction)action));
+    if (button) { TRY(ghostty_mouse_event_set_button(vt->mouse_event, (GhosttyMouseButton)button)); }
+    else ghostty_mouse_event_clear_button(vt->mouse_event);
+    ghostty_mouse_event_set_mods(vt->mouse_event, (GhosttyMods)mods);
+    ghostty_mouse_event_set_position(vt->mouse_event, (GhosttyMousePosition){x, y});
+    return ghostty_mouse_encoder_encode(vt->mouse_encoder, vt->mouse_event, (char*)output, capacity, length);
+}
+int agwvt_paste(AgwVt* vt, uint8_t* text, size_t text_length, uint8_t* output, size_t capacity, size_t* length) {
+    if (!vt || text_length > 16u * 1024u * 1024u || (!text && text_length) || (!output && capacity) || !length)
+        return GHOSTTY_INVALID_VALUE;
+    GhosttyTerminalModeConfig mode = { .mode = ghostty_mode_new(2004, false) };
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_MODE, &mode));
+    return ghostty_paste_encode((char*)text, text_length, mode.value, (char*)output, capacity, length);
 }
 int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
     uint32_t consumed, uint32_t unshifted, const uint8_t* text, size_t text_length,

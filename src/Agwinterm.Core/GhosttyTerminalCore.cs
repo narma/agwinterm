@@ -60,6 +60,9 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     }
     public byte[] EncodeKey(uint virtualKey, uint action, uint modifiers, string text = "", uint unshifted = 0, uint consumed = 0)
         => _vt.EncodeKey(virtualKey, action, modifiers, text, unshifted, consumed);
+    public byte[] EncodeMouse(uint action, uint button, uint modifiers, float x, float y, uint cw, uint ch)
+        => _vt.EncodeMouse(action, button, modifiers, x, y, cw, ch);
+    public byte[] EncodePaste(string text) => _vt.EncodePaste(text);
     /// <summary>UI-thread-only read of the last captured paint frame, including a synchronized hold.</summary>
     public ScreenBuffer LastPaintFrame => _vt.Frame;
     public void SetCursorDefault(CursorStyle style, bool blink)
@@ -103,7 +106,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public bool MouseMotion => Mode(2);
     public bool MouseSgr => Mode(3);
     public bool MouseSgrPixels => Mode(4);
-    public bool MouseReporting => MouseClick || MouseDrag || MouseMotion;
+    public bool MouseReporting => MouseClick || MouseDrag || MouseMotion || Mode(8);
     public bool MouseReportsMotion => MouseDrag || MouseMotion;
     public bool BracketedPaste => Mode(5);
     public bool FocusReporting => Mode(6);

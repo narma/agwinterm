@@ -637,7 +637,8 @@ internal partial class Program
                     }
                     var em = _session?.Emulator;
                     if (em is not null && em.MouseReportsMotion && InContent(lParam))
-                        SendMousePx(32 + (((long)wParam & MK_LBUTTON) != 0 ? 0 : 3), lParam, true);
+                        SendMousePx(32 + (((long)wParam & MK_LBUTTON) != 0 ? 0 :
+                            ((long)wParam & 0x10) != 0 ? 1 : ((long)wParam & 2) != 0 ? 2 : 3), lParam, true);
                     return IntPtr.Zero;
                 }
 

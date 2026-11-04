@@ -49,6 +49,8 @@ internal static unsafe partial class GhosttyNative
                     _ = NativeLibrary.GetExport(library, "agwvt_" + entry);
                 _ = NativeLibrary.GetExport(library, "agwvt_animation_tick");
                 _ = NativeLibrary.GetExport(library, "agwvt_key");
+                _ = NativeLibrary.GetExport(library, "agwvt_mouse");
+                _ = NativeLibrary.GetExport(library, "agwvt_paste");
                 _ = NativeLibrary.GetExport(library, "agwvt_prepend_history");
                 if (!_resolverInstalled)
                 {
@@ -210,6 +212,13 @@ internal static unsafe partial class GhosttyNative
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Key(Handle handle, uint vk, uint action, uint mods, uint consumed,
         uint unshifted, byte* text, nuint textLength, byte* output, nuint capacity, out nuint length);
+    [LibraryImport(Library, EntryPoint = "agwvt_mouse")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int Mouse(Handle handle, uint action, uint button, uint mods, float x, float y,
+        uint cw, uint ch, byte* output, nuint capacity, out nuint length);
+    [LibraryImport(Library, EntryPoint = "agwvt_paste")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int Paste(Handle handle, byte* text, nuint textLength, byte* output, nuint capacity, out nuint length);
     [LibraryImport(Library, EntryPoint = "agwvt_cursor")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Cursor(Handle handle, out uint col, out uint row, out uint visible, out uint shape);

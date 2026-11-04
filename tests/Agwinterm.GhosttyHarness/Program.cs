@@ -432,6 +432,28 @@ using (var destination = new GhosttyTerminalCore(20, 3))
     destination.Feed("\u001b[?1049l"u8);
     Check(destination.DumpHistoryRow(0) == "primary history", "history import targets primary screen while alternate is active");
 }
+using (var vt = new GhosttyVt(80, 24))
+{
+    string Mouse(uint action, uint button, uint mods = 0, float x = 16, float y = 36)
+        => Encoding.UTF8.GetString(vt.EncodeMouse(action, button, mods, x, y, 8, 18));
+    Check(Mouse(0, 1) == "", "native mouse disabled emits nothing");
+    vt.Feed("\x1b[?1000h\x1b[?1006h"u8);
+    Check(Mouse(0, 1) == "\x1b[<0;3;3M", "native SGR left press");
+    Check(Mouse(1, 1) == "\x1b[<0;3;3m", "native SGR left release");
+    Check(Mouse(0, 2, 3) == "\x1b[<22;3;3M", "native mouse right button and Shift Ctrl");
+    Check(Mouse(0, 4) == "\x1b[<64;3;3M" && Mouse(0, 5) == "\x1b[<65;3;3M", "native wheel direction");
+    Check(Mouse(2, 0) == "", "normal mouse tracking suppresses motion");
+    vt.Feed("\x1b[?1002h"u8);
+    Check(Mouse(2, 2) == "\x1b[<34;3;3M" && Mouse(2, 0) == "", "drag mode supports right button and suppresses hover");
+    vt.Feed("\x1b[?1003h\x1b[?1016h"u8);
+    Check(Mouse(0, 1, 0, 17, 37) == "\x1b[<0;17;37M", "native SGR pixel coordinates follow upstream");
+    Check(Mouse(2, 0, 0, 19, 39) == "\x1b[<35;19;39M", "native hover pixel coordinates");
+    Check(Encoding.UTF8.GetString(vt.EncodePaste("a\nb")) == "a\rb", "native unbracketed paste newline policy");
+    vt.Feed("\x1b[?2004h"u8);
+    Check(Encoding.UTF8.GetString(vt.EncodePaste("a\nb")) == "\x1b[200~a\nb\x1b[201~", "native bracketed paste keeps newlines");
+    Check(Encoding.UTF8.GetString(vt.EncodePaste("a\x1b[201~\0b")) == "\x1b[200~a [201~ b\x1b[201~", "native paste sanitizes embedded terminator and NUL");
+    Check(vt.EncodePaste("").Length == 0, "empty native paste emits nothing");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

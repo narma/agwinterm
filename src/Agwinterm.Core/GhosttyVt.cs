@@ -57,6 +57,35 @@ public sealed unsafe class GhosttyVt : IDisposable
         }
     }
     private readonly object _lifetime = new();
+    public byte[] EncodeMouse(uint action, uint button, uint mods, float x, float y, uint cw, uint ch)
+    {
+        CheckAlive();
+        if (!float.IsFinite(x) || !float.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(x));
+        Span<byte> output = stackalloc byte[128];
+        fixed (byte* bytes = output)
+        {
+            GhosttyNative.Check(GhosttyNative.Mouse(_handle, action, button, mods, x, y, cw, ch,
+                bytes, (nuint)output.Length, out nuint length));
+            return output[..checked((int)length)].ToArray();
+        }
+    }
+    public byte[] EncodePaste(string text)
+    {
+        CheckAlive();
+        int size = Encoding.UTF8.GetByteCount(text);
+        if (size > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(text));
+        if (size == 0) return [];
+        byte[] input = Encoding.UTF8.GetBytes(text); // upstream sanitizes this private buffer in place
+        byte[] output = GC.AllocateUninitializedArray<byte>(size + 12);
+        fixed (byte* source = input)
+        fixed (byte* destination = output)
+        {
+            GhosttyNative.Check(GhosttyNative.Paste(_handle, source, (nuint)size,
+                destination, (nuint)output.Length, out nuint length));
+            if ((int)length != output.Length) Array.Resize(ref output, (int)length);
+        }
+        return output;
+    }
     private bool _capturing, _disposed;
     private volatile bool _disposeRequested;
     private GhosttyNative.Info _info;
