@@ -174,9 +174,11 @@ internal partial class Program : IWslLiveHost
                 });
                 string promptToken = Guid.NewGuid().ToString("N");
                 var completion = new ShellCompletion(promptToken, CompletionPath(promptToken));
+                var priorCapture = InvokeOnUiQueued(() => (p.CapturedCommand, p.CapturedCommandToken, p.CapturedCommandGeneration));
+                int restartReservation = 0;
                 var result = _liveOperations.RestartAsync(binding, source, launch, pending => LiveUiAsync(() =>
                 {
-                    p.Completion = completion; // checkpoint the new shell identity BEFORE it can start
+                    restartReservation = p.AgentRecovery.BeginRestart(completion);
                     p.LiveBinding = JsonSerializer.SerializeToElement(pending);
                     if (!SaveState(sync: true)) throw new IOException("Cannot save fresh-start reservation");
                 }), promptToken: completion.Token).GetAwaiter().GetResult();
@@ -184,7 +186,15 @@ internal partial class Program : IWslLiveHost
                 {
                     // Keep the prior recovery option through failed/lost reservations. Only a
                     // confirmed replacement supersedes it; rollback must not destroy saved work.
-                    BindAgent(p, source == "agent" ? launch : null, 0);
+                    p.AgentRecovery.FinishRestart(restartReservation, source == "agent" ? launch : null);
+                    // A selected capture now belongs to the replacement shell. Other sources
+                    // supersede the old capture, but must not erase one taken after the restart began.
+                    if ((p.CapturedCommand, p.CapturedCommandToken, p.CapturedCommandGeneration) == priorCapture)
+                    {
+                        p.CapturedCommand = source == "captured" ? launch : null;
+                        p.CapturedCommandToken = completion.Token;
+                        p.CapturedCommandGeneration = 0;
+                    }
                     p.LiveBinding = JsonSerializer.SerializeToElement(result);
                     SaveState(sync: true);
                     var next = ReplaceLivePane(selected.Session, p, result, freshStart: true);
@@ -242,10 +252,7 @@ internal partial class Program : IWslLiveHost
         var next = CreatePane(previous.Id, session.Ws, previous.StartCwd, previous.FontSize,
             profileName: session.ProfileName, liveBinding: JsonSerializer.SerializeToElement(binding), completion: previous.Completion);
         next.LiveFreshStart = freshStart;
-        next.AgentResume = previous.AgentResume;
-        next.AgentResumeToken = previous.AgentResumeToken;
-        next.AgentResumeGeneration = previous.AgentResumeGeneration;
-        next.BindCompletionBaseline = previous.BindCompletionBaseline;
+        next.AgentRecovery = previous.AgentRecovery;
         next.RestoreCommand = previous.RestoreCommand;
         next.CapturedCommand = previous.CapturedCommand;
         next.CapturedCommandToken = previous.CapturedCommandToken;

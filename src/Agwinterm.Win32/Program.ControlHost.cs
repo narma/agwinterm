@@ -1100,10 +1100,11 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         string? val = SessionOperations.Binding(agent);
-        long baseline = hit.Value.pane.Completion.Checkpoint;
+        var completion = hit.Value.pane.Completion;
+        long baseline = completion.Checkpoint;
         Volatile.Write(ref hit.Value.pane.BindCompletionBaseline, baseline);
         int seq = Interlocked.Increment(ref hit.Value.pane.BindSeq);   // supersedes a SessionStart binding still resolving
-        PostVerb(() => { if (Volatile.Read(ref hit.Value.pane.BindSeq) == seq && hit.Value.pane.Completion.Checkpoint == baseline) { BindAgent(hit.Value.pane, val, baseline); SaveState(); } });
+        PostVerb(() => { if (Volatile.Read(ref hit.Value.pane.BindSeq) == seq && ReferenceEquals(hit.Value.pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(hit.Value.pane, val, baseline); SaveState(); } });
         return true;
     }
 
@@ -1117,7 +1118,8 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         var pane = hit.Value.pane;
-        long baseline = pane.Completion.Checkpoint;
+        var completion = pane.Completion;
+        long baseline = completion.Checkpoint;
         Volatile.Write(ref pane.BindCompletionBaseline, baseline);
         int seq = Interlocked.Increment(ref pane.BindSeq);
         var profile = IntegrationProfile(target);
@@ -1140,7 +1142,7 @@ internal partial class Program
                 if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
                 string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
                     AgentResume.ResumeFlags(agent, command));
-                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && pane.Completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline); SaveState(); } });
+                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && ReferenceEquals(pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline); SaveState(); } });
                 EmitEvent("bind", pane.Id, "bound: " + relaunch);
                 return true;
             }
@@ -1169,7 +1171,7 @@ internal partial class Program
                             Agwinterm.Pty.AgentResume.ResumeFlags(agent, cmdline));
                         Post(() =>
                         {
-                            if (Volatile.Read(ref pane.BindSeq) != seq || pane.Completion.Checkpoint != baseline) return;   // a later bind or shell completion won
+                            if (Volatile.Read(ref pane.BindSeq) != seq || !ReferenceEquals(pane.Completion, completion) || completion.Checkpoint != baseline) return;   // a later bind, workload or shell completion won
                             BindAgent(pane, relaunch, baseline);
                             SaveState();
                         });

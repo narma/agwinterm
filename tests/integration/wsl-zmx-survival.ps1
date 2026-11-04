@@ -233,7 +233,12 @@ try {
             $bad = & $ctl zmx restart --target $paneId --source shell --pipe $id --json
             if ($LASTEXITCODE -ne 1) { throw "Live restart should refuse: $bad" }
             $freshRecord = "$BuildDirectory/restart-$([guid]::NewGuid().ToString('N'))"
-            $pin = "exec python3 '$linuxScript' run '$freshRecord'"
+            $linuxCtl = (& wsl.exe -d $Distro --exec wslpath -u $ctl).Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve CLI for replacement binding probe' }
+            $replacementBinding = 'replacement-agent-recovery'
+            # A replacement can report its binding through a separate control connection
+            # before the restart result is committed or its UI attachment is replaced.
+            $pin = "'$linuxCtl' session bind '$replacementBinding' --target '$paneId' --pipe '$id' --json; exec python3 '$linuxScript' run '$freshRecord'"
             $null = Ctl @('session','restore','--target',$paneId,'--command',$pin)
             $null = Ctl @('zmx','terminate','--target',$paneId,'--force')
             $missing = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
@@ -255,6 +260,9 @@ try {
             $linuxToken = (& wsl.exe -d $Distro --exec cat "$recordDir/prompt-token").Trim()
             if (-not $freshToken -or $freshToken -eq $promptToken -or $linuxToken -ne $freshToken) { throw 'Fresh workload and transport have different completion capabilities' }
             Write-Host 'PASS explicit fresh start rotates and checkpoints the Linux shell capability'
+            for ($i=0; $i -lt 40 -and (Saved-Pane $paneId).AgentResume -ne $replacementBinding; $i++) { Start-Sleep -Milliseconds 100 }
+            if ((Saved-Pane $paneId).AgentResume -ne $replacementBinding) { throw 'Restart result erased the replacement workload binding' }
+            Write-Host 'PASS replacement binding survives restart completion and attachment replacement'
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-zero-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw 'Fresh source received additional replay commands' }
             $null = Ctl @('zmx','detach','--target',$paneId)
