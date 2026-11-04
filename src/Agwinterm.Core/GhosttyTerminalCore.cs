@@ -51,6 +51,8 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public int PaintCursorShape => _vt.FrameCursorShape;
     public IReadOnlyList<GhosttyImagePlacement> PaintImages => _vt.FrameImages;
     public long NextAnimationDeadline => _vt.NextAnimationDeadline;
+    public byte[] EncodeKey(uint virtualKey, uint action, uint modifiers, string text = "", uint unshifted = 0, uint consumed = 0)
+        => _vt.EncodeKey(virtualKey, action, modifiers, text, unshifted, consumed);
     /// <summary>UI-thread-only read of the last captured paint frame, including a synchronized hold.</summary>
     public ScreenBuffer LastPaintFrame => _vt.Frame;
     public void SetCursorDefault(CursorStyle style, bool blink)

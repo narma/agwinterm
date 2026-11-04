@@ -90,6 +90,8 @@ struct AgwVt {
     ImageEntry *render_images, *held_images, *capture_images;
     ImagePixels* image_cache;
     GhosttyRenderStateImageIterator images;
+    GhosttyKeyEncoder key_encoder;
+    GhosttyKeyEvent key_event;
     uint64_t held_since, held_serial, capture_serial, last_serial;
     int holding, render_invalidated, capture_busy, last_valid;
     SRWLOCK capture_guard;
@@ -419,6 +421,8 @@ void agwvt_free(AgwVt* vt) {
     if (vt->capture && vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); free_images(vt, vt->capture_images); }
     free_images(vt, vt->held_images); free_images(vt, vt->render_images); prune_images(vt);
     ghostty_render_state_image_iterator_free(vt->images);
+    ghostty_key_event_free(vt->key_event);
+    ghostty_key_encoder_free(vt->key_encoder);
     free_links(vt, vt->held_links); free_links(vt, vt->render_links);
     ghostty_render_state_free(vt->held);
     ghostty_render_state_free(vt->render);
@@ -470,6 +474,8 @@ int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, Agw
     if (!result) result = ghostty_render_state_row_iterator_new(&vt->allocator, &vt->rows);
     if (!result) result = ghostty_render_state_row_cells_new(&vt->allocator, &vt->cells);
     if (!result) result = ghostty_render_state_image_iterator_new(&vt->allocator, &vt->images);
+    if (!result) result = ghostty_key_encoder_new(&vt->allocator, &vt->key_encoder);
+    if (!result) result = ghostty_key_event_new(&vt->allocator, &vt->key_event);
     if (!result) result = configure_terminal(vt, 1);
     GhosttyPoint top = { .tag = GHOSTTY_POINT_TAG_ACTIVE, .value = { .coordinate = { .x = 0, .y = 0 } } };
     if (!result) result = ghostty_terminal_grid_ref_track(vt->terminal, top, &vt->scroll_probe);
@@ -733,6 +739,73 @@ int agwvt_abort(AgwVt* vt) {
     vt->capture = NULL; vt->capture_busy = 0;
     ReleaseSRWLockExclusive(&vt->capture_guard);
     return GHOSTTY_SUCCESS;
+}
+static GhosttyKey windows_key(uint32_t vk) {
+    if (vk >= 'A' && vk <= 'Z') return GHOSTTY_KEY_A + vk - 'A';
+    if (vk >= '0' && vk <= '9') return GHOSTTY_KEY_DIGIT_0 + vk - '0';
+    if (vk >= VK_F1 && vk <= VK_F24) return GHOSTTY_KEY_F1 + vk - VK_F1;
+    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) return GHOSTTY_KEY_NUMPAD_0 + vk - VK_NUMPAD0;
+    switch (vk) {
+        case VK_BACK: return GHOSTTY_KEY_BACKSPACE;
+        case VK_TAB: return GHOSTTY_KEY_TAB;
+        case VK_RETURN: return GHOSTTY_KEY_ENTER;
+        case VK_ESCAPE: return GHOSTTY_KEY_ESCAPE;
+        case VK_SPACE: return GHOSTTY_KEY_SPACE;
+        case VK_PRIOR: return GHOSTTY_KEY_PAGE_UP;
+        case VK_NEXT: return GHOSTTY_KEY_PAGE_DOWN;
+        case VK_END: return GHOSTTY_KEY_END;
+        case VK_HOME: return GHOSTTY_KEY_HOME;
+        case VK_LEFT: return GHOSTTY_KEY_ARROW_LEFT;
+        case VK_UP: return GHOSTTY_KEY_ARROW_UP;
+        case VK_RIGHT: return GHOSTTY_KEY_ARROW_RIGHT;
+        case VK_DOWN: return GHOSTTY_KEY_ARROW_DOWN;
+        case VK_INSERT: return GHOSTTY_KEY_INSERT;
+        case VK_DELETE: return GHOSTTY_KEY_DELETE;
+        case VK_SHIFT: case VK_LSHIFT: return GHOSTTY_KEY_SHIFT_LEFT;
+        case VK_RSHIFT: return GHOSTTY_KEY_SHIFT_RIGHT;
+        case VK_CONTROL: case VK_LCONTROL: return GHOSTTY_KEY_CONTROL_LEFT;
+        case VK_RCONTROL: return GHOSTTY_KEY_CONTROL_RIGHT;
+        case VK_MENU: case VK_LMENU: return GHOSTTY_KEY_ALT_LEFT;
+        case VK_RMENU: return GHOSTTY_KEY_ALT_RIGHT;
+        case VK_LWIN: return GHOSTTY_KEY_META_LEFT;
+        case VK_RWIN: return GHOSTTY_KEY_META_RIGHT;
+        case VK_CAPITAL: return GHOSTTY_KEY_CAPS_LOCK;
+        case VK_NUMLOCK: return GHOSTTY_KEY_NUM_LOCK;
+        case VK_MULTIPLY: return GHOSTTY_KEY_NUMPAD_MULTIPLY;
+        case VK_ADD: return GHOSTTY_KEY_NUMPAD_ADD;
+        case VK_SUBTRACT: return GHOSTTY_KEY_NUMPAD_SUBTRACT;
+        case VK_DECIMAL: return GHOSTTY_KEY_NUMPAD_DECIMAL;
+        case VK_DIVIDE: return GHOSTTY_KEY_NUMPAD_DIVIDE;
+        case VK_OEM_1: return GHOSTTY_KEY_SEMICOLON;
+        case VK_OEM_PLUS: return GHOSTTY_KEY_EQUAL;
+        case VK_OEM_COMMA: return GHOSTTY_KEY_COMMA;
+        case VK_OEM_MINUS: return GHOSTTY_KEY_MINUS;
+        case VK_OEM_PERIOD: return GHOSTTY_KEY_PERIOD;
+        case VK_OEM_2: return GHOSTTY_KEY_SLASH;
+        case VK_OEM_3: return GHOSTTY_KEY_BACKQUOTE;
+        case VK_OEM_4: return GHOSTTY_KEY_BRACKET_LEFT;
+        case VK_OEM_5: return GHOSTTY_KEY_BACKSLASH;
+        case VK_OEM_6: return GHOSTTY_KEY_BRACKET_RIGHT;
+        case VK_OEM_7: return GHOSTTY_KEY_QUOTE;
+        case VK_OEM_102: return GHOSTTY_KEY_INTL_BACKSLASH;
+        default: return GHOSTTY_KEY_UNIDENTIFIED;
+    }
+}
+int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
+    uint32_t consumed, uint32_t unshifted, const uint8_t* text, size_t text_length,
+    uint8_t* output, size_t capacity, size_t* length) {
+    if (!vt || action > 2 || mods > 1023 || consumed > 1023 || text_length > 4096 ||
+        (!text && text_length) || (!output && capacity) || !length) return GHOSTTY_INVALID_VALUE;
+    ghostty_key_encoder_setopt_from_terminal(vt->key_encoder, vt->terminal);
+    ghostty_key_event_set_action(vt->key_event, (GhosttyKeyAction)action);
+    ghostty_key_event_set_key(vt->key_event, windows_key(vk));
+    ghostty_key_event_set_mods(vt->key_event, (GhosttyMods)mods);
+    ghostty_key_event_set_consumed_mods(vt->key_event, (GhosttyMods)consumed);
+    ghostty_key_event_set_unshifted_codepoint(vt->key_event, unshifted);
+    ghostty_key_event_set_utf8(vt->key_event, (const char*)text, text_length);
+    int result = ghostty_key_encoder_encode(vt->key_encoder, vt->key_event, (char*)output, capacity, length);
+    ghostty_key_event_set_utf8(vt->key_event, NULL, 0); // never retain a managed pointer
+    return result;
 }
 int agwvt_animation_tick(AgwVt* vt, uint64_t* deadline) {
     if (!vt || !deadline || vt->capture_busy) return GHOSTTY_INVALID_VALUE;

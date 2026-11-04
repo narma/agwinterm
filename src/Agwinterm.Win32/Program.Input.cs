@@ -1462,6 +1462,8 @@ internal partial class Program
             && _active?.ActivePane is { Overlay.Term: null, S: { Status: AgentStatus.Active } asf })
         { asf.SetStatus(AgentStatus.Idle); RequestRedraw(); }
 
+        if (TryGhosttyKeyDown(vk, ctrl, alt, shift)) return true;
+
         // win32-input-mode (ConPTY DECSET ?9001): encode every key as a full Win32 KEY_EVENT so
         // ConPTY can reconstruct it. Key-DOWN only for now (the common case apps read); WM_CHAR for
         // this pane is swallowed since the character rides in the sequence's Uc field.

@@ -44,6 +44,10 @@ AGWVT_API int agwvt_end(AgwVt* vt);
 AGWVT_API int agwvt_images(AgwVt* vt, AgwVtImage* images, size_t capacity, size_t* count, uint32_t stride);
 AGWVT_API int agwvt_image_pixels(AgwVt* vt, uint64_t generation, uint8_t* pixels, size_t capacity);
 AGWVT_API int agwvt_animation_tick(AgwVt* vt, uint64_t* deadline);
+// Windows physical key identity; modifiers use Ghostty's Shift/Ctrl/Alt/Super bits.
+AGWVT_API int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
+    uint32_t consumed, uint32_t unshifted, const uint8_t* text, size_t text_length,
+    uint8_t* output, size_t capacity, size_t* length);
 AGWVT_API int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uint32_t* shape);
 AGWVT_API int agwvt_cursor_default(AgwVt* vt, uint32_t style, uint32_t blink);
 AGWVT_API int agwvt_colors(AgwVt* vt, uint32_t foreground, uint32_t background);

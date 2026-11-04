@@ -22,6 +22,30 @@ public sealed unsafe class GhosttyVt : IDisposable
     private readonly Dictionary<ulong, GhosttyImage> _imageCache = new();
     public IReadOnlyList<GhosttyImagePlacement> FrameImages { get; private set; } = [];
     public long NextAnimationDeadline { get; private set; }
+    /// <summary>Encode using current native modes. Caller holds the terminal mutation lock.</summary>
+    public byte[] EncodeKey(uint virtualKey, uint action, uint modifiers, string text = "", uint unshifted = 0, uint consumed = 0)
+    {
+        CheckAlive();
+        int textLength = Encoding.UTF8.GetByteCount(text);
+        if (textLength > 4096) throw new ArgumentOutOfRangeException(nameof(text));
+        Span<byte> input = textLength <= 128 ? stackalloc byte[128] : new byte[textLength];
+        Encoding.UTF8.GetBytes(text, input);
+        Span<byte> output = stackalloc byte[256];
+        fixed (byte* bytes = input)
+        {
+            int result; nuint length;
+            fixed (byte* destination = output)
+                result = GhosttyNative.Key(_handle, virtualKey, action, modifiers, consumed, unshifted,
+                    bytes, (nuint)textLength, destination, (nuint)output.Length, out length);
+            if (result != -3) { GhosttyNative.Check(result); return output[..checked((int)length)].ToArray(); }
+            if (length > 65536) throw new InvalidDataException("Encoded key exceeds the input limit.");
+            byte[] expanded = GC.AllocateUninitializedArray<byte>(checked((int)length));
+            fixed (byte* destination = expanded)
+                GhosttyNative.Check(GhosttyNative.Key(_handle, virtualKey, action, modifiers, consumed, unshifted,
+                    bytes, (nuint)textLength, destination, (nuint)expanded.Length, out length));
+            return expanded;
+        }
+    }
     private readonly object _lifetime = new();
     private bool _capturing, _disposed;
     private volatile bool _disposeRequested;

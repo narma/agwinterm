@@ -183,6 +183,8 @@ internal partial class Program
                 return IntPtr.Zero;
 
             case WM_KILLFOCUS:
+                foreach (int key in _ghosttyKeysDown.Keys.ToArray()) GhosttyKeyUp(key);
+                _ghosttyCharsToSkip = 0; _ghosttyHighSurrogate = '\0';
                 if (_isQuickWindow) ReleaseQuickKeys();
                 _altArmed = false;
                 DropCaret();
@@ -352,6 +354,7 @@ internal partial class Program
             case WM_SYSKEYUP:
                 // win32-input-mode: emit the paired key-UP (Alt releases arrive as WM_SYSKEYUP).
                 Win32KeyUp((int)wParam);
+                GhosttyKeyUp((int)wParam);
                 if (msg == WM_SYSKEYUP && (int)wParam == VK_MENU && _altArmed)
                 {
                     // A lone Alt tap: the bar takes the keyboard focus (or gives it back), and the tap
@@ -388,9 +391,14 @@ internal partial class Program
                 }
                 break;
 
+            case WM_SYSCHAR:
+                if (_ghosttyCharsToSkip > 0) { _ghosttyCharsToSkip--; return IntPtr.Zero; }
+                break;
+
             case WM_CHAR:
                 {
                     char c = (char)wParam;
+                    if (_ghosttyCharsToSkip > 0) { _ghosttyCharsToSkip--; return IntPtr.Zero; }
                     if (_kittyAteChar) { _kittyAteChar = false; return IntPtr.Zero; }   // OnKeyDown already CSI-u-encoded this key
                     if (_menuAteChar || _menuLevels.Count > 0 || _menuBarFocus >= 0) { _menuAteChar = false; return IntPtr.Zero; }   // the menu's key-down made this char (MenuBar.cs)
                     if (CloseExitedOverlayOnKey()) return IntPtr.Zero;   // the any-key close of an exited --wait overlay (cover, else the focused pane's — P5)
@@ -419,6 +427,7 @@ internal partial class Program
                     // arrows and Enter worked (those are handled in OnKeyDown, above this path), but
                     // no text ever arrived.
                     if (ActiveSurface()?.S.Emulator.Win32InputMode == true) return IntPtr.Zero;
+                    if (c >= 0x20 && c != 0x7f && TryGhosttyCharacter(c)) return IntPtr.Zero;
                     if (c >= 0x20 && c != 0x7f) Send(c.ToString());
                     return IntPtr.Zero;
                 }

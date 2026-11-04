@@ -369,6 +369,25 @@ using (var vt = new GhosttyVt(20, 5))
     Check(Row(vt, 0) == "closing", "in-flight paint completes before native terminal disposal");
     vt.Dispose();
 }
+using (var vt = new GhosttyVt(20, 5))
+{
+    string Key(uint vk, uint mods = 0, string text = "", uint action = 1) => Encoding.UTF8.GetString(vt.EncodeKey(vk, action, mods, text,
+        text.Length == 0 ? 0 : (uint)Rune.GetRuneAt(text, 0).Value));
+    Check(Key(0x26) == "\u001b[A", "native normal cursor key encoding");
+    vt.Feed("\u001b[?1h"u8);
+    Check(Key(0x26) == "\u001bOA", "native application cursor key encoding follows DEC mode");
+    Check(Key(0x26, 2) == "\u001b[1;5A", "native modified cursor key encoding");
+    Check(Key(0x41, 2, "a") == "\u0001", "native Ctrl+A encoding");
+    Check(Key(0x41, 0, "ф") == "ф", "native input preserves keyboard layout text");
+    Check(Key(0x08) == "\u007f", "native default backspace");
+    vt.Feed("\u001b[?67h"u8);
+    Check(Key(0x08) == "\b", "native backarrow mode");
+    vt.Feed("\u001b[>3u"u8);
+    Check(Key(0x41, 2, "a").Contains("97;5u"), "native Kitty disambiguation");
+    Check(Key(0x41, 2, "a", 0).Contains(":3u"), "native Kitty key release");
+    vt.Feed("\u001b[<u"u8);
+    Check(Key(0x41, 0, "a", 0) == "", "legacy key release produces no output");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

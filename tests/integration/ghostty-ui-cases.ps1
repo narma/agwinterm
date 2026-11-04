@@ -26,6 +26,19 @@ for ($attempt = 0; $attempt -lt 50; $attempt++) {
 }
 Check 'Ghostty ConPTY shell responds to input' $shellReady
 Start-Sleep -Milliseconds 500
+foreach ($key in ('echo ghosttykeyboardok'+"`r").ToCharArray()) {
+    $vk = if ([int]$key -ge 97 -and [int]$key -le 122) { [int]$key - 32 } else { [int]$key }
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]$vk,[IntPtr]1)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x102,[IntPtr][int]$key,[IntPtr]1)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x101,[IntPtr]$vk,[IntPtr]1)
+}
+$keyboardReady = $false
+for ($attempt = 0; $attempt -lt 50; $attempt++) {
+    $text = [string](Rpc 'session.text' @{} $session)
+    if ($text -match '(?m)^ghosttykeyboardok\s*$') { $keyboardReady = $true; break }
+    Start-Sleep -Milliseconds 100
+}
+Check 'Ghostty Windows keyboard events reach ConPTY once' $keyboardReady
 $cluster = "e$([char]0x301)"
 $scene = $esc+'[?1049h'+$esc+'[?2027h'+$esc+'[2J'+$esc+'[H'+'Ghostty native VT'+"`r`n"+
     $esc+'[31;1mRED'+$esc+'[0m '+$cluster+' 👩🏽‍💻 中文'+"`r`n"+
