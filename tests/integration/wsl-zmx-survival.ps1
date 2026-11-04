@@ -253,7 +253,11 @@ try {
             for ($i=0; $i -lt 60; $i++) {
                 Start-Sleep -Milliseconds 250
                 $readback = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
-                if ($readback.recovery -eq 'fresh-started') { $newIdentity=Inspect; break }
+                if ($readback.recovery -eq 'fresh-started') {
+                    # Transport readiness precedes the pinned command's own startup work.
+                    & wsl.exe -d $Distro --exec test -f "$recordDir/identity.json"
+                    if ($LASTEXITCODE -eq 0) { $newIdentity=Inspect; break }
+                }
             }
             if (-not $newIdentity -or $newIdentity -eq $initial -or $readback.bindingId -eq $before.bindingId) { throw 'Fresh start did not create a new incarnation' }
             $freshToken = (Saved-Pane $paneId).PromptToken
