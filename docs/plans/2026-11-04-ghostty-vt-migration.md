@@ -10,13 +10,13 @@ Parity with agterm means relevant terminal behavior and feature coverage, not em
 
 ## Source evidence
 
-Local audit starts at `b48dbb9` (2026-11-04). Ghostty build revision: `40066da055311c991b5c45be67313ef2b3661539`, explicitly requested by the user after the initial `ee02d019` audit. Its `build.zig.zon` requires Zig **0.17.0**. The source builds with `-Demit-lib-vt=true -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -j4`, plus the narrow history export described below. The official Zig archive is SHA-256 pinned in `native/ghostty-vt/pin.json`; the build records both output DLL hashes. MSVC-target output initially required a VC runtime absent from the clean test image; GNU-target output passes clean-Windows loading. The managed loader verifies provenance and both hashes before loading, then checks exports, ABI layouts and revision.
+Local audit starts at `b48dbb9` (2026-11-04). Current Ghostty build revision: `f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0`, updated at user request after `40066da` and the initial `ee02d019` audit. Its `build.zig.zon` requires Zig **0.17.0**. The source builds with `-Demit-lib-vt=true -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -j4`, plus the narrow history export described below. The official Zig archive is SHA-256 pinned in `native/ghostty-vt/pin.json`; the build records both output DLL hashes. MSVC-target output initially required a VC runtime absent from the clean test image; GNU-target output passes clean-Windows loading. The managed loader verifies provenance and both hashes before loading, then checks exports, ABI layouts and revision.
 
-- [Pinned terminal API](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/terminal.h)
-- [Pinned render API](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/render.h)
-- [Pinned snapshots](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/snapshot.h)
-- [Pinned graphics API](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/kitty_graphics.h)
-- [Pinned modes](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/modes.h)
+- [Pinned terminal API](https://github.com/ghostty-org/ghostty/blob/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0/include/ghostty/vt/terminal.h)
+- [Pinned render API](https://github.com/ghostty-org/ghostty/blob/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0/include/ghostty/vt/render.h)
+- [Pinned snapshots](https://github.com/ghostty-org/ghostty/blob/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0/include/ghostty/vt/snapshot.h)
+- [Pinned graphics API](https://github.com/ghostty-org/ghostty/blob/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0/include/ghostty/vt/kitty_graphics.h)
+- [Pinned modes](https://github.com/ghostty-org/ghostty/blob/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0/include/ghostty/vt/modes.h)
 - [Microsoft native interop guidance](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/best-practices)
 
 ## Existing coupling that must change

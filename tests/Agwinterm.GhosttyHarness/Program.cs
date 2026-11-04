@@ -66,6 +66,20 @@ using (var vt = new GhosttyVt(20, 5))
     vt.Feed("\u001b]111\a"u8);
     Check(vt.Background == 0x040506, "OSC color reset returns to updated host defaults");
 }
+using (var vt = new GhosttyVt(20, 3))
+{
+    const CellAttributes expected = CellAttributes.Bold | CellAttributes.Italic | CellAttributes.Underline |
+        CellAttributes.Inverse | CellAttributes.Dim | CellAttributes.Strikethrough;
+    vt.Feed("\u001b[1;3;4;7;2;9;38;2;12;34;56;48;5;123mX\u001b[0mY"u8); Capture(vt);
+    Check(vt.Frame[0, 0].Attributes == expected && vt.Frame[0, 1].Attributes == CellAttributes.None,
+        "frozen style flag bits preserve every supported attribute and reset");
+    Check(vt.Frame[0, 0].FgSpec == ColorSpec.FromRgb(new Color(12, 34, 56)) &&
+        vt.Frame[0, 0].BgSpec == ColorSpec.Indexed(123), "frozen style color payload preserves RGB and palette tags");
+    vt.Feed("\r\n\r\n\r\n"u8);
+    var cells = new Cell[20]; vt.ReadRow(0, true, cells);
+    Check(cells[0].Attributes == expected && cells[1].Attributes == CellAttributes.None,
+        "history grid refs and frozen styles preserve combined attributes");
+}
 byte[] content = Encoding.UTF8.GetBytes("01234567890123456789中e\u0301👩🏽‍💻\r\n\u001b[38;2;12;34;56mcolor\u001b[0m\r\nlast");
 using (var whole = new GhosttyVt(12, 6))
 {

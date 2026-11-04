@@ -8,6 +8,19 @@
 #include <windows.h>
 #include <wincodec.h>
 
+// Frozen upstream value structs; the adapter currently targets Windows x64.
+_Static_assert(sizeof(GhosttyStyle) == 16, "GhosttyStyle ABI changed");
+_Static_assert(sizeof(GhosttyGridRef) == 16, "GhosttyGridRef ABI changed");
+_Static_assert(sizeof(GhosttySelection) == 40, "GhosttySelection ABI changed");
+static uint32_t style_attributes(GhosttyStyle style) {
+    return ((style.flags & GHOSTTY_STYLE_FLAG_BOLD) ? 1 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_ITALIC) ? 2 : 0) |
+        (GHOSTTY_STYLE_UNDERLINE(style) ? 4 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_INVERSE) ? 8 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_FAINT) ? 16 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 32 : 0);
+}
+
 // Use Windows' PNG decoder without a managed callback or an extra runtime.
 // Each invocation owns its COM objects; terminal input may arrive on any thread.
 static bool decode_png(void* context, const GhosttyAllocator* allocator,
@@ -234,7 +247,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
     int result = 0;
     for (uint16_t y = 0; !result && y < rows; y++) {
         GhosttyPoint point = { .tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = { .coordinate = { .x = 0, .y = y } } };
-        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        GhosttyGridRef ref = {0};
         GhosttyRow row; bool linked;
         result = ghostty_terminal_grid_ref(vt->terminal, point, &ref);
         if (!result) result = ghostty_grid_ref_row(&ref, &row);
@@ -268,7 +281,7 @@ uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (info_size) *info_size = sizeof(AgwVtInfo);
     return 1;
 }
-const char* agwvt_revision(void) { return "40066da055311c991b5c45be67313ef2b3661539"; }
+const char* agwvt_revision(void) { return "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
@@ -970,7 +983,7 @@ int agwvt_read_row(AgwVt* vt, uint32_t y, uint32_t history, AgwVtCell* cells, si
     for (uint16_t x = 0; x < cols; x++) {
         GhosttyPoint point = { .tag = history ? GHOSTTY_POINT_TAG_HISTORY : GHOSTTY_POINT_TAG_ACTIVE,
             .value = { .coordinate = { .x = x, .y = y } } };
-        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        GhosttyGridRef ref = {0};
         TRY(ghostty_terminal_grid_ref(vt->terminal, point, &ref));
         GhosttyCell raw; GhosttyRow row; GhosttyCellWide wide; GhosttyCellContentTag tag;
         TRY(ghostty_grid_ref_cell(&ref, &raw));
@@ -982,10 +995,9 @@ int agwvt_read_row(AgwVt* vt, uint32_t y, uint32_t history, AgwVtCell* cells, si
         if (!dst->rune) dst->rune = ' ';
         dst->width = wide == GHOSTTY_CELL_WIDE_WIDE ? 2 : wide == GHOSTTY_CELL_WIDE_SPACER_TAIL ? 0 : 1;
         if (wide == GHOSTTY_CELL_WIDE_SPACER_HEAD && *wrap >= 0) *wrap = cols - 1;
-        GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+        GhosttyStyle style = {0};
         TRY(ghostty_grid_ref_style(&ref, &style));
-        dst->attrs = (style.bold ? 1 : 0) | (style.italic ? 2 : 0) | (style.underline ? 4 : 0) |
-            (style.inverse ? 8 : 0) | (style.faint ? 16 : 0) | (style.strikethrough ? 32 : 0);
+        dst->attrs = style_attributes(style);
         dst->fg_kind = style.fg_color.tag; dst->bg_kind = style.bg_color.tag;
         dst->fg = style.fg_color.tag == 2 ? rgb(style.fg_color.value.rgb) : style.fg_color.tag == 1 ? rgb(palette[style.fg_color.value.palette]) : rgb(fg);
         dst->bg = style.bg_color.tag == 2 ? rgb(style.bg_color.value.rgb) : style.bg_color.tag == 1 ? rgb(palette[style.bg_color.value.palette]) : rgb(bg);
@@ -1050,7 +1062,7 @@ int agwvt_cells(AgwVt* vt, AgwVtCell* cells, size_t capacity, uint8_t* dirty, in
             if (x >= cols) return GHOSTTY_INVALID_VALUE;
             AgwVtCell* dst = &cells[(size_t)y * cols + x++];
             memset(dst, 0, sizeof(*dst));
-            GhosttyCell raw; GhosttyCellWide wide; GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+            GhosttyCell raw; GhosttyCellWide wide; GhosttyStyle style = {0};
             TRY(ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw));
             TRY(ghostty_cell_get(raw, GHOSTTY_CELL_DATA_CODEPOINT, &dst->rune));
             TRY(ghostty_cell_get(raw, GHOSTTY_CELL_DATA_WIDE, &wide));
@@ -1065,8 +1077,7 @@ int agwvt_cells(AgwVt* vt, AgwVtCell* cells, size_t capacity, uint8_t* dirty, in
             dst->width = wide == GHOSTTY_CELL_WIDE_WIDE ? 2 : wide == GHOSTTY_CELL_WIDE_SPACER_TAIL ? 0 : 1;
             if (wide == GHOSTTY_CELL_WIDE_SPACER_HEAD && wrap) wraps[y] = cols - 1;
             TRY(ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style));
-            dst->attrs = (style.bold ? 1 : 0) | (style.italic ? 2 : 0) | (style.underline ? 4 : 0) |
-                (style.inverse ? 8 : 0) | (style.faint ? 16 : 0) | (style.strikethrough ? 32 : 0);
+            dst->attrs = style_attributes(style);
             GhosttyColorRgb fg = colors.foreground, bg = colors.background;
             ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fg);
             ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bg);

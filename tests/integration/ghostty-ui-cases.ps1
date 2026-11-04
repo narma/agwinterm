@@ -72,6 +72,24 @@ if ($null -ne $emojiRange -and $null -ne $combiningRange) {
     $character.ExpandToEnclosingUnit([System.Windows.Automation.Text.TextUnit]::Character)
     Check 'Ghostty UIA character navigation keeps the emoji intact' ($character.GetText(-1) -eq '👩🏽‍💻')
 }
+# Select through the real Settings dropdown, starting from a different value.
+# The already-running terminal keeps its native core throughout this setting change.
+$null = Rpc 'config.set' @{key='emulator-core';value='managed'}
+$null = Rpc 'settings.open' @{}
+Start-Sleep -Milliseconds 150
+$coreControl = @($uiaRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name.StartsWith('Terminal core (new sessions),') })
+Check 'Settings exposes the terminal-core dropdown' ($coreControl.Count -eq 1)
+if ($coreControl.Count -ne 1) { throw 'No unique core setting' }
+$coreControl[0].SetFocus()
+$coreControl[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Milliseconds 100
+foreach ($character in 'ghostty'.ToCharArray()) {
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x102,[IntPtr][int]$character,[IntPtr]1)
+}
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)
+Check 'Settings dropdown selects and persists Ghostty' ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]27,[IntPtr]1)
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='
 $images = $esc+'[5;5H'+$esc+'_Ga=T,f=100,i=101,c=8,r=4,C=1;'+$png+$esc+'\'+
     $esc+'[5;17H'+$esc+'_Ga=T,f=32,s=1,v=1,i=102,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'
