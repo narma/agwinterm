@@ -1,10 +1,10 @@
-param([switch]$SkipDownload)
+param([switch]$SkipDownload, [string]$SourceDirectory, [switch]$PrepareOnly)
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $pin = Get-Content (Join-Path $PSScriptRoot 'pin.json') -Raw | ConvertFrom-Json
 $artifacts = Join-Path $repo 'artifacts'
 $toolchains = Join-Path $artifacts 'toolchains'
-$source = Join-Path $artifacts 'ghostty-source'
+$source = if ($SourceDirectory) { [IO.Path]::GetFullPath($SourceDirectory) } else { Join-Path $artifacts 'ghostty-source' }
 $output = Join-Path $artifacts 'ghostty-build'
 $archive = Join-Path $toolchains "zig-$($pin.zigVersion).zip"
 $zig = Join-Path $toolchains "zig-x86_64-windows-$($pin.zigVersion)/zig.exe"
@@ -17,16 +17,24 @@ if (-not (Test-Path -LiteralPath $zig)) {
     Expand-Archive -LiteralPath $archive -DestinationPath $toolchains -Force
 }
 if ((& $zig version) -ne $pin.zigVersion) { throw 'Incorrect Zig version' }
-if (-not (Test-Path -LiteralPath (Join-Path $source '.git'))) {
+$freshClone = -not (Test-Path -LiteralPath (Join-Path $source '.git'))
+if ($freshClone) {
     if ($SkipDownload) { throw 'Pinned Ghostty source is missing' }
     & git clone --filter=blob:none --no-checkout https://github.com/ghostty-org/ghostty.git $source
     CheckExit 'Ghostty clone'
 }
-if ((& git -C $source status --porcelain).Count -gt 0) { throw 'Ghostty source has local changes; refusing to overwrite them' }
-if ((& git -C $source rev-parse HEAD) -ne $pin.revision) {
+if (-not $freshClone -and (& git -C $source status --porcelain).Count -gt 0) { throw 'Ghostty source has local changes; refusing to overwrite them' }
+& git -C $source cat-file -e "$($pin.revision)^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    if ($SkipDownload) { throw 'Pinned Ghostty revision is missing; run without -SkipDownload to fetch it' }
+    & git -C $source fetch origin $pin.revision
+    CheckExit 'Pinned Ghostty fetch'
+}
+if ($freshClone -or (& git -C $source rev-parse HEAD) -ne $pin.revision) {
     & git -C $source checkout --detach $pin.revision
     CheckExit 'Pinned Ghostty checkout'
 }
+if ($PrepareOnly) { Write-Output "Prepared pinned Ghostty source: $source"; return }
 Push-Location $source
 $extensionPath = Join-Path $source 'src/terminal/c/agwinterm_history.zig'
 $libraryPath = Join-Path $source 'src/lib_vt.zig'
