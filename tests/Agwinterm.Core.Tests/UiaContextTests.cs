@@ -8,6 +8,29 @@ namespace Agwinterm.Core.Tests;
 /// Tests context/range ownership and callback retirement, not Narrator's presentation.</summary>
 public class UiaContextTests
 {
+    [Fact]
+    public void CharacterNavigationDoesNotSplitEmojiOrCombiningText()
+    {
+        var owner = New("Uia");
+        Callback(owner, "GetTextSnapshot", () => Snapshot("A👩🏽‍💻e\u0301Z"));
+        var range = New("UiaTextRange", owner, 1, 1);
+        var character = Enum.ToObject(Type("TextUnit"), 0);
+        var end = Enum.ToObject(Type("TextPatternRangeEndpoint"), 1);
+        try
+        {
+            Call(range, "ExpandToEnclosingUnit", character);
+            Assert.Equal("👩🏽‍💻", Call(range, "GetText", -1));
+            Assert.Equal(1, Call(range, "Move", character, 1));
+            Call(range, "ExpandToEnclosingUnit", character);
+            Assert.Equal("e\u0301", Call(range, "GetText", -1));
+            Assert.Equal(-1, Call(range, "MoveEndpointByUnit", end, character, -1));
+            Assert.Equal("", Call(range, "GetText", -1));
+            Assert.Equal(-2, Call(range, "Move", character, -100));
+            Call(range, "ExpandToEnclosingUnit", character);
+            Assert.Equal("A", Call(range, "GetText", -1));
+        }
+        finally { ((IDisposable)owner).Dispose(); }
+    }
     private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private static readonly Assembly Ui = LoadUi();
     private static Assembly LoadUi()

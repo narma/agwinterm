@@ -140,6 +140,10 @@ public sealed class HudOwnedJob {
     @('session-host = in-process','claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
     $selectedCore = if ($Suite -eq 'Ghostty') { 'ghostty' } else { $EmulatorCore }
     "emulator-core = $selectedCore" | Add-Content (Join-Path $appDir 'agwinterm.conf')
+    if ($Suite -in 'TerminalRendering','TerminalPerformance') {
+        # A missing-default-font toast can disappear between pixel comparisons.
+        'font-family = Consolas' | Add-Content (Join-Path $appDir 'agwinterm.conf')
+    }
     'map f12 = close_pane'|Set-Content (Join-Path $appDir 'keymap.conf')
     if($Suite-eq 'Clipboard'){'map f8 = paste'|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'WorkingSets'){'map f8 = toggle_workspace_filter'|Add-Content (Join-Path $appDir 'keymap.conf')}

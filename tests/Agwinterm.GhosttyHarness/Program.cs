@@ -479,6 +479,9 @@ using (var vt = new GhosttyVt(20, 4))
 }
 using (var vt = new GhosttyVt(8, 4))
 {
+    vt.Feed("🔴 🔵\r\n"u8); Capture(vt);
+    Check(vt.Frame[0, 0].Grapheme is null && vt.Frame[0, 0].Width == 2, "single-codepoint emoji uses the fitted solo glyph path");
+    vt.Feed("\u001bc"u8);
     vt.Feed(Encoding.UTF8.GetBytes("\x1b[?2027hA👩🏽‍💻B e\u0301\r\n123456789END"));
     var emoji = vt.Search("👩🏽‍💻").Single();
     Check(emoji.Line == 0 && emoji.Col0 == 1 && emoji.Col1 == 2, $"native search reports complete emoji cell span ({emoji})");

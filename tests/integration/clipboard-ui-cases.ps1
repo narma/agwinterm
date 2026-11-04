@@ -1,7 +1,8 @@
-# Runs only through hud-ui.ps1 and its background Sandbox routing. The clipboard belongs
-# to the Sandbox. Keyboard injection below is confined to that guest's desktop.
-if ($env:AGWINTERM_SANDBOX_UI -ne '1' -or $env:USERNAME -ne 'WDAGUtilityAccount') {
-    throw 'Clipboard fixture requires the Windows Sandbox guest; host and direct CI execution are forbidden.'
+# Runs only through hud-ui.ps1 and its isolated Hyper-V/Sandbox routing. The clipboard
+# and keyboard injection below belong exclusively to the verified guest's desktop.
+if (-not (($env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount') -or
+    ($env:AGWINTERM_HYPERV_UI -eq '1' -and (& "$PSScriptRoot/hyperv-ui-context.ps1")))) {
+    throw 'Clipboard fixture requires a verified isolated Windows guest; host and direct CI execution are forbidden.'
 }
 Add-Type -TypeDefinition @'
 using System;

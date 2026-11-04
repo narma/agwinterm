@@ -284,10 +284,10 @@ internal partial class UiaTextRange : ITextRangeProvider
         var s = Owner.Snap();
         if (unit == TextUnit.Character)
         {
-            int target = Math.Clamp(_start + count, 0, s.TotalLength);
-            int moved = target - _start;
-            _start = _end = target;
-            return moved;
+            int index = s.CharacterIndex(_start);
+            int next = (int)Math.Clamp((long)index + count, 0, s.CharacterOffsets.Length - 1);
+            _start = _end = s.CharacterOffsets[next];
+            return next - index;
         }
         // Line (and coarser): step whole lines.
         var (ln, _) = s.LineColOf(_start);

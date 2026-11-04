@@ -53,6 +53,25 @@ Check 'Ghostty hyperlink text survives application text API' ($text.Contains('LI
 Check 'Ghostty find locates the complete emoji cluster' ((Rpc 'session.search' @{query='👩🏽‍💻'} $session) -eq '1 of 1')
 Check 'Ghostty find locates combining text' ((Rpc 'session.search' @{query=$cluster} $session) -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session
+$uiaHome = if ($PSVersionTable.PSEdition -eq 'Core') { $PSHOME } else { "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/WPF" }
+Add-Type -Path "$uiaHome/UIAutomationTypes.dll"
+Add-Type -Path "$uiaHome/UIAutomationClient.dll"
+$uiaRoot = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+$document = $uiaRoot.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Document))
+$pattern = $document.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+$emojiRange = $pattern.DocumentRange.FindText('👩🏽‍💻', $false, $false)
+$combiningRange = $pattern.DocumentRange.FindText($cluster, $false, $false)
+Check 'Ghostty UIA exposes complete graphemes' ($null -ne $emojiRange -and $null -ne $combiningRange)
+if ($null -ne $emojiRange -and $null -ne $combiningRange) {
+    $emojiBoxes = $emojiRange.GetBoundingRectangles(); $combiningBoxes = $combiningRange.GetBoundingRectangles()
+    Check 'Ghostty UIA geometry follows cells instead of UTF-16 lengths' ($emojiBoxes.Count -eq 1 -and $combiningBoxes.Count -eq 1 -and
+        [Math]::Abs($emojiBoxes[0].Width - 2 * $combiningBoxes[0].Width) -lt 1)
+    $character = $emojiRange.Clone()
+    $character.ExpandToEnclosingUnit([System.Windows.Automation.Text.TextUnit]::Character)
+    Check 'Ghostty UIA character navigation keeps the emoji intact' ($character.GetText(-1) -eq '👩🏽‍💻')
+}
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='
 $images = $esc+'[5;5H'+$esc+'_Ga=T,f=100,i=101,c=8,r=4,C=1;'+$png+$esc+'\'+
     $esc+'[5;17H'+$esc+'_Ga=T,f=32,s=1,v=1,i=102,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'
