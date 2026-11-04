@@ -233,12 +233,8 @@ try {
             $bad = & $ctl zmx restart --target $paneId --source shell --pipe $id --json
             if ($LASTEXITCODE -ne 1) { throw "Live restart should refuse: $bad" }
             $freshRecord = "$BuildDirectory/restart-$([guid]::NewGuid().ToString('N'))"
-            $linuxCtl = (& wsl.exe -d $Distro --exec wslpath -u $ctl).Trim()
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve CLI for replacement binding probe' }
             $replacementBinding = 'replacement-agent-recovery'
-            # A replacement can report its binding through a separate control connection
-            # before the restart result is committed or its UI attachment is replaced.
-            $pin = "'$linuxCtl' session bind '$replacementBinding' --target '$paneId' --pipe '$id' --json; exec python3 '$linuxScript' run '$freshRecord'"
+            $pin = "exec python3 '$linuxScript' run '$freshRecord'"
             $null = Ctl @('session','restore','--target',$paneId,'--command',$pin)
             $null = Ctl @('zmx','terminate','--target',$paneId,'--force')
             $missing = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
@@ -247,7 +243,22 @@ try {
             if ($LASTEXITCODE -ne 1) { throw "Missing agent source should refuse: $bad" }
             $null = Ctl @('zmx','retry','--target',$paneId)
             Start-Sleep -Seconds 1
-            $null = Ctl @('zmx','restart','--target',$paneId,'--source','pin')
+            # Report a binding on an independent connection as soon as the replacement
+            # is reserved. Do not invoke a Windows executable from a detached Linux daemon:
+            # its inherited WSL interop endpoint may belong to an already closed launcher.
+            $restartReply = Join-Path $state 'restart-reply.json'
+            $restartClient = Start-Process $ctl -ArgumentList @('zmx','restart','--target',$paneId,'--source','pin','--pipe',$id,'--json') `
+                -WindowStyle Hidden -RedirectStandardOutput $restartReply -RedirectStandardError (Join-Path $state 'restart-error.log') -PassThru
+            try {
+                for ($i=0; $i -lt 200 -and (Saved-Pane $paneId).PromptToken -eq $promptToken; $i++) { Start-Sleep -Milliseconds 25 }
+                if ((Saved-Pane $paneId).PromptToken -eq $promptToken) { throw 'Restart never reserved a replacement shell' }
+                $null = Ctl @('session','bind',$replacementBinding,'--target',$paneId)
+                if (-not $restartClient.WaitForExit(20000) -or $restartClient.ExitCode -ne 0) { throw 'Restart control client failed' }
+                if (-not (Get-Content $restartReply -Raw | ConvertFrom-Json).ok) { throw 'Restart was refused' }
+            } finally {
+                if (-not $restartClient.HasExited) { $restartClient.Kill(); $restartClient.WaitForExit() }
+                $restartClient.Dispose()
+            }
             $script:recordDir = $freshRecord
             $newIdentity = $null
             for ($i=0; $i -lt 60; $i++) {
