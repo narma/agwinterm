@@ -1536,6 +1536,7 @@ internal partial class Program : ISessionHost, IWindowHost
             {
                 Agwinterm.Pty.ClaudeIntegration.RefreshIfInstalled();
                 Agwinterm.Pty.GenericAgentInstaller.RefreshIfInstalled();
+                Agwinterm.Pty.ShellIntegrationInstaller.RefreshIfInstalled();
             });
             // Update awareness (Claude Code + agwinterm itself): startup + every 12h, quiet on
             // failure/offline. Knobs are re-read every cycle so `config set ...-check` applies

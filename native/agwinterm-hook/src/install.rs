@@ -346,6 +346,18 @@ pub(super) fn run() -> Result<()> {
             block(&rc, "cli", "export PATH=\"$HOME/.local/bin:$PATH\"")?;
         }
     }
+    // Agent resume needs the root shell's completion signal, including after an
+    // abrupt agent exit that cannot run SessionEnd. Install it with the hooks.
+    if matches!(kind, "shell" | "hooks") {
+        write(&data.join("shell.sh"), field("shell")?.as_bytes(), false)?;
+        for rc in [home.join(".bashrc"), zsh.clone()] {
+            block(
+                &rc,
+                "shell",
+                "[ -r \"$HOME/.local/share/agwinterm/shell.sh\" ] && . \"$HOME/.local/share/agwinterm/shell.sh\"",
+            )?;
+        }
+    }
     match kind {
         "cli" if action == "remove" => {
             let wrapper = bin.join("agwintermctl");
@@ -365,16 +377,7 @@ pub(super) fn run() -> Result<()> {
             }
         }
         "cli" => {}
-        "shell" => {
-            write(&data.join("shell.sh"), field("shell")?.as_bytes(), false)?;
-            for rc in [home.join(".bashrc"), zsh] {
-                block(
-                    &rc,
-                    "shell",
-                    "[ -r \"$HOME/.local/share/agwinterm/shell.sh\" ] && . \"$HOME/.local/share/agwinterm/shell.sh\"",
-                )?;
-            }
-        }
+        "shell" => {}
         "skill" => {
             let text = format!(
                 "{}\n\n## WSL\nUse agwintermctl from ~/.local/bin. Local file arguments consumed by the Windows CLI need `wslpath -w`. Linux processes use Linux PIDs. Install integrations from the WSL pane.\n",

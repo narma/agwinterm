@@ -205,6 +205,7 @@ pub enum HostAction {
     Clipboard { text: String },
     Respond { reply: String },
     Bell,
+    CommandFinished,
     Unhandled { kind: String, detail: String },
 }
 
@@ -1603,6 +1604,10 @@ impl Performer for Emulator {
                 }
             }
             777 => {
+                if text == "agwinterm;command-finished" {
+                    self.push_action(HostAction::CommandFinished);
+                    return;
+                }
                 // OSC 777 ; notify ; <title> ; <body>
                 let parts: Vec<&str> = text.split(';').collect();
                 if parts.len() >= 2 && parts[0] == "notify" {

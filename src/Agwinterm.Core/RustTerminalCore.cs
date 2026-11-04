@@ -201,6 +201,7 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
                 case 4: host.Respond(ReadStr(br)); break;
                 case 5: { string kind = ReadStr(br), detail = ReadStr(br); host.Unhandled(kind, detail); break; }
                 case 6: host.Bell(); break;      // no payload
+                case 7: host.CommandFinished(); break; // no payload
                 default: return;                 // unknown tag — blob is corrupt; stop rather than misread
             }
         }

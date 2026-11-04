@@ -65,6 +65,7 @@ public sealed class PtyHostServer : IDisposable
         public void Progress(int state, int value) { }
         public void ClipboardWrite(string text) { }
         public void Bell() { }
+        public void CommandFinished() { }
         public void Unhandled(string kind, string detail) { }
     }
 

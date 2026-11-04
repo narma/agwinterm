@@ -824,6 +824,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
                 Host?.Notify("", text);
                 break;
             case 777: // OSC 777 ; notify ; <title> ; <body>
+                if (text == "agwinterm;command-finished") { Host?.CommandFinished(); break; }
                 var parts = text.Split(';');
                 if (parts.Length >= 2 && parts[0] == "notify")
                     Host?.Notify(parts[1], parts.Length >= 3 ? string.Join(';', parts[2..]) : "");

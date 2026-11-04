@@ -16,7 +16,7 @@ namespace Agwinterm.Core;
 /// </summary>
 public sealed unsafe class RustEmulatorCore : IDisposable
 {
-    public const uint RequiredAbi = 22;
+    public const uint RequiredAbi = 23;
 
     private delegate bool CopyWrapLengthsFn(nint p, uint start, int* lengths, uint count);
     private static CopyWrapLengthsFn _copyWrapLengths = null!;

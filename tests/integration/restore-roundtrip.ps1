@@ -151,7 +151,7 @@ function Get-TestRustHost($s) {
 }
 
 function Cell {
-    param([string]$Name, [switch]$Kill, [string[]]$Conf = @(), [scriptblock]$Setup, [scriptblock]$Assert)
+    param([string]$Name, [switch]$Kill, [switch]$KillHostAfterClose, [string[]]$Conf = @(), [scriptblock]$Setup, [scriptblock]$Assert)
     if ($Only -and $Only -ne $Name) { return }
     "-- $Name --"
     $s = $null
@@ -165,7 +165,16 @@ function Cell {
         $ctx = $produced | Where-Object { $_ -is [hashtable] } | Select-Object -Last 1
         if (-not $ctx) { throw 'setup returned no context' }
         $oldPid = $s.Proc.Id
-        Restart-Sandbox $s -Kill:$Kill | Out-Null
+        if ($KillHostAfterClose) {
+            # The exact #368 reproduction: the shell is idle, the UI closes,
+            # then its private PTY host dies before a fresh UI restores the file.
+            [void][AgwUi]::PostMessageW($s.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+            if (-not $s.Proc.WaitForExit(20000)) { throw 'UI did not close gracefully' }
+            $hosts = @(Get-TestRustHost $s)
+            Check "$Name`: exactly one private PTY host survived UI close" ($hosts.Count -eq 1)
+            foreach ($hostProcess in $hosts) { Stop-Process -Id $hostProcess.ProcessId -Force }
+            if (-not (Start-SandboxProcess $s @('--pipe', $s.Pipe, '--app-id', $s.AppId))) { throw 'Fresh UI did not start' }
+        } else { Restart-Sandbox $s -Kill:$Kill | Out-Null }
         Check "$Name`: the same instance relaunched (new pid, same pipe, same app-id)" `
             ($s.Proc.Id -ne $oldPid -and -not $s.Proc.HasExited) "old=$oldPid new=$($s.Proc.Id)"
         & $Assert $s $ctx
@@ -441,6 +450,64 @@ Cell -Name 'swap-killed' -Kill -Setup {
     Check "swap-killed: the file written after the restore lists the panes in the swapped order again" `
         ($saved -and @($saved.Panes).Count -eq 2 -and $saved.Panes[0].Id -eq $ctx.SplitId -and $saved.Panes[1].Id -eq $ctx.Sid) `
         "saved=$($saved | ConvertTo-Json -Compress -Depth 4)"
+}
+
+foreach ($agentCore in @('managed', 'rust')) {
+Cell -Name "agent-running-$agentCore" -KillHostAfterClose -Conf @('session-host = server-rust', "emulator-core = $agentCore", 'restore-commands = false') -Setup {
+    param($s)
+    $sid = Sid $s
+    if (-not (Wait-Prompt $s $sid)) { throw 'Shell did not start' }
+    Send-Ctl $s @('session', 'type', ("Write-Host ('LIVE_' + 'AGENT'); Start-Sleep 120" + [char]13), '--target', $sid) | Out-Null
+    for ($i = 0; $i -lt 30; $i++) {
+        if ((PaneText $s $sid).Contains('LIVE_AGENT')) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    $binding = "Write-Host ('EXPECTED_' + 'AGENT_RESUME'); Start-Sleep 120"
+    $null = Reply $s @('session', 'bind', $binding, '--target', $sid)
+    Start-Sleep -Milliseconds 400
+    $saved = Get-SavedSession $s $sid
+    Check 'agent-running: binding survives while command is running' ($saved.Panes[0].AgentResume -eq $binding)
+    return @{ Sid = $sid; Binding = $binding }
+} -Assert {
+    param($s, $ctx)
+    for ($i = 0; $i -lt 60; $i++) {
+        if ((PaneText $s $ctx.Sid).Contains('EXPECTED_AGENT_RESUME')) { break }
+        Start-Sleep -Milliseconds 200
+    }
+    Check 'agent-running: loss of PTY resumes the live agent' ((PaneText $s $ctx.Sid).Contains('EXPECTED_AGENT_RESUME'))
+    $saved = Get-SavedSession $s $ctx.Sid
+    Check 'agent-running: the initial restored prompt preserves its binding' ($saved.Panes[0].AgentResume -eq $ctx.Binding)
+}
+Cell -Name "agent-exit-$agentCore" -KillHostAfterClose -Conf @('session-host = server-rust', "emulator-core = $agentCore", 'restore-commands = false') -Setup {
+    param($s)
+    $sid = Sid $s
+    if (-not (Wait-Prompt $s $sid)) { throw 'Shell did not start' }
+    $command = "Write-Host ('AGENT_' + 'STARTED'); Start-Sleep 5; Write-Host ('AGENT_' + 'DONE')"
+    Send-Ctl $s @('session', 'type', ($command + [char]13), '--target', $sid) | Out-Null
+    for ($i = 0; $i -lt 30; $i++) {
+        if ((PaneText $s $sid).Contains('AGENT_STARTED')) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    $binding = "Write-Host ('UNEXPECTED_' + 'AGENT_RESUME')"
+    $bound = Reply $s @('session', 'bind', $binding, '--target', $sid)
+    Check 'agent-exit: running command can bind independently of restore-commands' $bound.ok
+    Start-Sleep -Milliseconds 400
+    $saved = Get-SavedSession $s $sid
+    Check 'agent-exit: live binding is persisted' ($saved.Panes[0].AgentResume -eq $binding)
+    for ($i = 0; $i -lt 80; $i++) {
+        $saved = Get-SavedSession $s $sid
+        if ((PaneText $s $sid).Contains('AGENT_DONE') -and $null -eq $saved.Panes[0].AgentResume) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    Check 'agent-exit: returning to the prompt clears the saved binding' ($null -eq $saved.Panes[0].AgentResume)
+    return @{ Sid = $sid }
+} -Assert {
+    param($s, $ctx)
+    Start-Sleep -Seconds 3
+    $saved = Get-SavedSession $s $ctx.Sid
+    Check 'agent-exit: lost host restore keeps the binding empty' ($null -eq $saved.Panes[0].AgentResume)
+    Check 'agent-exit: lost host restore does not replay the exited agent' (-not (PaneText $s $ctx.Sid).Contains('UNEXPECTED_AGENT_RESUME'))
+}
 }
 
 foreach ($reflowCase in @('managed', 'rust', 'rust-host')) {

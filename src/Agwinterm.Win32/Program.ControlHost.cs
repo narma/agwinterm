@@ -1100,8 +1100,8 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         string? val = SessionOperations.Binding(agent);
-        Interlocked.Increment(ref hit.Value.pane.BindSeq);   // supersedes a SessionStart binding still resolving
-        PostVerb(() => { hit.Value.pane.AgentResume = val; SaveState(); });
+        int seq = Interlocked.Increment(ref hit.Value.pane.BindSeq);   // supersedes a SessionStart binding still resolving
+        PostVerb(() => { if (Volatile.Read(ref hit.Value.pane.BindSeq) == seq) { hit.Value.pane.AgentResume = val; SaveState(); } });
         return true;
     }
 

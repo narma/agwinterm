@@ -23,7 +23,11 @@ public static class ShellIntegrationInstaller
         if ($env:AGWINTERM -eq '1' -and -not $global:__agwSI) {
           $global:__agwSI = $true
           $global:__agwPrompt = $function:prompt
+          $global:__agwFirst = $true
+          if (-not $env:AGWINTERM_PROMPT_OWNER) { $env:AGWINTERM_PROMPT_OWNER = "windows:$PID" }
           function global:prompt {
+            if ($global:__agwFirst) { $global:__agwFirst = $false }
+            elseif ($env:AGWINTERM_PROMPT_OWNER -eq "windows:$PID") { [Console]::Write("$([char]27)]777;agwinterm;command-finished$([char]7)") }
             $d = (Get-Location).ProviderPath
             [Console]::Write("$([char]27)]7;file://$env:COMPUTERNAME/$(($d -replace '\\','/'))$([char]7)")
             if ($global:__agwPrompt) { & $global:__agwPrompt } else { "PS $d> " }
@@ -43,11 +47,15 @@ public static class ShellIntegrationInstaller
           $global:__agwSI = $true
           $global:__agwPrompt = $function:prompt
           $global:__agwFirst = $true
+          if (-not $env:AGWINTERM_PROMPT_OWNER) { $env:AGWINTERM_PROMPT_OWNER = "windows:$PID" }
           function global:prompt {
             $ok = $?
             $e = [char]27; $b = [char]7
             $ec = $global:LASTEXITCODE; if ($null -eq $ec) { $ec = if ($ok) { 0 } else { 1 } }
-            if ($global:__agwFirst) { $global:__agwFirst = $false } else { [Console]::Write("$e]133;D;$ec$b") }
+            if ($global:__agwFirst) { $global:__agwFirst = $false } else {
+              [Console]::Write("$e]133;D;$ec$b")
+              if ($env:AGWINTERM_PROMPT_OWNER -eq "windows:$PID") { [Console]::Write("$e]777;agwinterm;command-finished$b") }
+            }
             [Console]::Write("$e]133;A$b")
             $d = (Get-Location).ProviderPath
             [Console]::Write("$e]7;file://$env:COMPUTERNAME/$(($d -replace '\\','/'))$b")
@@ -60,6 +68,28 @@ public static class ShellIntegrationInstaller
     /// <summary>Base64 (UTF-16LE) of <see cref="PromptWrap"/> for <c>powershell.exe -EncodedCommand</c>.</summary>
     public static string PromptWrapEncoded =>
         System.Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(PromptWrap));
+
+    public static string? RefreshIfInstalled() => ProfileBlocks.RefreshIfInstalled(Begin, End, Block, "shell integration");
+
+    /// <summary>Git Bash/MSYS2 shells use the same prompt signal as WSL. Called by the
+    /// hooks installer so resume binding and its exit cleanup are installed together.</summary>
+    internal static string InstallPosix(string home)
+    {
+        string path = Path.Combine(home, ".local", "share", "agwinterm", "shell.sh");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, WslIntegration.Resource("shell.sh"));
+        const string begin = "# >>> agwinterm shell >>>", end = "# <<< agwinterm shell <<<";
+        const string block = begin + "\n[ -r \"$HOME/.local/share/agwinterm/shell.sh\" ] && . \"$HOME/.local/share/agwinterm/shell.sh\"\n" + end;
+        foreach (string rc in new[] { ".bashrc", ".zshrc" })
+        {
+            string profile = Path.Combine(home, rc);
+            string existing = File.Exists(profile) ? File.ReadAllText(profile) : "";
+            var state = ProfileBlocks.Inspect(existing, begin, end, block, out string updated);
+            if (state == ProfileBlockState.Stale) File.WriteAllText(profile, updated);
+            else if (state == ProfileBlockState.Missing) File.WriteAllText(profile, existing + "\n" + block + "\n");
+        }
+        return "Bash/zsh shell integration -> " + path + " (restart shells)";
+    }
 
     /// <summary>
     /// Resolve the CurrentUser/CurrentHost powershell.exe profile path via powershell itself
@@ -98,7 +128,12 @@ public static class ShellIntegrationInstaller
         try
         {
             string existing = File.Exists(path) ? File.ReadAllText(path) : "";
-            if (existing.Contains(Begin))
+            var state = ProfileBlocks.Inspect(existing, Begin, End, Block, out string updated);
+            if (state == ProfileBlockState.Stale) {
+                File.WriteAllText(path, updated);
+                return "shell integration updated -> " + path;
+            }
+            if (state != ProfileBlockState.Missing)
                 return "shell integration already installed -> " + path;
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

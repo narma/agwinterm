@@ -180,6 +180,7 @@ internal partial class Program
             ["AGWINTERM_PIPE"] = _control!.PipeName,
             ["AGWINTERM_SESSION_ID"] = paneId,       // each pane is independently targetable
             ["AGWINTERM_PANE_ID"] = paneId,          // explicit pane identity (unique per split pane)
+            ["AGWINTERM_PROMPT_OWNER"] = "",        // each new pane establishes its own root shell
             ["AGWINTERM_WORKSPACE_ID"] = ws.Id,
             ["AGWINTERM_WINDOW_ID"] = Id,
             // Standard terminal-identification vars so shells/prompt tools (starship, oh-my-posh, tmux,
@@ -383,6 +384,19 @@ internal partial class Program
         }
         public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
+        public void CommandFinished()
+        {
+            // Invalidate a SessionStart lookup still in flight BEFORE queuing the clear. A
+            // newer agent may bind before this UI action runs, in which case its binding wins.
+            int seq = Interlocked.Increment(ref _pane.BindSeq);
+            _app.Post(() =>
+            {
+                if (Volatile.Read(ref _pane.BindSeq) != seq || _pane.AgentResume is null) return;
+                _pane.AgentResume = null;
+                _app.SaveState();
+                _app.EmitEvent("bind", _pane.Id, "cleared: shell command finished");
+            });
+        }
         public void Unhandled(string kind, string detail) => VtLog.Write(_pane.Id, kind, detail);       // AGWINTERM_VT_LOG tap
     }
 
