@@ -26,16 +26,22 @@ public class ShellPromptTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task OnlyTheRootShellReportsCompletionAfterItsFirstPrompt(bool installed, bool nested)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    public async Task OnlyTheRootShellReportsCompletionAfterItsFirstPrompt(bool installed, bool nested, bool legacy)
     {
         string path = Path.Combine(Path.GetTempPath(), "agwinterm-prompt-" + Guid.NewGuid().ToString("N") + ".ps1");
         try
         {
-            File.WriteAllText(path, (installed ? ShellIntegrationInstaller.Block : ShellIntegrationInstaller.PromptWrap)
+            string prefix = legacy ? "$global:__agwSI = $true; $global:__agwPrompt = { 'USER_PROMPT' }; function global:prompt { & $global:__agwPrompt }\n" : "";
+            string wrap = installed ? ShellIntegrationInstaller.Block : ShellIntegrationInstaller.PromptWrap;
+            // Re-sourcing the current block is harmless; an old block must upgrade
+            // without wrapping itself recursively or retaining the old behaviour.
+            File.WriteAllText(path, prefix + wrap + "\n" + wrap
                 + "\n[Console]::Write('FIRST'); $null = prompt; [Console]::Write('SECOND'); $null = prompt; [Console]::Write('END')");
             var start = new ProcessStartInfo("powershell.exe")
             {

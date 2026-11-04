@@ -20,9 +20,10 @@ public static class ShellIntegrationInstaller
     public static readonly string Block =
         Begin + "\n" +
         """
-        if ($env:AGWINTERM -eq '1' -and -not $global:__agwSI) {
+        if ($env:AGWINTERM -eq '1' -and $global:__agwPromptVersion -ne 2) {
+          if (-not $global:__agwSI) { $global:__agwPrompt = $function:prompt }
           $global:__agwSI = $true
-          $global:__agwPrompt = $function:prompt
+          $global:__agwPromptVersion = 2
           $global:__agwFirst = $true
           if (-not $env:AGWINTERM_PROMPT_OWNER) { $env:AGWINTERM_PROMPT_OWNER = "windows:$PID" }
           function global:prompt {
@@ -43,9 +44,12 @@ public static class ShellIntegrationInstaller
     /// </summary>
     public static readonly string PromptWrap =
         """
-        if (-not $global:__agwSI) {
+        if ($global:__agwPromptVersion -ne 2) {
+          # Upgrade an old installed wrapper without capturing it as its own
+          # original prompt (that wrapper already uses __agwPrompt).
+          if (-not $global:__agwSI) { $global:__agwPrompt = $function:prompt }
           $global:__agwSI = $true
-          $global:__agwPrompt = $function:prompt
+          $global:__agwPromptVersion = 2
           $global:__agwFirst = $true
           if (-not $env:AGWINTERM_PROMPT_OWNER) { $env:AGWINTERM_PROMPT_OWNER = "windows:$PID" }
           function global:prompt {
