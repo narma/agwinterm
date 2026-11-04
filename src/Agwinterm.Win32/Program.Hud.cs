@@ -30,7 +30,7 @@ internal partial class Program
         else
         {
             if (_webPages.ContainsKey(ses)) return ISessionHost.RefusePrefix + "hud: a web overlay occupies the slot";
-            if (ses.Overlay.Term is not null) return ISessionHost.RefusePrefix + "hud: a program overlay occupies the slot";
+            if (ses.Overlay.Term is not null || ses.Overlay.OriginJob?.Occupied == true) return ISessionHost.RefusePrefix + "hud: a program overlay occupies the slot";
             if (action == "update" && ses.Hud is null) return ISessionHost.RefusePrefix + "hud: no HUD to update";
             if (spec is null) return ISessionHost.RefusePrefix + "hud: missing message specification";
             if (spec.Pane is { } selector)
@@ -40,6 +40,7 @@ internal partial class Program
                 spec = spec with { AnchorPaneId = anchor };
             }
             var previous = ses.Hud;
+            ses.HudMirrored = false;
             lock (_workspaces) ses.Hud = action == "update" ? spec with { BackgroundColor = ses.Hud!.BackgroundColor } : spec;
             ses.HudDeadline = SessionHuds.Deadline(Environment.TickCount64, spec.HideAfter);
             if (previous is null || previous with { Document = null } != ses.Hud with { Document = null } || spec.HideAfter > 0)
@@ -53,6 +54,7 @@ internal partial class Program
     {
         if (ses.Hud is null) return;
         var anchor = ses.Hud.AnchorPaneId;
+        ses.HudMirrored = false;
         lock (_workspaces) ses.Hud = null;
         ses.HudDeadline = null;
         SurfaceEvent("hud", "closed", ses, reason: reason, anchorPaneId: anchor);

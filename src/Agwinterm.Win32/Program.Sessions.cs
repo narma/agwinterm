@@ -147,15 +147,25 @@ internal partial class Program
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
         AgentStatus lastStatus = session.Status;
+        AgentStatus? explicitSoundStatus = null;
         session.StatusChanged += () =>
         {
             var now = session.Status;
-            if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked) PlayBlockedSound();
+            if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked && explicitSoundStatus != now)
+                Post(() => RouteStatusSound(pane, null, blockedDefault: true));
+            explicitSoundStatus = null;
             lastStatus = now;
+            Post(() => { if (OwningSes(pane) is { } owner) PublishOriginPresentation(owner, "status"); });
             RequestRedraw();
         };
         // An explicit --sound on session.status: play its spec (null => default alert).
-        session.SoundRequested += PlayStatusSound;
+        session.SoundRequested += name =>
+        {
+            // SetStatus raises this before StatusChanged; an explicit sound replaces the automatic
+            // blocked sound for that write. A later change to another status cannot inherit it.
+            explicitSoundStatus = session.Status;
+            Post(() => RouteStatusSound(pane, name, blockedDefault: false));
+        };
         session.Emulator.Host = new PaneHost(this, pane, session);   // the host-action seam (see IHostActions)
         session.Exited += code => Post(() =>
         {
@@ -987,10 +997,12 @@ internal partial class Program
     /// host checks the slot in the same UI hop before calling, this is the guard that makes a missed
     /// check a refusal rather than a silent replace). <c>_lastOverlayExit</c> is NOT reset by a pane
     /// open — the pane arm has its own <see cref="OverlaySlot.LastResult"/>, reset here.</summary>
-    private string OverlayOpen(Ses ses, Pane? pane, string command, int sizePercent, bool wait, Dictionary<string, string>? extraEnv = null, string? launchCwd = null)
+    private string OverlayOpen(Ses ses, Pane? pane, string command, int sizePercent, bool wait, Dictionary<string, string>? extraEnv = null, string? launchCwd = null, SessionCommand? directLaunch = null)
     {
         if (!OwnsSession(ses) || (pane is not null && !ses.Panes.Contains(pane)))
             return ISessionHost.RefusePrefix + "session or pane no longer exists";
+        if ((pane?.Overlay ?? ses.Overlay).OriginJob?.Occupied == true)
+            return ISessionHost.RefusePrefix + "origin overlay slot occupied";
         OverlaySlot slot;
         string id;
         if (pane is null)
@@ -1011,7 +1023,8 @@ internal partial class Program
             id = pane.Id + ":overlay:" + Guid.NewGuid().ToString("N")[..6];
         }
         var owner = pane ?? ses.ActivePane;
-        var term = CreatePane(id, ses.Ws, launchCwd ?? CwdOf(owner), owner.FontSize, command, shellWrap: true, extraEnv: extraEnv, profileName: ses.ProfileName);
+        var term = CreatePane(id, ses.Ws, directLaunch is null ? launchCwd ?? CwdOf(owner) : null, owner.FontSize,
+            directLaunch is null ? command : null, shellWrap: true, extraEnv: extraEnv, profileName: directLaunch is null ? ses.ProfileName : null, sessionCommand: directLaunch);
         Observation.SetOwner(term.Id, ses.Id);
         term.FontZoomed = owner.FontZoomed;
         term.OverlayDone = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1022,6 +1035,8 @@ internal partial class Program
         // window-wide `overlay result` (_lastOverlayExit); for a pane slot it is the slot's own.
         lock (_overlayExitLock)
         {
+            // A delayed origin completion must not write into this new local program's slot.
+            slot.OriginJob = null;
             if (pane is null) _lastOverlayExit = "no overlay"; else slot.LastResult = OverlayPanes.NoResult;
             slot.Term = term;
         }
@@ -1051,6 +1066,7 @@ internal partial class Program
     /// The pane slots are <see cref="ClosePaneOverlay"/>'s.</summary>
     private void CloseOverlayOf(Ses ses, string reason = "closed")
     {
+        if (ses.Overlay.OriginJob is { } originJob) { originJob.Close(reason); _originJobs.Remove(originJob.Id); }
         CloseWebPage(ses);
         ClearHud(ses, reason);
         var slot = ses.Overlay;
@@ -1075,6 +1091,7 @@ internal partial class Program
     /// slot.</summary>
     private void ClosePaneOverlay(Ses ses, Pane pane, string reason = "closed")
     {
+        if (pane.Overlay.OriginJob is { } originJob) { originJob.Close(reason); _originJobs.Remove(originJob.Id); }
         CloseWebPage(ses, pane);
         var slot = pane.Overlay;
         var term = slot.Term;
@@ -1093,6 +1110,7 @@ internal partial class Program
     /// else would. A no-op after an exit.</summary>
     private void ReleaseAndDispose(Pane term)
     {
+        CloseReplicaJob(term);
         Observation.RemovePane(term.Id);
         term.OverlayDone?.TrySetResult("closed");
         try { term.S.Dispose(); } catch { }
@@ -1131,6 +1149,7 @@ internal partial class Program
             Post(() =>
             {
                 if (!ReferenceEquals(slot.Term, term)) return;   // already replaced/closed
+                if (_replicaJobs.TryGetValue(term, out var replicaJob) && replicaJob.Orphaned) slot.Wait = false;
                 SurfaceEvent("overlay", "exited", ses, term, pane, exitCode: code);
                 if (slot.Wait) { slot.Exited = true; slot.ExitCode = code; RequestRedraw(); }
                 else if (pane is null) CloseOverlayOf(ses);
@@ -1855,6 +1874,9 @@ internal partial class Program
 
     private void DisposeSessionResources(Ses ses)
     {
+        RetireRemotePresentation(ses);
+        RetireOriginPresentations(ses);
+        CloseSessionQuestion(ses);
         // Also covers failed Recent/startup construction before the posted
         // live start runs. A retired pane must never start a late attachment.
         foreach (var pane in ses.AllPanes) { pane.LiveClosing = true; pane.LiveRecovery.Cancel(); }

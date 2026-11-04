@@ -1,8 +1,10 @@
 # Design
 
+Archive note (2026-11-02): the design below records the original planning baseline. Implementation and real-peer acceptance subsequently completed, PR #25 merged as 41cc0d9, and main specs were reconciled with stage 3 before archival. See [accepted evidence](../../../../docs/agterm-remote-development.md) for final status.
+
 ## Context
 
-See [proposal.md](proposal.md) for motivation and the [roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) for the four-stage boundary. Implementation was requested on 2026-11-02. Stage 1 is merged in origin/narma at 5552130; the implementation branch starts there. Discovery/transport evidence and pending acceptance are recorded in docs/agterm-remote-development.md.
+See [proposal.md](proposal.md) for motivation and the [roadmap](../../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) for the four-stage boundary. Implementation was requested on 2026-11-02. Stage 1 is merged in origin/narma at 5552130; the implementation branch starts there. Discovery/transport evidence and pending acceptance are recorded in docs/agterm-remote-development.md.
 
 Observed local seams:
 

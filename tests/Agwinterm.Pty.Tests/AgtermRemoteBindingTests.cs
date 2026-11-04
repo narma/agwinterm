@@ -6,6 +6,50 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermRemoteBindingTests
 {
+    [Fact]
+    public void PresentationMetadataRoundtripsWithoutGrantingAuthority()
+    {
+        var binding = Binding() with { PresentationVersion = 1 };
+        var loaded = AgtermRemoteBinding.Load(JsonSerializer.SerializeToElement(binding), out var error);
+        Assert.Null(error);
+        Assert.Equal(1, loaded!.PresentationVersion);
+        Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), loaded.OriginPaneId);
+        Assert.Equal(binding.PresentationTarget, (binding with { Role = "right" }).PresentationTarget);
+        Assert.Null(AgtermRemoteBinding.Load(JsonSerializer.SerializeToElement(Binding()), out _)!.PresentationVersion);
+        Assert.False(ZmxCompatibility.SupportsPresentation);
+    }
+
+    [Fact]
+    public void PresentationTargetsAreScopedBeyondPaneAndSessionIds()
+    {
+        var binding = Binding();
+        foreach (var other in new[] {
+            binding with { Target = binding.Target with { Destination = "other" } },
+            binding with { Target = binding.Target with { User = "other" } },
+            binding with { Target = binding.Target with { Distribution = "Other" } },
+            binding with { Target = binding.Target with { OriginSocket = "/other.sock" } },
+            binding with { Endpoint = binding.Endpoint with { SocketDirectory = "/other" } },
+            binding with { OriginSession = "other" } })
+            Assert.NotEqual(binding.PresentationTarget, other.PresentationTarget);
+        // Reusing a name preserves the logical target, never the verified incarnation.
+        var replacement = binding with { Identity = JsonSerializer.SerializeToElement(new { replaced = true }) };
+        Assert.Equal(binding.PresentationTarget, replacement.PresentationTarget);
+        Assert.False(replacement.IsValid);
+    }
+    [Fact] public void PresentationCallbackFenceAllowsRoleSwapButRejectsReplacedOrigin()
+    {
+        var binding = Binding();
+        Assert.True(binding.SamePresentationOrigin(binding with { Role = "right", Recovery = "host-adopted" }));
+        var identity = System.Text.Json.Nodes.JsonNode.Parse(binding.Identity.GetRawText())!;
+        identity["daemon"]!["pid"] = 123456;
+        var replacement = binding with { Identity = JsonSerializer.SerializeToElement(identity) };
+        Assert.True(replacement.IsValid);
+        Assert.False(binding.SamePresentationOrigin(replacement));
+        Assert.False(binding.SamePresentationOrigin(binding with { BindingId = Guid.NewGuid().ToString() }));
+        Assert.False(binding.SamePresentationOrigin(binding with { ClientSha256 = new string('b', 64) }));
+        Assert.False(binding.SamePresentationOrigin(binding with { Target = binding.Target with { OriginSocket = "/other.sock" } }));
+    }
+
     [Theory]
     [InlineData("{\"accepted\":false,\"uncertain\":true}")]
     [InlineData("{}")]

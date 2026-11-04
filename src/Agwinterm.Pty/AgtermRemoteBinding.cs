@@ -7,9 +7,16 @@ public sealed record AgtermRemoteBinding(int Version, string Provider, string Bi
     AgtermSshTarget Target, string Bridge, AgtermEndpoint Endpoint, string OriginSession,
     string OriginWindow, string OriginWorkspace, string Role, string Daemon, JsonElement Identity,
     string ClientSha256, string Recovery = "pending", string? TransportTicket = null,
-    string? AttachmentNonce = null, string? Error = null)
+    string? AttachmentNonce = null, string? Error = null, int? PresentationVersion = null)
 {
     [JsonIgnore] public string Ownership => "borrowed";
+    [JsonIgnore] public Guid? OriginPaneId => new AgtermPane(Role, Daemon).OriginPaneId;
+    // This key identifies a target, not an attestation of its current daemon incarnation.
+    [JsonIgnore] public AgtermPresentationTarget PresentationTarget => new(Target.Distribution, Target.User,
+        Target.Destination, Target.OriginSocket, Endpoint, OriginSession, OriginPaneId);
+    public bool SamePresentationOrigin(AgtermRemoteBinding other) => IsValid && other.IsValid
+        && BindingId == other.BindingId && PresentationTarget == other.PresentationTarget
+        && ClientSha256 == other.ClientSha256 && JsonElement.DeepEquals(Identity, other.Identity);
     [JsonIgnore] public bool IsValid
     {
         get
@@ -70,3 +77,6 @@ public sealed record AgtermRemoteBinding(int Version, string Provider, string Bi
         return null;
     }
 }
+
+public sealed record AgtermPresentationTarget(string Distribution, string User, string Destination,
+    string? ControlSocket, AgtermEndpoint Endpoint, string Session, Guid? Pane);

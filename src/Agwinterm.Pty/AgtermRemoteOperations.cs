@@ -5,8 +5,18 @@ namespace Agwinterm.Pty;
 
 public sealed class AgtermRemoteOperations
 {
+    public static SessionCommand OverlayJobCommand(AgtermRemoteBinding binding, string job)
+    {
+        if (!binding.IsValid || job.Length is < 1 or > 256 || job.Any(char.IsControl)) throw new ArgumentException("Invalid job binding or ID");
+        string command = "PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; export PATH; exec agtermctl session overlay run-job "
+            + AgtermSshDiscoveryClient.QuoteAccountShell(job)
+            + (binding.Target.OriginSocket is null ? "" : " --socket " + AgtermSshDiscoveryClient.QuoteAccountShell(binding.Target.OriginSocket));
+        var launch = AgtermSshDiscoveryClient.CommandInfo(binding.Target, true,
+            string.Join(' ', new[] { "/bin/sh", "-c", command }.Select(AgtermSshDiscoveryClient.QuoteAccountShell)));
+        return new(launch.FileName, launch.ArgumentList.ToArray());
+    }
     public async Task<AgtermRemoteBinding> ProbeAsync(AgtermSshTarget target, string bridge, AgtermEndpoint endpoint,
-        AgtermSession session, AgtermPane pane, CancellationToken ct = default)
+        AgtermSession session, AgtermPane pane, CancellationToken ct = default, int? presentationVersion = null)
     {
         var response = await RequestAsync(target, bridge, new { verb = "probe", executable = endpoint.Executable,
             socketDirectory = endpoint.SocketDirectory, name = pane.Daemon }, ct).ConfigureAwait(false);
@@ -14,7 +24,8 @@ public sealed class AgtermRemoteOperations
             throw new InvalidOperationException("Origin lacks existing-only attachment");
         var binding = new AgtermRemoteBinding(1, "agterm-ssh", Guid.NewGuid().ToString(), target, bridge, endpoint,
             session.Id, session.WindowId, session.WorkspaceId, pane.Role, pane.Daemon,
-            response.GetProperty("identity").Clone(), response.GetProperty("clientSha256").GetString()!);
+            response.GetProperty("identity").Clone(), response.GetProperty("clientSha256").GetString()!,
+            PresentationVersion: presentationVersion is > 0 ? presentationVersion : null);
         if (!binding.IsValid) throw new InvalidOperationException("Origin returned an invalid identity");
         return binding;
     }
@@ -26,6 +37,29 @@ public sealed class AgtermRemoteOperations
         if (!JsonElement.DeepEquals(result.GetProperty("identity"), binding.Identity)
             || result.GetProperty("clientSha256").GetString() != binding.ClientSha256)
             throw new InvalidOperationException("Origin workload or client build changed; refusing replacement");
+    }
+
+    public async Task<JsonElement> ReadQuestionResultAsync(AgtermRemoteBinding binding, string id, CancellationToken ct)
+    {
+        if (id.Length is < 1 or > 256 || id.Any(char.IsControl)) throw new ArgumentException("Invalid question ID");
+        await RevalidateAsync(binding, ct).ConfigureAwait(false);
+        string command = "PATH=\"$PATH:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin\"; export PATH; exec agtermctl ask result "
+            + AgtermSshDiscoveryClient.QuoteAccountShell(id) + " --json"
+            + (binding.Target.OriginSocket is null ? "" : " --socket " + AgtermSshDiscoveryClient.QuoteAccountShell(binding.Target.OriginSocket));
+        var reply = await AgtermSshDiscoveryClient.RunAsync(AgtermSshDiscoveryClient.CommandInfo(binding.Target, false,
+            string.Join(' ', new[] { "/bin/sh", "-c", command }.Select(AgtermSshDiscoveryClient.QuoteAccountShell))), TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+        using var doc = JsonDocument.Parse(reply.Stdout);
+        AgtermRemoteDiscovery.RejectDuplicates(doc.RootElement);
+        var value = doc.RootElement;
+        if (value.TryGetProperty("ok", out var ok))
+        {
+            if (ok.ValueKind != JsonValueKind.True) throw new IOException("Origin result unavailable");
+            value = value.GetProperty("result");
+            if (value.TryGetProperty("ask", out var ask)) value = ask;
+        }
+        if (value.GetProperty("result").GetString() is not ("pending" or "answered" or "escaped" or "cancelled"))
+            throw new IOException("Invalid origin question outcome");
+        return value.Clone();
     }
 
     private static object Request(AgtermRemoteBinding binding, string verb, string? text = null, bool all = false,

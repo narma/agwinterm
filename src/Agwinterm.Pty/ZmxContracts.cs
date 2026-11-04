@@ -10,7 +10,12 @@ public sealed record AgtermEndpoint(
     [property: JsonPropertyName("socketDirectory")] string SocketDirectory);
 public sealed record AgtermPane(
     [property: JsonPropertyName("pane")] string Role,
-    [property: JsonPropertyName("daemon")] string Daemon);
+    [property: JsonPropertyName("daemon")] string Daemon)
+{
+    // Pinned upstream ZmxSupport/RemoteBinding encodes the stable pane UUID in this name.
+    [JsonIgnore] public Guid? OriginPaneId => Daemon is not null && AgtermRemoteDiscovery.DaemonName(Daemon)
+        && Guid.TryParseExact(Daemon[7..], "N", out var id) ? id : null;
+}
 public sealed record AgtermSession(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name,

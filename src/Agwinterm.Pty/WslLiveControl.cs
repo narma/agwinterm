@@ -12,7 +12,7 @@ public static class WslLiveControl
 {
     public static void Validate(string command, JsonElement args, string? target)
     {
-        if (command == "zmx.export.tree")
+        if (command is "zmx.export.tree" or "zmx.export.ready")
         {
             _ = WslOriginExportRequest.Parse(args, target);
             return;

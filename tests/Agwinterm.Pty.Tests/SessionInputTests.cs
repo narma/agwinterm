@@ -54,6 +54,8 @@ public class SessionInputTests
         program.GetField("_quick", fields)!.SetValue(app, pane);
         var observation = new ControlObservation("quick-window");
         program.GetField("_observation", fields)!.SetValue(app, observation);
+        var jobs = program.GetField("_replicaJobs", fields)!;
+        jobs.SetValue(app, Activator.CreateInstance(jobs.FieldType));
         observation.ObservePane("quick:old", new StatusSignal());
         using var cancel = new CancellationTokenSource();
         var wait = observation.WaitAsync("pane", "quick:old", new HashSet<AgentStatus> { AgentStatus.Completed }, cancellationToken: cancel.Token);
@@ -252,6 +254,42 @@ public class SessionInputTests
         session.Emulator.Feed("\x1b[?uFINAL-after-query"u8);
         Assert.Contains("FINAL-after-query", session.Emulator.DumpRow(0));
         Assert.Equal(closed ? 0 : 1, session.Attempts);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void DelayedOriginResultCannotOverwriteReplacementProgram(bool sessionWide)
+    {
+        var program = LoadProgram();
+        var app = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(program);
+        const BindingFlags fields = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        object Make(string name) => Activator.CreateInstance(program.GetNestedType(name, BindingFlags.NonPublic)!, true)!;
+        static void Set(object target, string name, object? value) => target.GetType().GetField(name, fields)!.SetValue(target, value);
+        var slot = Make("OverlaySlot");
+        Set(app, "_overlayExitLock", new object());
+        var scope = new AgtermOriginPresentationScope("account", Guid.NewGuid().ToString(), Guid.NewGuid().ToString(),
+            new("Ubuntu", "alice", "origin", "/usr/bin/zmx", "/tmp/zmx"));
+        AgtermOverlayJob Job() => new(scope, 10, 20, null,
+            System.Text.Json.JsonSerializer.SerializeToElement(new { command = "exit 7", cwd = "/tmp" }), false, 100);
+        var old = Job(); old.Finish("exit 7");
+        var record = program.GetMethod("RecordOriginJobResult", fields)!;
+        void Complete() => record.Invoke(app, [slot, old, sessionWide, old.Result!]);
+        object resultOwner = sessionWide ? app : slot;
+        string resultField = sessionWide ? "_lastOverlayExit" : "LastResult";
+        string Result() => (string)resultOwner.GetType().GetField(resultField, fields)!.GetValue(resultOwner)!;
+        Set(slot, "OriginJob", old); Complete();
+        Assert.Equal("exit 7", Result());
+
+        // A local replacement is running, then exits before the old UI callback is dispatched.
+        Set(resultOwner, resultField, "exit 23");
+        Set(slot, "Term", Make("Pane")); Complete();
+        Assert.Equal("exit 23", Result());
+        Set(slot, "OriginJob", null); Set(slot, "Term", null); Complete();
+        Assert.Equal("exit 23", Result());
+
+        // A later delegated job also owns its result independently of the old completion.
+        Set(slot, "OriginJob", Job()); Complete();
+        Assert.Equal("exit 23", Result());
     }
 
     private static Type LoadProgram()

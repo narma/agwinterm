@@ -1,6 +1,6 @@
 # WSL origin export development
 
-Updated 2026-11-02. Stage 3, change [export-wsl-sessions-to-agterm](../openspec/changes/export-wsl-sessions-to-agterm/proposal.md). Inbound terminal export is implemented behind explicit endpoint provisioning. Pinned actual-client acceptance and regression evidence are recorded below; no SSH service is installed automatically.
+Updated 2026-11-02. Stage 3, change [export-wsl-sessions-to-agterm](../openspec/changes/archive/2026-11-02-export-wsl-sessions-to-agterm/proposal.md). Inbound terminal export is implemented behind explicit endpoint provisioning. Pinned actual-client acceptance and regression evidence are recorded below; no SSH service is installed automatically.
 
 ## Implemented foundation
 
@@ -48,7 +48,7 @@ The new host-free tests cover independent binding IDs, scope isolation, ownershi
 
 ```powershell
 dotnet test tests/Agwinterm.Pty.Tests/Agwinterm.Pty.Tests.csproj -c Release --filter FullyQualifiedName~WslOriginExport --no-restore
-openspec validate export-wsl-sessions-to-agterm --strict
+openspec validate --specs --strict
 ```
 
 These tests launch no UI and are permitted directly. Future Windows UI tests must use `sandbox-ui.ps1 -Background`; WSL acceptance must retain the `wsl-ui.ps1` private-desktop routing.
@@ -57,7 +57,7 @@ The final combined Agterm/Wsl/ZmxCompatibility/RestoreState/SessionStartFence/Cr
 
 ## Runtime acceptance
 
-The [task list](../openspec/changes/export-wsl-sessions-to-agterm/tasks.md) tracks runtime acceptance and regressions. Native manifests, existing-only attachment, restricted relay and explicit provisioning are implemented. No global SSH-ready flag or automatic setup is enabled.
+The [task list](../openspec/changes/archive/2026-11-02-export-wsl-sessions-to-agterm/tasks.md) tracks runtime acceptance and regressions. Native manifests, existing-only attachment, restricted relay and explicit provisioning are implemented. No global SSH-ready flag or automatic setup is enabled.
 
 Read-only connectivity preflight used the user-supplied Mac and existing Ubuntu SSH agent. WSL-to-Mac authentication succeeded (Darwin). WSL already has sshd on port 2222. The reverse Mac-to-WSL check also succeeded (Linux) using the user-supplied `wsl` SSH alias and macOS SSH agent. No host keys, authorized keys, SSH services, installed applications or live sessions were changed.
 
@@ -75,7 +75,7 @@ Final expanded real-peer evidence: `artifacts/wsl-ui/20261102T211712-f77101b2/te
 
 Stage-2 regression passed in `artifacts/wsl-ui/20261102T211909-d05e009f`: borrowed input/read, exact-ticket UI restart, Rust-host loss, six separate SSH outages, close/Recent reopen, metadata clear, explicit leadership/detach, immediate close races and absent-origin refusal. Local WSL regression passed in `artifacts/wsl-ui/20261102T211921-4eef431e`: UI/host survival, recovery/retry, exact lifecycle controls, create/close races, multi-window restore, profile fallback and split/Recent behavior. Both recorded exit 0 on private non-input desktops. Distribution shutdown remains outside this regression: that destructive check requires a disposable distribution.
 
-Ordinary Windows `RestoreRoundtrip` passed all eight cells in background Windows Sandbox, exit 0: `artifacts/sandbox/20261102T212226-f31af1e3/results`. This covers graceful/killed restore, rejected context/capture mutations, opt-in command replay, quit-time command capture, split geometry and swapped pane IDs. Strict OpenSpec validation and `git diff --check` passed. Stage-3 CI and Greptile review are tracked in [PR #26](https://github.com/narma/agwinterm/pull/26), targeting `narma`; the change is not archived.
+Ordinary Windows `RestoreRoundtrip` passed all eight cells in background Windows Sandbox, exit 0: `artifacts/sandbox/20261102T212226-f31af1e3/results`. This covers graceful/killed restore, rejected context/capture mutations, opt-in command replay, quit-time command capture, split geometry and swapped pane IDs. Strict OpenSpec validation and `git diff --check` passed. Stage-3 [PR #26](https://github.com/narma/agwinterm/pull/26) was squash-merged into `narma` as `35e9024` after passing CI and clean Greptile 5/5 review on `ca97ef6`. Main specs were synced and the change archived on 2026-11-02.
 
 Reproduce with `tests/integration/wsl-origin-export.ps1 -BuildDirectory PINNED_WSL_BUILD -Destination MAC -AgentSocket WSL_AGENT -MacAgentSocket MAC_AGENT -MacApp PINNED_APP -PeerHost WSL_ALIAS`. The entry point routes every Windows UI process to the private non-input desktop. Omit peer parameters for the local real-daemon matrix. Host-free `export-protocol-tests.py HELPER` covers explicit provisioning, no overwrite, rollback, disable, malformed/duplicate/oversized requests, symlink refusal, unavailable UI and unsupported commands; CI runs it on both Linux architectures.
 

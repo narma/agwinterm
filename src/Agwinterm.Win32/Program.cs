@@ -440,6 +440,12 @@ internal partial class Program : ISessionHost, IWindowHost
         public readonly OverlaySlot Overlay = new();
         public HudSpec? Hud;      // passive session-wide presentation, never restored or a PTY
         public long? HudDeadline;
+        public bool HudMirrored;
+        public long OriginHudGeneration;
+        public AgtermPassivePresentation? RemotePresentation;
+        public string? PresentationError;
+        public readonly AgtermQuestionDelivery PresentationQuestion = new();
+        public string? EffectiveContext => Context ?? RemotePresentation?.Context;
         // Wave F2: per-session background watermark (a faint image drawn behind the terminal of every pane).
         public string? BgPath;      // absolute path to the copied image under AppDir\backgrounds (null = none)
         public int BgOpacity = 15;  // 0..100 (drawn opacity of the watermark)
@@ -471,6 +477,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <c>--block</c> caller holds the source of the term its own open created.</summary>
     private sealed class OverlaySlot
     {
+        public AgtermOverlayJob? OriginJob;
         public bool Hidden;
         public int? WidthDip, HeightDip;
         public OverlayGeometry Geometry => new(SizePercent, WidthDip, HeightDip);

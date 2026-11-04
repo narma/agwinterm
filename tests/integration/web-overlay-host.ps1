@@ -74,6 +74,7 @@ public static class WebGateWindow {
         finally { Marshal.FreeHGlobal(memory); }
     }
     public static void Key(IntPtr hwnd,int key) { PostMessageW(hwnd,0x100,(IntPtr)key,(IntPtr)1);PostMessageW(hwnd,0x101,(IntPtr)key,(IntPtr)1); }
+    public static void NativeSpace() { keybd_event(0x20,0x39,0,UIntPtr.Zero);System.Threading.Thread.Sleep(40);keybd_event(0x20,0x39,2,UIntPtr.Zero); }
     public static IntPtr Find(int pid) {
         IntPtr result=IntPtr.Zero;
         EnumWindows((hwnd,arg)=> { GetWindowThreadProcessId(hwnd,out uint owner); var name=new StringBuilder(256); GetClassNameW(hwnd,name,256); var title=new StringBuilder(256); GetWindowTextW(hwnd,title,256);
@@ -116,8 +117,13 @@ function Start-App([switch]$Restore) {
     throw 'Test application did not start'
 }
 function Stop-App {
-    [void](Call @('window','close'))
+    if ($script:process.HasExited) { throw 'Test app exited before the close request' }
+    # Closing the final window can tear down the pipe before its reply is read.
+    # The exact owned process must still exit normally within the deadline.
+    $null = & $Ctl window close --pipe $identity --json 2>&1
     if (-not $script:process.WaitForExit(10000)) { throw 'Test app did not close' }
+    if ($script:process.ExitCode -ne 0) { throw "Test app closed abnormally: $($script:process.ExitCode)" }
+    $global:LASTEXITCODE = 0
     $script:process=$null
 }
 try {
@@ -263,9 +269,30 @@ try {
     Start-Sleep -Milliseconds 200
     Require ((Call @('tree')).result.workspaces[0].sessions[0].htmlOverlays[0].visible) 'dismissing settings restores browser presentation'
     Require ($valuePattern.Current.Value -eq 'unsaved web draft') 'native modal panels preserve web edits'
+    [WebGateWindow]::FocusForKeys($handle)
+    $editor.SetFocus()
+    $terminalBeforeSwitch=(Call @('session','text','--target',$owner)).result
     $second=Call @('session','new','--name','web-peer')
     Require $second.ok 'second owner session opens'
+    for($i=0;$i -lt 50;$i++) {
+        $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
+        if(-not $ownerSnapshot.htmlOverlays[0].visible){break}
+        Start-Sleep -Milliseconds 100
+    }
+    Require (-not $ownerSnapshot.htmlOverlays[0].visible) 'switching away hides the editor before testing focus return'
     [void](Call @('session','select','--target',$owner))
+    for($i=0;$i -lt 50;$i++) {
+        $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
+        if($ownerSnapshot.htmlOverlays[0].visible){break}
+        Start-Sleep -Milliseconds 100
+    }
+    # Posting directly to a browser HWND or reading DOM/UIA focus can conceal
+    # lost native focus. Deliver ordinary input to Windows' actual focus owner.
+    [WebGateWindow]::NativeSpace()
+    for($i=0;$i -lt 50 -and $valuePattern.Current.Value -ne 'unsaved web draft ';$i++){Start-Sleep -Milliseconds 100}
+    Require ($valuePattern.Current.Value -eq 'unsaved web draft ') 'returning to a session restores actual browser keyboard focus'
+    Require ((Call @('session','text','--target',$owner)).result -ceq $terminalBeforeSwitch) 'restored browser input does not leak into its terminal'
+    $valuePattern.SetValue('unsaved web draft')
     Require ((Call @('session','switch','begin')).ok) 'native switcher opens'
     $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
     Require (-not $ownerSnapshot.htmlOverlays[0].visible) 'switcher hides browser presentation'
@@ -294,6 +321,7 @@ try {
         Require ($valuePattern.Current.Value -eq 'unsaved web draft') 'monitor move preserves DOM edits'
     }
     if (@($monitorDpis | Select-Object -Unique).Count -lt 2) { Write-Host 'UNVERIFIED mixed physical DPI: all available monitors use the same DPI' }
+    $nativeDpi=(Call @('window','geometry')).result.dpi
     foreach ($dpi in @(96,192,144)) {
         [WebGateWindow]::Dpi($handle,$dpi)
         $ownerSnapshot=@((Call @('tree')).result.workspaces.sessions | Where-Object id -eq $owner)[0]
@@ -301,6 +329,10 @@ try {
         Require ($bounds.x -ge 0 -and $bounds.y -ge 0 -and $bounds.width -gt 0 -and $bounds.height -gt 0 -and $bounds.x+$bounds.width -le 900 -and $bounds.y+$bounds.height -le 700) "synthetic DPI $dpi keeps web content clipped"
         Require ($valuePattern.Current.Value -eq 'unsaved web draft') "synthetic DPI $dpi preserves DOM edits"
     }
+    # Synthetic WM_DPICHANGED messages do not change the monitor's real DPI.
+    # Restore it before later toolbar/cookbook checks, otherwise a deliberately
+    # narrowed high-DPI layout legitimately hides optional actions such as Copy.
+    [WebGateWindow]::Dpi($handle,$nativeDpi)
     $browserProcess = @(Get-CimInstance Win32_Process | Where-Object {
         $_.ParentProcessId -eq $process.Id -and $_.Name -eq 'msedgewebview2.exe' -and $_.CommandLine -notmatch '--type='
     })
@@ -338,14 +370,14 @@ try {
         "<!doctype html><meta charset='utf-8'><script>$scriptText</script>" | Set-Content $source
         $review = Call @('session','overlay','open','--html',$source,'--js','--bridge','review','--target',$owner)
         Require ($review.ok -and $review.result.pageID) "review $mode opens"
-        for ($i=0; $i -lt 80; $i++) {
+        for ($i=0; $i -lt 400; $i++) {
             $result=(Call @('session','overlay','result','--page',$review.result.pageID)).result.pageOutcome
             if ($result.outcome -ne 'pending') { break }
             Start-Sleep -Milliseconds 50
         }
         if ($mode -eq 'empty') { Require ($result.outcome -eq 'submitted' -and $result.value -ceq '') 'empty review submission succeeds' }
         elseif ($mode -eq 'cancel') { Require ($result.outcome -eq 'dismissed') 'review close records dismissal' }
-        elseif ($mode -eq 'subframe') { Require ($result.outcome -eq 'submitted' -and $result.value -eq 'frame blocked') 'review subframes cannot submit through the parent bridge' }
+        elseif ($mode -eq 'subframe') { Require ($result.outcome -eq 'submitted' -and $result.value -eq 'frame blocked') "review subframes cannot submit through the parent bridge ($($result | ConvertTo-Json -Compress))" }
         elseif ($mode -eq 'stale-reload') { Require ($result.outcome -eq 'submitted' -and $result.value -eq 'fresh document') 'reload invalidates the previous document token' }
         else { Require ($result.outcome -eq 'submitted' -and $result.value.StartsWith('denied:')) 'unknown bridge commands and stale tokens cannot submit attack data' }
         for ($i=0; $i -lt 40; $i++) {

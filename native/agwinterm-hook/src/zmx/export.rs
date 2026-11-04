@@ -8,6 +8,86 @@ use std::{
 
 const MAX: usize = 4 * 1024 * 1024;
 const GUARD: &str = "printf '%s\\n' 'agterm: remote session is gone'; exit 1";
+static PRESENTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+mod jobs;
+mod pages;
+
+fn presentation_args(root: &Path, config: &Value, session: &Value) -> Result<Vec<String>> {
+    let mut args = vec!["zmx".into(), "export".into(), "present".into(),
+        "--window".into(), text(session, "windowID")?.into(), "--target".into(), text(session, "id")?.into()];
+    for (flag, key) in [("distribution", "distribution"), ("user", "user"), ("origin", "origin"),
+        ("executable", "executable"), ("socket-directory", "socketDirectory")] {
+        args.extend([format!("--{flag}"), text(config, key)?.into()]);
+    }
+    args.extend(["--adapter".into(), root.join("agtermctl").to_str().ok_or("invalid adapter path")?.into(),
+        "--pipe".into(), text(config, "pipe")?.into()]);
+    Ok(args)
+}
+
+fn relay_frames(input: impl Read, mut output: impl Write, progress: std::sync::Arc<std::sync::atomic::AtomicU64>, start: Instant) -> io::Result<()> {
+    use std::io::BufRead;
+    let mut reader = io::BufReader::new(input);
+    loop {
+        let mut line = Vec::new();
+        reader.by_ref().take(262145).read_until(b'\n', &mut line)?;
+        if line.is_empty() { return Ok(()); }
+        if line.len() > 262144 || line.last() != Some(&b'\n') || std::str::from_utf8(&line).is_err() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid presentation line"));
+        }
+        output.write_all(&line)?;
+        output.flush()?;
+        progress.store(start.elapsed().as_secs(), std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn present(root: &Path, config: &Value, session_id: &str) -> Result<Value> {
+    uuid(session_id)?;
+    let inventory = tree(root, config)?;
+    let session = inventory["remote"]["sessions"].as_array().ok_or("missing sessions")?.iter()
+        .find(|row| row["id"] == session_id).ok_or("exact presentation session unavailable")?;
+    let mut child = Command::new(text(config, "cli")?).args(presentation_args(root, config, session)?)
+        .env_remove("AGWINTERM_SESSION_ID").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    PRESENTING.store(true, std::sync::atomic::Ordering::Relaxed);
+    let stdin = child.stdin.take().ok_or("missing presentation stdin")?;
+    let stdout = child.stdout.take().ok_or("missing presentation stdout")?;
+    let stderr = child.stderr.take().ok_or("missing presentation stderr")?;
+    let start = Instant::now();
+    let input_progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let output_progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (send, receive) = std::sync::mpsc::channel();
+    let sent = send.clone();
+    let progress = input_progress.clone();
+    std::thread::spawn(move || { let result = relay_frames(io::stdin().lock(), stdin, progress, start); let _ = sent.send(result); });
+    let sent = send.clone();
+    let progress = output_progress.clone();
+    std::thread::spawn(move || { let result = relay_frames(stdout, io::stdout().lock(), progress, start); let _ = sent.send(result); });
+    std::thread::spawn(move || {
+        let result = io::copy(&mut stderr.take(65537), &mut io::sink());
+        if !matches!(result, Ok(n) if n <= 65536) {
+            let _ = send.send(Err(io::Error::new(io::ErrorKind::InvalidData, "presentation stderr limit")));
+        }
+    });
+    let result = (|| -> Result<Value> {
+        loop {
+            if let Ok(result) = receive.recv_timeout(Duration::from_millis(100)) { result?; return Ok(Value::Null); }
+            if let Some(status) = child.try_wait()? {
+                if !status.success() { return Err("origin presentation unavailable".into()); }
+                return Ok(Value::Null);
+            }
+            if root.join("disabled").try_exists()? || config_state(root)? != *config {
+                return Err("presentation endpoint revoked or replaced".into());
+            }
+            let elapsed = start.elapsed().as_secs();
+            if elapsed.saturating_sub(input_progress.load(std::sync::atomic::Ordering::Relaxed)) > 35
+                || elapsed.saturating_sub(output_progress.load(std::sync::atomic::Ordering::Relaxed)) > 35 {
+                return Err("presentation stream stalled".into());
+            }
+        }
+    })();
+    let _ = child.kill();
+    let _ = child.wait();
+    result
+}
 
 // Endpoint authority must not depend on which duplicate JSON field a parser keeps.
 struct Unique(Value);
@@ -338,6 +418,7 @@ fn publish(
 
 fn tree(root: &Path, config: &Value) -> Result<Value> {
     let initial = windows(config)?;
+    let mut presentation_ready = !initial.is_empty();
     let mut sessions = Vec::new();
     let mut bindings = Vec::new();
     let mut ids = BTreeSet::new();
@@ -363,6 +444,7 @@ fn tree(root: &Path, config: &Value) -> Result<Value> {
                 .into(),
         ]);
         let result = relay(config, &args)?;
+        presentation_ready &= result["presentation"] == 1;
         for row in result["remote"]["sessions"]
             .as_array()
             .ok_or("invalid origin sessions")?
@@ -401,7 +483,9 @@ fn tree(root: &Path, config: &Value) -> Result<Value> {
     if windows(config)? != initial {
         return Err("origin windows changed during discovery".into());
     }
-    publish(root, config, sessions, bindings)
+    let mut result = publish(root, config, sessions, bindings)?;
+    if presentation_ready { result["remote"]["presentation"] = json!(1); }
+    Ok(result)
 }
 
 fn attachment_request(config: &Value, manifest: &Value, args: &[String]) -> Result<Value> {
@@ -470,8 +554,17 @@ fn dispatch() -> Result<Value> {
         return lifecycle::attach(&attachment_request(&config, &manifest, &args)?);
     }
     let config = config(directory)?;
+    if args.len() == 4 && args[..3] == ["session", "overlay", "run-job"] {
+        return jobs::run(directory, &config, &args[3]);
+    }
+    if args.len() == 4 && args[..3] == ["session", "overlay", "page-serve"] {
+        return pages::run(directory, &config, &args[3]);
+    }
     if args == ["zmx", "tree", "--json"] {
         return tree(directory, &config);
+    }
+    if args.len() == 3 && args[0] == "zmx" && args[1] == "present" {
+        return present(directory, &config, &args[2]);
     }
     if args.len() >= 4 && args[0] == "zmx" && args[1] == "screen" {
         let name = &args[2];
@@ -529,17 +622,22 @@ pub(crate) fn run() -> i32 {
     {
         std::thread::spawn(|| {
             std::thread::sleep(Duration::from_secs(55));
-            eprintln!("origin export deadline exceeded");
-            std::process::exit(1);
+            if !PRESENTING.load(std::sync::atomic::Ordering::Relaxed) {
+                eprintln!("origin export deadline exceeded");
+                std::process::exit(1);
+            }
         });
     }
     match dispatch() {
         Ok(result) => {
-            println!("{}", json!({"ok":true,"result":result}));
+            if !PRESENTING.load(std::sync::atomic::Ordering::Relaxed) { println!("{}", json!({"ok":true,"result":result})); }
             0
         }
         Err(error) => {
-            println!("{}", json!({"ok":false,"error":error.to_string()}));
+            let args: Vec<String> = env::args().skip(1).collect();
+            let page_stream = args.len() >= 3 && args[..3] == ["session", "overlay", "page-serve"];
+            if env::args().nth(2).as_deref() == Some("present") || page_stream { eprintln!("{error}"); }
+            else { println!("{}", json!({"ok":false,"error":error.to_string()})); }
             1
         }
     }

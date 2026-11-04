@@ -25,6 +25,24 @@ public class AskCliTests
         int calls = 0;
         Assert.Equal(1, AskCli.Execute(["ask"], "{}"u8.ToArray(), _ => { calls++; throw new IOException("lost"); }, _ => {}, _ => {}, _ => {})); Assert.Equal(1, calls);
     }
+    [Fact] public void SessionTargetOnlyAppliesToOpen()
+    {
+        string session = Guid.NewGuid().ToString(); var calls = new List<JsonElement>();
+        using var stop = new CancellationTokenSource();
+        Assert.Equal(130, AskCli.Execute(["ask", "open", "--target", session], "{}"u8.ToArray(), raw =>
+        { calls.Add(Json(raw)); return calls.Count == 1 ? Opened : Pending; }, _ => stop.Cancel(), _ => {}, _ => {}, stop.Token));
+        Assert.Equal(session, calls[0].GetProperty("target").GetString());
+        Assert.All(calls.Skip(1), c => Assert.Equal("ask-1", c.GetProperty("target").GetString()));
+    }
+    [Theory]
+    [InlineData("open", "active")]
+    [InlineData("open", "00000000-0000-0000-0000-000000000000")]
+    [InlineData("result", "12345678-1234-1234-1234-123456789abc")]
+    public void InvalidSessionTargetNeverSends(string verb, string target)
+    {
+        string[] argv = verb == "open" ? ["ask", verb, "--target", target] : ["ask", verb, "ask-1", "--target", target];
+        Assert.Equal(2, AskCli.Execute(argv, "{}"u8.ToArray(), _ => throw new Exception("sent"), _ => {}, _ => {}, _ => {}));
+    }
     [Fact] public void NoBlockLeavesOwnershipWithTheForm()
     {
         int calls = 0; var output = new List<string>();

@@ -43,6 +43,25 @@ public class NativeAskTests
         for (int i = 0; i < 32; i++) { var p = r.Open("w" + i, spec)!; r.CloseWindow(p.Window); }
         Assert.Null(r.Find(ids[^1]));
     }
+    [Fact] public void SessionOwnershipIsImmutableAndClosureIsScoped()
+    {
+        var registry = new AskRegistry(); var spec = Parse("{}");
+        var targeted = registry.Open("window-a", spec, "session-a")!;
+        Assert.Equal("session-a", registry.Find(targeted.Id)!.Session);
+        Assert.Null(registry.CloseSession("window-b", "session-a"));
+        Assert.Null(registry.CloseSession("window-a", "session-b"));
+        Assert.Equal("pending", registry.Find(targeted.Id)!.Outcome.Result);
+        Assert.Equal(targeted.Id, registry.CloseSession("window-a", "session-a"));
+        Assert.False(registry.Resolve(targeted.Id, AskOutcome.Answer(spec, "submit", new Dictionary<string, AskValue>())));
+        registry.CloseWindow("window-a");
+        var retained = registry.Find(targeted.Id)!;
+        Assert.Equal("session-a", retained.Session); Assert.Equal("window-a", retained.Window);
+        Assert.Equal("owner-closed", retained.Outcome.Reason);
+        var legacy = registry.Open("window-a", spec)!;
+        Assert.Null(registry.CloseSession("window-a", "session-a"));
+        Assert.Null(registry.Find(legacy.Id)!.Session);
+        Assert.Equal("pending", registry.Find(legacy.Id)!.Outcome.Result);
+    }
     [Fact] public void CollectionAndTextLimitsRefuse()
     {
         var f = new { id = "x", label = "x", type = "text" };
@@ -50,5 +69,23 @@ public class NativeAskTests
         Assert.Throws<ArgumentException>(() => Parse(JsonSerializer.Serialize(new { title = new string('x', 4097) })));
         var spec = Parse("""{"fields":[{"id":"x","label":"x","type":"text"}]}""");
         Assert.Throws<ArgumentException>(() => AskOutcome.Answer(spec, "submit", new Dictionary<string, AskValue> { ["x"] = new(new string('x', 4097), [], null) }));
+    }
+
+    [Fact] public async Task ConcurrentAnswerCancellationAndOwnerCloseKeepExactlyOneOutcome()
+    {
+        var spec = Parse("{}");
+        for (int attempt = 0; attempt < 50; attempt++)
+        {
+            var registry = new AskRegistry(); var request = registry.Open("window", spec, "session")!;
+            using var start = new ManualResetEventSlim();
+            var answer = Task.Run(() => { start.Wait(); registry.Resolve(request.Id, AskOutcome.Answer(spec, "submit", new Dictionary<string, AskValue>())); });
+            var cancel = Task.Run(() => { start.Wait(); registry.Resolve(request.Id, new("cancelled", "cancel")); });
+            var close = Task.Run(() => { start.Wait(); registry.CloseSession("window", "session"); });
+            start.Set(); await Task.WhenAll(answer, cancel, close);
+            var retained = registry.Find(request.Id)!;
+            Assert.Contains(retained.Outcome.Result, new[] { "answered", "cancelled" });
+            Assert.False(registry.Resolve(request.Id, new("cancelled", "escape")));
+            Assert.Equal(retained, registry.Find(request.Id));
+        }
     }
 }

@@ -60,8 +60,8 @@ try {
         $path = Join-Path $temporary $definition.Path
         $null = New-Item -ItemType Directory -Path (Split-Path $path) -Force
         @'
-param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly)
-@{exe=$Exe;ctl=$Ctl;strict=[bool]$Strict;suite=$Suite;dpi=$Dpi;only=$Only;cookbook=[bool]$Cookbook;output=$Output;spec=$Spec} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
+param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly,[string]$Mode,[string]$Runtime,[string]$LanguageSource)
+@{exe=$Exe;ctl=$Ctl;strict=[bool]$Strict;suite=$Suite;dpi=$Dpi;only=$Only;cookbook=[bool]$Cookbook;output=$Output;spec=$Spec;mode=$Mode;runtime=$Runtime;portable=$Portable;languageSource=$LanguageSource} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
 exit 0
 '@ | Set-Content -LiteralPath $path
         $parameters = @{}
@@ -70,6 +70,7 @@ exit 0
         if ($name -eq 'WebOverlayHost') { $parameters.Cookbook=$true }
         $inputs = @($definition.Inputs | Where-Object { $_ })
         if ($name -eq 'Conformance') { $inputs += 'Spec' }
+        if ($name -eq 'WebReleaseAcceptance') { $parameters=@{Mode='Portable';Runtime='Absent'}; $inputs+='Portable' }
         @{test=$name; parameters=$parameters; inputs=$inputs; outputs=@($definition.Outputs | Where-Object { $_ }); suite='Navigation'; exeName='Agwinterm.Win32.exe'} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $temporary 'run.json')
         $result = Run-Probe (Join-Path $integration 'sandbox-ui-dispatch.ps1') @('-WorkDirectory',$temporary) $guest
         Check "$name dispatch succeeds" ($result.code -eq 0)
@@ -79,6 +80,8 @@ exit 0
         if ($name -eq 'RestoreRoundtrip') { Check 'strings are data, including quotes and shell syntax' ($probe.only -ceq $parameters.Only) }
         if ($name -eq 'WebOverlayHost') { Check 'switches survive JSON dispatch' $probe.cookbook }
         if ($name -eq 'Conformance') { Check 'custom contract uses the guest input path' ($probe.spec -eq (Join-Path $temporary 'inputs/Spec')) }
+        if ($name -eq 'WebReleaseAcceptance') { Check 'release acceptance stages package paths and preserves runtime selection' ($probe.mode -eq 'Portable' -and $probe.runtime -eq 'Absent' -and $probe.portable -eq (Join-Path $temporary 'inputs/Portable')) }
+        if ($name -eq 'WebImeAcceptance') { Check 'IME package uses the guest input path' ($probe.languageSource -eq (Join-Path $temporary 'inputs/LanguageSource')) }
         if ($definition.Outputs) { Check "$name writes reports inside guest artifacts" ($probe.output -eq (Join-Path $temporary "artifacts/$name-Output.json")) }
     }
     @{test='NotAnEntryPoint'; parameters=@{}} | ConvertTo-Json | Set-Content (Join-Path $temporary 'run.json')

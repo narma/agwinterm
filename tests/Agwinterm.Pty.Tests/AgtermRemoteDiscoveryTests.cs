@@ -6,6 +6,42 @@ namespace Agwinterm.Pty.Tests;
 public class AgtermRemoteDiscoveryTests
 {
     [Theory]
+    [InlineData(null, null)]
+    [InlineData("null", null)]
+    [InlineData("false", null)]
+    [InlineData("\"1\"", null)]
+    [InlineData("0", null)]
+    [InlineData("-1", null)]
+    [InlineData("1.5", null)]
+    [InlineData("2147483648", null)]
+    [InlineData("1", 1)]
+    [InlineData("2", 2)]
+    public void OptionalPresentationDoesNotBreakTerminalImport(string? json, int? expected)
+    {
+        var root = Envelope();
+        Remote(root).AsObject().Remove("presentation");
+        if (json is not null) Remote(root)["presentation"] = JsonNode.Parse(json);
+        var result = Decode(root);
+        Assert.Equal(expected, result.PresentationVersion);
+        Assert.True(Assert.Single(result.Sessions).CanImportTerminal);
+    }
+
+    [Fact]
+    public void StableIdentityFollowsDaemonWhenRolesSwap()
+    {
+        var root = Envelope();
+        var before = Decode(root).Sessions[0].Session.Panes;
+        var raw = Session(root)["panes"]!;
+        raw[0]!["pane"] = "right";
+        raw[1]!["pane"] = "left";
+        var after = Decode(root).Sessions[0].Session.Panes;
+        Assert.NotNull(before[0].OriginPaneId);
+        Assert.Equal(before[0].OriginPaneId, after[1].OriginPaneId);
+        Assert.Equal(before[1].OriginPaneId, after[0].OriginPaneId);
+        Assert.NotEqual(after[0].OriginPaneId, after[1].OriginPaneId);
+    }
+
+    [Theory]
     [InlineData("single", 1, null)]
     [InlineData("split", 2, "vertical")]
     public void ReadsCapturedPinnedApplicationEnvelope(string fixture, int panes, string? axis)

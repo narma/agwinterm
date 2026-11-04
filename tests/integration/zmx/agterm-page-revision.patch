@@ -1,0 +1,644 @@
+diff --git a/agterm/Control/ControlServer+PageServe.swift b/agterm/Control/ControlServer+PageServe.swift
+index 8a36db0..bfc73d9 100644
+--- a/agterm/Control/ControlServer+PageServe.swift
++++ b/agterm/Control/ControlServer+PageServe.swift
+@@ -191,16 +191,42 @@ final class PageServeStream {
+         guard let server, let place = companion.map(server.companionPagePlace) ?? server.remotePagePlace(page) else {
+             return .failure(id: id, error: "page closed")
+         }
++        var controlJSON = request
++        var documentGuard: (@MainActor @Sendable () -> Bool)?
++        if companion == nil {
++            struct Counters: Decodable { let document: Int; let appliedSeq: Int }
++            guard let counters = try? JSONDecoder().decode(Counters.self, from: Data(request.utf8)),
++                  counters.document > 0, counters.document <= 9007199254740991,
++                  counters.appliedSeq >= 0, counters.appliedSeq <= 9007199254740991,
++                  let envelope = try? JSONSerialization.jsonObject(with: Data(request.utf8)) as? [String: Any],
++                  Set(envelope.keys).isSubset(of: ["document", "appliedSeq", "request"]) else {
++                return .failure(id: id, error: "revision-aware bridge required")
++            }
++            let activation = envelope["request"] == nil
++            guard server.pageDocument(page, revision: counters.document, applied: counters.appliedSeq, activate: activation) else {
++                return .failure(id: id, error: "page document retired")
++            }
++            if activation { return .reply(id: id, response: "{\"ok\":true}") }
++            guard let command = envelope["request"] as? [String: Any],
++                  let data = try? JSONSerialization.data(withJSONObject: command) else {
++                return .failure(id: id, error: "invalid document request")
++            }
++            controlJSON = String(decoding: data, as: UTF8.self)
++            let pageID = page
++            documentGuard = { [weak server] in
++                server?.pageDocument(pageID, revision: counters.document, applied: counters.appliedSeq, activate: false) == true
++            }
++        }
+         let origin = HtmlBridgePage(window: place.window?.uuidString, session: place.session, pane: place.pane)
+         let built: ControlRequest
+-        switch HtmlBridge.request(from: Data(request.utf8), page: origin) {
++        switch HtmlBridge.request(from: Data(controlJSON.utf8), page: origin) {
+         case .success(let value): built = value
+         case .failure(let refusal): return .failure(id: id, error: refusal.message)
+         }
+         guard let dispatch = HtmlOverlayRegistry.shared.dispatch else {
+             return .failure(id: id, error: "control is unavailable")
+         }
+-        let response = await dispatch(built)
++        let response = await RemoteDocumentGuard.$current.withValue(documentGuard) { await dispatch(built) }
+         guard let encoded = try? JSONEncoder().encode(response) else {
+             return .failure(id: id, error: "reply could not be encoded")
+         }
+@@ -224,6 +250,9 @@ final class PageServeStream {
+ }
+
+ extension ControlServer {
++    func pageDocument(_ page: UUID, revision: Int, applied: Int, activate: Bool) -> Bool {
++        openStores.contains { $0.remotePageDocument(page, revision: revision, applied: applied, activate: activate) }
++    }
+     static let pageServeLimits = ControlStreamOwner.Limits(maxLineBytes: PageServeCodec.maxFrameBytes,
+                                                            maxPendingLines: 8, writeTimeoutSeconds: 5)
+     static let pageServeResourceLimit = 8
+diff --git a/agterm/Control/ControlServer+RemotePage.swift b/agterm/Control/ControlServer+RemotePage.swift
+index bc3056c..05f086e 100644
+--- a/agterm/Control/ControlServer+RemotePage.swift
++++ b/agterm/Control/ControlServer+RemotePage.swift
+@@ -59,6 +59,11 @@ extension ControlServer {
+         guard let store = library.store(forSession: id), let slot = store.replicaPage(command.page, forSession: id) else { return }
+         let local = slot.page.id
+         let registry = HtmlOverlayRegistry.shared
++        if let record = replicaPages[local] {
++            guard command.seq > record.appliedSeq else { return }
++            record.channel?.appliedSequence = command.seq
++            if [.reloadCurrent, .reloadOriginal, .back, .forward].contains(command.action) { registry.prepareReplicaDocument(local) }
++        }
+         var refusal: String?
+         switch command.action {
+         case .hide, .show: store.setReplicaPageHidden(command.page, forSession: id, hidden: command.action == .hide)
+@@ -101,7 +106,7 @@ extension ControlServer {
+     }
+
+     static func link(_ channel: RemotePageChannel, ownPageCommandsLocal: Bool = false) -> HtmlReplicaLink {
+-        HtmlReplicaLink(
++        var link = HtmlReplicaLink(
+             ownPageCommandsLocal: ownPageCommandsLocal,
+             fetch: { [weak channel] path, revision in
+                 guard let channel else { throw RemotePageChannel.Failure.closed }
+@@ -112,5 +117,13 @@ extension ControlServer {
+                 guard let channel else { throw RemotePageChannel.Failure.closed }
+                 return try await channel.bridge(request)
+             })
++        if !ownPageCommandsLocal {
++            link.beginDocument = { [weak channel] in channel?.beginDocument() }
++            link.captureBridge = { [weak channel] in
++                guard let channel else { return { _ in throw RemotePageChannel.Failure.closed } }
++                return channel.captureBridge()
++            }
++        }
++        return link
+     }
+ }
+diff --git a/agterm/Control/ControlServer+SurfaceIO.swift b/agterm/Control/ControlServer+SurfaceIO.swift
+index 4ba5f06..5cb7759 100644
+--- a/agterm/Control/ControlServer+SurfaceIO.swift
++++ b/agterm/Control/ControlServer+SurfaceIO.swift
+@@ -570,6 +570,7 @@ extension ControlServer {
+     /// that terminal at each probe, so a swap or a close cannot hand the keystrokes to another terminal.
+     func injectText(_ text: String, into id: UUID, store: AppStore, select: Bool,
+                     pane: StatusPane?, token: String? = nil) async -> ControlResponse {
++        guard RemoteDocumentGuard.allowed else { return ControlResponse(ok: false, error: "page document retired") }
+         // a pane that does not lead its daemon takes scripted input through the daemon, never through
+         // its own surface, whose keystrokes the daemon drops
+         let session = store.session(withID: id)
+@@ -618,6 +619,7 @@ extension ControlServer {
+         (store.session(withID: id)?.surface as? GhosttySurfaceView)?.expediteSpawn()
+         for _ in 0..<12 {
+             try? await Task.sleep(nanoseconds: 30_000_000)
++            guard RemoteDocumentGuard.allowed else { return ControlResponse(ok: false, error: "page document retired") }
+             let live = store.session(withID: id)
+             var role = StatusPane.left
+             if let token {
+diff --git a/agterm/Control/RemotePageChannel.swift b/agterm/Control/RemotePageChannel.swift
+index 7666d11..6b5257b 100644
+--- a/agterm/Control/RemotePageChannel.swift
++++ b/agterm/Control/RemotePageChannel.swift
+@@ -79,7 +79,6 @@ final class RemotePagePermits: @unchecked Sendable {
+     private let state = NSCondition()
+     private var free: Int
+     private var closed = false
+-
+     init(_ count: Int) { free = count }
+
+     /// take waits for a permit; false once closed, when nothing more is delivered.
+@@ -161,6 +160,35 @@ final class RemotePageChannel {
+     private var slots: [Kind: Slots] = [.resource: Slots(limit: ControlServer.pageServeResourceLimit),
+                                         .bridge: Slots(limit: ControlServer.pageServeBridgeLimit)]
+     private var closed = false
++    var appliedSequence = 0
++    private var documentNumber = 0
++    private var documentAppliedSequence = 0
++    private var documentReady: Task<Void, Error>?
++
++    func beginDocument() {
++        documentNumber += 1
++        documentAppliedSequence = appliedSequence
++        let document = documentNumber, applied = appliedSequence
++        documentReady = Task {
++            let data = try JSONSerialization.data(withJSONObject: ["document": document, "appliedSeq": applied])
++            let raw = try await bridge(data)
++            guard let reply = try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any],
++                  reply["ok"] as? Bool == true else { throw Failure.closed }
++        }
++    }
++
++    func captureBridge() -> @MainActor @Sendable (Data) async throws -> String {
++        let document = documentNumber, applied = documentAppliedSequence, ready = documentReady
++        return { [weak self] request in
++            guard let self, let ready else { throw Failure.closed }
++            try await ready.value
++            guard self.documentNumber == document else { throw Failure.closed }
++            let value = try JSONSerialization.jsonObject(with: request)
++            let envelope = try JSONSerialization.data(withJSONObject: ["document": document, "appliedSeq": applied, "request": value])
++            return try await self.bridge(envelope)
++        }
++    }
++
+
+     /// start launches the helper and starts reading; a helper that cannot start closes the channel at once.
+     func start(_ argv: [String], launcher: RemotePageLauncher) {
+diff --git a/agterm/Views/HtmlOverlayRegistry.swift b/agterm/Views/HtmlOverlayRegistry.swift
+index 8fc36a0..6ce2567 100644
+--- a/agterm/Views/HtmlOverlayRegistry.swift
++++ b/agterm/Views/HtmlOverlayRegistry.swift
+@@ -29,6 +29,7 @@ final class HtmlOverlayRegistry {
+     // being emptied
+     private var clearing = false
+     private var pages: [UUID: HtmlOverlayPage] = [:]
++    func prepareReplicaDocument(_ id: UUID) { pages[id]?.prepareReplicaDocument() }
+     private var appearanceObserver: NSObjectProtocol?
+
+     /// install connects the model's release signal and the theme refresh; called once at launch.
+@@ -188,6 +189,8 @@ struct HtmlReplicaLink {
+     var ownPageCommandsLocal = false
+     let fetch: @MainActor @Sendable (_ path: String, _ revision: HtmlReplicaRevision) async throws -> HtmlPageResource
+     let bridge: @MainActor @Sendable (_ request: Data) async throws -> String
++    var beginDocument: (@MainActor @Sendable () -> Void)? = nil
++    var captureBridge: (@MainActor @Sendable () -> (@MainActor @Sendable (Data) async throws -> String))? = nil
+ }
+
+ /// HtmlOverlayPage is one page's web view and the delegates that keep the model in step with it: load
+@@ -234,6 +237,7 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+     private var textLoad = 0
+     private let storageFailure: String?
+     private let replica: HtmlReplicaLink?
++    private var bridgeDocumentToken = UUID().uuidString
+     private let revision: HtmlReplicaRevision
+     /// usesSavedStore is true for a page built on the saved browser store.
+     let usesSavedStore: Bool
+@@ -341,10 +345,50 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+                                                   forMainFrameOnly: true, in: Self.markdownWorld))
+         }
+         guard bridged else { return }
+-        controller.addUserScript(WKUserScript(source: HtmlOverlayBridge.adapterScript, injectionTime: .atDocumentEnd,
++        func stamp(_ script: String) -> String {
++            guard replica?.captureBridge != nil else { return script }
++            let handler = """
++            const nativeHandler = window.webkit.messageHandlers.agterm;
++            let documentEpoch = 0;
++            addEventListener('pagehide', () => { documentEpoch++; window.__agtermDocumentToken = null; });
++            const bindDocument = () => {
++              window.__agtermDocumentToken = null;
++              const epoch = documentEpoch, started = Date.now();
++              const bind = () => {
++                if (epoch !== documentEpoch || Date.now() - started >= 5000) return;
++                nativeHandler.postMessage({documentReady: true}).then(ready => {
++                  if (!ready) setTimeout(bind, 10);
++                }, () => {});
++              };
++              bind();
++            };
++            addEventListener('pageshow', bindDocument);
++            addEventListener('popstate', () => { documentEpoch++; bindDocument(); });
++            const handler = {postMessage(body) {
++              const epoch = documentEpoch, started = Date.now();
++              const token = window.__agtermDocumentToken;
++              return new Promise((resolve, reject) => {
++                const send = () => {
++                  if (epoch !== documentEpoch) return reject(new Error('page document retired'));
++                  const bound = token || window.__agtermDocumentToken;
++                  if (bound) {
++                    nativeHandler.postMessage({...body, documentToken: bound}).then(resolve, reject);
++                  } else if (Date.now() - started >= 5000) {
++                    reject(new Error('document binding unavailable'));
++                  } else { setTimeout(send, 10); }
++                };
++                send();
++              });
++            }};
++            """
++            return "window.__agtermDocumentToken = '\(bridgeDocumentToken)';\n" + script.replacingOccurrences(
++                of: "const handler = window.webkit.messageHandlers.agterm;", with: handler).replacingOccurrences(
++                of: "const body = {cmd", with: "const body = {documentToken: window.__agtermDocumentToken, cmd")
++        }
++        controller.addUserScript(WKUserScript(source: stamp(HtmlOverlayBridge.adapterScript), injectionTime: .atDocumentEnd,
+                                               forMainFrameOnly: true, in: HtmlOverlayBridge.world))
+         if overlay.javascript {
+-            controller.addUserScript(WKUserScript(source: HtmlOverlayBridge.helperScript, injectionTime: .atDocumentStart,
++            controller.addUserScript(WKUserScript(source: stamp(HtmlOverlayBridge.helperScript), injectionTime: .atDocumentStart,
+                                                   forMainFrameOnly: true, in: .page))
+         }
+     }
+@@ -354,13 +398,28 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+     /// page that left its slot is refused before anything runs.
+     func handleBridgeRequest(_ body: Any, mainFrame: Bool, reply: @escaping @MainActor (Any?, String?) -> Void) {
+         guard mainFrame else { return reply(nil, "requests from frames are refused") }
++        var body = body
++        if replica?.captureBridge != nil {
++            if let fields = body as? [String: Any], fields.count == 1, fields["documentReady"] as? Bool == true {
++                // A lifecycle signal only stamps the document currently in WebKit.
++                // It never returns a token to its sender or executes an origin command,
++                // so a queued signal from a retired document cannot regain authority.
++                guard !webView.isLoading, !loadPending else { return reply(false, nil) }
++                bindReplicaDocument()
++                return reply(true, nil)
++            }
++            guard var fields = body as? [String: Any], fields.removeValue(forKey: "documentToken") as? String == bridgeDocumentToken else {
++                return reply(nil, "page document retired")
++            }
++            body = fields
++        }
+         guard let store, let slot = store.htmlOverlaySlot(id) else { return reply(nil, "page closed") }
+         guard JSONSerialization.isValidJSONObject(body), let data = try? JSONSerialization.data(withJSONObject: body) else {
+             return reply(nil, "invalid request")
+         }
+         // a page shown for another Mac acts there, so its request goes as sent and that Mac fills the defaults
+         if let replica, !(replica.ownPageCommandsLocal && Self.addressesOwnPage(body)) {
+-            let bridge = replica.bridge
++            let bridge = replica.captureBridge?() ?? replica.bridge
+             Task {
+                 do {
+                     let (value, error) = HtmlOverlayBridge.reply(raw: try await bridge(data))
+@@ -435,10 +494,10 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+     func navigate(_ navigation: HtmlNavigation) -> String? {
+         switch navigation {
+         case .back:
+-            guard webView.canGoBack else { return OverlayHtmlError.noHistory(.back) }
++            guard webView.canGoBack else { bindReplicaDocument(); return OverlayHtmlError.noHistory(.back) }
+             webView.goBack()
+         case .forward:
+-            guard webView.canGoForward else { return OverlayHtmlError.noHistory(.forward) }
++            guard webView.canGoForward else { bindReplicaDocument(); return OverlayHtmlError.noHistory(.forward) }
+             webView.goForward()
+         case .browser:
+             if case .replica = overlay.source { return OverlayHtmlError.remoteFile }
+@@ -585,7 +644,25 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+     // `webView.url` names a pending load before its document replaces the one shown, so a browsing page
+     // takes its address at commit. A change on the shown origin is taken at once: it cannot change the
+     // site named, and a fragment or pushState change has no commit to wait for
++    func prepareReplicaDocument() {
++        guard replica?.captureBridge != nil else { return }
++        bridgeDocumentToken = UUID().uuidString
++        installScripts()
++        replica?.beginDocument?()
++    }
++
++    private func bindReplicaDocument() {
++        guard replica?.captureBridge != nil else { return }
++        // History can retain the DOM and its scripts. Replace the request stamp in
++        // that surviving document; messages already queued retain the old stamp.
++        let script = "window.__agtermDocumentToken = '\(bridgeDocumentToken)'; true"
++        for world in [WKContentWorld.page, HtmlOverlayBridge.world] {
++            webView.evaluateJavaScript(script, in: nil, in: world) { _ in }
++        }
++    }
++
+     private func urlChanged() {
++        if !webView.isLoading { bindReplicaDocument() }
+         if let url = webView.url, let shownURL, HtmlSource.origin(of: url) == HtmlSource.origin(of: shownURL) {
+             self.shownURL = url
+         }
+@@ -622,6 +699,9 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+         if decision == .cancel, target == .mainFrame, !userActivated, loadPending {
+             fail("navigation blocked: \(url.absoluteString)")
+         }
++        if decision == .allow, target == .mainFrame, replica?.captureBridge != nil {
++            prepareReplicaDocument()
++        }
+         return decision == .allow ? .allow : .cancel
+     }
+
+@@ -631,12 +711,14 @@ final class HtmlOverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
+     }
+
+     func webView(_: WKWebView, didCommit _: WKNavigation!) {
++        bindReplicaDocument()
+         committed = true
+         shownURL = webView.url
+         reportPage()
+     }
+
+     func webView(_: WKWebView, didFinish _: WKNavigation!) {
++        bindReplicaDocument()
+         loadPending = false
+         store?.setHtmlLoadState(id, state: .loaded, error: nil)
+         reportPage()
+diff --git a/agtermCore/Sources/agtermCore/AppStore+RemotePage.swift b/agtermCore/Sources/agtermCore/AppStore+RemotePage.swift
+index 9a2a1a9..3d97f93 100644
+--- a/agtermCore/Sources/agtermCore/AppStore+RemotePage.swift
++++ b/agtermCore/Sources/agtermCore/AppStore+RemotePage.swift
+@@ -45,6 +45,20 @@ public struct RemotePageClaim: Equatable, Sendable {
+ // MARK: - Pages handed to the viewer presenting a session, on the origin
+
+ extension AppStore {
++    public func remotePageDocument(_ id: UUID, revision: Int, applied: Int, activate: Bool) -> Bool {
++        for session in workspaces.flatMap(\.sessions) {
++            guard let slot = session.remoteOverlays.slot(job: id.uuidString), slot.page != nil,
++                  presentationHub?.presenterGeneration(session: session.id) == slot.owner,
++                  presentationHub?.hasPresenter(session: session.id) == true else { continue }
++            var accepted = false
++            session.remoteOverlays.updatePage(slot.job) { page in
++                accepted = activate ? page.activateDocument(revision, applied: applied) : page.currentDocument(revision, applied: applied)
++            }
++            return accepted
++        }
++        return false
++    }
++
+     /// pageClaimWindow bounds how long a handed-over file page waits for its channel to be claimed.
+     public static let pageClaimWindow: TimeInterval = 30
+
+@@ -61,6 +75,7 @@ extension AppStore {
+         if case .some(nil) = identity { return .paneMissing }
+         guard session.followsRemotely(paneIdentity: identity.flatMap { $0 }) else { return .local }
+         guard PresentationHub.pageKinds.allSatisfy({ hub.presenterSupports($0, session: sessionID) }) else { return .unsupported }
++        if case .file = overlay.source, !hub.presenterSupports("page.bridge-revision", session: sessionID) { return .unsupported }
+         if case .url(let url) = overlay.source, HtmlSource.isLoopback(url.absoluteString) { return .loopback }
+         let token = UUID().uuidString
+         let size = pane == nil ? options.sizePercent.map { min(100, max(1, $0)) } : nil
+@@ -142,6 +157,10 @@ extension AppStore {
+             case .show: seq = page.request(hidden: false)
+             default: seq = page.nextSeq()
+             }
++            if [.reloadCurrent, .reloadOriginal, .back, .forward].contains(action) {
++                page.documentActive = false
++                page.documentMinimumSeq = seq
++            }
+         }
+         return hub.sendToPresenter(.pageCommand(PresentationPageCommand(page: slot.job, seq: seq, action: action,
+                                                                         sizePercent: sizePercent, points: points)),
+diff --git a/agtermCore/Sources/agtermCore/ControlDispatcher.swift b/agtermCore/Sources/agtermCore/ControlDispatcher.swift
+index 818cd42..dd428f6 100644
+--- a/agtermCore/Sources/agtermCore/ControlDispatcher.swift
++++ b/agtermCore/Sources/agtermCore/ControlDispatcher.swift
+@@ -13,6 +13,7 @@ public struct ControlDispatcher {
+     }
+
+     public func dispatch(_ request: ControlRequest) async -> ControlResponse? {
++        guard RemoteDocumentGuard.allowed else { return ControlResponse(ok: false, error: "page document retired") }
+         switch request.cmd {
+         case .tree:
+             return actions.controlTree(window: request.args?.window)
+@@ -113,6 +114,7 @@ public struct ControlDispatcher {
+     }
+
+     private func dispatchSessionCommand(_ request: ControlRequest) async -> ControlResponse {
++        guard RemoteDocumentGuard.allowed else { return ControlResponse(ok: false, error: "page document retired") }
+         switch request.cmd {
+         case .sessionNew:
+             let args = request.args
+@@ -343,6 +345,7 @@ public struct ControlDispatcher {
+     }
+
+     private func dispatchSessionSurfaceCommand(_ request: ControlRequest) async -> ControlResponse {
++        guard RemoteDocumentGuard.allowed else { return ControlResponse(ok: false, error: "page document retired") }
+         switch request.cmd {
+         case .sessionSplit:
+             let axis: SplitAxis?
+diff --git a/agtermCore/Sources/agtermCore/HtmlBridge.swift b/agtermCore/Sources/agtermCore/HtmlBridge.swift
+index 6ac118f..3be12c2 100644
+--- a/agtermCore/Sources/agtermCore/HtmlBridge.swift
++++ b/agtermCore/Sources/agtermCore/HtmlBridge.swift
+@@ -1,5 +1,10 @@
+ import Foundation
+
++public enum RemoteDocumentGuard {
++    @TaskLocal public static var current: (@MainActor @Sendable () -> Bool)?
++    @MainActor public static var allowed: Bool { current?() ?? true }
++}
++
+ extension ControlWire {
+     /// invalidRequestMessage is the error for a request that does not decode, shared by the socket and the page
+     /// bridge. It reports the `DecodingError`'s context, which names the rejected `cmd`; `localizedDescription`
+diff --git a/agtermCore/Sources/agtermCore/PresentationHub.swift b/agtermCore/Sources/agtermCore/PresentationHub.swift
+index 398c614..a7e19db 100644
+--- a/agtermCore/Sources/agtermCore/PresentationHub.swift
++++ b/agtermCore/Sources/agtermCore/PresentationHub.swift
+@@ -45,7 +45,7 @@ public final class PresentationHub {
+
+     /// The frame kinds this origin can produce.
+     public static let supportedKinds = ["status", "hud", "notify", "context", "info", "layout", "sound", askFormKind, askOtherKind,
+-                                        overlayPointsKind] + pageKinds
++                                        overlayPointsKind, "page.bridge-revision"] + pageKinds
+     /// pageKinds are the presentation kinds a presenter must speak to be handed a page.
+     public static let pageKinds = ["page.request", "page.rejected", "page.close", "page.closed", "page.command",
+                                    "page.state"]
+diff --git a/agtermCore/Sources/agtermCore/RemoteOverlays.swift b/agtermCore/Sources/agtermCore/RemoteOverlays.swift
+index 668a86d..31a3262 100644
+--- a/agtermCore/Sources/agtermCore/RemoteOverlays.swift
++++ b/agtermCore/Sources/agtermCore/RemoteOverlays.swift
+@@ -49,7 +49,24 @@ public struct RemotePage: Equatable, Sendable {
+     public internal(set) var hidden = false
+     /// requested is a visibility sent and not yet echoed back by the presenter.
+     private(set) var requested: VisibilityRequest?
+-    private var lastSeq = 0
++    public private(set) var lastSeq = 0
++    public var documentRevision = 0
++    public var documentAppliedSeq = 0
++    public var documentMinimumSeq = 0
++    public var documentActive = false
++
++    public mutating func activateDocument(_ revision: Int, applied: Int) -> Bool {
++        guard revision > documentRevision, revision <= 9007199254740991,
++              applied >= documentMinimumSeq, applied <= lastSeq else { return false }
++        documentRevision = revision
++        documentAppliedSeq = applied
++        documentActive = true
++        return true
++    }
++
++    public func currentDocument(_ revision: Int, applied: Int) -> Bool {
++        documentActive && revision == documentRevision && applied == documentAppliedSeq
++    }
+
+     init(overlay: HtmlOverlay, token: String, claimDeadline: Date) {
+         self.overlay = overlay
+diff --git a/agtermCore/Sources/agtermCore/RemotePresentationClient.swift b/agtermCore/Sources/agtermCore/RemotePresentationClient.swift
+index 5f7fac3..cffa086 100644
+--- a/agtermCore/Sources/agtermCore/RemotePresentationClient.swift
++++ b/agtermCore/Sources/agtermCore/RemotePresentationClient.swift
+@@ -112,6 +112,7 @@ public final class RemotePresentationClient {
+     private var launchCount = 0
+     private var running = false
+     private var generation: Int?
++    private var revisionBridge = false
+     private var revision = -1
+     private var lastFrameAt = Date.distantPast
+     private var retryAt: Date?
+@@ -196,7 +197,8 @@ public final class RemotePresentationClient {
+     /// it and advance the revision, which drops what an earlier connection left in flight.
+     private func accept(_ frame: PresentationFrame) -> Bool {
+         guard let generation else {
+-            guard case .hello = frame.body else { return false }
++            guard case .hello(let hello) = frame.body else { return false }
++            revisionBridge = hello.kinds.contains("page.bridge-revision")
+             self.generation = frame.gen
+             revision = frame.rev
+             return true
+@@ -238,6 +240,10 @@ public final class RemotePresentationClient {
+         case .overlayClose(let change): effects.overlayClose(change)
+         case .overlayResize(let change): effects.overlayResize(change)
+         case .pageRequest(let page):
++            if case .file = page.source, !revisionBridge {
++                send(.pageRejected(PresentationPageChange(page: page.page, reason: "file bridge requires page.bridge-revision")), on: link)
++                return
++            }
+             if let reason = effects.pageRequest(page) {
+                 send(.pageRejected(PresentationPageChange(page: page.page, reason: reason)), on: link)
+             }
+diff --git a/agtermCore/Tests/agtermCoreTests/AppStoreRemotePageTests.swift b/agtermCore/Tests/agtermCoreTests/AppStoreRemotePageTests.swift
+index 0e00a06..5afa4a5 100644
+--- a/agtermCore/Tests/agtermCoreTests/AppStoreRemotePageTests.swift
++++ b/agtermCore/Tests/agtermCoreTests/AppStoreRemotePageTests.swift
+@@ -4,6 +4,27 @@ import Testing
+
+ @MainActor
+ struct AppStoreRemotePageTests {
++    @Test func documentActivationRejectsCrossChannelReloadAndSelfNavigationRaces() throws {
++        let (session, _) = try origin()
++        let page = file()
++        #expect(open(session, page) == .opened)
++        #expect(store.remotePageDocument(page.id, revision: 1, applied: 0, activate: true))
++        #expect(store.remotePageDocument(page.id, revision: 1, applied: 0, activate: false))
++        #expect(store.sendRemotePageCommand(session.id, pane: nil, action: .reloadCurrent))
++        #expect(!store.remotePageDocument(page.id, revision: 1, applied: 0, activate: false))
++        #expect(!store.remotePageDocument(page.id, revision: 99, applied: 0, activate: true))
++        #expect(!store.remotePageDocument(page.id, revision: 2, applied: 2, activate: true))
++        #expect(store.remotePageDocument(page.id, revision: 2, applied: 1, activate: true))
++        #expect(store.remotePageDocument(page.id, revision: 3, applied: 1, activate: true))
++        #expect(!store.remotePageDocument(page.id, revision: 2, applied: 1, activate: false))
++        #expect(!store.remotePageDocument(page.id, revision: 2, applied: 1, activate: true))
++    }
++
++    @Test func legacyPresenterRefusesFileBridgeButKeepsUrlPages() throws {
++        let (session, _) = try origin(kinds: PresentationHub.pageKinds)
++        #expect(open(session, file()) == .unsupported)
++        #expect(open(session, try url("https://example.com")) == .opened)
++    }
+     final class Sink: PresentationSink {
+         var frames: [PresentationFrame] = []
+
+@@ -101,7 +122,7 @@ struct AppStoreRemotePageTests {
+
+     @Test(arguments: [true, false])
+     func pointSizesReachOnlyAPresenterThatTakesThem(supported: Bool) throws {
+-        let (session, _) = try origin(kinds: supported ? PresentationHub.supportedKinds : PresentationHub.pageKinds)
++        let (session, _) = try origin(kinds: supported ? PresentationHub.supportedKinds : PresentationHub.pageKinds + ["page.bridge-revision"])
+         let points = OverlayPointSize(height: 240)
+         let options = ControlSessionOverlayOpenOptions(command: "", cwd: nil, wait: false, sizePercent: 60,
+                                                        backgroundColor: nil, points: points)
+diff --git a/agtermTests/ControlServerPageServeTests.swift b/agtermTests/ControlServerPageServeTests.swift
+index c78831b..694f353 100644
+--- a/agtermTests/ControlServerPageServeTests.swift
++++ b/agtermTests/ControlServerPageServeTests.swift
+@@ -321,7 +321,9 @@ final class ControlServerPageServeTests: XCTestCase {
+         let (client, _) = try claim(try XCTUnwrap(fix.presenter.token))
+
+         let afterSubmit = offMain { () -> String? in
+-            client.send(.bridge(id: 7, request: #"{"cmd":"session.overlay.submit","args":{"value":"notes"}}"#))
++            client.send(.bridge(id: 6, request: #"{"document":1,"appliedSeq":0}"#))
++            _ = client.frame()
++            client.send(.bridge(id: 7, request: #"{"document":1,"appliedSeq":0,"request":{"cmd":"session.overlay.submit","args":{"value":"notes"}}}"#))
+             return client.readLine()
+         } ?? nil
+
+@@ -349,6 +351,26 @@ final class ControlServerPageServeTests: XCTestCase {
+         XCTAssertEqual(offMain { peer.frame() } ?? nil, .failure(id: 3, error: "page closed"))
+     }
+
++    func testDelayedSubmitAcrossReloadAndSelfNavigationCannotCompletePage() throws {
++        let fix = try fixture()
++        let page = try openFile(fix)
++        let (client, _) = try claim(try XCTUnwrap(fix.presenter.token))
++        func exchange(_ id: Int, _ json: String) -> PageServeFrame? {
++            offMain { client.send(.bridge(id: id, request: json)); return client.frame() } ?? nil
++        }
++        XCTAssertEqual(exchange(1, #"{"document":1,"appliedSeq":0}"#), .reply(id: 1, response: #"{"ok":true}"#))
++        XCTAssertTrue(fix.store.sendRemotePageCommand(fix.session.id, pane: nil, action: .reloadCurrent))
++        XCTAssertEqual(exchange(2, #"{"document":1,"appliedSeq":0,"request":{"cmd":"session.overlay.submit","args":{"value":"stale"}}}"#), .failure(id: 2, error: "page document retired"))
++        XCTAssertEqual(exchange(3, #"{"document":99,"appliedSeq":0}"#), .failure(id: 3, error: "page document retired"))
++        XCTAssertEqual(exchange(4, #"{"document":2,"appliedSeq":1}"#), .reply(id: 4, response: #"{"ok":true}"#))
++        XCTAssertEqual(exchange(5, #"{"document":3,"appliedSeq":1}"#), .reply(id: 5, response: #"{"ok":true}"#))
++        XCTAssertEqual(exchange(6, #"{"document":2,"appliedSeq":1,"request":{"cmd":"session.overlay.submit","args":{"value":"stale"}}}"#), .failure(id: 6, error: "page document retired"))
++        XCTAssertEqual(exchange(7, #"{"cmd":"session.overlay.submit","args":{"value":"legacy"}}"#), .failure(id: 7, error: "revision-aware bridge required"))
++        XCTAssertEqual(HtmlPageOutcomes.shared.outcome(for: page)?.outcome, .pending)
++        _ = exchange(8, #"{"document":3,"appliedSeq":1,"request":{"cmd":"session.overlay.submit","args":{"value":"current"}}}"#)
++        XCTAssertEqual(HtmlPageOutcomes.shared.outcome(for: page)?.value, "current")
++    }
++
+     func testABridgeRequestAdmittedBeforeItsPageClosedDoesNotRun() throws {
+         let fix = try fixture()
+         let page = try openFile(fix)
+@@ -420,9 +442,11 @@ final class ControlServerPageServeTests: XCTestCase {
+         let limit = ControlServer.pageServeResourceLimit
+
+         let seen = offMain { () -> (failures: [Int: String], ends: Set<Int>, replied: Bool) in
++            client.send(.bridge(id: 99, request: #"{"document":1,"appliedSeq":0}"#))
++            _ = client.frame()
+             for id in 1...limit { client.send(.resource(id: id, path: huge)) }
+             for id in 1...limit { client.send(.cancel(id: id)) }
+-            client.send(.bridge(id: 100, request: #"{"cmd":"version"}"#))
++            client.send(.bridge(id: 100, request: #"{"document":1,"appliedSeq":0,"request":{"cmd":"version"}}"#))
+             var failures: [Int: String] = [:], ends: Set<Int> = [], replied = false
+             while failures.count < limit || !replied, let frame = client.frame() {
+                 switch frame {
+diff --git a/agtermTests/RemotePageChannelTests.swift b/agtermTests/RemotePageChannelTests.swift
+index d5f2664..4bae30e 100644
+--- a/agtermTests/RemotePageChannelTests.swift
++++ b/agtermTests/RemotePageChannelTests.swift
+@@ -4,6 +4,38 @@ import agtermCore
+
+ @MainActor
+ final class RemotePageChannelTests: XCTestCase {
++    func testLostDocumentAcknowledgementNeverSendsCommand() async throws {
++        launcher.reply = nil
++        let channel = channel()
++        channel.beginDocument()
++        let send = channel.captureBridge()
++        let pending = Task { try await send(Data(#"{"cmd":"session.overlay.submit","args":{"value":"old"}}"#.utf8)) }
++        try await untilOrigin { !$0.isEmpty }
++        try await Task.sleep(for: .milliseconds(100))
++        XCTAssertEqual(origin.received.count, 1, "only activation may be sent before its acknowledgement")
++        channel.close("lost activation acknowledgement")
++        do { _ = try await pending.value; XCTFail("command must fail without acknowledgement") } catch { }
++        XCTAssertEqual(origin.received.count, 1)
++    }
++
++    func testCapturedBridgeCannotBorrowReplacementDocument() async throws {
++        let channel = channel()
++        channel.beginDocument()
++        let old = channel.captureBridge()
++        try await untilOrigin { !$0.isEmpty }
++        channel.appliedSequence = 3
++        channel.beginDocument()
++        do { _ = try await old(Data(#"{"cmd":"session.overlay.submit"}"#.utf8)); XCTFail("old document must fail") } catch { }
++        let current = channel.captureBridge()
++        _ = try await current(Data(#"{"cmd":"session.status","args":{"status":"idle"}}"#.utf8))
++        let requests = try origin.received.compactMap { frame -> [String: Any]? in
++            guard case .bridge(_, let json) = frame else { return nil }
++            return try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
++        }
++        XCTAssertEqual(requests.filter { $0["request"] != nil }.count, 1)
++        XCTAssertEqual(requests.last?["document"] as? Int, 2)
++        XCTAssertEqual(requests.last?["appliedSeq"] as? Int, 3)
++    }
+     private var launcher: FakePageLauncher!
+     private var channels: [RemotePageChannel] = []
+

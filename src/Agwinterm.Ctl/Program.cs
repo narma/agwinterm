@@ -20,6 +20,8 @@ if (args.Length > 0 && args[0].Equals("pick", StringComparison.OrdinalIgnoreCase
     return Agwinterm.Ctl.PickCli.Run(args);
 if (args.Length > 0 && args[0].Equals("ask", StringComparison.OrdinalIgnoreCase))
     return Agwinterm.Ctl.AskCli.Run(args);
+if (args.Length >= 3 && args[0] == "zmx" && args[1] == "export" && args[2] is "present" or "job" or "page")
+    return await Agwinterm.Ctl.PresentationCli.RunAsync(args);
 
 if (args.Length == 0)
 {
@@ -53,9 +55,9 @@ switch (area)
     case "zmx":
         if (sub == "export")
         {
-            if (rest.Count != 1 || rest[0] != "tree" || Opt("window") is null)
+            if (rest.Count != 1 || rest[0] is not ("tree" or "ready") || Opt("window") is null)
             { Console.Error.WriteLine("zmx export tree requires --window ID and an explicit endpoint"); return 2; }
-            cmd = "zmx.export.tree";
+            cmd = "zmx.export." + rest[0];
             foreach (var key in new[] { "distribution", "user", "origin", "executable", "adapter" })
                 if (Opt(key) is { } value) cargs[key] = value;
             if (Opt("socket-directory") is { } directory) cargs["socketDirectory"] = directory;

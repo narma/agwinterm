@@ -38,7 +38,11 @@ internal partial class Program
                 var pages = _webPages.Select(pair => pair.Value).Where(page => ReferenceEquals(page.Owner, allOwner)).ToArray();
                 var slots = allOwner.AllPanes.Select(p => p.Overlay).Append(allOwner.Overlay).Where(slot => slot.Term is not null).ToArray();
                 bool hide = action == "hide" || action == "toggle" && (pages.Any(page => !page.Hidden) || slots.Any(slot => !slot.Hidden));
-                foreach (var page in pages) page.Hidden = hide;
+                foreach (var page in pages)
+                {
+                    page.Hidden = hide;
+                    if (page.Origin is not null) SendOriginPageCommand(page, hide ? "hide" : "show");
+                }
                 foreach (var programSlot in slots) { programSlot.Hidden = hide; if (hide) CancelOverlaySelection(programSlot.Term!); }
                 if (ReferenceEquals(allOwner, _active) && allOwner.Overlay.Term is { } term)
                 { if (hide && ReferenceEquals(_cover, term)) { _ovlOwner = null; HideCover(); } else if (!hide) { _ovlOwner = allOwner; ShowCover(term, 3); } }
@@ -56,7 +60,11 @@ internal partial class Program
             if (hiddenTarget is not null && action == "open")
                 return ISessionHost.RefusePrefix + "cannot open an overlay on a hidden pane; show the pane first";
             // The shipped session-wide result is window-wide even when no session resolves.
-            if (hiddenTarget is null && action == "result" && pane is null && PaneOverlayIndexOf(target) < 0) return _lastOverlayExit;
+            if (hiddenTarget is null && action == "result" && pane is null && PaneOverlayIndexOf(target) < 0)
+            {
+                var delegated = FindSesForTarget(target)?.Overlay.OriginJob;
+                return delegated?.Occupied == true ? delegated.Result ?? ISessionHost.RefusePrefix + OverlayPanes.StillRunning : _lastOverlayExit;
+            }
             if (target is not (null or "active") && FindStrictControlPane(target) is null)
                 return NoSessionRefusal + "; unknown or ambiguous overlay target";
             Ses? session; Pane? owner = null;
@@ -96,6 +104,7 @@ internal partial class Program
                 if (action == "resize") return ISessionHost.RefusePrefix + "session.overlay.resize: not available on a page companion";
             }
             var slot = owner?.Overlay ?? session.Overlay;
+            if (OriginJobControl(slot, action, sizePercent, options) is { } remoteReply) return remoteReply;
             if (_webPages.TryGetValue((object?)owner ?? session, out var web))
             {
                 if (action == "open") return ISessionHost.RefusePrefix + "a web overlay occupies this slot; close it first";
@@ -103,11 +112,13 @@ internal partial class Program
                 if (action == "resize")
                 {
                     web.Geometry = web.Geometry.Resize(options.Percent, options.Width, options.Height, options.Full || !options.HasSize);
+                    if (web.Origin is not null) SendOriginPageCommand(web, "resize");
                     UpdateWebPresentation(); RequestRedraw(); return "resized";
                 }
                 if (action is "hide" or "show" or "toggle")
                 {
                     web.Hidden = action == "hide" || action == "toggle" && !web.Hidden;
+                    if (web.Origin is not null) SendOriginPageCommand(web, web.Hidden ? "hide" : "show");
                     UpdateWebPresentation(); RequestRedraw(); return web.Hidden ? "hidden" : "shown";
                 }
                 return ISessionHost.RefusePrefix + "operation is not available for this web overlay";
@@ -140,6 +151,8 @@ internal partial class Program
                     cwd = Path.GetFullPath(WslIntegration.DecodeCwd(cwd));
                     if (!Directory.Exists(cwd)) return ISessionHost.RefusePrefix + "overlay cwd does not exist";
                 }
+                if (DelegateOriginJob(session, owner, command, sizePercent, block ? false : wait, cwd, options, out var delegatedDone) is { } delegatedReply)
+                { done = delegatedDone; return delegatedReply; }
                 string opened = OverlayOpen(session, owner, command, sizePercent, block ? false : wait, launchCwd: cwd);
                 if (opened.StartsWith(ISessionHost.RefusePrefix, StringComparison.Ordinal)) return opened;
                 slot.WidthDip = options.Width; slot.HeightDip = options.Height;

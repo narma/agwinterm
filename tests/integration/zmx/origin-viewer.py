@@ -68,7 +68,7 @@ def stop(crash=False):
 def discover():
     remote=ctl('zmx','tree',config['peerHost'])['remote']
     row=next(s for s in remote['sessions'] if s['id']==config['pane'])
-    assert remote.get('presentation') is None
+    assert remote.get('presentation') == 1
     assert '/manifests/' in remote['endpoint']['executable']
     return remote,row
 
@@ -76,6 +76,25 @@ def imported_surface(kind='left'):
     imported=json.loads((root/'imported.json').read_text())['id']
     rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==imported]
     return next(s for s in rows[0]['surfaces'] if s['kind']==kind)
+
+def accessibility(action, text=''):
+    info=json.loads((root/'imported.json').read_text())
+    pid=peer_pid()
+    assert pid==int((root/'app.pid').read_text()), 'isolated viewer PID changed'
+    ctl('window','minimize',info['window'],'off')
+    ctl('window','select',info['window'])
+    time.sleep(.5)
+    driver=root/'mac-accessibility'
+    try:
+        before=subprocess.run([str(driver),str(pid),str(bundle),'dump',''],capture_output=True,text=True,timeout=20)
+        (root/(action+'-ax-before.json')).write_text(before.stdout)
+        assert before.returncode==0, before.stderr
+        result=subprocess.run([str(driver),str(pid),str(bundle),action,text],capture_output=True,text=True,timeout=25)
+        (root/(action+'-ax-result.log')).write_text(result.stdout+result.stderr)
+        if result.returncode: raise RuntimeError(result.stderr)
+        print(result.stdout.strip())
+    finally:
+        ctl('window','minimize',info['window'],'on')
 
 def exercise(split):
     remote,row=discover()
@@ -107,7 +126,7 @@ def exercise(split):
 
 if action == 'single':
     source=Path(config['macApp']).resolve()
-    if not str(source).startswith('/private/tmp/aw-stage2-build-'):
+    if not str(source).startswith(('/private/tmp/aw-stage2-build-', '/private/tmp/aw-stage4-build-')):
         raise RuntimeError('only the isolated pinned build is allowed')
     subprocess.run(['ditto',str(source),str(bundle)],check=True,timeout=120)
     (root/'settings.json').write_text(json.dumps({'restoreMode':'live'}))
@@ -122,7 +141,7 @@ if action == 'single':
 import os,sys,shlex,json,pathlib
 args=sys.argv[1:]
 if '-G' not in args and len(args)>=2 and args[-2] == HOST:
-    if '/manifests/' in args[-1]:
+    if '/manifests/' in args[-1] or 'zmx present ' in args[-1] or 'session overlay run-job ' in args[-1] or 'session overlay page-serve ' in args[-1]:
         pathlib.Path(LOG_ROOT+'/ssh-'+str(os.getpid())+'.json').write_text(json.dumps({'pid':os.getpid(),'command':args[-1]}))
     args[-1]=shlex.join(['/usr/bin/env','PATH='+REMOTE_PATH+':/usr/bin:/bin','/bin/sh','-c',args[-1]])
 os.execv('/usr/bin/ssh',['ssh']+args)
@@ -131,6 +150,8 @@ os.execv('/usr/bin/ssh',['ssh']+args)
     (root/'bin/ssh').chmod(0o700)
     hashes={name:hashlib.sha256((bundle/'Contents/MacOS'/name).read_bytes()).hexdigest() for name in ['agterm','agtermctl','zmx']}
     (root/'build-hashes.json').write_text(json.dumps(hashes,indent=2))
+    if config.get('accessibility'):
+        subprocess.run(['/usr/bin/swiftc',str(root/'mac-accessibility.swift'),'-o',str(root/'mac-accessibility')],check=True,timeout=90)
     start()
     imported=exercise(False)
     ctl('session','close','--target',imported)
@@ -138,6 +159,121 @@ os.execv('/usr/bin/ssh',['ssh']+args)
     print('PASS viewer close preserves origin workload')
 elif action == 'split':
     exercise(True)
+elif action == 'ax-question-absent':
+    accessibility('question-absent')
+elif action.startswith('ax-question-'):
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and rows[0].get('ask',{}).get('id')==sys.argv[3] and rows[0]['ask'].get('replica'): break
+        time.sleep(.2)
+    else: raise RuntimeError('exact origin question not present')
+    accessibility(action.removeprefix('ax-'),'AX_MAC_ANSWER')
+elif action in ['ax-job-input','ax-job-pane-input','ax-job-close']:
+    info=json.loads((root/'imported.json').read_text())
+    pane_args=['--pane','right'] if action=='ax-job-pane-input' else []
+    for _ in range(100):
+        try:
+            text=ctl('session','overlay','text','--target',info['id'],*pane_args).get('text','')
+            if 'AX_ORIGIN_READY' in text: break
+        except RuntimeError: pass
+        time.sleep(.2)
+    else: raise RuntimeError('origin input surface missing')
+    accessibility('job-close' if action=='ax-job-close' else 'job-input','AX_MAC_JOB_OK')
+    for pane in ['left','right']:
+        assert 'AX_MAC_JOB_OK' not in ctl('session','text','--target',info['id'],'--pane',pane).get('text',''), 'overlay input leaked into base terminal'
+elif action == 'job-manual-show':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(100):
+        try:
+            if 'STAGE 4 PROGRAM INPUT TEST' in ctl('session','overlay','text','--target',info['id']).get('text',''): break
+        except RuntimeError: pass
+        time.sleep(.2)
+    else: raise RuntimeError('manual job surface missing')
+    ctl('window','minimize',info['window'],'off')
+    ctl('window','select',info['window'])
+    print('MANUAL JOB READY: STAGE4_JOB_OK then Enter; isolated app='+str(bundle))
+elif action in ['job-channel-loss','page-channel-loss']:
+    info=json.loads((root/'imported.json').read_text())
+    killed=[]
+    for record in root.glob('ssh-*.json'):
+        entry=json.loads(record.read_text())
+        p=subprocess.run(['ps','-p',str(entry['pid']),'-o','comm=','-o','args='],capture_output=True,text=True)
+        command='session overlay page-serve ' if action=='page-channel-loss' else 'session overlay run-job '
+        if p.returncode==0 and 'ssh' in p.stdout and command in p.stdout and config['root']+'/endpoint' in p.stdout:
+            os.kill(entry['pid'],signal.SIGTERM); killed.append(entry['pid'])
+    assert killed,'no isolated overlay SSH found'
+    time.sleep(2)
+    if action=='job-channel-loss': ctl('session','overlay','close','--target',info['id'])
+    print('PASS killed only isolated Mac overlay channel: '+action)
+elif action in ['job-visible','job-pane-visible']:
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(100):
+        try:
+            text=ctl('session','overlay','text','--target',info['id'],*(['--pane','right'] if action=='job-pane-visible' else [])).get('text','')
+            if 'AW_JOB_OS=Linux CWD=/tmp' in text: break
+        except RuntimeError: pass
+        time.sleep(.2)
+    else: raise RuntimeError('origin job not rendered on Mac: '+json.dumps(ctl('tree')))
+    print('PASS actual Mac viewer renders origin Linux job with cwd (input evidence is recorded separately)')
+elif action == 'job-absent':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(100):
+        try: ctl('session','overlay','text','--target',info['id'])
+        except RuntimeError: break
+        time.sleep(.1)
+    else: raise RuntimeError('origin close left Mac job surface')
+    print('PASS actual Mac job surface closed')
+elif action == 'passive':
+    imported=json.loads((root/'imported.json').read_text())['id']
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==imported]
+        if rows and rows[0].get('context')=='STAGE4_ORIGIN_CONTEXT' and rows[0].get('status')=='blocked' and rows[0].get('hud',{}).get('message')=='STAGE4_ORIGIN_HUD': break
+        time.sleep(.25)
+    else:
+        (root/'passive-failure.json').write_text(json.dumps(rows,indent=2))
+        raise RuntimeError('passive replica did not converge: '+repr(rows))
+    print('PASS actual Agwinterm -> agterm context/status/HUD replica')
+elif action in ['manual-show','question-visible']:
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and rows[0].get('ask',{}).get('id')==sys.argv[3] and rows[0]['ask'].get('replica'): break
+        time.sleep(.25)
+    else:
+        (root/'manual-question-failure.json').write_text(json.dumps(rows,indent=2))
+        raise RuntimeError('manual question not visible in Mac session state: '+repr(rows))
+    if action=='manual-show':
+        ctl('window','minimize',info['window'],'off')
+        ctl('window','select',info['window'])
+    (root/'manual-ready.json').write_text(json.dumps({'window':info['window'],'session':info['id'],'ask':rows[0]['ask']},indent=2))
+    print('PASS actual Mac question replica has exact origin ID' if action=='question-visible' else 'MANUAL MAC READY: Stage 4: manual Mac answer; type STAGE4_MAC_ANSWER and Confirm test; isolated app='+str(bundle))
+elif action == 'page-ready':
+    info=json.loads((root/'imported.json').read_text())
+    for _ in range(160):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and rows[0].get('presentation',{}).get('state')=='connected': break
+        time.sleep(.25)
+    else: raise RuntimeError('presentation did not reconnect after page loss')
+    assert not rows[0].get('htmlOverlays'), 'page replayed after reconnect'
+    print('PASS Mac presentation reconnected without recreating a page')
+elif action in ['question-absent','presentation-loss']:
+    info=json.loads((root/'imported.json').read_text())
+    if action=='presentation-loss':
+        killed=[]
+        for record in root.glob('ssh-*.json'):
+            entry=json.loads(record.read_text())
+            p=subprocess.run(['ps','-p',str(entry['pid']),'-o','comm=','-o','args='],capture_output=True,text=True)
+            if p.returncode==0 and 'ssh' in p.stdout and 'zmx present ' in p.stdout and config['pane'] in p.stdout:
+                os.kill(entry['pid'],signal.SIGTERM); killed.append(entry['pid'])
+        assert killed, 'no isolated presentation SSH process found'
+    for _ in range(80):
+        rows=[s for w in ctl('tree')['tree']['workspaces'] for s in w['sessions'] if s['id']==info['id']]
+        if rows and not rows[0].get('ask'): break
+        time.sleep(.1)
+    else: raise RuntimeError('stale Mac question replica: '+repr(rows))
+    assert imported_surface().get('lead')=='leader', 'presentation loss changed terminal leadership'
+    print('PASS Mac replica dismissed without changing terminal leadership: '+action)
 elif action == 'follower-resize':
     info=json.loads((root/'imported.json').read_text())
     for _ in range(30):

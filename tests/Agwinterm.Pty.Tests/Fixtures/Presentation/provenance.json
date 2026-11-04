@@ -1,0 +1,9 @@
+{
+  "revision": "c63e5158e637662ded7ba3a12eac4881b24caef1",
+  "binaries": {
+    "agterm": "5eea781b850e99eb653f55469e7db7fc607700a79b60c42471d4f88e24714e84",
+    "agtermctl": "565222561430d4aa24add63a8e0db4b17288263da8c70d6638f3ecc64a6e5562",
+    "agterm-session-host": "c780db0fe5c82f0c4d3c2ea80617555043d94755bc1c69eadf7f74911030db29",
+    "zmx": "93735bb87860cddc4c9189ddf56b49cae601cd50a5e5f89e622617fcd29c785d"
+  }
+}

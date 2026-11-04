@@ -49,8 +49,16 @@ class ExportProtocolTests(unittest.TestCase):
         self.assertEqual([],result['sessions'])
         self.assertNotIn('presentation',result)
         self.assertTrue(Path(result['endpoint']['executable']).is_file())
-        for args in [('zmx','kill','anything'),('zmx','present','anything'),('session','close'),('zmx','tree','--json','extra')]:
+        for args in [('zmx','kill','anything'),('session','close'),('zmx','tree','--json','extra')]:
             self.invoke([cli,*args],ok=False)
+        refused=subprocess.run([str(cli),'zmx','present','anything'],input='',text=True,capture_output=True,timeout=10)
+        self.assertNotEqual(0,refused.returncode)
+        self.assertEqual('',refused.stdout)  # stream errors never become control JSON
+        for token in ['invalid', '11111111-1111-4111-8111-111111111111.'+'a'*32]:
+            refused=subprocess.run([str(cli),'session','overlay','page-serve',token],
+                                   input='',text=True,capture_output=True,timeout=10)
+            self.assertNotEqual(0,refused.returncode)
+            self.assertEqual('',refused.stdout)  # includes failure before a channel is claimed
         self.invoke([helper,'--zmx-export-disable',self.endpoint])
         self.invoke([cli,'zmx','tree','--json'],ok=False)
 
@@ -67,6 +75,23 @@ class ExportProtocolTests(unittest.TestCase):
         self.socket.mkdir(mode=0o700)
         self.invoke([cli,'zmx','tree','--json'],ok=False)
         self.invoke([remote['endpoint']['executable'],'attach','missing'],ok=False)
+
+    def test_readiness_uses_verified_tree_without_a_second_probe(self):
+        self.provision()
+        for ready in [True,False]:
+            log=self.root/'calls'; log.write_text('')
+            result={'remote':{'sessions':[]},'bindings':[]}
+            if ready: result['presentation']=1
+            self.cli.write_text('#!/bin/sh\necho "$1 $2 $3" >> '+str(log)+'\n'
+                'case "$1 $2 $3" in\n'
+                '"window list --pipe") printf \'{"ok":true,"result":{"windows":[{"id":"fixture-window","open":true}]}}\\n\';;\n'
+                '"zmx export tree") printf \'%s\\n\' \''+json.dumps({'ok':True,'result':result})+'\';;\n'
+                '*) exit 91;;\nesac\n')
+            remote=self.invoke([self.endpoint/'agtermctl','zmx','tree','--json'])['result']['remote']
+            self.assertEqual(remote.get('presentation'),1 if ready else None)
+            calls=log.read_text().splitlines()
+            self.assertEqual(calls.count('zmx export tree'),1)
+            self.assertFalse(any('ready' in c for c in calls))
 
     def test_disable_still_requires_private_matching_authority(self):
         self.provision()

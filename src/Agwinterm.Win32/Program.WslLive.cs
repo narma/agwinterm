@@ -96,6 +96,11 @@ internal partial class Program : IWslLiveHost
         if (command.StartsWith("zmx.remote.", StringComparison.Ordinal)) return RemoteCommand(command, args, target);
         WslLiveControl.Validate(command, args, target);
         if (command == "zmx.export.tree") return ExportOriginTree(args);
+        if (command == "zmx.export.ready")
+        {
+            _ = ExportOriginTree(args); // Same endpoint verification; no registration or UI mutation.
+            return new { presentation = 1, kinds = PassiveKinds, mode = "presenter" };
+        }
         if (command is "zmx.list" or "zmx.attach")
         {
             string name = args.GetProperty("profile").GetString()!;
@@ -254,7 +259,7 @@ internal partial class Program : IWslLiveHost
         return next;
     }
 
-    private static JsonElement LiveReadback(Pane pane)
+    private JsonElement LiveReadback(Pane pane)
     {
         if (AgtermRemoteBinding.IsRemote(pane.LiveBinding)) return RemoteReadback(pane);
         var binding = RestoreState.LoadLiveBinding(pane.LiveBinding, out var error);

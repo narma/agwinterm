@@ -8,6 +8,11 @@ public sealed record AskField(string Id, string Label, string Type, IReadOnlyLis
 public sealed record AskButton(string Id, string Label, string? Hotkey);
 public sealed record AskSpec(string Title, string Prompt, IReadOnlyList<AskField> Fields, IReadOnlyList<AskButton> Buttons)
 {
+    // Internal handover policy; Parse deliberately does not accept these as public form options.
+    [System.Text.Json.Serialization.JsonIgnore] public IReadOnlyDictionary<string, AskValue>? InitialValues { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? DefaultButtonId { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? CancelButtonId { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore] public bool DelegatedChoices { get; init; }
     public const int MaxBytes = 1024 * 1024, MaxText = 4096, MaxMultiline = 16384;
     public static void Properties(JsonElement value, params string[] allowed)
     {
@@ -97,9 +102,10 @@ public sealed record AskOutcome(string Result, string? Reason = null, string? Bu
     {
         if (!spec.Buttons.Any(b => b.Id == button)) throw new ArgumentException("unknown ask button");
         var result = new Dictionary<string, object>(StringComparer.Ordinal);
+        if (spec.CancelButtonId == button) return new("answered", Button: button, Values: result);
         foreach (var f in spec.Fields)
         {
-            var value = values.GetValueOrDefault(f.Id) ?? AskValue.Empty(f);
+            var value = values.GetValueOrDefault(f.Id) ?? spec.InitialValues?.GetValueOrDefault(f.Id) ?? AskValue.Empty(f);
             if (f.Type is "text" or "multiline")
             {
                 int max = f.Type == "multiline" ? AskSpec.MaxMultiline : AskSpec.MaxText;
@@ -109,6 +115,18 @@ public sealed record AskOutcome(string Result, string? Reason = null, string? Bu
             }
             else
             {
+                if (spec.DelegatedChoices)
+                {
+                    string? other = string.IsNullOrWhiteSpace(value.Other) ? null : value.Other;
+                    if (other is not null && (other.Length > AskSpec.MaxText || other.Any(c => c < 32 || c == 127)))
+                        throw new ArgumentException("Invalid delegated Other text");
+                    value = value with { Other = other };
+                    if (f.Type == "single")
+                    {
+                        if (other is not null && value.Selected.Count != 0) throw new ArgumentException("Other must exclude radio selection");
+                        if (other is null && value.Selected.Count != 1) throw new ArgumentException("radio requires one selection");
+                    }
+                }
                 var selected = value.Selected.ToHashSet(StringComparer.Ordinal);
                 if (selected.Count != value.Selected.Count || (f.Type == "single" && selected.Count > 1) ||
                     selected.Any(id => !f.Choices.Any(c => c.Id == id)) || (!f.AllowOther && value.Other is not null) ||
@@ -120,24 +138,24 @@ public sealed record AskOutcome(string Result, string? Reason = null, string? Bu
     }
 }
 
-public sealed record PendingAsk(string Id, string Window, AskSpec Spec);
-public sealed record LocatedAsk(string Window, AskOutcome Outcome);
+public sealed record PendingAsk(string Id, string Window, AskSpec Spec, string? Session = null);
+public sealed record LocatedAsk(string Window, AskOutcome Outcome, string? Session = null);
 
 public sealed class AskRegistry
 {
-    private sealed record Answer(string Id, string Window, AskOutcome Outcome, long Sequence);
+    private sealed record Answer(string Id, string Window, AskOutcome Outcome, long Sequence, string? Session);
     private sealed class WindowState { public PendingAsk? Pending; public List<Answer> Answers = new(); }
     private readonly object _gate = new();
     private readonly Dictionary<string, WindowState> _windows = new(StringComparer.Ordinal);
     private readonly List<Answer> _closed = new();
     private long _sequence;
-    public PendingAsk? Open(string window, AskSpec spec)
+    public PendingAsk? Open(string window, AskSpec spec, string? session = null)
     {
         lock (_gate)
         {
             if (!_windows.TryGetValue(window, out var state)) _windows[window] = state = new();
             if (state.Pending is not null) return null;
-            return state.Pending = new(Guid.NewGuid().ToString(), window, spec);
+            return state.Pending = new(Guid.NewGuid().ToString(), window, spec, session);
         }
     }
     public LocatedAsk? Find(string id)
@@ -146,10 +164,10 @@ public sealed class AskRegistry
         {
             foreach (var state in _windows.Values)
             {
-                if (state.Pending is { } p && p.Id == id) return new(p.Window, new("pending"));
-                if (state.Answers.FirstOrDefault(a => a.Id == id) is { } a) return new(a.Window, a.Outcome);
+                if (state.Pending is { } p && p.Id == id) return new(p.Window, new("pending"), p.Session);
+                if (state.Answers.FirstOrDefault(a => a.Id == id) is { } a) return new(a.Window, a.Outcome, a.Session);
             }
-            return _closed.FirstOrDefault(a => a.Id == id) is { } old ? new(old.Window, old.Outcome) : null;
+            return _closed.FirstOrDefault(a => a.Id == id) is { } old ? new(old.Window, old.Outcome, old.Session) : null;
         }
     }
     public bool Resolve(string id, AskOutcome outcome)
@@ -160,7 +178,7 @@ public sealed class AskRegistry
         {
             var state = _windows.Values.FirstOrDefault(s => s.Pending?.Id == id);
             if (state?.Pending is not { } p) return false;
-            state.Answers.Add(new(id, p.Window, outcome, ++_sequence)); state.Pending = null;
+            state.Answers.Add(new(id, p.Window, outcome, ++_sequence, p.Session)); state.Pending = null;
             if (state.Answers.Count > 8) state.Answers.RemoveAt(0);
             return true;
         }
@@ -179,6 +197,16 @@ public sealed class AskRegistry
             _closed.AddRange(state.Answers); _windows.Remove(window);
             _closed.Sort((a, b) => a.Sequence.CompareTo(b.Sequence));
             if (_closed.Count > 32) _closed.RemoveRange(0, _closed.Count - 32);
+        }
+    }
+
+    public string? CloseSession(string window, string session)
+    {
+        lock (_gate)
+        {
+            if (!_windows.TryGetValue(window, out var state) || state.Pending is not { } pending || pending.Session != session) return null;
+            Resolve(pending.Id, new("cancelled", "owner-closed"));
+            return pending.Id;
         }
     }
 }

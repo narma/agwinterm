@@ -45,6 +45,8 @@ internal partial class Program
         public byte[]? ImageDocument;
         public WebImageInfo? ImageInfo;
         public bool CloseRequested;
+        public OriginPage? Origin;
+        public ReplicaPage? Replica;
     }
     private readonly WebPageSlots<object, WebPage> _webPages = new();
     private static readonly WebPageOutcomes WebOutcomes = new();
@@ -82,6 +84,11 @@ internal partial class Program
         {
             var (owner, pane) = ResolveWebOwner(target, request.Pane, opening: false);
             if (!_webPages.TryGetValue((object?)pane ?? owner, out var page)) throw new ArgumentException("no web overlay on this slot");
+            if (page.Origin is not null)
+            {
+                SendOriginPageCommand(page, request.Action == "reload" ? request.Current ? "reloadCurrent" : "reloadOriginal" : request.Direction!);
+                return new { pageID = page.Id };
+            }
             if (request.Action == "reload") { ReloadWebPage(owner, page, request.Current); return new { pageID = page.Id }; }
             var browser = page.Host.Page;
             if (request.Direction == "back") { if (!browser.CanGoBack) throw new ArgumentException("no previous page"); browser.GoBack(); }
@@ -97,18 +104,25 @@ internal partial class Program
 
     public object OpenWebOverlay(string? target, WebOverlayRequest request)
     {
-        // Probe before touching any slot; browser assembly/loader activation is web-only.
-        _ = WebViewHost.RuntimeVersion();
-        if (request.Persistent) EnsurePersistentWebStore();
         var context = InvokeOnUiQueued(() =>
         {
             if (request.Persistent && _webStorageClearing) throw new ArgumentException("browser storage is being cleared");
             var (owner, pane) = ResolveWebOwner(target, request.Pane, opening: true);
-            if (!request.Companion && (owner.PageParentId is not null || (pane?.Overlay ?? owner.Overlay).Term is not null || _webPages.ContainsKey((object?)pane ?? owner))) throw new ArgumentException("a program or web overlay occupies this slot");
+            var remote = FindOriginPagePresenter(owner);
+            // Preserve the actionable local missing-runtime refusal even when another overlay holds the slot.
+            if (remote is null) _ = WebViewHost.RuntimeVersion();
+            if (!request.Companion && (owner.PageParentId is not null || (pane?.Overlay ?? owner.Overlay).Term is not null || (pane?.Overlay ?? owner.Overlay).OriginJob?.Occupied == true || _webPages.ContainsKey((object?)pane ?? owner))) throw new ArgumentException("a program or web overlay occupies this slot");
             if (pane is not null && (request.Percent != 100 || request.Width is not null || request.Height is not null))
                 throw new ArgumentException("pane overlays are always full-pane");
-            return (owner, pane, cwd: CwdOf(pane ?? owner.ActivePane), profile: ResolveProfile(owner.ProfileName));
+            return (owner, pane, cwd: CwdOf(pane ?? owner.ActivePane), profile: ResolveProfile(owner.ProfileName), remote);
         });
+        // An origin reserves a remote page without requiring a browser runtime locally.
+        if (context.remote is null)
+        {
+            if (request.Persistent) EnsurePersistentWebStore();
+        }
+        else if (request.Companion || request.Image is not null || request.Url is not null && new Uri(request.Url).IsLoopback)
+            throw new ArgumentException("Remote pages refuse companion/image and origin-loopback URLs");
         LocalWebSource? resources = null;
         byte[]? imageDocument = null;
         WebImageInfo? imageInfo = null;
@@ -130,14 +144,19 @@ internal partial class Program
             var page = new WebPage(request, NewWebHost(), pageOwner, pagePane);
             page.Resources = resources;
             page.ImageDocument = imageDocument; page.ImageInfo = imageInfo;
-            if (!_webPages.TryReserve(page.Slot, page, AllSessions().Contains(pageOwner) && (pagePane is null || pageOwner.Panes.Contains(pagePane)), (pagePane?.Overlay ?? pageOwner.Overlay).Term is not null))
+            if (!_webPages.TryReserve(page.Slot, page, AllSessions().Contains(pageOwner) && (pagePane is null || pageOwner.Panes.Contains(pagePane)), (pagePane?.Overlay ?? pageOwner.Overlay).Term is not null || (pagePane?.Overlay ?? pageOwner.Overlay).OriginJob?.Occupied == true))
             {
                 page.Host.Dispose();
                 if (request.Companion) CloseSessionInternal(pageOwner, undoable: false);
                 throw new ArgumentException("web overlay owner or slot changed while validating the source");
             }
             WebOutcomes.Register(page.Id);
-            StartWebPage(pageOwner, page);
+            if (context.remote is { } remote)
+            {
+                try { StartOriginPage(page, remote); }
+                catch { CloseWebPage(pageOwner, pagePane); throw; }
+            }
+            else StartWebPage(pageOwner, page);
             return page;
         });
         if (!request.Block) return request.Companion ? (object)new { id = opened.Owner.Id, parent = opened.Owner.PageParentId, pageID = opened.Id } : new { pageID = opened.Id };
@@ -153,6 +172,7 @@ internal partial class Program
         var host = page.Host;
         var request = page.Request;
         var resources = page.Resources;
+        bool fileDocument = resources is not null || page.Replica?.FilePath is not null;
         bool IsCurrent() => OwnsWebPage(owner, page) && ReferenceEquals(page.Host, host);
         host.Accelerator = e => { if (IsCurrent()) WebAccelerator(owner, page, e); };
         host.Focused = () =>
@@ -174,7 +194,9 @@ internal partial class Program
         {
             try
             {
-                await host.CreateAsync(_hwnd, Path.Combine(AppDir, request.Persistent ? "webview2-persistent" : "webview2"), page.Id, page.Cancellation.Token, request.Persistent);
+                await host.CreateAsync(_hwnd, page.Replica is { } replicaPage
+                    ? Path.Combine(AppDir, "webview2-remote", replicaPage.StoragePartition, request.Persistent ? "persistent" : "temporary")
+                    : Path.Combine(AppDir, request.Persistent ? "webview2-persistent" : "webview2"), page.Id, page.Cancellation.Token, request.Persistent);
                 if (!IsCurrent()) { host.Dispose(); return; }
                 var browser = host.Page;
                 page.Zoom = BrowserPreferences.Zoom;
@@ -186,21 +208,28 @@ internal partial class Program
                 // Trusted local declarative controls need event callbacks even when document
                 // scripts are disabled. Enforce that restriction with the response CSP below;
                 // WebView2's global switch also disables callbacks in injected host scripts.
-                browser.Settings.IsScriptEnabled = request.JavaScript || resources is not null && request.Image is null;
+                browser.Settings.IsScriptEnabled = request.JavaScript || fileDocument && request.Image is null;
                 string source = OriginalWebUrl(page);
                 var origin = new Uri(source).GetLeftPart(UriPartial.Authority);
                 ulong navigationId = 0;
                 bool userNavigation = false;
                 string? loadedUrl = null;
                 var blockedNavigations = new Dictionary<ulong, string>();
-                browser.SourceChanged += (_, _) => { if (IsCurrent()) page.CurrentUrl = browser.Source; };
+                browser.SourceChanged += (_, e) =>
+                {
+                    if (!IsCurrent()) return;
+                    page.CurrentUrl = browser.Source;
+                    // Fragment/pushState history does not create a DOM or fire DOMContentLoaded.
+                    if (!e.IsNewDocument && page.Replica?.FilePath is not null && page.BridgeToken is null)
+                        RebindReplicaDocument(page);
+                };
                 browser.ContentLoading += (_, e) => { if (IsCurrent() && !e.IsErrorPage) { page.CommittedUrl = browser.Source; RequestRedraw(); } };
                 browser.NavigationStarting += (_, e) =>
                 {
                     if (!IsCurrent()) { e.Cancel = true; return; }
                     if (!e.IsRedirected || navigationId != e.NavigationId) userNavigation = e.IsUserInitiated;
                     navigationId = e.NavigationId;
-                    if (!WebNavigationPolicy.Allows(source, e.Uri, resources is not null, request.Bridge is not null, request.Browse))
+                    if (!WebNavigationPolicy.Allows(source, e.Uri, fileDocument, request.Bridge is not null, request.Browse))
                     {
                         blockedNavigations[e.NavigationId] =
                             $"Navigation blocked: {e.Uri} is outside this page's allowed location. For web redirects to other sites, reopen with --url and --browse.";
@@ -208,7 +237,9 @@ internal partial class Program
                         e.Cancel = true; return;
                     }
                     page.BridgeToken = null;
+                    ResetReplicaDocument(page);
                     page.BeginDocument();
+                    BeginReplicaDocument(page);
                 };
                 browser.NewWindowRequested += (_, e) =>
                 {
@@ -224,7 +255,7 @@ internal partial class Program
                 };
                 browser.FrameNavigationStarting += (_, e) =>
                 {
-                    e.Cancel = !WebNavigationPolicy.AllowsFrame(source, e.Uri, resources is not null, request.Bridge is not null, request.Chromeless);
+                    e.Cancel = page.Replica is not null || !WebNavigationPolicy.AllowsFrame(source, e.Uri, resources is not null, request.Bridge is not null, request.Chromeless);
                 };
                 browser.NavigationCompleted += (_, e) =>
                 {
@@ -257,6 +288,8 @@ internal partial class Program
                         return;
                     }
                     if (e.IsSuccess) loadedUrl = browser.Source;
+                    if (e.IsSuccess && page.Replica?.FilePath is not null && page.BridgeToken is null)
+                        RebindReplicaDocument(page);
                     if (e.IsSuccess && page.ImageInfo is not null)
                     {
                         _ = host.RunAsync(async () =>
@@ -283,8 +316,10 @@ internal partial class Program
                     if (page.Request.Block) page.Completion.TrySetException(new IOException(page.Error));
                     RequestRedraw();
                 };
-                if (resources is not null) await BindLocalResources(page, origin);
-                if (request.Bridge == "review") await BindReview(owner, page, source);
+                if (page.Replica?.FilePath is not null) { BindReplicaResources(page, origin); await BindReplicaCommands(page, source); }
+                else if (resources is not null) await BindLocalResources(page, origin);
+                if (page.Replica is not null) { /* Replica file bridge was bound above; URL pages have none. */ }
+                else if (request.Bridge == "review") await BindReview(owner, page, source);
                 else if (resources is not null && request.Image is null) await BindLocalCommands(owner, page, source);
                 if (!IsCurrent()) return;
                 if (!_webPages.CommitPresentation(page.Slot, page, () => { if (page.Pane is null) ClearHud(owner); })) return;
@@ -329,7 +364,8 @@ internal partial class Program
     }
 
     private static string OriginalWebUrl(WebPage page) => page.Request.Url ??
-        $"https://page-{page.Id}.invalid/{page.Resources!.EntryUrlPath}";
+        $"https://page-{page.Id}.invalid/" + (page.Replica?.FilePath is { } path
+            ? string.Join('/', path.TrimStart('/').Split('/').Select(Uri.EscapeDataString)) : page.Resources!.EntryUrlPath);
 
     private bool OwnsWebPage(Ses owner, WebPage page) =>
         !_uiGone.IsCancellationRequested && _webPages.GetValueOrDefault(page.Slot) == page && !page.Cancellation.IsCancellationRequested;
@@ -337,6 +373,8 @@ internal partial class Program
     private void CloseWebPage(Ses owner, Pane? pane = null)
     {
         if (!_webPages.Remove((object?)pane ?? owner, out var page)) return;
+        EndOriginPage(page);
+        EndReplicaPage(page);
         CancelWebExternal(page);
         CompleteWebOutcome(page, null);
         page.Cancellation.Cancel();
@@ -361,6 +399,7 @@ internal partial class Program
     {
         foreach (var (_, page) in _webPages)
         {
+            if (page.Origin is not null) continue;
             var owner = page.Owner;
             RefreshWebExternalInput(page);
             if (!ReferenceEquals(owner, _active) || page.Hidden || _cover is not null) CancelWebExternal(page);
@@ -383,14 +422,17 @@ internal partial class Program
             }
             bool visible = paneVisible && ReferenceEquals(owner, _active) && !page.Hidden && _cover is null &&
                 !_dashboardOpen && _palette == PaletteKind.None && !_setOpen && !_helpOpen && !_mruWalking && !NativeDialogOpen;
-            if (page.Visible && !visible && page.Host.HasFocus && ReferenceEquals(owner, _active)) page.ResumeFocus = true;
-            if (!ReferenceEquals(owner, _active)) page.ResumeFocus = false;
+            // SetActive changes the owner before presentation is updated. Remember
+            // the focused page while its session is hidden, so returning restores
+            // native keyboard/IME focus rather than only the DOM's focused element.
+            if (page.Visible && !visible && page.Host.HasFocus) page.ResumeFocus = true;
             page.Bounds = new Rectangle((int)box.x, (int)box.y, (int)box.w, (int)box.h);
             page.Visible = visible;
             var documentBounds = PresentWebNavigation(page);
             if (!page.RecreateHost) page.Host.Present(documentBounds, page.Visible && page.State != "failed");
             if (page.State == "loaded" && !ReferenceEquals(page.AppliedTheme, _theme)) ApplyWebTheme(page);
             if (page.Visible && page.ResumeFocus) { page.ResumeFocus = false; page.Host.Focus(); }
+            PublishReplicaPageState(page);
         }
     }
 

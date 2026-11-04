@@ -17,6 +17,8 @@ internal partial class Program
         _observedLayouts.TryGetValue(ses.Id, out var before);
         _observedLayouts[ses.Id] = now;
         Observation.SetMembership(ses.Id, ses.AllPanes.Select(p => p.Id).ToArray());
+        EnsureRemotePresentation(ses);
+        PublishOriginPresentation(ses, "layout");
         if (before is null) return;
         if (before.Focus != now.Focus)
             Observation.Publish("focus", new Dictionary<string, object?>
@@ -51,6 +53,8 @@ internal partial class Program
         if (exitCode is not null) fields["exitCode"] = exitCode;
         if (anchorPaneId is not null) fields["anchorPaneId"] = anchorPaneId;
         Observation.Publish(type, fields);
+        if (type == "hud" && !ses.HudMirrored)
+        { ses.OriginHudGeneration++; PublishOriginPresentation(ses, "hud"); }
     }
 
     private void ScratchVisibility(Pane? pane, string action)
@@ -62,6 +66,7 @@ internal partial class Program
 
     private void EndObservation()
     {
+        foreach (var scope in _originPresentations.Keys.ToArray()) RetireOriginPresentation(scope);
         if (_observation is not { } observation) return;
         foreach (var session in AllSessions())
         {

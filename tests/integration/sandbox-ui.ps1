@@ -38,7 +38,7 @@ $label = if ($Test -eq 'Hud') { $Suite } else { $Test }
 $requiresPython = $definition.Python -or ($Test -eq 'WebOverlayHost' -and ($TestParameters.Cookbook -or $TestParameters.CookbookOnly -or $TestParameters.NavigationOnly))
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $hostMetadata = @{}
-if ($Test -eq 'WebStartupBaseline') {
+if ($Test -in @('WebStartupBaseline','WebReleaseAcceptance','WebImeAcceptance')) {
     $commit = & git -C $repo rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Cannot record the host commit for the startup baseline.' }
     $sdk = & dotnet --version
@@ -49,6 +49,9 @@ if ($definition.Gate) { $GateExe = (Resolve-Path -LiteralPath $GateExe).Path }
 $inputFiles = @{}
 foreach ($key in @($definition.Inputs) + @($definition.OptionalInputs)) {
     if (-not $key -or ($key -in $definition.OptionalInputs -and -not $TestParameters.ContainsKey($key))) { continue }
+    if (-not $TestParameters.ContainsKey($key) -and $key -notin @('Installer','Portable')) {
+        throw "Test $Test requires TestParameters.$key."
+    }
     $source = if ($TestParameters.ContainsKey($key)) { $TestParameters[$key] } else {
         Join-Path $repo ('installer/Output/' + $(if ($key -eq 'Installer') { 'agwinterm-setup-0.20.14.exe' } else { 'agwinterm-portable-0.20.14-win-x64.exe' }))
     }
