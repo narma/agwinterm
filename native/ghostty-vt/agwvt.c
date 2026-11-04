@@ -73,11 +73,23 @@ static BOOL CALLBACK initialize_system(PINIT_ONCE once, PVOID parameter, PVOID* 
 typedef struct { GhosttyTrackedGridRef refs[4]; int32_t exit_code, has_exit_code; } TrackedMark;
 typedef struct LinkEntry { struct LinkEntry* next; size_t index, length; uint8_t uri[]; } LinkEntry;
 typedef struct AgwAnchor { struct AgwAnchor* next; AgwVt* owner; GhosttyTrackedGridRef ref; } AgwAnchor;
+typedef struct ImagePixels {
+    struct ImagePixels* next;
+    _Atomic uint32_t references;
+    uint64_t generation;
+    uint32_t width, height, format;
+    size_t length;
+    uint8_t data[];
+} ImagePixels;
+typedef struct ImageEntry { struct ImageEntry* next; ImagePixels* pixels; AgwVtImage value; } ImageEntry;
 struct AgwVt {
     GhosttyTerminal terminal;
     GhosttyRenderState render;
     GhosttyRenderState held, capture;
     LinkEntry *render_links, *held_links, *capture_links;
+    ImageEntry *render_images, *held_images, *capture_images;
+    ImagePixels* image_cache;
+    GhosttyRenderStateImageIterator images;
     uint64_t held_since, held_serial, capture_serial, last_serial;
     int holding, render_invalidated, capture_busy, last_valid;
     SRWLOCK capture_guard;
@@ -116,6 +128,83 @@ static void budget_free(void* context, void* memory, size_t length, uint8_t alig
     _aligned_free(memory); atomic_fetch_sub(&vt->allocated, length);
 }
 static const GhosttyAllocatorVtable budget_vtable = { .alloc = budget_alloc, .free = budget_free };
+static void free_images(AgwVt* vt, ImageEntry* images) {
+    while (images) {
+        ImageEntry* next = images->next;
+        atomic_fetch_sub(&images->pixels->references, 1);
+        budget_free(vt, images, sizeof(*images), 0, 0); images = next;
+    }
+}
+// The cache owns one reference. Readers only release snapshot references;
+// reclamation happens on the serialized terminal thread, never during a copy.
+static void prune_images(AgwVt* vt) {
+    ImagePixels** link = &vt->image_cache;
+    while (*link) {
+        ImagePixels* pixels = *link;
+        if (atomic_load(&pixels->references) == 1) {
+            *link = pixels->next;
+            budget_free(vt, pixels, sizeof(*pixels) + pixels->length, 0, 0);
+        } else link = &pixels->next;
+    }
+}
+static int capture_images(AgwVt* vt, GhosttyRenderState state, ImageEntry** out) {
+    *out = NULL; ImageEntry** tail = out;
+    prune_images(vt);
+    TRY(ghostty_render_state_get(state, GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR, &vt->images));
+    GhosttyKittyGraphics graphics;
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &graphics));
+    int result = 0; size_t count = 0;
+    while (!result && ghostty_render_state_image_iterator_next(vt->images)) {
+        AgwVtImage value = {0}; GhosttyImageProtocol protocol;
+        GhosttyRenderStateImageData keys[] = {
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL, GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION, GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_Z, GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW, GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y, GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT, GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y, GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH,
+            GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT };
+        void* values[] = { &protocol, &value.id, &value.generation, &value.layer, &value.z, &value.col,
+            &value.row, &value.offset_x, &value.offset_y, &value.width, &value.height,
+            &value.source_x, &value.source_y, &value.source_width, &value.source_height };
+        result = ghostty_render_state_image_get_multi(vt->images, 15, keys, values, NULL);
+        if (result) break;
+        if (protocol != GHOSTTY_IMAGE_PROTOCOL_KITTY) continue;
+        if (++count > 65536) { result = GHOSTTY_LIMIT_EXCEEDED; break; }
+        ImagePixels* pixels = vt->image_cache;
+        while (pixels && pixels->generation != value.generation) pixels = pixels->next;
+        if (!pixels) {
+            GhosttyKittyGraphicsImage image = ghostty_kitty_graphics_image(graphics, value.id);
+            if (!image) continue;
+            const uint8_t* data; size_t length; uint64_t generation;
+            GhosttyKittyGraphicsImageData image_keys[] = { GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
+                GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
+                GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
+                GHOSTTY_KITTY_IMAGE_DATA_GENERATION };
+            void* image_values[] = { &value.image_width, &value.image_height, &value.format, &data, &length, &generation };
+            result = ghostty_kitty_graphics_image_get_multi(image, 6, image_keys, image_values, NULL);
+            if (result == GHOSTTY_NO_VALUE) { result = 0; continue; }
+            if (result) break;
+            if (generation != value.generation || length > 64u * 1024u * 1024u) { result = GHOSTTY_INVALID_VALUE; break; }
+            pixels = budget_alloc(vt, sizeof(*pixels) + length, 0, 0);
+            if (!pixels) { result = GHOSTTY_OUT_OF_MEMORY; break; }
+            pixels->next = vt->image_cache; pixels->generation = generation;
+            atomic_init(&pixels->references, 1);
+            pixels->width = value.image_width; pixels->height = value.image_height; pixels->format = value.format;
+            pixels->length = length; memcpy(pixels->data, data, length); vt->image_cache = pixels;
+        }
+        ImageEntry* entry = budget_alloc(vt, sizeof(*entry), 0, 0);
+        if (!entry) { result = GHOSTTY_OUT_OF_MEMORY; break; }
+        value.image_width = pixels->width; value.image_height = pixels->height;
+        value.format = pixels->format; value.data_length = (uint32_t)pixels->length;
+        atomic_fetch_add(&pixels->references, 1);
+        *entry = (ImageEntry){ .next = NULL, .pixels = pixels, .value = value };
+        *tail = entry; tail = &entry->next;
+    }
+    if (result) { free_images(vt, *out); *out = NULL; }
+    return result;
+}
 static void flush_anchors(AgwVt* vt) {
     AcquireSRWLockExclusive(&vt->anchor_guard);
     AgwAnchor* anchor = vt->released_anchors; vt->released_anchors = NULL;
@@ -263,13 +352,16 @@ static void render_hold(GhosttyTerminal terminal, void* context, bool held) {
     // consumed outside the session lock, even if another hold begins meanwhile.
     GhosttyRenderState next = NULL;
     LinkEntry* links = NULL;
+    ImageEntry* images = NULL;
     int result = capture_links(vt, &links);
     if (!result) result = ghostty_render_state_new(&vt->allocator, &next);
     if (!result) result = ghostty_render_state_update(next, terminal);
+    if (!result) result = capture_images(vt, next, &images);
     if (result) { free_links(vt, links); ghostty_render_state_free(next); vt->effect_error = result; return; }
     AcquireSRWLockExclusive(&vt->capture_guard);
     vt->holding = 1;
-    if (vt->held && vt->held != vt->capture) { ghostty_render_state_free(vt->held); free_links(vt, vt->held_links); }
+    if (vt->held && vt->held != vt->capture) { ghostty_render_state_free(vt->held); free_links(vt, vt->held_links); free_images(vt, vt->held_images); }
+    vt->held_images = images;
     vt->held_links = links;
     vt->held = next; vt->held_since = GetTickCount64(); vt->held_serial++;
     vt->render_invalidated = 1; // The callback consumed terminal dirty flags.
@@ -324,7 +416,9 @@ void agwvt_free(AgwVt* vt) {
     ghostty_tracked_grid_ref_free(vt->scroll_probe);
     ghostty_render_state_row_cells_free(vt->cells);
     ghostty_render_state_row_iterator_free(vt->rows);
-    if (vt->capture && vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); }
+    if (vt->capture && vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); free_images(vt, vt->capture_images); }
+    free_images(vt, vt->held_images); free_images(vt, vt->render_images); prune_images(vt);
+    ghostty_render_state_image_iterator_free(vt->images);
     free_links(vt, vt->held_links); free_links(vt, vt->render_links);
     ghostty_render_state_free(vt->held);
     ghostty_render_state_free(vt->render);
@@ -375,6 +469,7 @@ int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, Agw
     if (!result) result = ghostty_render_state_new(&vt->allocator, &vt->render);
     if (!result) result = ghostty_render_state_row_iterator_new(&vt->allocator, &vt->rows);
     if (!result) result = ghostty_render_state_row_cells_new(&vt->allocator, &vt->cells);
+    if (!result) result = ghostty_render_state_image_iterator_new(&vt->allocator, &vt->images);
     if (!result) result = configure_terminal(vt, 1);
     GhosttyPoint top = { .tag = GHOSTTY_POINT_TAG_ACTIVE, .value = { .coordinate = { .x = 0, .y = 0 } } };
     if (!result) result = ghostty_terminal_grid_ref_track(vt->terminal, top, &vt->scroll_probe);
@@ -480,6 +575,8 @@ int agwvt_restore(AgwVt* vt, const uint8_t* bytes, size_t length) {
     ghostty_render_state_free(vt->held); vt->held = NULL; vt->capture = NULL;
     free_links(vt, vt->held_links); free_links(vt, vt->render_links);
     vt->held_links = vt->render_links = vt->capture_links = NULL;
+    free_images(vt, vt->held_images); free_images(vt, vt->render_images); prune_images(vt);
+    vt->held_images = vt->render_images = vt->capture_images = NULL;
     vt->holding = 0; vt->render_invalidated = 0; vt->last_valid = 0;
     vt->effect_error = 0;
     return GHOSTTY_SUCCESS;
@@ -558,10 +655,18 @@ int agwvt_begin(AgwVt* vt) {
         TRY(capture_links(vt, &links));
         int result = ghostty_render_state_begin_update(vt->render, vt->terminal);
         if (result) { free_links(vt, links); return result; }
+        // At the pinned revision begin_update captures image placements; only
+        // style denormalization is deferred to end_update. Pixel ownership must
+        // be established here, while the external terminal lock is still held.
+        ImageEntry* images = NULL;
+        result = capture_images(vt, vt->render, &images);
+        if (result) { ghostty_render_state_end_update(vt->render); free_links(vt, links); vt->last_valid = 0; return result; }
+        free_images(vt, vt->render_images); vt->render_images = images;
         free_links(vt, vt->render_links); vt->render_links = links;
     }
     vt->capture = hold ? vt->held : vt->render;
     vt->capture_links = hold ? vt->held_links : vt->render_links;
+    vt->capture_images = hold ? vt->held_images : vt->render_images;
     vt->capture_serial = hold ? vt->held_serial : 0;
     vt->capture_busy = 1;
     vt->updating = 1;
@@ -582,7 +687,8 @@ int agwvt_clean(AgwVt* vt) {
     TRY(ghostty_render_state_clean(vt->capture));
     AcquireSRWLockExclusive(&vt->capture_guard);
     vt->last_serial = vt->capture_serial; vt->last_valid = 1; vt->capture_busy = 0;
-    if (vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); }
+    if (vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); free_images(vt, vt->capture_images); }
+    vt->capture_images = NULL;
     vt->capture_links = NULL;
     vt->capture = NULL;
     ReleaseSRWLockExclusive(&vt->capture_guard);
@@ -621,11 +727,31 @@ int agwvt_abort(AgwVt* vt) {
     if (vt->updating) TRY(agwvt_end(vt));
     AcquireSRWLockExclusive(&vt->capture_guard);
     vt->last_valid = 0;
-    if (vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); }
+    if (vt->capture != vt->held && vt->capture != vt->render) { ghostty_render_state_free(vt->capture); free_links(vt, vt->capture_links); free_images(vt, vt->capture_images); }
+    vt->capture_images = NULL;
     vt->capture_links = NULL;
     vt->capture = NULL; vt->capture_busy = 0;
     ReleaseSRWLockExclusive(&vt->capture_guard);
     return GHOSTTY_SUCCESS;
+}
+int agwvt_images(AgwVt* vt, AgwVtImage* images, size_t capacity, size_t* count, uint32_t stride) {
+    if (!vt || !vt->capture_busy || vt->updating || !count || (!images && capacity) || stride != sizeof(AgwVtImage)) return GHOSTTY_INVALID_VALUE;
+    *count = 0;
+    for (ImageEntry* entry = vt->capture_images; entry; entry = entry->next) {
+        if (*count < capacity) images[*count] = entry->value;
+        (*count)++;
+    }
+    return *count > capacity ? GHOSTTY_OUT_OF_SPACE : GHOSTTY_SUCCESS;
+}
+int agwvt_image_pixels(AgwVt* vt, uint64_t generation, uint8_t* pixels, size_t capacity) {
+    if (!vt || !vt->capture_busy || vt->updating || !pixels) return GHOSTTY_INVALID_VALUE;
+    for (ImageEntry* entry = vt->capture_images; entry; entry = entry->next) {
+        if (entry->value.generation != generation) continue;
+        if (capacity < entry->pixels->length) return GHOSTTY_OUT_OF_SPACE;
+        memcpy(pixels, entry->pixels->data, entry->pixels->length);
+        return GHOSTTY_SUCCESS;
+    }
+    return GHOSTTY_NO_VALUE;
 }
 int agwvt_text(AgwVt* vt, uint32_t kind, uint8_t* text, size_t capacity, size_t* length) {
     if (!vt || !length || kind > 1) return GHOSTTY_INVALID_VALUE;

@@ -18,6 +18,9 @@ public sealed unsafe class GhosttyVt : IDisposable
     private byte[] _text = new byte[4096];
     private byte[] _readText = new byte[4096];
     private GhosttyNative.NativeCell[] _readCells = [];
+    private GhosttyNative.Image[] _imageMetadata = [];
+    private readonly Dictionary<ulong, GhosttyImage> _imageCache = new();
+    public IReadOnlyList<GhosttyImagePlacement> FrameImages { get; private set; } = [];
     private bool _capturing, _disposed;
     private GhosttyNative.Info _info;
     private Win32InputModeObserver _windows = new();
@@ -238,6 +241,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             GhosttyNative.Check(GhosttyNative.Cursor(_handle, out uint cursorCol, out uint cursorRow, out uint cursorVisible, out uint cursorShape));
             FrameCursor = ((int)cursorCol, (int)cursorRow, cursorVisible != 0);
             FrameCursorShape = (int)cursorShape;
+            CaptureImages();
             while (true)
             {
                 int result;
@@ -272,6 +276,47 @@ public sealed unsafe class GhosttyVt : IDisposable
             throw;
         }
         finally { _capturing = false; }
+    }
+    private void CaptureImages()
+    {
+        nuint count;
+        while (true)
+        {
+            int result;
+            fixed (GhosttyNative.Image* metadata = _imageMetadata)
+                result = GhosttyNative.Images(_handle, metadata, (nuint)_imageMetadata.Length, out count, (uint)sizeof(GhosttyNative.Image));
+            if (result == -3 && count <= 65536) { Array.Resize(ref _imageMetadata, checked((int)count)); continue; }
+            GhosttyNative.Check(result); break;
+        }
+        if (count == 0) { FrameImages = []; _imageCache.Clear(); return; }
+        var placements = new GhosttyImagePlacement[checked((int)count)];
+        var retained = new HashSet<ulong>();
+        for (int i = 0; i < placements.Length; i++)
+        {
+            var item = _imageMetadata[i]; retained.Add(item.Generation);
+            if (!_imageCache.TryGetValue(item.Generation, out var image))
+            {
+                int channels = (GhosttyPixelFormat)item.Format switch
+                {
+                    GhosttyPixelFormat.Rgb => 3, GhosttyPixelFormat.Rgba => 4,
+                    GhosttyPixelFormat.GrayAlpha => 2, GhosttyPixelFormat.Gray => 1,
+                    _ => throw new InvalidDataException("Unexpected native image format.")
+                };
+                if (item.DataLength > 64 * 1024 * 1024 || (ulong)item.ImageWidth * item.ImageHeight * (uint)channels != item.DataLength)
+                    throw new InvalidDataException("Invalid native image dimensions.");
+                byte[] pixels = GC.AllocateUninitializedArray<byte>(checked((int)item.DataLength));
+                fixed (byte* data = pixels)
+                    GhosttyNative.Check(GhosttyNative.ImagePixels(_handle, item.Generation, data, (nuint)pixels.Length));
+                image = new GhosttyImage(item.Generation, checked((int)item.ImageWidth), checked((int)item.ImageHeight),
+                    (GhosttyPixelFormat)item.Format, pixels);
+                _imageCache.Add(item.Generation, image);
+            }
+            placements[i] = new(image, item.Id, (GhosttyImageLayer)item.Layer, item.Z, item.Col, item.Row,
+                item.OffsetX, item.OffsetY, item.Width, item.Height, item.SourceX, item.SourceY, item.SourceWidth, item.SourceHeight);
+        }
+        foreach (ulong key in _imageCache.Keys.ToArray()) if (!retained.Contains(key)) _imageCache.Remove(key);
+        Array.Sort(placements, static (a, b) => a.Layer != b.Layer ? a.Layer.CompareTo(b.Layer) : a.Z.CompareTo(b.Z));
+        FrameImages = placements;
     }
     private static Cell ConvertCell(GhosttyNative.NativeCell cell, byte[] text)
     {

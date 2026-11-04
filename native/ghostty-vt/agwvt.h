@@ -21,6 +21,13 @@ typedef struct {
     uint64_t scroll_epoch;
 } AgwVtInfo;
 typedef struct { int32_t prompt, command, output, end, exit_code, has_exit_code; } AgwVtMark;
+typedef struct {
+    uint64_t generation;
+    uint32_t id, layer;
+    int32_t z, col, row;
+    uint32_t offset_x, offset_y, width, height, source_x, source_y, source_width, source_height;
+    uint32_t image_width, image_height, format, data_length;
+} AgwVtImage;
 typedef void (*AgwVtEvent)(void* context, uint32_t kind, const uint8_t* data, size_t len);
 
 AGWVT_API uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size);
@@ -33,6 +40,9 @@ AGWVT_API int agwvt_info(AgwVt* vt, AgwVtInfo* out);
 AGWVT_API int agwvt_scrollback(AgwVt* vt, size_t lines);
 AGWVT_API int agwvt_begin(AgwVt* vt);
 AGWVT_API int agwvt_end(AgwVt* vt);
+// Metadata and pixels belong to the active capture, not the mutable terminal.
+AGWVT_API int agwvt_images(AgwVt* vt, AgwVtImage* images, size_t capacity, size_t* count, uint32_t stride);
+AGWVT_API int agwvt_image_pixels(AgwVt* vt, uint64_t generation, uint8_t* pixels, size_t capacity);
 AGWVT_API int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uint32_t* shape);
 AGWVT_API int agwvt_cursor_default(AgwVt* vt, uint32_t style, uint32_t blink);
 AGWVT_API int agwvt_colors(AgwVt* vt, uint32_t foreground, uint32_t background);

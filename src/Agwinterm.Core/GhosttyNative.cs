@@ -45,7 +45,7 @@ internal static unsafe partial class GhosttyNative
                 if (abi(&cellSize, &infoSize) != 1 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
                     Marshal.PtrToStringUTF8((nint)revision()) != Revision)
                     throw new InvalidOperationException("Ghostty adapter ABI, layout or upstream revision mismatch; rebuild both DLLs together.");
-                foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore" })
+                foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore", "images", "image_pixels" })
                     _ = NativeLibrary.GetExport(library, "agwvt_" + entry);
                 if (!_resolverInstalled)
                 {
@@ -83,6 +83,15 @@ internal static unsafe partial class GhosttyNative
     }
     [StructLayout(LayoutKind.Sequential)]
     internal struct Mark { public int Prompt, Command, Output, End, ExitCode, HasExitCode; }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Image
+    {
+        public ulong Generation;
+        public uint Id, Layer;
+        public int Z, Col, Row;
+        public uint OffsetX, OffsetY, Width, Height, SourceX, SourceY, SourceWidth, SourceHeight;
+        public uint ImageWidth, ImageHeight, Format, DataLength;
+    }
     internal sealed class Events
     {
         internal readonly Queue<(uint Kind, byte[] Data)> Pending = new();
@@ -182,6 +191,12 @@ internal static unsafe partial class GhosttyNative
     [LibraryImport(Library, EntryPoint = "agwvt_end")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int End(Handle handle);
+    [LibraryImport(Library, EntryPoint = "agwvt_images")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int Images(Handle handle, Image* images, nuint capacity, out nuint count, uint stride);
+    [LibraryImport(Library, EntryPoint = "agwvt_image_pixels")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int ImagePixels(Handle handle, ulong generation, byte* pixels, nuint capacity);
     [LibraryImport(Library, EntryPoint = "agwvt_cursor")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Cursor(Handle handle, out uint col, out uint row, out uint visible, out uint shape);

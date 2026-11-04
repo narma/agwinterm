@@ -319,6 +319,29 @@ using (var vt = new GhosttyVt(20, 5))
     Check(host.Replies.Contains("i=45;") && !host.Replies.Contains(";OK"), "Kitty file media remains disabled");
     vt.Feed("after images"u8); Capture(vt);
     Check(Row(vt, 0) == "after images", "graphics errors leave terminal input usable");
+    vt.Resize(20, 5, 8, 16);
+    vt.Feed("\u001b[2;3H\u001b_Ga=p,i=42,p=1,c=2,r=2,C=1,z=-1;\u001b\\"u8); Capture(vt);
+    var first = vt.FrameImages.Single();
+    Check(first.Col == 2 && first.Row == 1 && first.Width == 16 && first.Height == 32 &&
+        first.Layer == GhosttyImageLayer.BelowText, "native placement retains geometry and layer");
+    Check(first.Image.Pixels.Span.SequenceEqual(new byte[] { 255, 0, 0, 255 }), "WIC exports exact unpremultiplied red RGBA pixels");
+    Capture(vt);
+    Check(ReferenceEquals(first.Image, vt.FrameImages.Single().Image), "unchanged images reuse managed pixel buffers");
+    vt.BeginCapture(); vt.Feed("\u001b_Ga=d,d=I,i=42;\u001b\\"u8); vt.CompleteCapture();
+    Check(vt.FrameImages.Single().Image.Pixels.Span.SequenceEqual(first.Image.Pixels.Span), "captured pixels survive concurrent native image deletion");
+    Capture(vt); Check(vt.FrameImages.Count == 0, "next frame removes deleted placement");
+    vt.Feed("\u001b_Ga=T,f=32,s=1,v=1,i=44,c=2,r=2,C=1;/wAA/w==\u001b\\"u8); Capture(vt);
+    var red = vt.FrameImages.Single().Image;
+    vt.Feed("\u001b[?2026h\u001b_Ga=T,f=32,s=1,v=1,i=44,c=2,r=2,C=1;AP8A/w==\u001b\\"u8); Capture(vt);
+    Check(ReferenceEquals(red, vt.FrameImages.Single().Image), "synchronized output retains preceding image generation");
+    vt.Feed("\u001b[?2026l"u8); Capture(vt);
+    Check(vt.FrameImages.Single().Image.Generation != red.Generation &&
+        vt.FrameImages.Single().Image.Pixels.Span.SequenceEqual(new byte[] { 0, 255, 0, 255 }), "same-ID replacement publishes new green pixels");
+    byte[] imageSnapshot = vt.CaptureSnapshot();
+    vt.Feed("\u001b[?1049h"u8); Capture(vt); Check(vt.FrameImages.Count == 0, "alternate screen has separate image storage");
+    vt.Feed("\u001b[?1049l"u8); Capture(vt); Check(vt.FrameImages.Count == 1, "primary image survives alternate screen");
+    vt.RestoreSnapshot(imageSnapshot); Capture(vt);
+    Check(vt.FrameImages.Single().Image.Pixels.Span.SequenceEqual(new byte[] { 0, 255, 0, 255 }), "native snapshot restores graphics and pixels");
 }
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 

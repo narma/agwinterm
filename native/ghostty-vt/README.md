@@ -31,8 +31,11 @@ the terminal or throw across the C boundary.
 Kitty direct payload storage is capped at 64 MiB per screen (within the shared
 256 MiB terminal allocation budget). PNG decoding uses Windows WIC, with at most
 16 million decoded pixels, and returns RGBA using Ghostty's supplied allocator.
-File, temporary-file and shared-memory media remain disabled. Native graphics
-storage/decoding is enabled; graphics frame extraction and drawing are pending.
+File, temporary-file and shared-memory media remain disabled. Graphics captures
+retain generation-keyed pixels independently of live storage, including held
+and in-flight frames. Unchanged pixels are copied only once into each native
+and managed cache. Placements retain native layers, z-order, crops and offsets.
+Direct2D integration and animation scheduling are pending.
 
 Native snapshots retain parser continuation and tracked command boundaries.
 The managed envelope includes the upstream revision, bounded Windows input
