@@ -2,7 +2,7 @@
 
 ## Context
 
-See [proposal.md](proposal.md) for motivation. Implementation on top of stages 1–3 is in progress following user approval. Current implementation and scoped evidence are recorded in [development notes](../../../docs/agterm-presentation-development.md); the full stage-4 acceptance remains pending.
+See [proposal.md](proposal.md) for motivation. Implementation on top of stages 1–3 is in progress following user approval. Current implementation and scoped evidence are recorded in [development notes](../../../../docs/agterm-presentation-development.md); the full stage-4 acceptance remains pending.
 
 Observed local seams:
 

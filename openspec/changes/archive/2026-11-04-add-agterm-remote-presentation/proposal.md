@@ -2,7 +2,7 @@
 
 ## Why
 
-The two terminal directions are implemented and accepted, but both Agwinterm adapters still report presentation unsupported. Stage 4 of the [roadmap](../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) must carry agent presentation and interactive outcomes between those same origins and viewers without confusing terminal ownership with presentation authority.
+The two terminal directions are implemented and accepted, but both Agwinterm adapters still report presentation unsupported. Stage 4 of the [roadmap](../../../../docs/plans/2026-11-01-wsl-zmx-agterm-roadmap.md) must carry agent presentation and interactive outcomes between those same origins and viewers without confusing terminal ownership with presentation authority.
 
 ## What Changes
 
