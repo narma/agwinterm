@@ -16,6 +16,7 @@ public class AgentRecoveryStateTests
         int reservation = state.BeginRestart(Fresh());
         Interlocked.Increment(ref state.Sequence); // replacement's control request
         state.Command = replacement; // its queued binding lands before the restart reply
+        state.Token = state.Completion.Token;
         Assert.False(state.FinishRestart(reservation, "old"));
         Assert.Equal(replacement, state.Command);
     }
@@ -28,11 +29,37 @@ public class AgentRecoveryStateTests
         int reservation = oldAttachment.BeginRestart(Fresh());
         Assert.NotEqual(oldRequest, oldAttachment.Sequence);
         int pending = Interlocked.Increment(ref oldAttachment.Sequence);
-        Assert.False(oldAttachment.FinishRestart(reservation, null));
+        Assert.True(oldAttachment.FinishRestart(reservation, null));
+        Assert.Null(oldAttachment.Command); // safe fallback until the hook actually succeeds
         var newAttachment = oldAttachment; // ReplaceLivePane preserves the workload state
         Assert.Equal(pending, newAttachment.Sequence);
         oldAttachment.Command = "new session"; // the earlier accepted hook finishes later
         Assert.Equal("new session", newAttachment.Command);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("selected agent")]
+    public void IgnoredReplacementRequestDoesNotRetainOldConversation(string? fallback)
+    {
+        var state = new AgentRecoveryState { Command = "old conversation", Token = Fresh().Token };
+        int reservation = state.BeginRestart(Fresh());
+        Interlocked.Increment(ref state.Sequence); // ancestry lookup fails; no binding is written
+        Assert.True(state.FinishRestart(reservation, fallback));
+        Assert.Equal(fallback, state.Command);
+        Assert.Equal(state.Completion.Token, state.Token);
+    }
+
+    [Fact]
+    public void LateRestartResultCannotOverwriteANewerReservationOrCompletedWork()
+    {
+        var state = new AgentRecoveryState { Command = "old" };
+        int first = state.BeginRestart(Fresh());
+        int second = state.BeginRestart(Fresh());
+        Assert.False(state.FinishRestart(first, "wrong"));
+        Assert.True(state.Completion.Accept(state.Completion.Token, 1, false));
+        Assert.True(state.FinishRestart(second, "already finished"));
+        Assert.Null(state.Command);
     }
 
     [Fact]
