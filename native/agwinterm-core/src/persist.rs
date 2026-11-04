@@ -32,6 +32,9 @@ pub struct PCell {
     pub hyperlink_uri: ::prost::alloc::string::String,
     #[prost(string, tag = "13")]
     pub hyperlink_parameters: ::prost::alloc::string::String,
+    /// complete cluster; absent in older blobs means the scalar rune
+    #[prost(string, tag = "14")]
+    pub grapheme: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PRow {

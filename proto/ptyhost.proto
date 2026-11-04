@@ -49,6 +49,7 @@ message Create {
   bool fresh_env_off = 9;         // proto3 default false = freshEnv ON (matches v1 semantics)
   map<string, string> env = 10;
   string creation_ticket = 11;  // creation_revision >= 1: host-issued, single-use spawn authority
+  string emulator_core = 12;   // core_selection_revision >= 1: managed/rust/ghostty; empty = host default
 }
 
 message Attach {
@@ -102,6 +103,7 @@ message HelloReply {
   uint32 protocol = 1;
   uint32 pid = 2;
   uint32 creation_revision = 3; // 0 = legacy limitations; 1 = prepare/query/cancel + incarnation checks
+  uint32 core_selection_revision = 4; // 1 = per-session core selection and authoritative attach core
 }
 
 message CreateReply {
@@ -125,6 +127,7 @@ message AttachReply {
   bytes scrollback_blob = 9;
   string creation_ticket = 10;
   bool native_snapshot = 11;   // data pipe starts with uint32 LE length + snapshot
+  string emulator_core = 12;   // authoritative session core, independent of current UI preference
 }
 
 message SessionInfo {

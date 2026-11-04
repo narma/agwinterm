@@ -130,7 +130,7 @@ public sealed class ServerSession : ISession
     private volatile string _creationTicket = "";
     private uint _creationHostPid;
 
-    public ITerminalCore Emulator { get; }
+    public ITerminalCore Emulator { get; private set; }
     public int Cols { get; private set; }
     public int Rows { get; private set; }
     public int? ChildProcessId => _childPid;
@@ -230,10 +230,11 @@ public sealed class ServerSession : ISession
                     if (_startFence.IsClosed) return;
                     int cols = Cols, rows = Rows;
                     client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
-                        verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket);
+                        verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket,
+                        emulatorCore: TerminalSession.CoreName(Emulator));
                     if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
                     if (_startFence.IsClosed) return;
-                    if (PublishAttachment(client.Attach(_id, creationTicket: _creationTicket, nativeSnapshot: Emulator is GhosttyTerminalCore)) && (Cols != cols || Rows != rows))
+                    if (PublishAttachment(client.Attach(_id, creationTicket: _creationTicket, nativeSnapshot: true)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -263,6 +264,7 @@ public sealed class ServerSession : ISession
             if (_disposed) { att.Dispose(); return false; }
             try
             {
+                PrepareReplica(att);
                 if (att.NativeSnapshot is { } snapshot)
                 {
                     if (Emulator is not GhosttyTerminalCore native) throw new IOException("Native snapshot requires Ghostty.");
@@ -281,6 +283,28 @@ public sealed class ServerSession : ISession
         if (!published) att.Dispose(); // no read was ever issued
         if (published && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
         return published;
+    }
+
+    // Attachment negotiates authoritative state before any output is consumed. The
+    // constructor's provisional core reflects the current UI preference, which may
+    // differ from a surviving shell. Never replace a live, already-started replica.
+    private void PrepareReplica(PtyHostAttachment attachment)
+    {
+        string core = attachment.NativeSnapshot is not null ? "ghostty" : attachment.EmulatorCore;
+        if (core.Length == 0 || core == TerminalSession.CoreName(Emulator)) return;
+        if (_started) throw new InvalidOperationException("Cannot switch a live terminal replica's core");
+        var replacement = TerminalSession.CreateCore(Cols, Rows, core);
+        try
+        {
+            replacement.Host = Emulator.Host;
+            replacement.ScrollbackMax = Emulator.ScrollbackMax;
+            replacement.CellPixelWidth = Emulator.CellPixelWidth;
+            replacement.CellPixelHeight = Emulator.CellPixelHeight;
+        }
+        catch { (replacement as IDisposable)?.Dispose(); throw; }
+        var previous = Emulator;
+        Emulator = replacement;
+        (previous as IDisposable)?.Dispose();
     }
 
     private void KillHosted()
@@ -328,7 +352,7 @@ public sealed class ServerSession : ISession
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: Emulator is GhosttyTerminalCore); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true); _creationHostPid = client.HostPid; }
         catch
         {
             // Recovery may find a checkpoint written before Create reached publication.
@@ -347,6 +371,8 @@ public sealed class ServerSession : ISession
         lock (_sync)
         {
             if (_disposed) { att.Dispose(); return false; }
+            try { PrepareReplica(att); }
+            catch { att.Dispose(); throw; }
             if (att.NativeSnapshot is null)
             {
                 // Transitional support for hosts without native snapshots.

@@ -68,6 +68,9 @@ pub struct Create {
     /// creation_revision >= 1: host-issued, single-use spawn authority
     #[prost(string, tag = "11")]
     pub creation_ticket: ::prost::alloc::string::String,
+    /// core_selection_revision >= 1: managed/rust/ghostty; empty = host default
+    #[prost(string, tag = "12")]
+    pub emulator_core: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Attach {
@@ -78,6 +81,9 @@ pub struct Attach {
     /// optional expected incarnation; mismatch refuses
     #[prost(string, tag = "3")]
     pub creation_ticket: ::prost::alloc::string::String,
+    /// accept length-prefixed Ghostty snapshot before raw PTY bytes
+    #[prost(bool, tag = "4")]
+    pub native_snapshot: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionRef {
@@ -161,6 +167,9 @@ pub struct HelloReply {
     /// 0 = legacy limitations; 1 = prepare/query/cancel + incarnation checks
     #[prost(uint32, tag = "3")]
     pub creation_revision: u32,
+    /// 1 = per-session core selection and authoritative attach core
+    #[prost(uint32, tag = "4")]
+    pub core_selection_revision: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CreateReply {
@@ -199,6 +208,12 @@ pub struct AttachReply {
     pub scrollback_blob: ::prost::alloc::vec::Vec<u8>,
     #[prost(string, tag = "10")]
     pub creation_ticket: ::prost::alloc::string::String,
+    /// data pipe starts with uint32 LE length + snapshot
+    #[prost(bool, tag = "11")]
+    pub native_snapshot: bool,
+    /// authoritative session core, independent of current UI preference
+    #[prost(string, tag = "12")]
+    pub emulator_core: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionInfo {

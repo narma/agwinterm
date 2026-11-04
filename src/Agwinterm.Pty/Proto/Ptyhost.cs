@@ -37,51 +37,53 @@ namespace Agwinterm.Pty.Proto {
             "aG9zdC5QcmVwYXJlQ3JlYXRlSAASNgoMcXVlcnlfY3JlYXRlGAogASgLMh4u",
             "YWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIABI3Cg1jYW5jZWxfY3Jl",
             "YXRlGAsgASgLMh4uYWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIAEIF",
-            "CgNjbWQiGQoFSGVsbG8SEAoIcHJvdG9jb2wYASABKA0iiwIKBkNyZWF0ZRIK",
+            "CgNjbWQiGQoFSGVsbG8SEAoIcHJvdG9jb2wYASABKA0iogIKBkNyZWF0ZRIK",
             "CgJpZBgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJvd3MYAyABKA0SCwoDYXBw",
             "GAQgASgJEgwKBGFyZ3MYBSADKAkSCwoDY3dkGAYgASgJEhAKCHZlcmJhdGlt",
             "GAcgASgIEhIKCmRlX2VsZXZhdGUYCCABKAgSFQoNZnJlc2hfZW52X29mZhgJ",
             "IAEoCBIvCgNlbnYYCiADKAsyIi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGUu",
-            "RW52RW50cnkSFwoPY3JlYXRpb25fdGlja2V0GAsgASgJGioKCEVudkVudHJ5",
-            "EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiVwoGQXR0YWNoEgoK",
-            "AmlkGAEgASgJEg8KB3JlcGFpbnQYAiABKAgSFwoPY3JlYXRpb25fdGlja2V0",
-            "GAMgASgJEhcKD25hdGl2ZV9zbmFwc2hvdBgEIAEoCCIxCgpTZXNzaW9uUmVm",
-            "EgoKAmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tldBgCIAEoCSJJCgZSZXNp",
-            "emUSCgoCaWQYASABKAkSDAoEY29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhcK",
-            "D2NyZWF0aW9uX3RpY2tldBgEIAEoCSIbCg1QcmVwYXJlQ3JlYXRlEgoKAmlk",
-            "GAEgASgJIikKC0NyZWF0aW9uUmVmEgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
-            "IAEoCSJcCg1DcmVhdGlvblJlcGx5EgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
-            "IAEoCRIvCgVwaGFzZRgDIAEoDjIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0",
-            "aW9uUGhhc2UiBgoETGlzdCIKCghTaHV0ZG93biKiAgoFUmVwbHkSCgoCb2sY",
-            "ASABKAgSDQoFZXJyb3IYAiABKAkSLgoFaGVsbG8YAyABKAsyHS5hZ3dpbnRl",
-            "cm0ucHR5aG9zdC5IZWxsb1JlcGx5SAASMAoGY3JlYXRlGAQgASgLMh4uYWd3",
-            "aW50ZXJtLnB0eWhvc3QuQ3JlYXRlUmVwbHlIABIwCgZhdHRhY2gYBSABKAsy",
-            "Hi5hZ3dpbnRlcm0ucHR5aG9zdC5BdHRhY2hSZXBseUgAEiwKBGxpc3QYBiAB",
-            "KAsyHC5hZ3dpbnRlcm0ucHR5aG9zdC5MaXN0UmVwbHlIABI0CghjcmVhdGlv",
-            "bhgHIAEoCzIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0aW9uUmVwbHlIAEIG",
-            "CgRib2R5IkYKCkhlbGxvUmVwbHkSEAoIcHJvdG9jb2wYASABKA0SCwoDcGlk",
-            "GAIgASgNEhkKEWNyZWF0aW9uX3JldmlzaW9uGAMgASgNIjIKC0NyZWF0ZVJl",
-            "cGx5EgoKAmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tldBgCIAEoCSLfAQoL",
-            "QXR0YWNoUmVwbHkSDAoEcGlwZRgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJv",
-            "d3MYAyABKA0SEQoJY2hpbGRfcGlkGAQgASgNEhIKCmhhc19leGl0ZWQYBSAB",
-            "KAgSEQoJZXhpdF9jb2RlGAYgASgFEg0KBW1vZGVzGAcgASgJEhIKCnNjcm9s",
-            "bGJhY2sYCCADKAkSFwoPc2Nyb2xsYmFja19ibG9iGAkgASgMEhcKD2NyZWF0",
-            "aW9uX3RpY2tldBgKIAEoCRIXCg9uYXRpdmVfc25hcHNob3QYCyABKAgiqQEK",
-            "C1Nlc3Npb25JbmZvEgoKAmlkGAEgASgJEgwKBGNvbHMYAiABKA0SDAoEcm93",
-            "cxgDIAEoDRIRCgljaGlsZF9waWQYBCABKA0SEgoKaGFzX2V4aXRlZBgFIAEo",
-            "CBIRCglleGl0X2NvZGUYBiABKAUSDQoFdGl0bGUYByABKAkSEAoIYXR0YWNo",
-            "ZWQYCCABKAgSFwoPY3JlYXRpb25fdGlja2V0GAkgASgJIj0KCUxpc3RSZXBs",
-            "eRIwCghzZXNzaW9ucxgBIAMoCzIeLmFnd2ludGVybS5wdHlob3N0LlNlc3Np",
-            "b25JbmZvKn8KDUNyZWF0aW9uUGhhc2USFAoQQ1JFQVRJT05fVU5LTk9XThAA",
-            "EhUKEUNSRUFUSU9OX1BSRVBBUkVEEAESFQoRQ1JFQVRJT05fQ1JFQVRJTkcQ",
-            "AhIRCg1DUkVBVElPTl9MSVZFEAMSFwoTQ1JFQVRJT05fQ0FOQ0VMTElORxAE",
-            "QhaqAhNBZ3dpbnRlcm0uUHR5LlByb3RvYgZwcm90bzM="));
+            "RW52RW50cnkSFwoPY3JlYXRpb25fdGlja2V0GAsgASgJEhUKDWVtdWxhdG9y",
+            "X2NvcmUYDCABKAkaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVl",
+            "GAIgASgJOgI4ASJXCgZBdHRhY2gSCgoCaWQYASABKAkSDwoHcmVwYWludBgC",
+            "IAEoCBIXCg9jcmVhdGlvbl90aWNrZXQYAyABKAkSFwoPbmF0aXZlX3NuYXBz",
+            "aG90GAQgASgIIjEKClNlc3Npb25SZWYSCgoCaWQYASABKAkSFwoPY3JlYXRp",
+            "b25fdGlja2V0GAIgASgJIkkKBlJlc2l6ZRIKCgJpZBgBIAEoCRIMCgRjb2xz",
+            "GAIgASgNEgwKBHJvd3MYAyABKA0SFwoPY3JlYXRpb25fdGlja2V0GAQgASgJ",
+            "IhsKDVByZXBhcmVDcmVhdGUSCgoCaWQYASABKAkiKQoLQ3JlYXRpb25SZWYS",
+            "CgoCaWQYASABKAkSDgoGdGlja2V0GAIgASgJIlwKDUNyZWF0aW9uUmVwbHkS",
+            "CgoCaWQYASABKAkSDgoGdGlja2V0GAIgASgJEi8KBXBoYXNlGAMgASgOMiAu",
+            "YWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25QaGFzZSIGCgRMaXN0IgoKCFNo",
+            "dXRkb3duIqICCgVSZXBseRIKCgJvaxgBIAEoCBINCgVlcnJvchgCIAEoCRIu",
+            "CgVoZWxsbxgDIAEoCzIdLmFnd2ludGVybS5wdHlob3N0LkhlbGxvUmVwbHlI",
+            "ABIwCgZjcmVhdGUYBCABKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGVS",
+            "ZXBseUgAEjAKBmF0dGFjaBgFIAEoCzIeLmFnd2ludGVybS5wdHlob3N0LkF0",
+            "dGFjaFJlcGx5SAASLAoEbGlzdBgGIAEoCzIcLmFnd2ludGVybS5wdHlob3N0",
+            "Lkxpc3RSZXBseUgAEjQKCGNyZWF0aW9uGAcgASgLMiAuYWd3aW50ZXJtLnB0",
+            "eWhvc3QuQ3JlYXRpb25SZXBseUgAQgYKBGJvZHkiZwoKSGVsbG9SZXBseRIQ",
+            "Cghwcm90b2NvbBgBIAEoDRILCgNwaWQYAiABKA0SGQoRY3JlYXRpb25fcmV2",
+            "aXNpb24YAyABKA0SHwoXY29yZV9zZWxlY3Rpb25fcmV2aXNpb24YBCABKA0i",
+            "MgoLQ3JlYXRlUmVwbHkSCgoCaWQYASABKAkSFwoPY3JlYXRpb25fdGlja2V0",
+            "GAIgASgJIvYBCgtBdHRhY2hSZXBseRIMCgRwaXBlGAEgASgJEgwKBGNvbHMY",
+            "AiABKA0SDAoEcm93cxgDIAEoDRIRCgljaGlsZF9waWQYBCABKA0SEgoKaGFz",
+            "X2V4aXRlZBgFIAEoCBIRCglleGl0X2NvZGUYBiABKAUSDQoFbW9kZXMYByAB",
+            "KAkSEgoKc2Nyb2xsYmFjaxgIIAMoCRIXCg9zY3JvbGxiYWNrX2Jsb2IYCSAB",
+            "KAwSFwoPY3JlYXRpb25fdGlja2V0GAogASgJEhcKD25hdGl2ZV9zbmFwc2hv",
+            "dBgLIAEoCBIVCg1lbXVsYXRvcl9jb3JlGAwgASgJIqkBCgtTZXNzaW9uSW5m",
+            "bxIKCgJpZBgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJvd3MYAyABKA0SEQoJ",
+            "Y2hpbGRfcGlkGAQgASgNEhIKCmhhc19leGl0ZWQYBSABKAgSEQoJZXhpdF9j",
+            "b2RlGAYgASgFEg0KBXRpdGxlGAcgASgJEhAKCGF0dGFjaGVkGAggASgIEhcK",
+            "D2NyZWF0aW9uX3RpY2tldBgJIAEoCSI9CglMaXN0UmVwbHkSMAoIc2Vzc2lv",
+            "bnMYASADKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5TZXNzaW9uSW5mbyp/Cg1D",
+            "cmVhdGlvblBoYXNlEhQKEENSRUFUSU9OX1VOS05PV04QABIVChFDUkVBVElP",
+            "Tl9QUkVQQVJFRBABEhUKEUNSRUFUSU9OX0NSRUFUSU5HEAISEQoNQ1JFQVRJ",
+            "T05fTElWRRADEhcKE0NSRUFUSU9OX0NBTkNFTExJTkcQBEIWqgITQWd3aW50",
+            "ZXJtLlB0eS5Qcm90b2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Agwinterm.Pty.Proto.CreationPhase), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Request), global::Agwinterm.Pty.Proto.Request.Parser, new[]{ "Hello", "Create", "Attach", "Detach", "Resize", "Kill", "List", "Shutdown", "PrepareCreate", "QueryCreate", "CancelCreate" }, new[]{ "Cmd" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Hello), global::Agwinterm.Pty.Proto.Hello.Parser, new[]{ "Protocol" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Create), global::Agwinterm.Pty.Proto.Create.Parser, new[]{ "Id", "Cols", "Rows", "App", "Args", "Cwd", "Verbatim", "DeElevate", "FreshEnvOff", "Env", "CreationTicket" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Create), global::Agwinterm.Pty.Proto.Create.Parser, new[]{ "Id", "Cols", "Rows", "App", "Args", "Cwd", "Verbatim", "DeElevate", "FreshEnvOff", "Env", "CreationTicket", "EmulatorCore" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Attach), global::Agwinterm.Pty.Proto.Attach.Parser, new[]{ "Id", "Repaint", "CreationTicket", "NativeSnapshot" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionRef), global::Agwinterm.Pty.Proto.SessionRef.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Resize), global::Agwinterm.Pty.Proto.Resize.Parser, new[]{ "Id", "Cols", "Rows", "CreationTicket" }, null, null, null, null),
@@ -91,9 +93,9 @@ namespace Agwinterm.Pty.Proto {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.List), global::Agwinterm.Pty.Proto.List.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Shutdown), global::Agwinterm.Pty.Proto.Shutdown.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Reply), global::Agwinterm.Pty.Proto.Reply.Parser, new[]{ "Ok", "Error", "Hello", "Create", "Attach", "List", "Creation" }, new[]{ "Body" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision", "CoreSelectionRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.CreateReply), global::Agwinterm.Pty.Proto.CreateReply.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket", "NativeSnapshot" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket", "NativeSnapshot", "EmulatorCore" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionInfo), global::Agwinterm.Pty.Proto.SessionInfo.Parser, new[]{ "Id", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Title", "Attached", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.ListReply), global::Agwinterm.Pty.Proto.ListReply.Parser, new[]{ "Sessions" }, null, null, null, null)
           }));
@@ -1137,6 +1139,7 @@ namespace Agwinterm.Pty.Proto {
       freshEnvOff_ = other.freshEnvOff_;
       env_ = other.env_.Clone();
       creationTicket_ = other.creationTicket_;
+      emulatorCore_ = other.emulatorCore_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1285,6 +1288,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "emulator_core" field.</summary>
+    public const int EmulatorCoreFieldNumber = 12;
+    private string emulatorCore_ = "";
+    /// <summary>
+    /// core_selection_revision >= 1: managed/rust/ghostty; empty = host default
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string EmulatorCore {
+      get { return emulatorCore_; }
+      set {
+        emulatorCore_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1311,6 +1329,7 @@ namespace Agwinterm.Pty.Proto {
       if (FreshEnvOff != other.FreshEnvOff) return false;
       if (!Env.Equals(other.Env)) return false;
       if (CreationTicket != other.CreationTicket) return false;
+      if (EmulatorCore != other.EmulatorCore) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1329,6 +1348,7 @@ namespace Agwinterm.Pty.Proto {
       if (FreshEnvOff != false) hash ^= FreshEnvOff.GetHashCode();
       hash ^= Env.GetHashCode();
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
+      if (EmulatorCore.Length != 0) hash ^= EmulatorCore.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1385,6 +1405,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(90);
         output.WriteString(CreationTicket);
       }
+      if (EmulatorCore.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(EmulatorCore);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1433,6 +1457,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(90);
         output.WriteString(CreationTicket);
       }
+      if (EmulatorCore.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(EmulatorCore);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1471,6 +1499,9 @@ namespace Agwinterm.Pty.Proto {
       size += env_.CalculateSize(_map_env_codec);
       if (CreationTicket.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(CreationTicket);
+      }
+      if (EmulatorCore.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(EmulatorCore);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1512,6 +1543,9 @@ namespace Agwinterm.Pty.Proto {
       env_.MergeFrom(other.env_);
       if (other.CreationTicket.Length != 0) {
         CreationTicket = other.CreationTicket;
+      }
+      if (other.EmulatorCore.Length != 0) {
+        EmulatorCore = other.EmulatorCore;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1576,6 +1610,10 @@ namespace Agwinterm.Pty.Proto {
             CreationTicket = input.ReadString();
             break;
           }
+          case 98: {
+            EmulatorCore = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -1637,6 +1675,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 90: {
             CreationTicket = input.ReadString();
+            break;
+          }
+          case 98: {
+            EmulatorCore = input.ReadString();
             break;
           }
         }
@@ -4110,6 +4152,7 @@ namespace Agwinterm.Pty.Proto {
       protocol_ = other.protocol_;
       pid_ = other.pid_;
       creationRevision_ = other.creationRevision_;
+      coreSelectionRevision_ = other.coreSelectionRevision_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -4158,6 +4201,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "core_selection_revision" field.</summary>
+    public const int CoreSelectionRevisionFieldNumber = 4;
+    private uint coreSelectionRevision_;
+    /// <summary>
+    /// 1 = per-session core selection and authoritative attach core
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CoreSelectionRevision {
+      get { return coreSelectionRevision_; }
+      set {
+        coreSelectionRevision_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -4176,6 +4234,7 @@ namespace Agwinterm.Pty.Proto {
       if (Protocol != other.Protocol) return false;
       if (Pid != other.Pid) return false;
       if (CreationRevision != other.CreationRevision) return false;
+      if (CoreSelectionRevision != other.CoreSelectionRevision) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -4186,6 +4245,7 @@ namespace Agwinterm.Pty.Proto {
       if (Protocol != 0) hash ^= Protocol.GetHashCode();
       if (Pid != 0) hash ^= Pid.GetHashCode();
       if (CreationRevision != 0) hash ^= CreationRevision.GetHashCode();
+      if (CoreSelectionRevision != 0) hash ^= CoreSelectionRevision.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -4216,6 +4276,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(24);
         output.WriteUInt32(CreationRevision);
       }
+      if (CoreSelectionRevision != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(CoreSelectionRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4238,6 +4302,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(24);
         output.WriteUInt32(CreationRevision);
       }
+      if (CoreSelectionRevision != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(CoreSelectionRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4256,6 +4324,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (CreationRevision != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CreationRevision);
+      }
+      if (CoreSelectionRevision != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CoreSelectionRevision);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -4277,6 +4348,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.CreationRevision != 0) {
         CreationRevision = other.CreationRevision;
+      }
+      if (other.CoreSelectionRevision != 0) {
+        CoreSelectionRevision = other.CoreSelectionRevision;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -4309,6 +4383,10 @@ namespace Agwinterm.Pty.Proto {
             CreationRevision = input.ReadUInt32();
             break;
           }
+          case 32: {
+            CoreSelectionRevision = input.ReadUInt32();
+            break;
+          }
         }
       }
     #endif
@@ -4338,6 +4416,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 24: {
             CreationRevision = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            CoreSelectionRevision = input.ReadUInt32();
             break;
           }
         }
@@ -4628,6 +4710,7 @@ namespace Agwinterm.Pty.Proto {
       scrollbackBlob_ = other.scrollbackBlob_;
       creationTicket_ = other.creationTicket_;
       nativeSnapshot_ = other.nativeSnapshot_;
+      emulatorCore_ = other.emulatorCore_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -4789,6 +4872,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "emulator_core" field.</summary>
+    public const int EmulatorCoreFieldNumber = 12;
+    private string emulatorCore_ = "";
+    /// <summary>
+    /// authoritative session core, independent of current UI preference
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string EmulatorCore {
+      get { return emulatorCore_; }
+      set {
+        emulatorCore_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -4815,6 +4913,7 @@ namespace Agwinterm.Pty.Proto {
       if (ScrollbackBlob != other.ScrollbackBlob) return false;
       if (CreationTicket != other.CreationTicket) return false;
       if (NativeSnapshot != other.NativeSnapshot) return false;
+      if (EmulatorCore != other.EmulatorCore) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -4833,6 +4932,7 @@ namespace Agwinterm.Pty.Proto {
       if (ScrollbackBlob.Length != 0) hash ^= ScrollbackBlob.GetHashCode();
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
       if (NativeSnapshot != false) hash ^= NativeSnapshot.GetHashCode();
+      if (EmulatorCore.Length != 0) hash ^= EmulatorCore.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -4892,6 +4992,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(88);
         output.WriteBool(NativeSnapshot);
       }
+      if (EmulatorCore.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(EmulatorCore);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4943,6 +5047,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(88);
         output.WriteBool(NativeSnapshot);
       }
+      if (EmulatorCore.Length != 0) {
+        output.WriteRawTag(98);
+        output.WriteString(EmulatorCore);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4983,6 +5091,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (NativeSnapshot != false) {
         size += 1 + 1;
+      }
+      if (EmulatorCore.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(EmulatorCore);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -5026,6 +5137,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.NativeSnapshot != false) {
         NativeSnapshot = other.NativeSnapshot;
+      }
+      if (other.EmulatorCore.Length != 0) {
+        EmulatorCore = other.EmulatorCore;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -5090,6 +5204,10 @@ namespace Agwinterm.Pty.Proto {
             NativeSnapshot = input.ReadBool();
             break;
           }
+          case 98: {
+            EmulatorCore = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -5151,6 +5269,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 88: {
             NativeSnapshot = input.ReadBool();
+            break;
+          }
+          case 98: {
+            EmulatorCore = input.ReadString();
             break;
           }
         }

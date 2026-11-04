@@ -177,7 +177,7 @@ public sealed class PtyHostServer : IDisposable
         // The handshake is the protocol's forward-compat seam: a client offering a DIFFERENT
         // version is refused loudly (never half-understood), and the reply names ours.
         return h.Protocol == ProtocolVersion
-            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1 } }
+            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1 } }
             : Err($"protocol mismatch: host={ProtocolVersion} client={h.Protocol}");
     }
 
@@ -206,7 +206,7 @@ public sealed class PtyHostServer : IDisposable
         Hosted? hosted = null;
         try
         {
-            session = new TerminalSession(cols, rows) { Conpty = _conpty };
+            session = new TerminalSession(cols, rows, c.EmulatorCore) { Conpty = _conpty };
             hosted = new Hosted { Id = id, S = session, Creation = creation };
             hosted.Replies.DefaultColors = ThemeColors.Parse(env?.GetValueOrDefault(ThemeColors.EnvVar));
             if (env?.GetValueOrDefault("AGWINTERM_PROMPT_TOKEN") is { } token && ShellCompletion.ValidToken(token)
@@ -355,6 +355,7 @@ public sealed class PtyHostServer : IDisposable
         var reply = new AttachReply { Pipe = dataName, CreationTicket = hosted.Creation.Ticket };
         var s = hosted.S;
         reply.NativeSnapshot = a.NativeSnapshot && s.Emulator is GhosttyTerminalCore;
+        reply.EmulatorCore = TerminalSession.CoreName(s.Emulator);
         lock (s.SyncRoot)
         {
             if (!reply.NativeSnapshot)

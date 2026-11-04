@@ -60,7 +60,9 @@ try
     try { using var legacy = client.Attach("native"); }
     catch (InvalidOperationException ex) when (ex.Message.Contains("native snapshots")) { rejected = true; }
     Check(rejected, "native host rejects a client lacking snapshot support");
+    TerminalSession.CoreFactory = null; // UI preference changed; the hosted shell is still Ghostty.
     var first = (ServerSession)backend.Create("native", 60, 10);
+    Check(first.Emulator is TerminalEmulator, "replica starts with changed managed UI preference");
     Check(first.TryAdopt(), "first replica adopts the native host");
     Check(first.Emulator is GhosttyTerminalCore && first.Emulator.BracketedPaste, "replica uses Ghostty and restores input modes");
     gate.Set(); Check(ready.WaitOne(15000), "child finishes split CSI");
@@ -71,8 +73,12 @@ try
     first.Detach();
     Check(Wait(() => !client.List().Single().Attached), "detach closes its data channel without killing the child");
     gate.Set(); Check(ready.WaitOne(15000), "child writes while detached");
+    Check(RustEmulatorCore.TryLoad(Path.Combine(args[0], "agwinterm_core.dll"), out _), "Rust comparison core loads");
+    TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
     using var second = (ServerSession)backend.Create("native", 60, 10);
+    Check(second.Emulator is RustTerminalCore, "second replica starts with changed Rust UI preference");
     Check(second.TryAdopt(), "second replica adopts the surviving process");
+    Check(second.Emulator is GhosttyTerminalCore, "attachment chooses the surviving core instead of the UI preference");
     Check(second.ChildProcessId == pid, "reattach keeps the original child PID");
     Check(Wait(() => Text(second).Contains("ALTRED DETACHED")), "reattach restores detached output without repaint");
     Check(Wait(() => { lock (second.SyncRoot) return second.Emulator.Win32InputMode; }), "reattach restores Windows input mode");
@@ -82,6 +88,23 @@ try
     Check(client.List().Single().Cols == 72, "resize reaches the authoritative host");
     gate.Set();
     Check(Wait(() => second.HasExited) && second.ExitCode == 7, "exit follows final output and preserves status");
+    Check(client.CoreSelectionRevision == 1, "host advertises per-session core negotiation");
+    TerminalSession.CoreFactory = null;
+    using (var managed = (ServerSession)backend.Create("managed-choice", 60, 10))
+    {
+        // Mimic a host whose startup preference is still Ghostty.
+        TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows);
+        await managed.StartAsync("cmd.exe", ["/d", "/k"]);
+        Check(managed.Emulator is TerminalEmulator && managed.ChildProcessId is not null && !managed.HasExited,
+            "new managed session overrides a surviving Ghostty host default");
+    }
+    using (var native = (ServerSession)backend.Create("ghostty-choice", 60, 10))
+    {
+        TerminalSession.CoreFactory = null; // inverse case: surviving host has a managed default.
+        await native.StartAsync("cmd.exe", ["/d", "/k"]);
+        Check(native.Emulator is GhosttyTerminalCore && native.ChildProcessId is not null && !native.HasExited,
+            "new Ghostty session overrides a surviving managed host default");
+    }
     Console.WriteLine($"{checks} server checks passed.");
 }
 finally { File.Delete(script); TerminalSession.CoreFactory = null; }

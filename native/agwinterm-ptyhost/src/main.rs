@@ -317,6 +317,7 @@ fn dispatch(host: &Arc<Host>, req: Request) -> Reply {
                     protocol: PROTOCOL_VERSION,
                     pid: std::process::id(),
                     creation_revision: 1,
+                    core_selection_revision: 0, // legacy host: no per-session core selection
                 })))
             } else {
                 err_reply(format!(
@@ -832,6 +833,8 @@ fn handle_attach(host: &Arc<Host>, a: proto::Attach) -> Reply {
         scrollback,
         scrollback_blob, // attributed history (full colour on reattach), byte-identical to the C# host
         creation_ticket: hosted.creation_ticket.clone(),
+        native_snapshot: false,
+        emulator_core: String::new(), // retain the existing legacy-replica path
     })))
 }
 

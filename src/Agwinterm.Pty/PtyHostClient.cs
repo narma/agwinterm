@@ -9,7 +9,8 @@ namespace Agwinterm.Pty;
 /// a fresh view needs to reconstruct the session (see PtyHostServer for the reattach model).</summary>
 public sealed record PtyHostAttachment(
     Stream Data, int Cols, int Rows, int? ChildPid, bool HasExited, int? ExitCode,
-    string Modes, IReadOnlyList<string> Scrollback, byte[]? ScrollbackBlob = null, string CreationTicket = "", byte[]? NativeSnapshot = null) : IDisposable
+    string Modes, IReadOnlyList<string> Scrollback, byte[]? ScrollbackBlob = null, string CreationTicket = "", byte[]? NativeSnapshot = null,
+    string EmulatorCore = "") : IDisposable
 {
     public void Dispose() => Data.Dispose();
 }
@@ -30,6 +31,7 @@ public sealed class PtyHostClient : IDisposable
     private bool _unusable;
     public bool IsUsable => !Volatile.Read(ref _unusable);
     public uint CreationRevision { get; private set; }
+    public uint CoreSelectionRevision { get; private set; }
     public uint HostPid { get; private set; }
 
     internal PtyHostClient(Stream pipe, uint creationRevision = 0) { _pipe = pipe; CreationRevision = creationRevision; }
@@ -63,6 +65,7 @@ public sealed class PtyHostClient : IDisposable
             if (reply.Hello.Protocol != PtyHostServer.ProtocolVersion)
                 throw new InvalidOperationException("pty-host protocol mismatch");
             client.CreationRevision = reply.Hello.CreationRevision;
+            client.CoreSelectionRevision = reply.Hello.CoreSelectionRevision;
             client.HostPid = reply.Hello.Pid;
             return client;
         }
@@ -75,7 +78,7 @@ public sealed class PtyHostClient : IDisposable
     /// a new ticket or infer non-execution from a missing reply. Empty tickets use legacy behavior.</summary>
     public string Create(string id, int cols, int rows, string app, string[] args,
         string? cwd = null, IReadOnlyDictionary<string, string>? env = null, bool verbatim = false, bool deElevate = false,
-        bool freshEnv = true, string creationTicket = "")
+        bool freshEnv = true, string creationTicket = "", string emulatorCore = "")
     {
         if (cols < 0 || rows < 0 || cols > 10000 || rows > 10000)
             throw new ArgumentOutOfRangeException(nameof(cols), "create cols/rows must be in 0..10000 (zero selects defaults)");
@@ -90,6 +93,7 @@ public sealed class PtyHostClient : IDisposable
             DeElevate = deElevate,
             FreshEnvOff = !freshEnv,
             CreationTicket = creationTicket,
+            EmulatorCore = CoreSelectionRevision >= 1 ? emulatorCore : "",
         };
         create.Args.AddRange(args);
         if (env is not null) foreach (var kv in env) create.Env[kv.Key] = kv.Value;
@@ -160,7 +164,7 @@ public sealed class PtyHostClient : IDisposable
             reply.HasExited,
             reply.HasExited ? reply.ExitCode : null,
             reply.Modes, reply.Scrollback,
-            reply.ScrollbackBlob.IsEmpty ? null : reply.ScrollbackBlob.ToByteArray(), reply.CreationTicket, snapshot);
+            reply.ScrollbackBlob.IsEmpty ? null : reply.ScrollbackBlob.ToByteArray(), reply.CreationTicket, snapshot, reply.EmulatorCore);
     }
 
     public void Resize(string id, int cols, int rows, string creationTicket = "")

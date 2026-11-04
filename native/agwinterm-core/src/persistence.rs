@@ -56,6 +56,7 @@ impl Emulator {
                             bg_rgb: pack(c.bg_spec.rgb),
                             hyperlink_uri: uri.to_owned(),
                             hyperlink_parameters: parameters.to_owned(),
+                            grapheme: String::new(), // this legacy core stores scalar cells
                         }
                     })
                     .collect(),

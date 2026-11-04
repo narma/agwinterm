@@ -78,14 +78,32 @@ public sealed class TerminalSession : ISession
     /// <summary>When set by the UI process, new sessions build their configured native
     /// terminal core through this instead of the managed <see cref="TerminalEmulator"/>.</summary>
     public static Func<int, int, ITerminalCore>? CoreFactory;
-    internal static ITerminalCore CreateCore(int cols, int rows) => CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
+    internal static ITerminalCore CreateCore(int cols, int rows, string? core = null)
+    {
+        if (string.IsNullOrEmpty(core)) return CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
+        if (core == "managed") return new TerminalEmulator(cols, rows);
+        if (core == "ghostty")
+        {
+            if (!GhosttyTerminalCore.TryLoad(AppContext.BaseDirectory, out var error)) throw new InvalidOperationException(error);
+            return new GhosttyTerminalCore(cols, rows);
+        }
+        if (core == "rust")
+        {
+            if (!RustEmulatorCore.TryLoad(Path.Combine(AppContext.BaseDirectory, "agwinterm_core.dll"), out var error))
+                throw new InvalidOperationException(error);
+            return new RustTerminalCore(cols, rows);
+        }
+        throw new ArgumentException("Unknown terminal core: " + core, nameof(core));
+    }
+    internal static string CoreName(ITerminalCore core) => core switch
+    { GhosttyTerminalCore => "ghostty", RustTerminalCore => "rust", _ => "managed" };
 
-    public TerminalSession(int cols, int rows)
+    public TerminalSession(int cols, int rows, string? core = null)
     {
         Cols = cols;
         Rows = rows;
         // Both the UI and headless host install the configured core factory.
-        Emulator = CreateCore(cols, rows);
+        Emulator = CreateCore(cols, rows, core);
     }
 
     /// <summary>The ConPTY this session is created on; null = <see cref="ConPtyApi.Current"/>.</summary>
