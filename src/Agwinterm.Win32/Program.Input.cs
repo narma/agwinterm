@@ -567,12 +567,20 @@ internal partial class Program
     private void SendMouseTo(Pane pane, (float ox, float oy, float cw, float ch) view,
         int btn, int dipX, int dipY, int deviceX, int deviceY, bool press)
     {
-        var em = pane.S.Emulator;
-        if (em is null || !em.MouseReporting) return;
-        var (ox, oy, cw, ch) = view;
-        string seq = MouseReport.EncodePointer(
-            btn, dipX, dipY, deviceX, deviceY, ox, oy, cw, ch, Scale,
-            em.Screen.Cols, em.Screen.Rows, press, em.MouseSgr, em.MouseSgrPixels);
+        string seq;
+        lock (pane.S.SyncRoot)
+        {
+            var em = pane.S.Emulator;
+            if (em is null || !em.MouseReporting) return;
+            var (ox, oy, cw, ch) = view;
+            // Native dimensions are metadata. Reading Screen here would materialize
+            // the entire query grid on mouse motion after every output chunk.
+            int cols = em is GhosttyTerminalCore native ? native.Cols : em.Screen.Cols;
+            int rows = em is GhosttyTerminalCore ghostty ? ghostty.Rows : em.Screen.Rows;
+            seq = MouseReport.EncodePointer(
+                btn, dipX, dipY, deviceX, deviceY, ox, oy, cw, ch, Scale,
+                cols, rows, press, em.MouseSgr, em.MouseSgrPixels);
+        }
         pane.S.Write(Encoding.UTF8.GetBytes(seq));
     }
 
