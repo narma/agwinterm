@@ -330,6 +330,7 @@ public sealed class RustTerminalCore : ITerminalCore, IDisposable
     }
 
     public string DumpModes() => _rust.DumpModes();
+    public string DumpScreen() => _rust.DumpScreen();
 
     public void Dispose() => _rust.Dispose();
 }

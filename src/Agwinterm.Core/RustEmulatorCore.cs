@@ -16,7 +16,7 @@ namespace Agwinterm.Core;
 /// </summary>
 public sealed unsafe class RustEmulatorCore : IDisposable
 {
-    public const uint RequiredAbi = 23;
+    public const uint RequiredAbi = 24;
 
     private delegate bool CopyWrapLengthsFn(nint p, uint start, int* lengths, uint count);
     private static CopyWrapLengthsFn _copyWrapLengths = null!;
@@ -206,6 +206,7 @@ public sealed unsafe class RustEmulatorCore : IDisposable
 
     public string Title => GetText(0);
     public string Cwd => GetText(1);
+    public string DumpScreen() => GetText(3);
     public string DumpModes() => GetText(2);
 
     [StructLayout(LayoutKind.Sequential)]

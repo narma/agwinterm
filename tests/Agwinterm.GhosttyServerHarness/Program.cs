@@ -105,6 +105,20 @@ try
         Check(native.Emulator is GhosttyTerminalCore && native.ChildProcessId is not null && !native.HasExited,
             "new Ghostty session overrides a surviving managed host default");
     }
+    TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
+    var rustFirst = (ServerSession)backend.Create("rust-reconnect", 60, 10);
+    await rustFirst.StartAsync("cmd.exe", ["/d", "/q", "/k", "echo RUST_RECONNECT_SCREEN"]);
+    Check(Wait(() => Text(rustFirst).Contains("RUST_RECONNECT_SCREEN")), "Rust host receives visible output");
+    int? rustPid = rustFirst.ChildProcessId;
+    rustFirst.Detach();
+    Check(Wait(() => !client.List().Single(s => s.Id == "rust-reconnect").Attached), "Rust replica detaches without closing its shell");
+    TerminalSession.CoreFactory = null;
+    using (var rustSecond = (ServerSession)backend.Create("rust-reconnect", 60, 10))
+    {
+        Check(rustSecond.TryAdopt() && rustSecond.Emulator is RustTerminalCore, "Rust reattachment adopts the authoritative core");
+        Check(rustSecond.ChildProcessId == rustPid && Wait(() => Text(rustSecond).Contains("RUST_RECONNECT_SCREEN")),
+            "bundled ConPTY Rust reattachment restores the visible screen without child redraw");
+    }
     Console.WriteLine($"{checks} server checks passed.");
 }
 finally { File.Delete(script); TerminalSession.CoreFactory = null; }

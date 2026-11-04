@@ -405,8 +405,16 @@ public sealed class PtyHostServer : IDisposable
                         }
                         catch { ch.Pipe.Dispose(); ch.Cancel.Dispose(); return; }
                     }
-                    if (!reply.NativeSnapshot && repaint && hosted.S.OnBundledConpty && hosted.S.Emulator is TerminalEmulator screen)
-                        try { ch.Pipe.Write(System.Text.Encoding.UTF8.GetBytes(screen.DumpScreen())); ch.Pipe.Flush(); } catch { }
+                    if (!reply.NativeSnapshot && repaint && hosted.S.OnBundledConpty)
+                    {
+                        string screen = hosted.S.Emulator switch
+                        {
+                            TerminalEmulator managed => managed.DumpScreen(),
+                            RustTerminalCore rust => rust.DumpScreen(),
+                            _ => throw new InvalidOperationException("Missing screen transfer for hosted core")
+                        };
+                        try { ch.Pipe.Write(System.Text.Encoding.UTF8.GetBytes(screen)); ch.Pipe.Flush(); } catch { }
+                    }
                     hosted.Data = ch;
                 }
             if (hosted.S.HasExited)
