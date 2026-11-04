@@ -78,14 +78,14 @@ public sealed class TerminalSession : ISession
     /// <summary>When set by the UI process, new sessions build their configured native
     /// terminal core through this instead of the managed <see cref="TerminalEmulator"/>.</summary>
     public static Func<int, int, ITerminalCore>? CoreFactory;
+    internal static ITerminalCore CreateCore(int cols, int rows) => CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
 
     public TerminalSession(int cols, int rows)
     {
         Cols = cols;
         Rows = rows;
-        // Transitional emulator-core selection: the UI process installs a factory;
-        // headless contexts (tests, the pty-host process) stay on the managed core.
-        Emulator = CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
+        // Both the UI and headless host install the configured core factory.
+        Emulator = CreateCore(cols, rows);
     }
 
     /// <summary>The ConPTY this session is created on; null = <see cref="ConPtyApi.Current"/>.</summary>

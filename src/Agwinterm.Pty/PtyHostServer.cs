@@ -21,8 +21,8 @@ namespace Agwinterm.Pty;
 ///    session; a new attach supersedes. Host-side close = child exited (code via list); client-side
 ///    close = detach, the session keeps running.
 ///
-/// Reattach v1 semantics unchanged: plain-text scrollback + DumpModes in the attach reply, then a
-/// ConPTY resize-jiggle repaints the live viewport.
+/// Ghostty attachment starts with a length-prefixed native snapshot on the data pipe,
+/// followed atomically by raw output. Legacy hosts retain attributed history plus repaint.
 /// </summary>
 public sealed class PtyHostServer : IDisposable
 {
@@ -344,6 +344,8 @@ public sealed class PtyHostServer : IDisposable
 
     private Reply HandleAttach(Attach a) => WithSession(a.Id, hosted =>
     {
+        if (hosted.S.Emulator is GhosttyTerminalCore && !a.NativeSnapshot)
+            return Err("This Ghostty host requires a client supporting native snapshots.");
         bool repaint = a.Repaint;
         string dataName = ControlPipeName(_appId) + "-d-" + Guid.NewGuid().ToString("N")[..8];
         var data = new NamedPipeServerStream(dataName, PipeDirection.InOut, 1,
@@ -352,15 +354,17 @@ public sealed class PtyHostServer : IDisposable
         // Snapshot content + modes UNDER the session lock, before any new output can race the seed.
         var reply = new AttachReply { Pipe = dataName, CreationTicket = hosted.Creation.Ticket };
         var s = hosted.S;
+        reply.NativeSnapshot = a.NativeSnapshot && s.Emulator is GhosttyTerminalCore;
         lock (s.SyncRoot)
         {
-            for (int i = 0; i < s.Emulator.HistoryCount; i++) reply.Scrollback.Add(s.Emulator.DumpHistoryRow(i));
-            reply.Modes = s.Emulator.DumpModes();
-            // Full-fidelity attributed HISTORY (the live screen arrives via the repaint jiggle, so
-            // includeVisible=false). The client seeds from this instead of the plain text above.
-            if (s.Emulator is TerminalEmulator or RustTerminalCore)
+            if (!reply.NativeSnapshot)
+            {
+                for (int i = 0; i < s.Emulator.HistoryCount; i++) reply.Scrollback.Add(s.Emulator.DumpHistoryRow(i));
+                reply.Modes = s.Emulator.DumpModes();
+                // Legacy hosts send history separately from their viewport repaint.
                 reply.ScrollbackBlob = Google.Protobuf.ByteString.CopyFrom(
                     BufferPersist.Serialize(s.Emulator, includeVisible: false));
+            }
         }
         reply.Cols = (uint)s.Cols;
         reply.Rows = (uint)s.Rows;
@@ -384,7 +388,23 @@ public sealed class PtyHostServer : IDisposable
                 lock (hosted.DataLock)
                 {
                     CloseDataLocked(hosted);
-                    if (repaint && hosted.S.OnBundledConpty && hosted.S.Emulator is TerminalEmulator screen)
+                    if (reply.NativeSnapshot)
+                    {
+                        try
+                        {
+                            byte[] snapshot = ((GhosttyTerminalCore)hosted.S.Emulator).CaptureSnapshot();
+                            byte[] header = new byte[4];
+                            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)snapshot.Length);
+                            // Snapshot and registration of the raw-output tap share the feed lock.
+                            // Every byte is represented exactly once, even inside a split VT sequence.
+                            using var writeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                            ch.Pipe.WriteAsync(header, writeTimeout.Token).AsTask().GetAwaiter().GetResult();
+                            ch.Pipe.WriteAsync(snapshot, writeTimeout.Token).AsTask().GetAwaiter().GetResult();
+                            ch.Pipe.Flush();
+                        }
+                        catch { ch.Pipe.Dispose(); ch.Cancel.Dispose(); return; }
+                    }
+                    if (!reply.NativeSnapshot && repaint && hosted.S.OnBundledConpty && hosted.S.Emulator is TerminalEmulator screen)
                         try { ch.Pipe.Write(System.Text.Encoding.UTF8.GetBytes(screen.DumpScreen())); ch.Pipe.Flush(); } catch { }
                     hosted.Data = ch;
                 }
@@ -402,7 +422,7 @@ public sealed class PtyHostServer : IDisposable
             }
             // The jiggle makes the inbox conhost repaint. The bundled ConPTY repaints nothing, the snapshot
             // above did that, and shrinking the host emulator by a row would lose its bottom row.
-            if (repaint && !hosted.S.OnBundledConpty) hosted.Resize.Run(() => JiggleRepaint(hosted.S));
+            if (!reply.NativeSnapshot && repaint && !hosted.S.OnBundledConpty) hosted.Resize.Run(() => JiggleRepaint(hosted.S));
             await PumpInputAsync(hosted, ch).ConfigureAwait(false);
         });
 

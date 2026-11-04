@@ -150,7 +150,7 @@ public sealed class ServerSession : ISession
         _id = id;
         Cols = cols;
         Rows = rows;
-        Emulator = new TerminalEmulator(cols, rows);
+        Emulator = TerminalSession.CreateCore(cols, rows);
     }
 
     /// <summary>True when this handle reconnected to a SURVIVING hosted session instead of spawning
@@ -233,7 +233,7 @@ public sealed class ServerSession : ISession
                         verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket);
                     if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
                     if (_startFence.IsClosed) return;
-                    if (PublishAttachment(client.Attach(_id, creationTicket: _creationTicket)) && (Cols != cols || Rows != rows))
+                    if (PublishAttachment(client.Attach(_id, creationTicket: _creationTicket, nativeSnapshot: Emulator is GhosttyTerminalCore)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -249,7 +249,7 @@ public sealed class ServerSession : ISession
             // Same shape as TerminalSession's de-elevate failure: surface it IN the pane instead of
             // leaving a dead surface (or crashing an unobserved fire-and-forget task).
             var msg = $"\r\n\x1b[31m[agwinterm] pty-host session failed to start:\x1b[0m\r\n  {ex.Message}\r\n";
-            lock (_sync) Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg));
+            lock (_sync) { if (!_disposed) Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg)); }
             OutputReceived?.Invoke();
             MarkInputClosed(); ExitCode = 1; HasExited = true;
             return;
@@ -258,6 +258,19 @@ public sealed class ServerSession : ISession
 
     private bool PublishAttachment(PtyHostAttachment att)
     {
+        lock (_sync)
+        {
+            if (_disposed) { att.Dispose(); return false; }
+            try
+            {
+                if (att.NativeSnapshot is { } snapshot)
+                {
+                    if (Emulator is not GhosttyTerminalCore native) throw new IOException("Native snapshot requires Ghostty.");
+                    native.RestoreSnapshot(snapshot);
+                }
+            }
+            catch { att.Dispose(); throw; }
+        }
         bool published = _startFence.Publish(() =>
         {
             _data = att.Data; _childPid = att.ChildPid;
@@ -266,6 +279,7 @@ public sealed class ServerSession : ISession
                 TaskCreationOptions.LongRunning, TaskScheduler.Default);
         });
         if (!published) att.Dispose(); // no read was ever issued
+        if (published && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
         return published;
     }
 
@@ -314,7 +328,7 @@ public sealed class ServerSession : ISession
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? ""); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: Emulator is GhosttyTerminalCore); _creationHostPid = client.HostPid; }
         catch
         {
             // Recovery may find a checkpoint written before Create reached publication.
@@ -332,14 +346,17 @@ public sealed class ServerSession : ISession
         }
         lock (_sync)
         {
-            // Prefer the full-fidelity attributed history (colours survive the reattach) over the
-            // plain-text seed; the replica emulator is a concrete TerminalEmulator.
-            if (att.ScrollbackBlob is { Length: > 0 } blob && Emulator is TerminalEmulator or RustTerminalCore
-                && BufferPersist.TryParse(blob, out var pbuf))
-                BufferPersist.Restore(Emulator, pbuf);
-            else
-                Emulator.SeedScrollback(att.Scrollback);
-            Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(att.Modes));
+            if (_disposed) { att.Dispose(); return false; }
+            if (att.NativeSnapshot is null)
+            {
+                // Transitional support for hosts without native snapshots.
+                if (att.ScrollbackBlob is { Length: > 0 } blob
+                    && BufferPersist.TryParse(blob, out var pbuf))
+                    BufferPersist.Restore(Emulator, pbuf);
+                else
+                    Emulator.SeedScrollback(att.Scrollback);
+                Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(att.Modes));
+            }
         }
         if (_startFence.Created()) KillHosted();
         if (!PublishAttachment(att)) return false;
@@ -372,7 +389,7 @@ public sealed class ServerSession : ISession
                 // can unblock us); same read cadence as before, now with a cancel seam.
                 int n = data.ReadAsync(buffer, 0, buffer.Length, _readCancel.Token).GetAwaiter().GetResult();
                 if (n <= 0) break;
-                lock (_sync) Emulator.Feed(buffer.AsSpan(0, n));
+                lock (_sync) { if (_disposed) break; Emulator.Feed(buffer.AsSpan(0, n)); }
                 OutputReceived?.Invoke();
             }
         }
@@ -408,13 +425,13 @@ public sealed class ServerSession : ISession
 
     public void Inject(ReadOnlySpan<byte> bytes)
     {
-        lock (_sync) Emulator.Feed(bytes);
+        lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Feed(bytes); }
         OutputReceived?.Invoke();
     }
 
     public void MutateLocked(Action<ITerminalCore> mutate)
     {
-        lock (_sync) mutate(Emulator);
+        lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); mutate(Emulator); }
         OutputReceived?.Invoke();
     }
 
@@ -430,7 +447,7 @@ public sealed class ServerSession : ISession
     public void Resize(int cols, int rows)
     {
         if (cols <= 0 || rows <= 0) return;
-        lock (_sync) Emulator.Resize(cols, rows);
+        lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Resize(cols, rows); }
         Cols = cols;
         Rows = rows;
         if (_started && !HasExited)
@@ -455,13 +472,13 @@ public sealed class ServerSession : ISession
     public void Detach()
     {
         _startFence.Close(kill: false);
-        _disposed = true;                                            // EOF now means "we left", not "it died"
+        DisposeReplica();                                           // EOF now means "we left", not "it died"
         CancelRead();
     }
 
     public void Dispose()
     {
-        _disposed = true;
+        DisposeReplica();
         if (_startFence.Close(kill: true)) KillHosted();
         CancelRead();
     }
@@ -471,5 +488,14 @@ public sealed class ServerSession : ISession
         try { _readCancel.Cancel(); } catch (ObjectDisposedException) { }
         // PublishAttachment either assigns the pipe to a reader, or closes the unpublished pipe.
         // Never inspect _started here to guess whether a concurrent publisher has issued a read.
+    }
+    private void DisposeReplica()
+    {
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            (Emulator as IDisposable)?.Dispose();
+        }
     }
 }

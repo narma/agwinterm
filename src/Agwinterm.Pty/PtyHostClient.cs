@@ -9,7 +9,7 @@ namespace Agwinterm.Pty;
 /// a fresh view needs to reconstruct the session (see PtyHostServer for the reattach model).</summary>
 public sealed record PtyHostAttachment(
     Stream Data, int Cols, int Rows, int? ChildPid, bool HasExited, int? ExitCode,
-    string Modes, IReadOnlyList<string> Scrollback, byte[]? ScrollbackBlob = null, string CreationTicket = "") : IDisposable
+    string Modes, IReadOnlyList<string> Scrollback, byte[]? ScrollbackBlob = null, string CreationTicket = "", byte[]? NativeSnapshot = null) : IDisposable
 {
     public void Dispose() => Data.Dispose();
 }
@@ -128,23 +128,39 @@ public sealed class PtyHostClient : IDisposable
     /// (write = child stdin, read = raw ConPTY output; EOF = child exited or superseded).
     /// <paramref name="repaint"/> asks the host for the ConPTY resize-jiggle — pass true when
     /// reattaching an existing view, false right after <see cref="Create"/>.</summary>
-    public PtyHostAttachment Attach(string id, bool repaint = false, int timeoutMs = 5000, string creationTicket = "")
+    public PtyHostAttachment Attach(string id, bool repaint = false, int timeoutMs = 5000, string creationTicket = "", bool nativeSnapshot = false)
     {
-        var reply = Request(new Request { Attach = new Attach { Id = id, Repaint = repaint, CreationTicket = creationTicket } }).Attach;
+        var reply = Request(new Request { Attach = new Attach { Id = id, Repaint = repaint, CreationTicket = creationTicket, NativeSnapshot = nativeSnapshot } }).Attach;
         if (creationTicket.Length > 0 && reply.CreationTicket != creationTicket) throw new IOException("pty-host attachment incarnation changed");
         // Async handle: the reader (ServerSession.ReadLoop, or a test) must be able to bail out
         // mid-read via cancellation — a SYNC handle can't be unblocked by closing our own end
         // (SafeHandle ref-counting keeps the OS handle open under a blocked read). The #118 rule
         // still applies: cancel the pending read FIRST, and only the reader disposes the pipe.
         var data = new NamedPipeClientStream(".", reply.Pipe, PipeDirection.InOut, PipeOptions.Asynchronous);
-        try { data.Connect(timeoutMs); } catch { data.Dispose(); throw; }
+        byte[]? snapshot = null;
+        try
+        {
+            data.Connect(timeoutMs);
+            if (reply.NativeSnapshot)
+            {
+                if (!nativeSnapshot) throw new IOException("Unrequested native snapshot.");
+                using var deadline = new CancellationTokenSource(timeoutMs);
+                byte[] header = new byte[4];
+                data.ReadExactlyAsync(header, deadline.Token).AsTask().GetAwaiter().GetResult();
+                uint size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(header);
+                if (size is 0 or > 65 * 1024 * 1024) throw new IOException("Invalid native snapshot length.");
+                snapshot = GC.AllocateUninitializedArray<byte>((int)size);
+                data.ReadExactlyAsync(snapshot, deadline.Token).AsTask().GetAwaiter().GetResult();
+            }
+        }
+        catch { data.Dispose(); throw; } // pending reads have completed/cancelled before disposal
         return new PtyHostAttachment(
             data, (int)reply.Cols, (int)reply.Rows,
             reply.ChildPid != 0 ? (int)reply.ChildPid : null,
             reply.HasExited,
             reply.HasExited ? reply.ExitCode : null,
             reply.Modes, reply.Scrollback,
-            reply.ScrollbackBlob.IsEmpty ? null : reply.ScrollbackBlob.ToByteArray(), reply.CreationTicket);
+            reply.ScrollbackBlob.IsEmpty ? null : reply.ScrollbackBlob.ToByteArray(), reply.CreationTicket, snapshot);
     }
 
     public void Resize(string id, int cols, int rows, string creationTicket = "")

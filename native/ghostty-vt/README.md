@@ -49,19 +49,24 @@ Ghostty's next-frame deadline, with no polling for static/stopped images.
 Native snapshots retain parser continuation and tracked command boundaries.
 The managed envelope includes the upstream revision, bounded Windows input
 sidecar state, lengths, and a SHA-256 integrity check. Decode builds a separate
-terminal and commits only after validation. This is a low-level snapshot
-contract. Application history persistence uses the existing attributed protobuf
+terminal and commits only after validation. Windows server sessions transfer this
+snapshot on their data pipe before registering the live output stream, under the
+same lock as VT ingestion. New replicas preserve both screens, parser continuation,
+images and input modes without a resize repaint. Native hosts require snapshot-aware
+clients; native clients can still attach to older hosts using the legacy path.
+Application history persistence uses the existing attributed protobuf
 format (now including graphemes). Import parses inert attributed text into a
 separate Ghostty terminal, lets Ghostty reflow it, then prepends native pages.
 The live screen, modes, parser continuation and tracked positions stay intact.
 History has a 64 MiB byte budget in addition to its configured line limit.
 
 The application adapter still has migration gaps: remaining margin metadata,
-complete palette/theme integration, graphics scrollback painting and host-image lifetimes, input
-encoders and history-only import/reattach (including server replica ownership).
+complete palette/theme integration, graphics scrollback painting and host-image lifetimes,
+mouse/paste encoders and expanded keyboard-layout/IME acceptance. Windows keyboard
+events already use the upstream key encoder; DEC 9001 remains the Windows-specific path.
 Live renderer conversion runs outside the session lock; history painting still
 uses the locked explicit read path. Do not enable this core by default or remove the old cores
-until those consumers have migrated. Sixel will not be implemented in this
+until their required consumers have migrated (obsolete interfaces can be removed sooner). Sixel will not be implemented in this
 backend. See the migration audit for the complete contract map.
 
 The Windows CI contract job builds the pinned source and runs the host-free

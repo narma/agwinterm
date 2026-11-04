@@ -632,9 +632,16 @@ internal partial class Program : ISessionHost, IWindowHost
         Environment.SetEnvironmentVariable("AGWINTERM_APP_ID", _appId);
         // The pty-host ROLE (#105): same exe, no window — a headless server owning terminal sessions
         // so they survive UI restarts/crashes. The UI (Phase 2b) spawns and talks to it; nothing
-        // below (config, D2D, window class, control server) applies to this process.
+        // below (D2D, window class, control server) applies to this process.
         if (_argPtyHost)
         {
+            _config = LoadOrCreateConfig();
+            if (_config.EmulatorCore == "ghostty")
+            {
+                ResolveEmulatorCore();
+                if (Agwinterm.Pty.TerminalSession.CoreFactory is null)
+                    throw new InvalidOperationException(_emulatorCoreNote);
+            }
             ConPtyApi.Select(_argConpty == "bundled");   // no flag = inbox, as for the Rust host
             using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId);
             ptyHost.Completion.Wait();

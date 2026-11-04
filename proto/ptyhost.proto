@@ -55,6 +55,7 @@ message Attach {
   string id = 1;
   bool repaint = 2;
   string creation_ticket = 3;   // optional expected incarnation; mismatch refuses
+  bool native_snapshot = 4;    // accept length-prefixed Ghostty snapshot before raw PTY bytes
 }
 
 message SessionRef {
@@ -123,6 +124,7 @@ message AttachReply {
   // host without persist support yet); the client falls back to `scrollback`.
   bytes scrollback_blob = 9;
   string creation_ticket = 10;
+  bool native_snapshot = 11;   // data pipe starts with uint32 LE length + snapshot
 }
 
 message SessionInfo {

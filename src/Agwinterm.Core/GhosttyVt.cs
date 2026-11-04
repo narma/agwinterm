@@ -71,6 +71,8 @@ public sealed unsafe class GhosttyVt : IDisposable
     }
     public int GetFrameWrapLength(int row) => Frame.WrapLengths[row];
     public int CursorRow => (int)_info.CursorRow;
+    public int Columns => (int)_info.Cols;
+    public int Rows => (int)_info.Rows;
     public int CursorCol => (int)_info.CursorCol;
     public bool CursorVisible => _info.CursorVisible != 0;
     public bool IsAltScreen => _info.AltScreen != 0;
@@ -224,13 +226,18 @@ public sealed unsafe class GhosttyVt : IDisposable
         GhosttyNative.Check(GhosttyNative.Snapshot(_handle, out nint pointer, out nuint length));
         try
         {
-            using var stream = new MemoryStream(); using var writer = new BinaryWriter(stream);
-            writer.Write("AGWVT001"u8); writer.Write(Encoding.ASCII.GetBytes(GhosttyNative.Revision));
-            byte[] windows = _windows.Save(); writer.Write(windows.Length); writer.Write(checked((int)length));
-            writer.Write(windows); writer.Write(new ReadOnlySpan<byte>((void*)pointer, checked((int)length)));
-            writer.Flush(); byte[] payload = stream.ToArray();
-            writer.Write(SHA256.HashData(payload)); writer.Flush();
-            return stream.ToArray();
+            byte[] windows = _windows.Save();
+            if (length > 65 * 1024 * 1024 - 88 - (nuint)windows.Length)
+                throw new InvalidDataException("Ghostty snapshot exceeds the transfer limit.");
+            byte[] snapshot = GC.AllocateUninitializedArray<byte>(88 + windows.Length + (int)length);
+            "AGWVT001"u8.CopyTo(snapshot);
+            Encoding.ASCII.GetBytes(GhosttyNative.Revision, snapshot.AsSpan(8, 40));
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(snapshot.AsSpan(48), windows.Length);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(snapshot.AsSpan(52), (int)length);
+            windows.CopyTo(snapshot.AsSpan(56));
+            new ReadOnlySpan<byte>((void*)pointer, (int)length).CopyTo(snapshot.AsSpan(56 + windows.Length));
+            SHA256.HashData(snapshot.AsSpan(0, snapshot.Length - 32), snapshot.AsSpan(snapshot.Length - 32));
+            return snapshot;
         }
         finally { GhosttyNative.SnapshotFree(_handle, pointer, length); }
     }
@@ -375,7 +382,12 @@ public sealed unsafe class GhosttyVt : IDisposable
             (byte)cell.Width, Spec(cell.FgKind, cell.FgValue), Spec(cell.BgKind, cell.BgValue), link, grapheme);
     }
     private static Color Unpack(uint color) => new((byte)(color >> 16), (byte)(color >> 8), (byte)color);
-    private static ColorSpec Spec(uint kind, uint value) => new((ColorSpecKind)kind, (byte)value, Unpack(value));
+    private static ColorSpec Spec(uint kind, uint value) => (ColorSpecKind)kind switch
+    {
+        ColorSpecKind.Indexed => ColorSpec.Indexed((byte)value),
+        ColorSpecKind.Rgb => ColorSpec.FromRgb(Unpack(value)),
+        _ => ColorSpec.Default,
+    };
     public void Dispose()
     {
         // Serialize with terminal mutations/begin-capture using the caller's

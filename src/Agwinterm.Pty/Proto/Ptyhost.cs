@@ -43,45 +43,46 @@ namespace Agwinterm.Pty.Proto {
             "GAcgASgIEhIKCmRlX2VsZXZhdGUYCCABKAgSFQoNZnJlc2hfZW52X29mZhgJ",
             "IAEoCBIvCgNlbnYYCiADKAsyIi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGUu",
             "RW52RW50cnkSFwoPY3JlYXRpb25fdGlja2V0GAsgASgJGioKCEVudkVudHJ5",
-            "EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiPgoGQXR0YWNoEgoK",
+            "EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiVwoGQXR0YWNoEgoK",
             "AmlkGAEgASgJEg8KB3JlcGFpbnQYAiABKAgSFwoPY3JlYXRpb25fdGlja2V0",
-            "GAMgASgJIjEKClNlc3Npb25SZWYSCgoCaWQYASABKAkSFwoPY3JlYXRpb25f",
-            "dGlja2V0GAIgASgJIkkKBlJlc2l6ZRIKCgJpZBgBIAEoCRIMCgRjb2xzGAIg",
-            "ASgNEgwKBHJvd3MYAyABKA0SFwoPY3JlYXRpb25fdGlja2V0GAQgASgJIhsK",
-            "DVByZXBhcmVDcmVhdGUSCgoCaWQYASABKAkiKQoLQ3JlYXRpb25SZWYSCgoC",
-            "aWQYASABKAkSDgoGdGlja2V0GAIgASgJIlwKDUNyZWF0aW9uUmVwbHkSCgoC",
-            "aWQYASABKAkSDgoGdGlja2V0GAIgASgJEi8KBXBoYXNlGAMgASgOMiAuYWd3",
-            "aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25QaGFzZSIGCgRMaXN0IgoKCFNodXRk",
-            "b3duIqICCgVSZXBseRIKCgJvaxgBIAEoCBINCgVlcnJvchgCIAEoCRIuCgVo",
-            "ZWxsbxgDIAEoCzIdLmFnd2ludGVybS5wdHlob3N0LkhlbGxvUmVwbHlIABIw",
-            "CgZjcmVhdGUYBCABKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGVSZXBs",
-            "eUgAEjAKBmF0dGFjaBgFIAEoCzIeLmFnd2ludGVybS5wdHlob3N0LkF0dGFj",
-            "aFJlcGx5SAASLAoEbGlzdBgGIAEoCzIcLmFnd2ludGVybS5wdHlob3N0Lkxp",
-            "c3RSZXBseUgAEjQKCGNyZWF0aW9uGAcgASgLMiAuYWd3aW50ZXJtLnB0eWhv",
-            "c3QuQ3JlYXRpb25SZXBseUgAQgYKBGJvZHkiRgoKSGVsbG9SZXBseRIQCghw",
-            "cm90b2NvbBgBIAEoDRILCgNwaWQYAiABKA0SGQoRY3JlYXRpb25fcmV2aXNp",
-            "b24YAyABKA0iMgoLQ3JlYXRlUmVwbHkSCgoCaWQYASABKAkSFwoPY3JlYXRp",
-            "b25fdGlja2V0GAIgASgJIsYBCgtBdHRhY2hSZXBseRIMCgRwaXBlGAEgASgJ",
-            "EgwKBGNvbHMYAiABKA0SDAoEcm93cxgDIAEoDRIRCgljaGlsZF9waWQYBCAB",
-            "KA0SEgoKaGFzX2V4aXRlZBgFIAEoCBIRCglleGl0X2NvZGUYBiABKAUSDQoF",
-            "bW9kZXMYByABKAkSEgoKc2Nyb2xsYmFjaxgIIAMoCRIXCg9zY3JvbGxiYWNr",
-            "X2Jsb2IYCSABKAwSFwoPY3JlYXRpb25fdGlja2V0GAogASgJIqkBCgtTZXNz",
-            "aW9uSW5mbxIKCgJpZBgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJvd3MYAyAB",
-            "KA0SEQoJY2hpbGRfcGlkGAQgASgNEhIKCmhhc19leGl0ZWQYBSABKAgSEQoJ",
-            "ZXhpdF9jb2RlGAYgASgFEg0KBXRpdGxlGAcgASgJEhAKCGF0dGFjaGVkGAgg",
-            "ASgIEhcKD2NyZWF0aW9uX3RpY2tldBgJIAEoCSI9CglMaXN0UmVwbHkSMAoI",
-            "c2Vzc2lvbnMYASADKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5TZXNzaW9uSW5m",
-            "byp/Cg1DcmVhdGlvblBoYXNlEhQKEENSRUFUSU9OX1VOS05PV04QABIVChFD",
-            "UkVBVElPTl9QUkVQQVJFRBABEhUKEUNSRUFUSU9OX0NSRUFUSU5HEAISEQoN",
-            "Q1JFQVRJT05fTElWRRADEhcKE0NSRUFUSU9OX0NBTkNFTExJTkcQBEIWqgIT",
-            "QWd3aW50ZXJtLlB0eS5Qcm90b2IGcHJvdG8z"));
+            "GAMgASgJEhcKD25hdGl2ZV9zbmFwc2hvdBgEIAEoCCIxCgpTZXNzaW9uUmVm",
+            "EgoKAmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tldBgCIAEoCSJJCgZSZXNp",
+            "emUSCgoCaWQYASABKAkSDAoEY29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhcK",
+            "D2NyZWF0aW9uX3RpY2tldBgEIAEoCSIbCg1QcmVwYXJlQ3JlYXRlEgoKAmlk",
+            "GAEgASgJIikKC0NyZWF0aW9uUmVmEgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
+            "IAEoCSJcCg1DcmVhdGlvblJlcGx5EgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
+            "IAEoCRIvCgVwaGFzZRgDIAEoDjIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0",
+            "aW9uUGhhc2UiBgoETGlzdCIKCghTaHV0ZG93biKiAgoFUmVwbHkSCgoCb2sY",
+            "ASABKAgSDQoFZXJyb3IYAiABKAkSLgoFaGVsbG8YAyABKAsyHS5hZ3dpbnRl",
+            "cm0ucHR5aG9zdC5IZWxsb1JlcGx5SAASMAoGY3JlYXRlGAQgASgLMh4uYWd3",
+            "aW50ZXJtLnB0eWhvc3QuQ3JlYXRlUmVwbHlIABIwCgZhdHRhY2gYBSABKAsy",
+            "Hi5hZ3dpbnRlcm0ucHR5aG9zdC5BdHRhY2hSZXBseUgAEiwKBGxpc3QYBiAB",
+            "KAsyHC5hZ3dpbnRlcm0ucHR5aG9zdC5MaXN0UmVwbHlIABI0CghjcmVhdGlv",
+            "bhgHIAEoCzIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0aW9uUmVwbHlIAEIG",
+            "CgRib2R5IkYKCkhlbGxvUmVwbHkSEAoIcHJvdG9jb2wYASABKA0SCwoDcGlk",
+            "GAIgASgNEhkKEWNyZWF0aW9uX3JldmlzaW9uGAMgASgNIjIKC0NyZWF0ZVJl",
+            "cGx5EgoKAmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tldBgCIAEoCSLfAQoL",
+            "QXR0YWNoUmVwbHkSDAoEcGlwZRgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJv",
+            "d3MYAyABKA0SEQoJY2hpbGRfcGlkGAQgASgNEhIKCmhhc19leGl0ZWQYBSAB",
+            "KAgSEQoJZXhpdF9jb2RlGAYgASgFEg0KBW1vZGVzGAcgASgJEhIKCnNjcm9s",
+            "bGJhY2sYCCADKAkSFwoPc2Nyb2xsYmFja19ibG9iGAkgASgMEhcKD2NyZWF0",
+            "aW9uX3RpY2tldBgKIAEoCRIXCg9uYXRpdmVfc25hcHNob3QYCyABKAgiqQEK",
+            "C1Nlc3Npb25JbmZvEgoKAmlkGAEgASgJEgwKBGNvbHMYAiABKA0SDAoEcm93",
+            "cxgDIAEoDRIRCgljaGlsZF9waWQYBCABKA0SEgoKaGFzX2V4aXRlZBgFIAEo",
+            "CBIRCglleGl0X2NvZGUYBiABKAUSDQoFdGl0bGUYByABKAkSEAoIYXR0YWNo",
+            "ZWQYCCABKAgSFwoPY3JlYXRpb25fdGlja2V0GAkgASgJIj0KCUxpc3RSZXBs",
+            "eRIwCghzZXNzaW9ucxgBIAMoCzIeLmFnd2ludGVybS5wdHlob3N0LlNlc3Np",
+            "b25JbmZvKn8KDUNyZWF0aW9uUGhhc2USFAoQQ1JFQVRJT05fVU5LTk9XThAA",
+            "EhUKEUNSRUFUSU9OX1BSRVBBUkVEEAESFQoRQ1JFQVRJT05fQ1JFQVRJTkcQ",
+            "AhIRCg1DUkVBVElPTl9MSVZFEAMSFwoTQ1JFQVRJT05fQ0FOQ0VMTElORxAE",
+            "QhaqAhNBZ3dpbnRlcm0uUHR5LlByb3RvYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Agwinterm.Pty.Proto.CreationPhase), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Request), global::Agwinterm.Pty.Proto.Request.Parser, new[]{ "Hello", "Create", "Attach", "Detach", "Resize", "Kill", "List", "Shutdown", "PrepareCreate", "QueryCreate", "CancelCreate" }, new[]{ "Cmd" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Hello), global::Agwinterm.Pty.Proto.Hello.Parser, new[]{ "Protocol" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Create), global::Agwinterm.Pty.Proto.Create.Parser, new[]{ "Id", "Cols", "Rows", "App", "Args", "Cwd", "Verbatim", "DeElevate", "FreshEnvOff", "Env", "CreationTicket" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Attach), global::Agwinterm.Pty.Proto.Attach.Parser, new[]{ "Id", "Repaint", "CreationTicket" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Attach), global::Agwinterm.Pty.Proto.Attach.Parser, new[]{ "Id", "Repaint", "CreationTicket", "NativeSnapshot" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionRef), global::Agwinterm.Pty.Proto.SessionRef.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Resize), global::Agwinterm.Pty.Proto.Resize.Parser, new[]{ "Id", "Cols", "Rows", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.PrepareCreate), global::Agwinterm.Pty.Proto.PrepareCreate.Parser, new[]{ "Id" }, null, null, null, null),
@@ -92,7 +93,7 @@ namespace Agwinterm.Pty.Proto {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Reply), global::Agwinterm.Pty.Proto.Reply.Parser, new[]{ "Ok", "Error", "Hello", "Create", "Attach", "List", "Creation" }, new[]{ "Body" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.CreateReply), global::Agwinterm.Pty.Proto.CreateReply.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket", "NativeSnapshot" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionInfo), global::Agwinterm.Pty.Proto.SessionInfo.Parser, new[]{ "Id", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Title", "Attached", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.ListReply), global::Agwinterm.Pty.Proto.ListReply.Parser, new[]{ "Sessions" }, null, null, null, null)
           }));
@@ -1683,6 +1684,7 @@ namespace Agwinterm.Pty.Proto {
       id_ = other.id_;
       repaint_ = other.repaint_;
       creationTicket_ = other.creationTicket_;
+      nativeSnapshot_ = other.nativeSnapshot_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1731,6 +1733,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "native_snapshot" field.</summary>
+    public const int NativeSnapshotFieldNumber = 4;
+    private bool nativeSnapshot_;
+    /// <summary>
+    /// accept length-prefixed Ghostty snapshot before raw PTY bytes
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool NativeSnapshot {
+      get { return nativeSnapshot_; }
+      set {
+        nativeSnapshot_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1749,6 +1766,7 @@ namespace Agwinterm.Pty.Proto {
       if (Id != other.Id) return false;
       if (Repaint != other.Repaint) return false;
       if (CreationTicket != other.CreationTicket) return false;
+      if (NativeSnapshot != other.NativeSnapshot) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1759,6 +1777,7 @@ namespace Agwinterm.Pty.Proto {
       if (Id.Length != 0) hash ^= Id.GetHashCode();
       if (Repaint != false) hash ^= Repaint.GetHashCode();
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
+      if (NativeSnapshot != false) hash ^= NativeSnapshot.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1789,6 +1808,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(26);
         output.WriteString(CreationTicket);
       }
+      if (NativeSnapshot != false) {
+        output.WriteRawTag(32);
+        output.WriteBool(NativeSnapshot);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1811,6 +1834,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(26);
         output.WriteString(CreationTicket);
       }
+      if (NativeSnapshot != false) {
+        output.WriteRawTag(32);
+        output.WriteBool(NativeSnapshot);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1829,6 +1856,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (CreationTicket.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(CreationTicket);
+      }
+      if (NativeSnapshot != false) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1850,6 +1880,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.CreationTicket.Length != 0) {
         CreationTicket = other.CreationTicket;
+      }
+      if (other.NativeSnapshot != false) {
+        NativeSnapshot = other.NativeSnapshot;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1882,6 +1915,10 @@ namespace Agwinterm.Pty.Proto {
             CreationTicket = input.ReadString();
             break;
           }
+          case 32: {
+            NativeSnapshot = input.ReadBool();
+            break;
+          }
         }
       }
     #endif
@@ -1911,6 +1948,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 26: {
             CreationTicket = input.ReadString();
+            break;
+          }
+          case 32: {
+            NativeSnapshot = input.ReadBool();
             break;
           }
         }
@@ -4586,6 +4627,7 @@ namespace Agwinterm.Pty.Proto {
       scrollback_ = other.scrollback_.Clone();
       scrollbackBlob_ = other.scrollbackBlob_;
       creationTicket_ = other.creationTicket_;
+      nativeSnapshot_ = other.nativeSnapshot_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -4732,6 +4774,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "native_snapshot" field.</summary>
+    public const int NativeSnapshotFieldNumber = 11;
+    private bool nativeSnapshot_;
+    /// <summary>
+    /// data pipe starts with uint32 LE length + snapshot
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool NativeSnapshot {
+      get { return nativeSnapshot_; }
+      set {
+        nativeSnapshot_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -4757,6 +4814,7 @@ namespace Agwinterm.Pty.Proto {
       if(!scrollback_.Equals(other.scrollback_)) return false;
       if (ScrollbackBlob != other.ScrollbackBlob) return false;
       if (CreationTicket != other.CreationTicket) return false;
+      if (NativeSnapshot != other.NativeSnapshot) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -4774,6 +4832,7 @@ namespace Agwinterm.Pty.Proto {
       hash ^= scrollback_.GetHashCode();
       if (ScrollbackBlob.Length != 0) hash ^= ScrollbackBlob.GetHashCode();
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
+      if (NativeSnapshot != false) hash ^= NativeSnapshot.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -4829,6 +4888,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(82);
         output.WriteString(CreationTicket);
       }
+      if (NativeSnapshot != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(NativeSnapshot);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4876,6 +4939,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(82);
         output.WriteString(CreationTicket);
       }
+      if (NativeSnapshot != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(NativeSnapshot);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4913,6 +4980,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (CreationTicket.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(CreationTicket);
+      }
+      if (NativeSnapshot != false) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -4953,6 +5023,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.CreationTicket.Length != 0) {
         CreationTicket = other.CreationTicket;
+      }
+      if (other.NativeSnapshot != false) {
+        NativeSnapshot = other.NativeSnapshot;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -5013,6 +5086,10 @@ namespace Agwinterm.Pty.Proto {
             CreationTicket = input.ReadString();
             break;
           }
+          case 88: {
+            NativeSnapshot = input.ReadBool();
+            break;
+          }
         }
       }
     #endif
@@ -5070,6 +5147,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 82: {
             CreationTicket = input.ReadString();
+            break;
+          }
+          case 88: {
+            NativeSnapshot = input.ReadBool();
             break;
           }
         }

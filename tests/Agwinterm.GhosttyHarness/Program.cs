@@ -37,6 +37,8 @@ using (var vt = new GhosttyVt(20, 5))
     Check(Row(vt, 0) == "Hello" && Row(vt, 1) == "red", "native text and CRLF");
     Check(vt.Frame[1, 0].FgSpec.Kind == ColorSpecKind.Indexed && vt.Frame[1, 0].FgSpec.Index == 1 &&
         vt.Frame[1, 0].Attributes.HasFlag(CellAttributes.Bold), "indexed color and style");
+    Check(vt.Frame[1, 0].FgSpec == ColorSpec.Indexed(1) && vt.Frame[0, 0].FgSpec == ColorSpec.Default,
+        "native colors use canonical value semantics");
     Capture(vt); Check(vt.ChangedRows == 0, "unchanged frame exports no rows");
     vt.Feed("!"u8); Capture(vt); Check(vt.ChangedRows == 1, "single-row update");
     vt.Feed("\u001b[?1049h\u001b[HALT"u8); Capture(vt); Check(vt.IsAltScreen && Row(vt, 0) == "ALT", "alternate screen");

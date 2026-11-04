@@ -76,3 +76,27 @@ try {
 $null = Rpc 'session.write' @{text=($esc+'[?1049l')} $session
 $text = [string](Rpc 'session.text' @{} $session)
 Check 'Ghostty returns to primary shell screen' ($text.Contains('GHOSTTY_CONPTY_READY'))
+
+$null = Rpc 'config.set' @{key='session-host';value='server'}
+$serverSession = [string](Rpc 'session.new' @{name='ghostty-server';'no-select'=$true})
+try {
+    $serverReady = $false
+    for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        $null = Rpc 'session.type' @{text="echo GHOSTTY_SERVER_READY`r"} $serverSession -AllowError
+        Start-Sleep -Milliseconds 200
+        $serverText = [string](Rpc 'session.text' @{} $serverSession)
+        if ($serverText -match '(?m)^GHOSTTY_SERVER_READY\s*$') { $serverReady = $true; break }
+    }
+    $serverText | Set-Content (Join-Path $artifact 'ghostty-server-shell.txt')
+    Check 'Ghostty headless application host responds through the UI replica' $serverReady
+} finally {
+    $null = Rpc 'session.close' @{} $serverSession
+    $null = Rpc 'config.set' @{key='session-host';value='in-process'}
+}
+
+# Optional self-contained server contract payload, staged only for this test run.
+$serverHarness = Join-Path $nativeDirectory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe'
+if (Test-Path -LiteralPath $serverHarness) {
+    & $serverHarness $nativeDirectory 2>&1 | Tee-Object -FilePath (Join-Path $artifact 'ghostty-server.txt')
+    Check 'Ghostty server snapshot and reattach contracts' ($LASTEXITCODE -eq 0)
+}
