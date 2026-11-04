@@ -98,7 +98,9 @@ public sealed class TerminalSession : ISession
     internal static string CoreName(ITerminalCore core) => core switch
     { GhosttyTerminalCore => "ghostty", RustTerminalCore => "rust", _ => "managed" };
 
-    public TerminalSession(int cols, int rows, string? core = null)
+    public TerminalSession(int cols, int rows) : this(cols, rows, null) { }
+
+    public TerminalSession(int cols, int rows, string? core)
     {
         Cols = cols;
         Rows = rows;
