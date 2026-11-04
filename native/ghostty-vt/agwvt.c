@@ -1,3 +1,4 @@
+#define COBJMACROS
 #include "agwvt.h"
 #include <ghostty/vt.h>
 #include <stdlib.h>
@@ -5,6 +6,68 @@
 #include <malloc.h>
 #include <stdatomic.h>
 #include <windows.h>
+#include <wincodec.h>
+
+// Use Windows' PNG decoder without a managed callback or an extra runtime.
+// Each invocation owns its COM objects; terminal input may arrive on any thread.
+static bool decode_png(void* context, const GhosttyAllocator* allocator,
+    const uint8_t* data, size_t length, GhosttySysImage* out) {
+    (void)context;
+    static const uint8_t signature[] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (length < sizeof(signature) || length > 64u * 1024u * 1024u ||
+        memcmp(data, signature, sizeof(signature))) return false;
+    HRESULT initialized = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE) return false;
+    IWICImagingFactory* factory = NULL;
+    IWICStream* stream = NULL;
+    IWICBitmapDecoder* decoder = NULL;
+    IWICBitmapFrameDecode* frame = NULL;
+    IWICFormatConverter* converter = NULL;
+    uint8_t* pixels = NULL; size_t bytes = 0; UINT width = 0, height = 0;
+    bool success = false;
+    HRESULT hr = CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
+        &IID_IWICImagingFactory, (void**)&factory);
+    if (FAILED(hr)) goto done;
+    hr = IWICImagingFactory_CreateStream(factory, &stream);
+    if (FAILED(hr)) goto done;
+    hr = IWICStream_InitializeFromMemory(stream, (BYTE*)data, (DWORD)length);
+    if (FAILED(hr)) goto done;
+    hr = IWICImagingFactory_CreateDecoder(factory, &GUID_ContainerFormatPng, NULL, &decoder);
+    if (FAILED(hr)) goto done;
+    hr = IWICBitmapDecoder_Initialize(decoder, (IStream*)stream, WICDecodeMetadataCacheOnDemand);
+    if (FAILED(hr)) goto done;
+    hr = IWICBitmapDecoder_GetFrame(decoder, 0, &frame);
+    if (FAILED(hr)) goto done;
+    hr = IWICBitmapFrameDecode_GetSize(frame, &width, &height);
+    if (FAILED(hr) || !width || !height || (uint64_t)width * height > 16u * 1024u * 1024u) goto done;
+    bytes = (size_t)width * height * 4;
+    hr = IWICImagingFactory_CreateFormatConverter(factory, &converter);
+    if (FAILED(hr)) goto done;
+    hr = IWICFormatConverter_Initialize(converter, (IWICBitmapSource*)frame,
+        &GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, NULL, 0, WICBitmapPaletteTypeCustom);
+    if (FAILED(hr)) goto done;
+    pixels = ghostty_alloc(allocator, bytes);
+    if (!pixels) goto done;
+    hr = IWICFormatConverter_CopyPixels(converter, NULL, width * 4, (UINT)bytes, pixels);
+    if (FAILED(hr)) goto done;
+    *out = (GhosttySysImage){ .width = width, .height = height, .data = pixels, .data_len = bytes };
+    success = true;
+done:
+    if (!success && pixels) ghostty_free(allocator, pixels, bytes);
+    if (converter) IWICFormatConverter_Release(converter);
+    if (frame) IWICBitmapFrameDecode_Release(frame);
+    if (decoder) IWICBitmapDecoder_Release(decoder);
+    if (stream) IWICStream_Release(stream);
+    if (factory) IWICImagingFactory_Release(factory);
+    if (SUCCEEDED(initialized)) CoUninitialize();
+    return success;
+}
+static INIT_ONCE system_once = INIT_ONCE_STATIC_INIT;
+static BOOL CALLBACK initialize_system(PINIT_ONCE once, PVOID parameter, PVOID* context) {
+    (void)once; (void)parameter; (void)context;
+    ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, (const void*)decode_png);
+    return TRUE;
+}
 
 #define TRY(expr) do { int result_ = (expr); if (result_ != GHOSTTY_SUCCESS) return result_; } while (0)
 typedef struct { GhosttyTrackedGridRef refs[4]; int32_t exit_code, has_exit_code; } TrackedMark;
@@ -295,12 +358,15 @@ static int configure_terminal(AgwVt* vt, int initialize_colors) {
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE, &disabled);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE, &no_temp_directory);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM, &disabled);
+    uint64_t image_limit = 64u * 1024u * 1024u;
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT, &image_limit);
     return result;
 }
 int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, AgwVt** out) {
     if (!out || !cols || !rows || cols > 32768 || rows > 32768 || (uint64_t)cols * rows > 4000000)
         return GHOSTTY_INVALID_VALUE;
     *out = NULL;
+    InitOnceExecuteOnce(&system_once, initialize_system, NULL, NULL);
     AgwVt* vt = calloc(1, sizeof(*vt));
     if (!vt) return GHOSTTY_OUT_OF_MEMORY;
     vt->event = event; vt->context = context;

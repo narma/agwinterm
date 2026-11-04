@@ -28,6 +28,12 @@ Only one capture consumer is allowed; disposal must wait for that consumer.
 Callbacks copy bounded host effects into a managed queue; they never reenter
 the terminal or throw across the C boundary.
 
+Kitty direct payload storage is capped at 64 MiB per screen (within the shared
+256 MiB terminal allocation budget). PNG decoding uses Windows WIC, with at most
+16 million decoded pixels, and returns RGBA using Ghostty's supplied allocator.
+File, temporary-file and shared-memory media remain disabled. Native graphics
+storage/decoding is enabled; graphics frame extraction and drawing are pending.
+
 Native snapshots retain parser continuation and tracked command boundaries.
 The managed envelope includes the upstream revision, bounded Windows input
 sidecar state, lengths, and a SHA-256 integrity check. Decode builds a separate

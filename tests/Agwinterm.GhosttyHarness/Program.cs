@@ -302,6 +302,24 @@ using (var vt = new GhosttyVt(10, 3))
         Check(Row(vt, 0) == "still live", "anchor finalization needs no managed session lock");
     }
 }
+using (var vt = new GhosttyVt(20, 5))
+{
+    var host = new Host(); vt.Host = host;
+    const string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    vt.Feed(Encoding.ASCII.GetBytes($"\u001b_Ga=t,f=100,i=42;{png}\u001b\\"));
+    Check(host.Replies.Contains("i=42;OK"), "Windows PNG decoder accepts Kitty PNG payload");
+    host.Replies = "";
+    vt.Feed("\u001b_Ga=t,f=100,i=43;bm90IGEgcG5n\u001b\\"u8);
+    Check(host.Replies.Contains("i=43;") && !host.Replies.Contains(";OK"), "invalid PNG is rejected with protocol error");
+    host.Replies = "";
+    vt.Feed("\u001b_Ga=t,f=32,s=1,v=1,i=44;/wAA/w==\u001b\\"u8);
+    Check(host.Replies.Contains("i=44;OK"), "raw Kitty RGBA needs no decoder");
+    host.Replies = "";
+    vt.Feed("\u001b_Ga=t,f=100,t=f,i=45;QzpcV2luZG93c1x3aW4uaW5p\u001b\\"u8);
+    Check(host.Replies.Contains("i=45;") && !host.Replies.Contains(";OK"), "Kitty file media remains disabled");
+    vt.Feed("after images"u8); Capture(vt);
+    Check(Row(vt, 0) == "after images", "graphics errors leave terminal input usable");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

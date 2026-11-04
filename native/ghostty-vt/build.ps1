@@ -37,7 +37,7 @@ $bin = Join-Path $output 'bin'
 # a Visual Studio/VC redistributable installation. Both DLLs expose the x64 C ABI.
 & $zig cc -target x86_64-windows-gnu -O2 -Wall -Wextra -Werror -shared `
     -I (Join-Path $source 'include') (Join-Path $PSScriptRoot 'agwvt.c') `
-    (Join-Path $output 'lib/ghostty-vt.lib') -o (Join-Path $bin 'agwinterm_ghostty.dll')
+    (Join-Path $output 'lib/ghostty-vt.lib') -lole32 -lwindowscodecs -luuid -o (Join-Path $bin 'agwinterm_ghostty.dll')
 CheckExit 'Ghostty adapter build'
 $licenses = Join-Path $output 'licenses'
 New-Item -ItemType Directory -Force $licenses | Out-Null
