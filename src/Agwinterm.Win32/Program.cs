@@ -344,6 +344,8 @@ internal partial class Program : ISessionHost, IWindowHost
         // local dictionary inside SaveState at quit, so every ordinary save wrote "" over the slot and a
         // crash / Stop-Process never filled it; one field, one writer per capture, one reader.
         public string? CapturedCommand;
+        public string? CapturedCommandToken;
+        public long CapturedCommandGeneration;
         // Overlay panes only (#227): completed once, with the outcome of THIS pane — "exit N" when its
         // program exits, "closed" when the overlay is closed or replaced first. `overlay open --block`
         // waits on the source of the pane it opened, so two blocking opens in one window each get

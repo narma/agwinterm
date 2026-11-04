@@ -1280,6 +1280,7 @@ internal partial class Program
             snap.Add((hit.Value.pane, hit.Value.ses, hit.Value.pane.S.ChildProcessId ?? 0));
         }
 
+        var checkpoints = snap.Select(s => (completion: s.pane.Completion, generation: s.pane.Completion.Checkpoint)).ToArray();
         if (!TryCapturePaneCommands(snap, 15000, out var byPid))
             return RestoreCaptureResult.Refuse(RestoreCaptureReply.QueryFailed);
 
@@ -1287,10 +1288,11 @@ internal partial class Program
         {
             var landed = new List<CapturedPane>(snap.Count);
             lock (_workspaces)
-                foreach (var (pane, ses, pid) in snap)
+                for (int i = 0; i < snap.Count; i++)
                 {
+                    var (pane, ses, pid) = snap[i];
                     if (!_workspaces.Contains(ses.Ws) || !ses.Ws.Sessions.Contains(ses) || !ses.AllPanes.Contains(pane)) continue;
-                    pane.CapturedCommand = pid > 0 && byPid.TryGetValue(pid, out var cmd) ? cmd : null;
+                    StoreCapturedCommand(pane, pid > 0 && byPid.TryGetValue(pid, out var cmd) ? cmd : null, checkpoints[i].completion, checkpoints[i].generation);
                     landed.Add(new CapturedPane(pane.Id, ses.Id, pane.CapturedCommand));
                 }
             // The snapshot is built here, on the UI thread, where the tree is, and STAMPED here, so

@@ -69,6 +69,10 @@ ordinary printed content and replayed old reports cannot clear recovery. Both PT
 hosts checkpoint completion under `agent-completions/` in the app state directory,
 including while no window is open. Restore checks that checkpoint before replay,
 so an agent that exited while detached stays closed even if the host later dies.
+Automatically captured commands carry their own completion checkpoint too:
+`restore-commands = true` cannot replay a command that has since finished. A
+later capture of a different running command remains independent of the old
+agent binding. Explicitly pinned restore commands still run as requested.
 
 ## Recently closed work
 

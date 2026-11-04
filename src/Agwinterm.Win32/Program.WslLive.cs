@@ -248,6 +248,8 @@ internal partial class Program : IWslLiveHost
         next.BindCompletionBaseline = previous.BindCompletionBaseline;
         next.RestoreCommand = previous.RestoreCommand;
         next.CapturedCommand = previous.CapturedCommand;
+        next.CapturedCommandToken = previous.CapturedCommandToken;
+        next.CapturedCommandGeneration = previous.CapturedCommandGeneration;
         next.Appearance = previous.Appearance;
         next.FontZoomed = previous.FontZoomed;
         next.Ratio = previous.Ratio;

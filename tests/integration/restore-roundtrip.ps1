@@ -157,7 +157,7 @@ function Get-TestAgentHosts($s) {
 }
 
 function Cell {
-    param([string]$Name, [switch]$Kill, [switch]$KillHostAfterClose, [switch]$WaitDetachedCompletion, [string[]]$Conf = @(), [scriptblock]$Setup, [scriptblock]$Assert)
+    param([string]$Name, [switch]$Kill, [switch]$KillHostAfterClose, [switch]$WaitDetachedCompletion, [switch]$SkipDetachedAdoption, [string[]]$Conf = @(), [scriptblock]$Setup, [scriptblock]$Assert)
     if ($Only -and $Name -notlike $Only) { return }
     "-- $Name --"
     $s = $null
@@ -181,18 +181,25 @@ function Cell {
                 Check 'agent-detached: UI closed with a live saved binding' ($saved.Panes[0].AgentResume -eq $ctx.Binding)
                 $checkpoint = Join-Path $s.AppDir ('agent-completions/' + $saved.Panes[0].PromptToken)
                 $generation = [long]$saved.Panes[0].AgentResumeGeneration
+                if ($ctx.ExitPid) {
+                    Check 'agent-detached: quit captured the live command and its shell checkpoint' `
+                        ($saved.Panes[0].Command -match '-n 301' -and $saved.Panes[0].CommandToken -eq $saved.Panes[0].PromptToken)
+                    Stop-Process -Id $ctx.ExitPid -Force
+                }
                 $finished = $false
                 for ($i = 0; $i -lt 150; $i++) {
                     if ((Test-Path -LiteralPath $checkpoint) -and [long](Get-Content -LiteralPath $checkpoint -Raw) -gt $generation) { $finished = $true; break }
                     Start-Sleep -Milliseconds 100
                 }
                 Check 'agent-detached: PTY owner durably records exit without a UI' $finished
+                if (-not $SkipDetachedAdoption) {
                 if (-not (Start-SandboxProcess $s @('--pipe', $s.Pipe, '--app-id', $s.AppId))) { throw 'Adopting UI did not start' }
                 Start-Sleep -Seconds 2
                 $saved = Get-SavedSession $s $ctx.Sid
                 Check 'agent-detached: adoption reconciles the completed binding' ($null -eq $saved.Panes[0].AgentResume)
                 [void][AgwUi]::PostMessageW($s.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
                 if (-not $s.Proc.WaitForExit(20000)) { throw 'Adopting UI did not close' }
+                }
             }
             $hosts = @(Get-TestAgentHosts $s)
             Check "$Name`: exactly one private PTY host survived UI close" ($hosts.Count -eq 1)
@@ -477,6 +484,32 @@ Cell -Name 'swap-killed' -Kill -Setup {
 }
 
 foreach ($agentHost in @('server', 'server-rust')) {
+Cell -Name "agent-captured-detached-$agentHost" -KillHostAfterClose -WaitDetachedCompletion -SkipDetachedAdoption -Conf @("session-host = $agentHost", 'restore-commands = true') -Setup {
+    param($s)
+    $sid = Sid $s
+    if (-not (Wait-Prompt $s $sid)) { throw 'Shell did not start' }
+    Send-Ctl $s @('session', 'type', ('ping -n 301 127.0.0.2' + [char]13), '--target', $sid) | Out-Null
+    $child = $null
+    for ($i = 0; $i -lt 30; $i++) {
+        $child = Get-CimInstance Win32_Process -Filter "Name = 'PING.EXE'" | Where-Object { $_.CommandLine -match '-n 301 127\.0\.0\.2' } | Select-Object -First 1
+        if ($child) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $child) { throw 'Capture fixture did not start' }
+    $binding = "Write-Host ('UNEXPECTED_' + 'CAPTURED_RESUME')"
+    $null = Reply $s @('session', 'bind', $binding, '--target', $sid)
+    Start-Sleep -Milliseconds 400
+    return @{ Sid = $sid; Binding = $binding; ExitPid = [int]$child.ProcessId }
+} -Assert {
+    param($s, $ctx)
+    Start-Sleep -Seconds 4
+    $saved = Get-SavedSession $s $ctx.Sid
+    Check 'agent-captured: cold restore clears the finished binding' ($null -eq $saved.Panes[0].AgentResume)
+    Check 'agent-captured: cold restore clears the finished captured command' ([string]::IsNullOrEmpty($saved.Panes[0].Command))
+    $replayed = @(Get-CimInstance Win32_Process -Filter "Name = 'PING.EXE'" | Where-Object { $_.CommandLine -match '-n 301 127\.0\.0\.2' })
+    Check 'agent-captured: restore-commands does not launch the exited process' ($replayed.Count -eq 0)
+    Check 'agent-captured: agent binding is not replayed either' (-not (PaneText $s $ctx.Sid).Contains('UNEXPECTED_CAPTURED_RESUME'))
+}
 Cell -Name "agent-detached-$agentHost" -KillHostAfterClose -WaitDetachedCompletion -Conf @("session-host = $agentHost", 'emulator-core = managed', 'restore-commands = false') -Setup {
     param($s)
     $sid = Sid $s

@@ -392,19 +392,22 @@ internal partial class Program
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
         public void CommandFinished(string token, long sequence)
         {
-            if (!_pane.Completion.Accept(token, sequence, persist: _s is not ServerSession)
-                || sequence <= Volatile.Read(ref _pane.BindCompletionBaseline)
-                || _pane.AgentResumeToken != token) return;
+            if (!_pane.Completion.Accept(token, sequence, persist: _s is not ServerSession)) return;
             // Invalidate a SessionStart lookup still in flight BEFORE queuing the clear. A
             // newer agent may bind before this UI action runs, in which case its binding wins.
-            int seq = Interlocked.Increment(ref _pane.BindSeq);
+            int? seq = sequence > Volatile.Read(ref _pane.BindCompletionBaseline) && _pane.AgentResumeToken == token
+                ? Interlocked.Increment(ref _pane.BindSeq) : null;
             _app.Post(() =>
             {
-                if (Volatile.Read(ref _pane.BindSeq) != seq || _pane.AgentResume is null
-                    || _pane.AgentResumeToken != token || sequence <= _pane.AgentResumeGeneration) return;
-                _pane.AgentResume = null;
+                bool clearedCapture = _pane.CapturedCommand is not null && _pane.CapturedCommandToken == token
+                    && sequence > _pane.CapturedCommandGeneration;
+                if (clearedCapture) _pane.CapturedCommand = null;
+                bool clearedAgent = seq is not null && Volatile.Read(ref _pane.BindSeq) == seq && _pane.AgentResume is not null
+                    && _pane.AgentResumeToken == token && sequence > _pane.AgentResumeGeneration;
+                if (clearedAgent) _pane.AgentResume = null;
+                if (!clearedAgent && !clearedCapture) return;
                 _app.SaveState();
-                _app.EmitEvent("bind", _pane.Id, "cleared: shell command finished");
+                if (clearedAgent) _app.EmitEvent("bind", _pane.Id, "cleared: shell command finished");
             });
         }
         public void Unhandled(string kind, string detail) => VtLog.Write(_pane.Id, kind, detail);       // AGWINTERM_VT_LOG tap
