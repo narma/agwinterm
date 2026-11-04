@@ -32,7 +32,7 @@ public class ShellPromptTests
     [InlineData(true, true, false)]
     [InlineData(false, false, true)]
     [InlineData(true, false, true)]
-    public async Task OnlyTheRootShellReportsCompletionAfterItsFirstPrompt(bool installed, bool nested, bool legacy)
+    public async Task OnlyTheRootShellReportsAuthenticatedIncreasingPromptNumbers(bool installed, bool nested, bool legacy)
     {
         string path = Path.Combine(Path.GetTempPath(), "agwinterm-prompt-" + Guid.NewGuid().ToString("N") + ".ps1");
         try
@@ -49,16 +49,18 @@ public class ShellPromptTests
             };
             foreach (string arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path }) start.ArgumentList.Add(arg);
             start.Environment["AGWINTERM"] = "1";
+            start.Environment["AGWINTERM_PROMPT_TOKEN"] = "0123456789abcdef0123456789abcdef";
             start.Environment["AGWINTERM_PROMPT_OWNER"] = nested ? "windows:other" : "";
             using var process = Process.Start(start)!;
             var read = process.StandardOutput.ReadToEndAsync();
             Assert.True(process.WaitForExit(15000));
             Assert.Equal(0, process.ExitCode);
             string output = await read;
-            const string marker = "\x1b]777;agwinterm;command-finished\x07";
+            const string marker = "\x1b]777;agwinterm;command-finished;0123456789abcdef0123456789abcdef;";
             string first = output[output.IndexOf("FIRST", StringComparison.Ordinal)..output.IndexOf("SECOND", StringComparison.Ordinal)];
-            Assert.DoesNotContain(marker, first);
-            Assert.Equal(nested ? 0 : 1, output.Split(marker).Length - 1);
+            if (!nested) Assert.Contains(marker + "1\x07", first);
+            Assert.Equal(nested ? 0 : 2, output.Split(marker).Length - 1);
+            if (!nested) Assert.Contains(marker + "2\x07", output);
         }
         finally { File.Delete(path); }
     }

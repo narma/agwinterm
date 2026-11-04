@@ -1100,8 +1100,10 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         string? val = SessionOperations.Binding(agent);
+        long baseline = hit.Value.pane.Completion.Checkpoint;
+        Volatile.Write(ref hit.Value.pane.BindCompletionBaseline, baseline);
         int seq = Interlocked.Increment(ref hit.Value.pane.BindSeq);   // supersedes a SessionStart binding still resolving
-        PostVerb(() => { if (Volatile.Read(ref hit.Value.pane.BindSeq) == seq) { hit.Value.pane.AgentResume = val; SaveState(); } });
+        PostVerb(() => { if (Volatile.Read(ref hit.Value.pane.BindSeq) == seq && hit.Value.pane.Completion.Checkpoint == baseline) { BindAgent(hit.Value.pane, val, baseline); SaveState(); } });
         return true;
     }
 
@@ -1115,6 +1117,8 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         var pane = hit.Value.pane;
+        long baseline = pane.Completion.Checkpoint;
+        Volatile.Write(ref pane.BindCompletionBaseline, baseline);
         int seq = Interlocked.Increment(ref pane.BindSeq);
         var profile = IntegrationProfile(target);
         if (profile is not null && WslIntegration.IsWsl(profile.Command))
@@ -1136,7 +1140,7 @@ internal partial class Program
                 if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
                 string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
                     AgentResume.ResumeFlags(agent, command));
-                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq) { pane.AgentResume = relaunch; SaveState(); } });
+                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && pane.Completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline); SaveState(); } });
                 EmitEvent("bind", pane.Id, "bound: " + relaunch);
                 return true;
             }
@@ -1165,8 +1169,8 @@ internal partial class Program
                             Agwinterm.Pty.AgentResume.ResumeFlags(agent, cmdline));
                         Post(() =>
                         {
-                            if (Volatile.Read(ref pane.BindSeq) != seq) return;   // a later bind won
-                            pane.AgentResume = relaunch;
+                            if (Volatile.Read(ref pane.BindSeq) != seq || pane.Completion.Checkpoint != baseline) return;   // a later bind or shell completion won
+                            BindAgent(pane, relaunch, baseline);
                             SaveState();
                         });
                         outcome = "bound: " + relaunch;
@@ -1177,6 +1181,13 @@ internal partial class Program
             EmitEvent("bind", pane.Id, outcome);
         });
         return true;
+    }
+
+    private static void BindAgent(Pane pane, string? command, long baseline)
+    {
+        pane.AgentResume = command;
+        pane.AgentResumeToken = pane.Completion.Token;
+        pane.AgentResumeGeneration = baseline;
     }
 
     // Pin (or clear, command = null) a restore command on a specific pane (agterm #271). Persisted so

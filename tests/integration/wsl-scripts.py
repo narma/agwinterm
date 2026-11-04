@@ -157,19 +157,22 @@ class WslScripts(unittest.TestCase):
         self.assertEqual(1, result.count('__agw_prompt'))
 
     def test_only_root_shell_completion_clears_agent_binding(self):
-        marker = b'\x1b]777;agwinterm;command-finished\x07'
+        marker = b'\x1b]777;agwinterm;command-finished;0123456789abcdef0123456789abcdef;'
         for shell in ('bash', 'zsh'):
             for owner in ('', 'linux:other'):
                 with self.subTest(shell=shell, owner=owner):
-                    env = dict(os.environ, AGWINTERM_PROMPT_OWNER=owner)
+                    env = dict(os.environ, AGWINTERM_PROMPT_OWNER=owner, AGWINTERM_PROMPT_TOKEN='0123456789abcdef0123456789abcdef')
                     script = '. "$1"; __agw_prompt; printf FIRST_DONE; __agw_prompt'
                     result = subprocess.check_output([shell, '-c', script, 'test', str(SCRIPTS / 'shell.sh')], env=env)
                     first, second = result.split(b'FIRST_DONE')
-                    self.assertNotIn(marker, first)
+                    self.assertEqual(0 if owner else 1, first.count(marker))
                     self.assertEqual(0 if owner else 1, second.count(marker))
+                    if not owner:
+                        self.assertIn(marker + b'1\x07', first)
+                        self.assertIn(marker + b'2\x07', second)
                     # A live agent lost with its PTY never returns to a second prompt.
                     result = subprocess.check_output([shell, '-c', '. "$1"; __agw_prompt; exit', 'test', str(SCRIPTS / 'shell.sh')], env=env)
-                    self.assertNotIn(marker, result)
+                    self.assertNotIn(marker + b'2\x07', result)
 
     def test_bash_string_prompt_preserves_existing_command_and_reports_cwd(self):
         for existing in ('', ':;', 'printf existing', 'printf existing;', 'printf existing # comment'):

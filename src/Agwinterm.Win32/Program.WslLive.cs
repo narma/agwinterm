@@ -237,6 +237,8 @@ internal partial class Program : IWslLiveHost
             profileName: session.ProfileName, liveBinding: JsonSerializer.SerializeToElement(binding));
         next.LiveFreshStart = freshStart;
         next.AgentResume = previous.AgentResume;
+        next.AgentResumeToken = previous.AgentResumeToken;
+        next.AgentResumeGeneration = previous.AgentResumeGeneration;
         next.RestoreCommand = previous.RestoreCommand;
         next.CapturedCommand = previous.CapturedCommand;
         next.Appearance = previous.Appearance;

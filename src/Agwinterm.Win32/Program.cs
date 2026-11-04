@@ -330,6 +330,10 @@ internal partial class Program : ISessionHost, IWindowHost
         public string? StartCwd;   // dir the shell was launched in (fallback cwd when OSC 7 is absent)
         public volatile string? AutomaticName; // last coherent label; used while terminal output holds SyncRoot
         public string? AgentResume; // resumable agent bound to this pane (e.g. "claude") — relaunched on restart
+        public ShellCompletion Completion = new("", "");
+        public string? AgentResumeToken;
+        public long AgentResumeGeneration;
+        public long BindCompletionBaseline;
         // Bumped by every bind request; a SessionStart binding resolved in the background lands only if
         // no later bind arrived meanwhile, so startup-then-/clear cannot leave the older id bound (#316).
         public int BindSeq;

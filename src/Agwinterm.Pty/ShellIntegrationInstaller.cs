@@ -25,10 +25,13 @@ public static class ShellIntegrationInstaller
           $global:__agwSI = $true
           $global:__agwPromptVersion = 2
           $global:__agwFirst = $true
+          $global:__agwPromptSeq = 0
           if (-not $env:AGWINTERM_PROMPT_OWNER) { $env:AGWINTERM_PROMPT_OWNER = "windows:$PID" }
           function global:prompt {
-            if ($global:__agwFirst) { $global:__agwFirst = $false }
-            elseif ($env:AGWINTERM_PROMPT_OWNER -eq "windows:$PID") { [Console]::Write("$([char]27)]777;agwinterm;command-finished$([char]7)") }
+            if ($env:AGWINTERM_PROMPT_TOKEN -and $env:AGWINTERM_PROMPT_OWNER -eq "windows:$PID") {
+              $global:__agwPromptSeq++
+              [Console]::Write("$([char]27)]777;agwinterm;command-finished;$env:AGWINTERM_PROMPT_TOKEN;$global:__agwPromptSeq$([char]7)")
+            }
             $d = (Get-Location).ProviderPath
             [Console]::Write("$([char]27)]7;file://$env:COMPUTERNAME/$(($d -replace '\\','/'))$([char]7)")
             if ($global:__agwPrompt) { & $global:__agwPrompt } else { "PS $d> " }
@@ -51,6 +54,7 @@ public static class ShellIntegrationInstaller
           $global:__agwSI = $true
           $global:__agwPromptVersion = 2
           $global:__agwFirst = $true
+          $global:__agwPromptSeq = 0
           if (-not $env:AGWINTERM_PROMPT_OWNER) { $env:AGWINTERM_PROMPT_OWNER = "windows:$PID" }
           function global:prompt {
             $ok = $?
@@ -58,7 +62,10 @@ public static class ShellIntegrationInstaller
             $ec = $global:LASTEXITCODE; if ($null -eq $ec) { $ec = if ($ok) { 0 } else { 1 } }
             if ($global:__agwFirst) { $global:__agwFirst = $false } else {
               [Console]::Write("$e]133;D;$ec$b")
-              if ($env:AGWINTERM_PROMPT_OWNER -eq "windows:$PID") { [Console]::Write("$e]777;agwinterm;command-finished$b") }
+            }
+            if ($env:AGWINTERM_PROMPT_TOKEN -and $env:AGWINTERM_PROMPT_OWNER -eq "windows:$PID") {
+              $global:__agwPromptSeq++
+              [Console]::Write("$e]777;agwinterm;command-finished;$env:AGWINTERM_PROMPT_TOKEN;$global:__agwPromptSeq$b")
             }
             [Console]::Write("$e]133;A$b")
             $d = (Get-Location).ProviderPath

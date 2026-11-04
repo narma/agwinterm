@@ -13,7 +13,7 @@ public class OscTests
         // A prompt, cwd report, turn stop or disconnect is not command completion.
         terminal.Feed(Encoding.UTF8.GetBytes("\x1b]133;A\x07\x1b]7;file:///work\x07\x1b]133;D;0\x07"));
         Assert.Equal(0, host.FinishedCommands);
-        terminal.Feed(Encoding.UTF8.GetBytes("\x1b]777;agwinterm;command-finished\x07"));
+        terminal.Feed(Encoding.UTF8.GetBytes("\x1b]777;agwinterm;command-finished;0123456789abcdef0123456789abcdef;1\x07"));
         Assert.Equal(1, host.FinishedCommands);
         Assert.Empty(host.Notifications);
         Assert.Empty(host.Unhandleds);

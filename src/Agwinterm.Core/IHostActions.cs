@@ -36,9 +36,9 @@ public interface IHostActions
     /// an audible beep, a visual flash, an attention cue, or nothing — per user config.</summary>
     void Bell();
 
-    /// <summary>The pane's shell returned to its prompt after a command. This is distinct from
-    /// agent turn completion and from a PTY disconnect: only a live shell can report it.</summary>
-    void CommandFinished();
+    /// <summary>A candidate shell-completion report. The embedder must authenticate the
+    /// shell-instance capability and increasing prompt number before changing recovery state.</summary>
+    void CommandFinished(string token, long sequence);
 
     /// <summary>A syntactically valid escape sequence the emulator has no handler for. A debug tap:
     /// hosts typically log it under an env flag (or no-op) — never user-visible. This is what turns

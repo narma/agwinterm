@@ -205,7 +205,7 @@ pub enum HostAction {
     Clipboard { text: String },
     Respond { reply: String },
     Bell,
-    CommandFinished,
+    CommandFinished { token: String, sequence: i64 },
     Unhandled { kind: String, detail: String },
 }
 
@@ -1604,8 +1604,13 @@ impl Performer for Emulator {
                 }
             }
             777 => {
-                if text == "agwinterm;command-finished" {
-                    self.push_action(HostAction::CommandFinished);
+                if let Some(payload) = text.strip_prefix("agwinterm;command-finished;")
+                    && let Some((token, number)) = payload.split_once(';')
+                    && token.len() == 32 && token.bytes().all(|b| b.is_ascii_hexdigit())
+                    && number.bytes().all(|b| b.is_ascii_digit())
+                    && let Ok(sequence) = number.parse::<i64>() && sequence > 0
+                {
+                    self.push_action(HostAction::CommandFinished { token: token.to_owned(), sequence });
                     return;
                 }
                 // OSC 777 ; notify ; <title> ; <body>

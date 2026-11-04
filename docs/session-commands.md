@@ -64,6 +64,12 @@ Nested tool shells do not clear their parent agent's binding. A shell without th
 integration cannot report agent exit; `agwintermctl session bind none` clears its
 binding explicitly.
 
+Completion reports carry a per-shell capability and an increasing prompt number;
+ordinary printed content and replayed old reports cannot clear recovery. Both PTY
+hosts checkpoint completion under `agent-completions/` in the app state directory,
+including while no window is open. Restore checks that checkpoint before replay,
+so an agent that exited while detached stays closed even if the host later dies.
+
 ## Recently closed work
 
 [Recent history](recent-work.md) exposes menu reopening through `recent list/open/clear`, preserves splits and restore pins, and retains failed workspace members for retry.

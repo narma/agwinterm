@@ -117,7 +117,10 @@ internal partial class Program
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
         if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
+        string promptToken = (adopted || hasLiveBinding) && _restoredPromptTokens.TryGetValue(paneId, out string? savedToken)
+            && ShellCompletion.ValidToken(savedToken) ? savedToken : Guid.NewGuid().ToString("N");
         var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize, LiveBinding = liveBinding,
+            Completion = new ShellCompletion(promptToken, CompletionPath(promptToken)),
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
         if (liveRequested) ConfigureLiveTitle(pane, adopted ? restoredRemote?.AttachmentNonce ?? restoredLive?.AttachmentNonce : null);
@@ -181,6 +184,8 @@ internal partial class Program
             ["AGWINTERM_SESSION_ID"] = paneId,       // each pane is independently targetable
             ["AGWINTERM_PANE_ID"] = paneId,          // explicit pane identity (unique per split pane)
             ["AGWINTERM_PROMPT_OWNER"] = "",        // each new pane establishes its own root shell
+            ["AGWINTERM_PROMPT_TOKEN"] = promptToken,
+            ["AGWINTERM_COMPLETION_FILE"] = CompletionPath(promptToken),
             ["AGWINTERM_WORKSPACE_ID"] = ws.Id,
             ["AGWINTERM_WINDOW_ID"] = Id,
             // Standard terminal-identification vars so shells/prompt tools (starship, oh-my-posh, tmux,
@@ -384,14 +389,17 @@ internal partial class Program
         }
         public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
-        public void CommandFinished()
+        public void CommandFinished(string token, long sequence)
         {
+            if (!_pane.Completion.Accept(token, sequence, persist: _s is not ServerSession)
+                || sequence <= Volatile.Read(ref _pane.BindCompletionBaseline)) return;
             // Invalidate a SessionStart lookup still in flight BEFORE queuing the clear. A
             // newer agent may bind before this UI action runs, in which case its binding wins.
             int seq = Interlocked.Increment(ref _pane.BindSeq);
             _app.Post(() =>
             {
-                if (Volatile.Read(ref _pane.BindSeq) != seq || _pane.AgentResume is null) return;
+                if (Volatile.Read(ref _pane.BindSeq) != seq || _pane.AgentResume is null
+                    || _pane.AgentResumeToken != token || sequence <= _pane.AgentResumeGeneration) return;
                 _pane.AgentResume = null;
                 _app.SaveState();
                 _app.EmitEvent("bind", _pane.Id, "cleared: shell command finished");
@@ -1298,7 +1306,7 @@ internal partial class Program
             string cmd = id is null
                 ? "claude --dangerously-skip-permissions"
                 : $"claude --resume {id} --dangerously-skip-permissions";
-            Post(() => { pane.AgentResume = cmd; SaveState(); });   // future restarts stay YOLO
+            Post(() => { BindAgent(pane, cmd, pane.Completion.Checkpoint); SaveState(); });   // future restarts stay YOLO
             await QuitClaudeAndRelaunch(pane, cmd);
         });
         return "restarting Claude in YOLO mode";
@@ -1448,7 +1456,7 @@ internal partial class Program
             if (!System.Text.RegularExpressions.Regex.IsMatch(running, @"(?i)\bclaude\b")) continue;
             string cmd = p.AgentResume ?? DeriveClaudeRelaunch(p, running);
             var pane = p;
-            Post(() => { pane.AgentResume = cmd; SaveState(); });
+            Post(() => { BindAgent(pane, cmd, pane.Completion.Checkpoint); SaveState(); });
             _ = QuitClaudeAndRelaunch(pane, cmd);
             n++;
         }
@@ -1502,7 +1510,7 @@ internal partial class Program
             if (!strong.ContainsKey(p)) claimed.Add(id);
             // Store the full resume command; the restore path types it verbatim and the claude wrapper (or the
             // real CLI) honors --resume, so the exact conversation comes back on every relaunch.
-            p.AgentResume = "claude --resume " + id;
+            BindAgent(p, "claude --resume " + id, p.Completion.Checkpoint);
             adopted++;
         }
         if (adopted > 0) { SaveState(); RequestRedraw(); }

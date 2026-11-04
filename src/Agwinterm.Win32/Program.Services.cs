@@ -1355,6 +1355,15 @@ internal partial class Program
     private static string BackgroundsDir => Path.Combine(AppDir, "backgrounds"); // copied per-session watermark images
     // Per-window tree snapshot. Multi-window (F1b): each window persists to windows/<id>.json.
     private string StatePath => Path.Combine(AppDir, "windows", Id + ".json");
+    private static string CompletionPath(string token) => Path.Combine(AppDir, "agent-completions", token);
+    private readonly Dictionary<string, string> _restoredPromptTokens = new(StringComparer.OrdinalIgnoreCase);
+
+    private static void PruneCompletedAgent(PaneState pane)
+    {
+        if (ShellCompletion.ValidToken(pane.AgentResumeToken)
+            && ShellCompletion.Read(CompletionPath(pane.AgentResumeToken!)) > pane.AgentResumeGeneration)
+            pane.AgentResume = null;
+    }
 
     /// <summary>Load the window library index; migrate a legacy single-window state.json; ensure it's non-empty.</summary>
     private static void LoadOrMigrateIndex()
@@ -1759,7 +1768,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, AgentResume = p.AgentResume, PromptToken = p.Completion.Token, AgentResumeToken = p.AgentResumeToken, AgentResumeGeneration = p.AgentResumeGeneration, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -1859,6 +1868,10 @@ internal partial class Program
         }
         if (st?.Workspaces is null || !st.Workspaces.Any(w => w.Sessions is { Count: > 0 })) return false;
 
+        _restoredPromptTokens.Clear();
+        foreach (var pane in st.Workspaces.SelectMany(w => w.Sessions ?? new()).SelectMany(s => s.Panes ?? new()))
+            if (ShellCompletion.ValidToken(pane.PromptToken)) _restoredPromptTokens.TryAdd(pane.Id, pane.PromptToken!);
+
         _restoring = true;
         try
         {
@@ -1920,10 +1933,16 @@ internal partial class Program
                     {
                         for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
                         {
+                            // The host records completion even with no UI attached. Reconcile its
+                            // durable checkpoint before either adopting or replaying a binding.
+                            PruneCompletedAgent(pl[i]);
                             ApplyPaneAppearance(ses.Panes[i], PaneAppearance.Restore(pl[i].Appearance));
                             ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
                             ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
                             ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;
+                            ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
+                            ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
+                            ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;
                             ses.Panes[i].RestoreCommand = string.IsNullOrWhiteSpace(pl[i].RestoreCommand) ? null : pl[i].RestoreCommand;
                             // The captured slot comes back too, so it is readable (tree's capturedCommands) before it
                             // is replayed and survives the save at the end of this restore — before P3 that save
@@ -1983,7 +2002,13 @@ internal partial class Program
                         _ = Task.Run(async () =>
                         {
                             await Task.Delay(2500); // let the shell/profile settle so the wrapper function is defined
-                            try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
+                            Post(() =>
+                            {
+                                if (OwningSes(apane) is null) return;
+                                BindAgent(apane, agent, apane.Completion.Checkpoint);
+                                SaveState();
+                                try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
+                            });
                         });
                     }
 
@@ -2038,7 +2063,7 @@ internal partial class Program
                 lock (_workspaces) ws.Expanded = w.Expanded; // CreateSession forces Expanded=true; restore the saved state
             }
         }
-        finally { _restoring = false; }
+        finally { _restoring = false; _restoredPromptTokens.Clear(); }
 
         // Restore sidebar mode + workspace focus (Wave D1). Focus that no longer resolves is dropped.
         _sidebarMode = string.Equals(st.SidebarMode, "flagged", StringComparison.OrdinalIgnoreCase) ? SidebarMode.Flagged : SidebarMode.Tree;

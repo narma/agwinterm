@@ -521,7 +521,7 @@ pub unsafe extern "C" fn agwcore_emu_state_dump(p: *mut Terminal, out_len: *mut 
 ///     4 Respond   : str reply
 ///     5 Unhandled : str kind, str detail
 ///     6 Bell      : no payload
-///     7 CommandFinished : no payload (ABI 23)
+///     7 CommandFinished : str token, i64 sequence (ABI 23)
 ///   where str = u32 byte-length + UTF-8 bytes.
 /// # Safety
 /// `p` from `agwcore_emu_new`; `out_len` writable.
@@ -574,7 +574,11 @@ pub unsafe extern "C" fn agwcore_emu_take_host_actions(
                 put_str(&mut buf, detail);
             }
             HostAction::Bell => buf.push(6), // no payload
-            HostAction::CommandFinished => buf.push(7), // no payload
+            HostAction::CommandFinished { token, sequence } => {
+                buf.push(7);
+                put_str(&mut buf, token);
+                buf.extend_from_slice(&sequence.to_le_bytes());
+            }
         }
     }
     let mut boxed = buf.into_boxed_slice();
