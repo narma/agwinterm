@@ -26,6 +26,7 @@ if mode == "run":
     record = {"workload": identity(os.getpid()), "daemon": identity(os.getppid()),
               "init": identity(1), "pid_namespace": os.readlink("/proc/self/ns/pid")}
     (root / "identity.json").write_text(json.dumps(record))
+    (root / "prompt-token").write_text(os.environ.get("AGWINTERM_PROMPT_TOKEN", ""))
     def terminated(number, frame):
         (root / "signal.json").write_text(json.dumps({"signal": number, "time": time.time()}))
         sys.exit(128 + number)

@@ -11,6 +11,7 @@ public sealed class ShellCompletion
     private readonly string _path;
     private readonly object _gate = new();
     private long _observed;
+    private readonly TaskCompletionSource _firstPrompt = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public ShellCompletion(string token, string path) { Token = token; _path = path; }
     public static bool ValidToken(string? token) => token is { Length: 32 } && token.All(char.IsAsciiHexDigit);
     public static bool TryParse(string text, out string token, out long sequence)
@@ -35,6 +36,12 @@ public sealed class ShellCompletion
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
     }
     public long Checkpoint => Math.Max(Volatile.Read(ref _observed), Read(_path));
+    public async Task<bool> WaitForInitialPromptAsync(TimeSpan timeout)
+    {
+        if (Checkpoint > 0) return true;
+        try { await _firstPrompt.Task.WaitAsync(timeout); return true; }
+        catch (TimeoutException) { return false; }
+    }
     public bool Accept(string token, long sequence, bool persist)
     {
         if (!ValidToken(Token) || token != Token || sequence <= 0) return false;
@@ -43,6 +50,7 @@ public sealed class ShellCompletion
             if (sequence <= _observed || sequence < Read(_path)) return false;
             // The host may have recorded this same prompt before forwarding it to the UI.
             _observed = sequence;
+            _firstPrompt.TrySetResult();
             if (persist && sequence > Read(_path))
             {
                 try

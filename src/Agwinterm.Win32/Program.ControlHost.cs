@@ -1188,6 +1188,7 @@ internal partial class Program
         pane.AgentResume = command;
         pane.AgentResumeToken = pane.Completion.Token;
         pane.AgentResumeGeneration = baseline;
+        Volatile.Write(ref pane.BindCompletionBaseline, baseline);
     }
 
     // Pin (or clear, command = null) a restore command on a specific pane (agterm #271). Persisted so

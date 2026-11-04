@@ -48,6 +48,14 @@ function Inspect {
     if ($LASTEXITCODE -ne 0) { throw 'Linux workload or daemon missing/replaced; live mode must remain disabled' }
     return ($raw -join "`n")
 }
+function Saved-Pane([string]$PaneId) {
+    foreach ($file in Get-ChildItem (Join-Path $state 'windows') -Filter '*.json') {
+        $saved = Get-Content $file.FullName -Raw | ConvertFrom-Json
+        foreach ($workspace in $saved.Workspaces) { foreach ($session in $workspace.Sessions) {
+            foreach ($pane in $session.Panes) { if ($pane.Id -eq $PaneId) { return $pane } }
+        } }
+    }
+}
 function Ctl([string[]]$Command) {
     $raw = & $ctl @Command --pipe $id --json
     if ($LASTEXITCODE -ne 0) { throw "Control failed: $Command $raw" }
@@ -169,6 +177,7 @@ try {
             $row = (Ctl @('tree')).workspaces[0].sessions[0]
             $paneId = @($row.liveSessions.PSObject.Properties.Name)[0]
             $before = $row.liveSessions.$paneId
+            $promptToken = (Saved-Pane $paneId).PromptToken
             $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
             if ($retryHosts.Count -ne 1) { throw 'Expected one fixture host before live-UI retry' }
             Stop-Process -Id $retryHosts[0].ProcessId -Force
@@ -185,6 +194,8 @@ try {
             }
             if ($retried.recovery -ne 'zmx-reattached' -or (Inspect) -ne $initial) { throw 'Local retry after host loss did not preserve workload' }
             Write-Host 'PASS local existing-only retry after Rust-host loss while UI remains open'
+            if ((Saved-Pane $paneId).PromptToken -ne $promptToken) { throw 'Retry changed the live shell completion capability' }
+            Write-Host 'PASS retry preserves the workload completion capability'
             $listed = Ctl @('zmx','list','--profile','ZMX survival')
             $found = @($listed.sessions)[0]
             if ($found.ownership -ne 'owned' -or $found.daemon -ne $before.daemon.Name) { throw 'Inventory lost ownership or daemon identity' }
@@ -203,6 +214,7 @@ try {
             Start-Sleep -Milliseconds 250
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-control-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw 'Follower input was lost or duplicated' }
+            $viewerToken = (Saved-Pane $viewer.paneId).PromptToken
             $null = Ctl @('zmx','lead','--target',$viewer.paneId)
             $leading = $false
             for ($i=0; $i -lt 40; $i++) {
@@ -211,6 +223,7 @@ try {
                 if ($viewerRow.liveSessions.($viewer.paneId).role -eq 'leader') { $leading=$true; break }
             }
             if (-not $leading) { throw 'Explicit leadership was not observed' }
+            if ((Saved-Pane $viewer.paneId).PromptToken -ne $viewerToken) { throw 'Leadership changed the existing workload completion capability' }
             $null = Ctl @('zmx','detach','--target',$viewer.paneId)
             if ((Inspect) -ne $initial) { throw 'Viewer detach killed workload' }
             $row = (Ctl @('tree')).workspaces.sessions | Where-Object { $_.id -eq $paneId }
@@ -238,6 +251,10 @@ try {
                 if ($readback.recovery -eq 'fresh-started') { $newIdentity=Inspect; break }
             }
             if (-not $newIdentity -or $newIdentity -eq $initial -or $readback.bindingId -eq $before.bindingId) { throw 'Fresh start did not create a new incarnation' }
+            $freshToken = (Saved-Pane $paneId).PromptToken
+            $linuxToken = (& wsl.exe -d $Distro --exec cat "$recordDir/prompt-token").Trim()
+            if (-not $freshToken -or $freshToken -eq $promptToken -or $linuxToken -ne $freshToken) { throw 'Fresh workload and transport have different completion capabilities' }
+            Write-Host 'PASS explicit fresh start rotates and checkpoints the Linux shell capability'
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-zero-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw 'Fresh source received additional replay commands' }
             $null = Ctl @('zmx','detach','--target',$paneId)

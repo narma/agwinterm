@@ -38,6 +38,23 @@ public class ShellCompletionTests : IDisposable
         Assert.Equal(2, new ShellCompletion(Token, path).Checkpoint);
     }
 
+    [Fact]
+    public async Task ReplayReadinessWaitsForTheActualFirstPrompt()
+    {
+        var completion = new ShellCompletion(Token, Path.Combine(_directory, Token));
+        Task<bool> ready = completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(5));
+        Assert.False(ready.IsCompleted);
+        Assert.False(completion.Accept("wrong", 1, false));
+        Assert.False(ready.IsCompleted);
+        Assert.True(completion.Accept(Token, 1, true));
+        Assert.True(await ready);
+        Assert.True(await completion.WaitForInitialPromptAsync(TimeSpan.Zero));
+        // The same workload object remains ready through a transport replacement;
+        // a genuinely new shell gets its own token, counter and readiness gate.
+        var fresh = new ShellCompletion("fedcba9876543210fedcba9876543210", Path.Combine(_directory, "fresh"));
+        Assert.False(await fresh.WaitForInitialPromptAsync(TimeSpan.FromMilliseconds(10)));
+    }
+
     [Theory]
     [InlineData("agwinterm;command-finished")]
     [InlineData("agwinterm;command-finished;0123456789abcdef0123456789abcdef;-1")]

@@ -172,11 +172,15 @@ internal partial class Program : IWslLiveHost
                     "captured" when _config.RestoreCommands => p.CapturedCommand,
                     _ => throw new InvalidOperationException("Selected fresh-start source is not enabled")
                 });
+                string promptToken = Guid.NewGuid().ToString("N");
+                var completion = new ShellCompletion(promptToken, CompletionPath(promptToken));
                 var result = _liveOperations.RestartAsync(binding, source, launch, pending => LiveUiAsync(() =>
                 {
+                    p.Completion = completion; // checkpoint the new shell identity BEFORE it can start
+                    BindAgent(p, source == "agent" ? launch : null, 0);
                     p.LiveBinding = JsonSerializer.SerializeToElement(pending);
                     if (!SaveState(sync: true)) throw new IOException("Cannot save fresh-start reservation");
-                })).GetAwaiter().GetResult();
+                }), promptToken: completion.Token).GetAwaiter().GetResult();
                 return InvokeOnUiQueued<object>(() =>
                 {
                     p.LiveBinding = JsonSerializer.SerializeToElement(result);
@@ -234,11 +238,12 @@ internal partial class Program : IWslLiveHost
         previous.S.Dispose(); // attachment only, Linux ownership is deliberately untouched
         Observation.RemovePane(previous.Id);
         var next = CreatePane(previous.Id, session.Ws, previous.StartCwd, previous.FontSize,
-            profileName: session.ProfileName, liveBinding: JsonSerializer.SerializeToElement(binding));
+            profileName: session.ProfileName, liveBinding: JsonSerializer.SerializeToElement(binding), completion: previous.Completion);
         next.LiveFreshStart = freshStart;
         next.AgentResume = previous.AgentResume;
         next.AgentResumeToken = previous.AgentResumeToken;
         next.AgentResumeGeneration = previous.AgentResumeGeneration;
+        next.BindCompletionBaseline = previous.BindCompletionBaseline;
         next.RestoreCommand = previous.RestoreCommand;
         next.CapturedCommand = previous.CapturedCommand;
         next.Appearance = previous.Appearance;

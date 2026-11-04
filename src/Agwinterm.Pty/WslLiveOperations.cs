@@ -77,7 +77,7 @@ public sealed class WslLiveOperations
     }
 
     public async Task<WslLiveBinding> RestartAsync(WslLiveBinding previous, string source, string? command,
-        Func<WslLiveBinding, Task> persistReservation, CancellationToken ct = default)
+        Func<WslLiveBinding, Task> persistReservation, CancellationToken ct = default, string? promptToken = null)
     {
         if (previous.Ownership != "owned" || previous.Identity is null || previous.Recovery != "missing")
             throw new InvalidOperationException("Fresh start requires confirmed loss of an owned workload");
@@ -95,7 +95,7 @@ public sealed class WslLiveOperations
         ct.ThrowIfCancellationRequested();
         var result = await _client.InvokeAsync(Location(previous), new { verb = "restart",
             ledger = previous.Endpoint.LedgerDirectory, operation = previous.BindingId, newOperation = pending.BindingId,
-            identity = WireIdentity(previous), source, command }, ct).ConfigureAwait(false);
+            identity = WireIdentity(previous), source, command, promptToken }, ct).ConfigureAwait(false);
         return Apply(pending, result, "fresh-started");
     }
 

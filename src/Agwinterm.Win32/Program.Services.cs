@@ -2001,11 +2001,15 @@ internal partial class Program
                         if (SuppressesRestoreReplay(apane)) continue;
                         _ = Task.Run(async () =>
                         {
-                            await Task.Delay(2500); // let the shell/profile settle so the wrapper function is defined
+                            // Readiness is a prompt, not elapsed startup time. A slow profile must
+                            // finish before its resumed command owns the next completion report.
+                            // Uninstrumented shells retain their legacy replay after a bounded wait;
+                            // reserving generation one also protects a later first prompt in that case.
+                            await apane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
                             Post(() =>
                             {
                                 if (OwningSes(apane) is null) return;
-                                BindAgent(apane, agent, apane.Completion.Checkpoint);
+                                BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint));
                                 SaveState();
                                 try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
                             });

@@ -52,7 +52,8 @@ internal partial class Program
     /// When <paramref name="sessionCommand"/> is set, its validated application and argv run as the pane's process.</summary>
     private Pane CreatePane(string paneId, Workspace ws, string? cwd, float fontSize, string? command = null,
         bool shellWrap = false, bool interactive = false, Dictionary<string, string>? extraEnv = null, string? profileName = null,
-        bool deElevate = false, HandoffArgs? handoff = null, SessionCommand? sessionCommand = null, JsonElement liveBinding = default)
+        bool deElevate = false, HandoffArgs? handoff = null, SessionCommand? sessionCommand = null, JsonElement liveBinding = default,
+        ShellCompletion? completion = null)
     {
         var (cols, rows) = GridSizeFor(fontSize);
         // The ONLY session creation site (see ISessionBackend). Handoff panes are pinned in-process
@@ -117,10 +118,10 @@ internal partial class Program
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
         if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
-        string promptToken = (adopted || hasLiveBinding) && _restoredPromptTokens.TryGetValue(paneId, out string? savedToken)
-            && ShellCompletion.ValidToken(savedToken) ? savedToken : Guid.NewGuid().ToString("N");
+        string promptToken = completion?.Token ?? ((adopted || hasLiveBinding) && _restoredPromptTokens.TryGetValue(paneId, out string? savedToken)
+            && ShellCompletion.ValidToken(savedToken) ? savedToken : Guid.NewGuid().ToString("N"));
         var pane = new Pane { Id = paneId, S = session, StartCwd = cwd, FontSize = fontSize, LiveBinding = liveBinding,
-            Completion = new ShellCompletion(promptToken, CompletionPath(promptToken)),
+            Completion = completion ?? new ShellCompletion(promptToken, CompletionPath(promptToken)),
             FontZoomed = fontSize != (float)_config.FontSize,
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
         if (liveRequested) ConfigureLiveTitle(pane, adopted ? restoredRemote?.AttachmentNonce ?? restoredLive?.AttachmentNonce : null);

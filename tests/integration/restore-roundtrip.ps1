@@ -572,17 +572,52 @@ Cell -Name 'agent-startup' -KillHostAfterClose -Conf @('session-host = server-ru
     $created = Reply $s @('session', 'new', '--command', $command)
     $startup = [string]$created.result
     Check 'agent-startup: startup-command pane created' $created.ok
+    $sawBound = $false
     for ($i = 0; $i -lt 100; $i++) {
         $saved = Get-SavedSession $s $startup
+        if ($saved -and $saved.Panes[0].AgentResume -eq $binding) { $sawBound = $true }
         if ($saved -and (PaneText $s $startup).Contains('STARTUP_DONE') -and $null -eq $saved.Panes[0].AgentResume) { break }
         Start-Sleep -Milliseconds 100
     }
+    Check 'agent-startup: startup command really established a live binding' $sawBound
     Check 'agent-startup: first interactive prompt clears the completed startup binding' ($saved -and $null -eq $saved.Panes[0].AgentResume)
     return @{ Sid = $startup }
 } -Assert {
     param($s, $ctx)
     Start-Sleep -Seconds 3
     Check 'agent-startup: host loss does not restart the startup agent' (-not (PaneText $s $ctx.Sid).Contains('UNEXPECTED_STARTUP_RESUME'))
+}
+
+Cell -Name 'agent-slow-prompt' -KillHostAfterClose -Conf @('session-host = server-rust', 'restore-commands = false') -Setup {
+    param($s)
+    $sid = Sid $s
+    if (-not (Wait-Prompt $s $sid)) { throw 'Shell did not start' }
+    $null = Reply $s @('install', 'shell', '--target', $sid)
+    # This script is VM-routed before any UI work: this is the disposable guest
+    # profile, restored below; the user's host profile is never accessed.
+    $profilePath = (& powershell.exe -NoProfile -Command '$PROFILE.CurrentUserCurrentHost').Trim()
+    $profileText = [IO.File]::ReadAllText($profilePath)
+    [IO.File]::AppendAllText($profilePath, "`nStart-Sleep -Seconds 6`n")
+    Send-Ctl $s @('session', 'type', ("Write-Host ('SLOW_' + 'LIVE'); Start-Sleep 120" + [char]13), '--target', $sid) | Out-Null
+    for ($i = 0; $i -lt 30; $i++) {
+        if ((PaneText $s $sid).Contains('SLOW_LIVE')) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    $binding = "Write-Host ('SLOW_' + 'RESUMED'); Start-Sleep 120"
+    $null = Reply $s @('session', 'bind', $binding, '--target', $sid)
+    Start-Sleep -Milliseconds 400
+    return @{ Sid = $sid; Binding = $binding; ProfilePath = $profilePath; ProfileText = $profileText }
+} -Assert {
+    param($s, $ctx)
+    try {
+        for ($i = 0; $i -lt 100; $i++) {
+            if ((PaneText $s $ctx.Sid).Contains('SLOW_RESUMED')) { break }
+            Start-Sleep -Milliseconds 200
+        }
+        $saved = Get-SavedSession $s $ctx.Sid
+        Check 'agent-slow-prompt: queued recovery runs after the six-second profile' ((PaneText $s $ctx.Sid).Contains('SLOW_RESUMED'))
+        Check 'agent-slow-prompt: the late initial prompt preserves recovery' ($saved.Panes[0].AgentResume -eq $ctx.Binding)
+    } finally { [IO.File]::WriteAllText($ctx.ProfilePath, $ctx.ProfileText) }
 }
 
 foreach ($reflowCase in @('managed', 'rust', 'rust-host')) {
