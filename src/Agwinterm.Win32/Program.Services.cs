@@ -1180,7 +1180,7 @@ internal partial class Program
                 _ => "in-process mode — new sessions run in the window process; restart agwinterm to convert existing ones",
             });
         }
-        if (Has("conpty"))
+        if (Has("conpty") || Has("emulator-core"))
         {
             // New in-process sessions use the chosen ConPTY now. A running pty-host keeps the one it
             // started with; the next one it starts gets the new key.

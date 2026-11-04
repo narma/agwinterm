@@ -55,6 +55,23 @@ public class ConPtyConnectionTests
 
     internal static readonly string BundledDir = Path.Combine(AppContext.BaseDirectory, "conpty");
 
+    [Fact]
+    public void GhosttyCannotSilentlyFallBackToInbox()
+    {
+        string dir = Directory.CreateTempSubdirectory("agw-required-conpty-").FullName;
+        try
+        {
+            Assert.Contains("conpty.dll", Assert.Throws<InvalidOperationException>(() => ConPtyApi.RequireBundled(dir)).Message);
+            File.WriteAllBytes(Path.Combine(dir, "conpty.dll"), Array.Empty<byte>());
+            Assert.Contains("OpenConsole.exe", Assert.Throws<InvalidOperationException>(() => ConPtyApi.RequireBundled(dir)).Message);
+            var bundled = ConPtyApi.RequireBundled(BundledDir);
+            Assert.Same(bundled, ConPtyApi.ForCore(bundled, requiresReflow: true));
+            var inbox = ConPtyApi.Resolve(false, dir);
+            Assert.Same(inbox, ConPtyApi.ForCore(inbox, requiresReflow: false));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     internal const string BottomRowMarker = "on-the-bottom-row";
 
     /// <summary>PowerShell arguments that write <see cref="BottomRowMarker"/> on row 24 of a 24-row

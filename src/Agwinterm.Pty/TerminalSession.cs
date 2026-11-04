@@ -111,6 +111,9 @@ public sealed class TerminalSession : ISession
     /// <summary>The ConPTY this session is created on; null = <see cref="ConPtyApi.Current"/>.</summary>
     public ConPtyApi? Conpty { get; init; }
 
+    private ConPtyApi SessionConpty => ConPtyApi.ForCore(Conpty ?? ConPtyApi.Current,
+        Emulator is GhosttyTerminalCore);
+
     /// <summary>True once the session runs on the shipped ConPTY, which passes output through and so
     /// does not repaint the viewport on a resize.</summary>
     public bool OnBundledConpty { get; private set; }
@@ -120,7 +123,7 @@ public sealed class TerminalSession : ISession
     /// path stays on Porta.Pty.</summary>
     private Task<IPtyConnection> SpawnAsync(PtyOptions options, CancellationToken ct)
     {
-        var api = Conpty ?? ConPtyApi.Current;
+        var api = SessionConpty;
         if (!api.Bundled) return PtyProvider.SpawnAsync(options, ct);
         OnBundledConpty = true;
         IPtyConnection conn = ConPtyConnection.Spawn(api, CommandLineOf(options.App, options.CommandLine, options.VerbatimCommandLine),
@@ -254,7 +257,7 @@ public sealed class TerminalSession : ISession
             IPtyConnection dc;
             try
             {
-                var api = Conpty ?? ConPtyApi.Current;
+                var api = SessionConpty;
                 dc = ConPtyConnection.Spawn(api, cmd, string.IsNullOrEmpty(cwd) ? Environment.CurrentDirectory : cwd,
                     env, Cols, Rows, deElevate: true);
                 OnBundledConpty = api.Bundled;

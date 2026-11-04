@@ -39,6 +39,35 @@ in that fixture. Do not count those attempts as passes.
 All 1,925 existing Pty tests pass. A new real-pipe test additionally checks exact
 byte delivery and final output across several drain budgets and EOF.
 
-The separate report of persistent text corruption after shrinking and restoring
-the window is still under investigation; this repaint fix does not claim to
-resolve resize/reflow corruption.
+The drain change alone does not resolve resize/reflow corruption; the follow-up below addresses it for Ghostty.
+
+## Inbox and resize follow-up
+
+The user's preview used Inbox ConPTY. Correcting the fixture's main-window
+selection and startup visibility produced useful Inbox captures: the drain-only
+build still showed 16 blank first rows and 43 displaced highlight frames in
+531 htop frames (`artifacts/htop-inbox-stack`). A bounded 4 ms quiet window only
+reduced the symptoms; that experiment was removed to avoid extra input latency.
+
+A synthetic colored 28-row listing, underlined README.md and interactive zsh
+prompt reproduces persistent corruption over four cycles through five window
+sizes (down to 250x120, back to 1800x1100). Inbox duplicates row 22, corrupts the
+last row and loses README.md. Ghostty with bundled ConPTY preserves all 28 full
+rows, README.md and one prompt. Evidence: `resize-inbox-zsh`,
+`resize-bundled-zsh`, `resize-fixed-ghostty` under ignored artifacts.
+
+Ghostty now requires bundled ConPTY even when older configuration says Inbox.
+Selection is enforced per newly spawned session, including the .NET host and
+non-elevated launches. Missing bundled files cause an explicit startup error.
+Existing processes retain their original ConPTY and must be recreated.
+
+With the old Inbox configuration, the corrected Ghostty build captured 351 htop
+frames over 30 seconds with zero blank first rows or displaced highlights
+(`artifacts/htop-fixed-ghostty`). This is observed improvement, not an atomic-frame
+guarantee. No deliberate output delay is added.
+
+Rust is retained only as a comparison/legacy path: its live grid resize clips
+content and only restored history reflows. The same extreme resize loses rows
+with bundled ConPTY (`resize-fixed-rust`), so the forced bundled policy applies
+only to Ghostty. Rust resize is not fixed by this change. These findings do not
+justify an upstream libghostty-vt bug report.

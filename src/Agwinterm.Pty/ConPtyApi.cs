@@ -45,6 +45,19 @@ public sealed unsafe class ConPtyApi
     /// conhost.</summary>
     public static ConPtyApi Select(bool bundled, string? dir = null) => _current = Resolve(bundled, dir ?? AppContext.BaseDirectory);
 
+    private static readonly Lazy<ConPtyApi> _requiredBundled = new(() => RequireBundled(AppContext.BaseDirectory));
+
+    // Ghostty owns reflow. Inbox's resize repaint would apply it a second time.
+    internal static ConPtyApi ForCore(ConPtyApi selected, bool requiresReflow) =>
+        requiresReflow && !selected.Bundled ? _requiredBundled.Value : selected;
+
+    internal static ConPtyApi RequireBundled(string directory)
+    {
+        string? error = TryLoadBundled(directory, out var api);
+        return api ?? throw new InvalidOperationException(
+            "Ghostty requires bundled ConPTY: " + error);
+    }
+
     internal static ConPtyApi Resolve(bool bundled, string dir)
     {
         if (!bundled) return Inbox("conpty = inbox");

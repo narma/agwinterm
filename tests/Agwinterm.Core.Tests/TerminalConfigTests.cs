@@ -102,6 +102,19 @@ public class TerminalConfigTests
     }
 
     [Fact]
+    public void GhosttyRequiresBundledRegardlessOfKeyOrderOrLiveChanges()
+    {
+        Assert.Equal("bundled", TerminalConfig.Parse("conpty = inbox\nemulator-core = ghostty").Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse("emulator-core = ghostty\nconpty = inbox").Conpty);
+        var config = new TerminalConfig { Conpty = "inbox", EmulatorCore = "ghostty" };
+        Assert.Equal("bundled", config.Conpty);
+        config.EmulatorCore = "managed";
+        Assert.Equal("inbox", config.Conpty);
+        config.EmulatorCore = "rust";
+        Assert.Equal("inbox", config.Conpty);
+    }
+
+    [Fact]
     public void UpdateCheck_ParsesAndIsDocumented()
     {
         Assert.True(TerminalConfig.Parse("").UpdateCheck);         // default: awareness on, applying stays manual

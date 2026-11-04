@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('ghostty','rust','managed')][string]$Core = 'ghostty',
     [ValidateSet('bundled','inbox')][string]$Conpty = 'inbox',
+    [ValidateSet('htop','resize')][string]$Scenario = 'htop',
     [ValidateRange(5,120)][int]$Seconds = 20
 )
 $ErrorActionPreference = 'Stop'
@@ -21,7 +22,11 @@ $env:AGWINTERM_PERF = Join-Path $OutputDirectory "$Core-perf.log"
 $env:AGWINTERM_DUMP = Join-Path $OutputDirectory "$Core-output.vt"
 # Separate htop configuration; do not read or modify the user's htop settings.
 $htopRc = '/tmp/' + $id + '.htoprc'
-@{ default='htop fixture'; profiles=@(@{name='htop fixture';command='wsl.exe';args=@('-d',$Distro,'--exec','env','TERM=xterm-256color',"HTOPRC=$htopRc",'htop','-d','1','-s','PERCENT_CPU')}) } |
+$childArgs = @('-d',$Distro,'--exec','env','TERM=xterm-256color',"HTOPRC=$htopRc",'htop','-d','1','-s','PERCENT_CPU')
+if ($Scenario -eq 'resize') {
+    $childArgs = @('-d',$Distro,'--exec','sh','-c','for n in $(seq 1 28); do printf "\033[32mFILE_%02d_marker\033[0m  permissions size user date filename-example-long.txt\n" "$n"; done; printf "\033[4mREADME.md\033[0m\n"; exec env ZDOTDIR=/tmp/agwinterm-empty-zdotdir PS1="PROMPT_marker> " zsh -dfi')
+}
+@{ default='htop fixture'; profiles=@(@{name='htop fixture';command='wsl.exe';args=$childArgs}) } |
     ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'profiles.json')
 @("emulator-core = $Core",'session-host = in-process',"conpty = $Conpty",'font-family = Consolas','font-size = 12','cursor-blink = false') |
     Set-Content -LiteralPath (Join-Path $state 'agwinterm.conf')
@@ -47,6 +52,7 @@ public static class TuiFixtureWindow {
 $process = $null
 try {
     $process = Start-Process -FilePath (Join-Path $AppDirectory 'Agwinterm.Win32.exe') -ArgumentList @('--app-id',$id,'--pipe',$id,'--no-restore','--default-session-host','inprocess') -WindowStyle Hidden -PassThru
+    $process.Id | Set-Content -LiteralPath (Join-Path $OutputDirectory 'app.pid')
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     $window = [IntPtr]::Zero
     do {
@@ -60,6 +66,37 @@ try {
     [void][TuiFixtureWindow]::SetWindowPos($window,[IntPtr]::Zero,0,0,1800,1100,0x14)
     [void][TuiFixtureWindow]::ShowWindow($window,4)
     Start-Sleep -Seconds 2
+    [void][TuiFixtureWindow]::ShowWindow($window,4)
+    if ($Scenario -eq 'resize') {
+        Start-Sleep -Seconds 2
+        for ($round=0;$round -lt 4;$round++) {
+            foreach ($size in @(@(900,700),@(500,300),@(320,180),@(250,120),@(1800,1100))) {
+                [void][TuiFixtureWindow]::SetWindowPos($window,[IntPtr]::Zero,0,0,$size[0],$size[1],0x14)
+                Start-Sleep -Milliseconds 150
+            }
+        }
+        Start-Sleep -Seconds 2
+        $ctl = Join-Path $AppDirectory 'agwintermctl.exe'
+        $reply = (& $ctl session text --all --pipe $id --json) -join "`n" | ConvertFrom-Json
+        if (-not $reply.ok) { throw 'Cannot read final resized buffer.' }
+        $reply.result | Set-Content -LiteralPath (Join-Path $OutputDirectory "$Core-resized.txt")
+        $lastPaint = Get-Content -LiteralPath $trace -Tail 1 | ConvertFrom-Json
+        $expectedCore = @{ghostty='GhosttyTerminalCore';rust='RustTerminalCore';managed='TerminalEmulator'}[$Core]
+        if ($lastPaint.core -ne $expectedCore) { throw 'Wrong terminal core in resize test.' }
+        for ($n=1;$n -le 28;$n++) {
+            $line = 'FILE_{0:00}_marker  permissions size user date filename-example-long.txt' -f $n
+            if ([regex]::Matches($reply.result,[regex]::Escape($line)).Count -ne 1) {
+                throw "Resize corrupted or duplicated fixture row $n."
+            }
+        }
+        foreach ($marker in @('README.md','PROMPT_marker>')) {
+            if ([regex]::Matches($reply.result,[regex]::Escape($marker)).Count -ne 1) {
+                throw "Resize corrupted or duplicated $marker."
+            }
+        }
+        Write-Host "PASS: $Core preserved 28 complete rows, README.md and one prompt through 20 resizes."
+        return
+    }
     for ($i=0;$i -lt 3;$i++) {
         [void][TuiFixtureWindow]::PostMessageW($window,0x100,[IntPtr]40,[IntPtr]0x1500001)
         [void][TuiFixtureWindow]::PostMessageW($window,0x101,[IntPtr]40,[IntPtr](-1051721727))
@@ -87,7 +124,7 @@ try {
         for ($r=$header+1; $r -lt $_.rows-1; $r++) { if ($r -ne $selectedRow -and $_.backgrounds[$r] -eq [uint32]$color) { $moved=$true; break } }
         $moved
     })
-    $summary = @{core=$Core;conpty=$Conpty;frames=$frames.Count;htopFrames=$htop.Count;blankFirstProcessRow=$bad.Count;highlightDisplacements=$displaced.Count;settledFrames=$settled.Count;seconds=$Seconds}
+    $summary = @{core=$Core;configuredConpty=$Conpty;effectiveConpty=$(if ($Core -eq 'ghostty') {'bundled'} else {$Conpty});frames=$frames.Count;htopFrames=$htop.Count;blankFirstProcessRow=$bad.Count;highlightDisplacements=$displaced.Count;settledFrames=$settled.Count;seconds=$Seconds}
     $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory "$Core-summary.json")
     $summary | ConvertTo-Json | Write-Host
 } finally {

@@ -94,13 +94,14 @@ public sealed class TerminalConfig
     /// <summary>Which ConPTY sessions run on: "inbox" (default, the conhost built into Windows) or
     /// "bundled" (#339 — the conpty.dll + OpenConsole.exe shipped beside the exe, which forwards an
     /// app's color, device-attribute and cursor queries to the terminal and its output unchanged).
-    /// Missing bundled files fall back to inbox.
-    ///
-    /// <para>Bundled is opt-in: it does not repaint the viewport after a resize, expecting the terminal
-    /// to re-wrap its buffer the way conhost re-wraps its own, and neither emulator reflows (Resize
-    /// keeps the top-left). A pane that changes width then shows clipped lines, and the next output
-    /// lands at the wrong column. 0.20.12 shipped it as the default.</para></summary>
-    public string Conpty { get; set; } = "inbox";
+    /// Ghostty always requires bundled ConPTY: it owns reflow, and Inbox's resize repaint
+    /// corrupts that buffer. The configured choice applies only to the legacy managed/Rust cores.</summary>
+    private string _conpty = "inbox";
+    public string Conpty
+    {
+        get => EmulatorCore == "ghostty" ? "bundled" : _conpty;
+        set => _conpty = value;
+    }
 
     /// <summary>Which terminal core new sessions run on: "managed" (default — the C#
     /// TerminalEmulator) or "rust" (EXPERIMENTAL — the oracle-validated agwinterm-core crate
@@ -307,10 +308,10 @@ public sealed class TerminalConfig
         # answers an app's device and cursor queries itself and drops its color queries.
         # "bundled": the conpty.dll + OpenConsole.exe that ship with agwinterm (Microsoft's, the
         # ones Windows Terminal uses). It passes an app's color, device and cursor queries through
-        # to agwinterm (Codex reads the theme colors this way) and its output unchanged - but it
-        # does not repaint after a resize, so a pane that changes width shows clipped lines and
-        # misplaced text until the app redraws. Missing files fall back to inbox. Applies to NEW
-        # sessions; the server-rust pty-host reads it when agwinterm starts it.
+        # to agwinterm and its output unchanged. Ghostty always requires bundled ConPTY:
+        # it owns line reflow; Inbox's resize repaint corrupts its buffer. This choice applies
+        # only to the legacy managed/Rust cores. Missing bundled files are an error for Ghostty.
+        # Applies to NEW sessions; existing processes keep their original ConPTY.
         conpty = inbox
 
         # Build each new tab's environment FRESH from the registry (what a brand-new process tree
