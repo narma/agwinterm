@@ -13,7 +13,14 @@ internal sealed class SoloGlyphCache : IDisposable
     private readonly LinkedList<(Key Key, Glyph Value)> _recent = new();
     internal int Count => _entries.Count;
 
-    internal sealed record Glyph(IDWriteTextLayout Layout, float Scale, float Dx, float Dy, bool HasInk);
+    internal sealed class Glyph(IDWriteTextLayout layout, float scale, float dx, float dy, bool hasInk)
+    {
+        internal IDWriteTextLayout Layout { get; } = layout;
+        internal float Scale { get; } = scale;
+        internal float Dx { get; } = dx;
+        internal float Dy { get; } = dy;
+        internal bool HasInk { get; } = hasInk;
+    }
 
     internal Glyph Get(IDWriteFactory factory, int rune, IDWriteTextFormat format, float width, float height)
         => Get(factory, rune, null, format, width, height);

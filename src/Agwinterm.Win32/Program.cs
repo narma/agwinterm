@@ -1426,6 +1426,7 @@ internal partial class Program : ISessionHost, IWindowHost
         foreach (var window in windows)
         {
             window._soloGlyphs.Clear(); // layouts retain the old font formats and cell geometry
+            window._soloBitmaps.Clear();
             if (window._hwnd == IntPtr.Zero) continue;
             var surfaces = new HashSet<Pane>();
             foreach (var session in window.AllSessions())

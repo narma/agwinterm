@@ -3,9 +3,10 @@ using System.Text.Json;
 using Agwinterm.Win32;
 using Vortice.DirectWrite;
 
-// Host-free: DirectWrite layouts only; no windows, render targets, or input are created.
+// Host-free: DirectWrite layouts and offscreen WIC targets only; no windows or input.
 using var factory = DWrite.DWriteCreateFactory<IDWriteFactory>();
 using var format = factory.CreateTextFormat("Consolas", 14f);
+RasterChecks.Run(factory, format);
 using var bold = factory.CreateTextFormat("Consolas", null, FontWeight.Bold, FontStyle.Normal, FontStretch.Normal, 14f, "en-us");
 using var cache = new SoloGlyphCache();
 var a = cache.Get(factory, 0x1f534, format, 18, 18);

@@ -49,7 +49,7 @@ internal partial class Program
                 if ((int)wParam == _quickHotkeyId && _quickHotkeyId != 0) QuickOp("toggle", global: true);
                 return IntPtr.Zero;
             }
-            if (msg == WM_DESTROY) { _soloGlyphs.Dispose(); _uia.Dispose(); _uiGone.Cancel(); EndObservation(); return IntPtr.Zero; }
+            if (msg == WM_DESTROY) { _soloBitmaps.Dispose(); _soloGlyphs.Dispose(); _uia.Dispose(); _uiGone.Cancel(); EndObservation(); return IntPtr.Zero; }
         }
         switch (msg)
         {
@@ -712,6 +712,7 @@ internal partial class Program
 
             case WM_DESTROY:
                 DisposeGhosttyRendering();
+                _soloBitmaps.Dispose();
                 _soloGlyphs.Dispose();
                 foreach (var pending in _softWebCloses.ToArray()) FinalizeSoftWebClose(pending);
                 foreach (var (_, page) in _webPages) CloseWebPage(page.Owner, page.Pane);

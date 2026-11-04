@@ -26,6 +26,9 @@ internal partial class Program
     private static void Perf(string m) { if (_perfLog is not null) try { File.AppendAllText(_perfLog, m + "\n"); } catch { } }
     private int _uploadCount;
     private double _uploadMs;
+    private double _soloDrawMs;
+    private int _soloDrawCount;
+    private string _perfCore = "none";
 
     /// <summary>
     /// Draw current image placements. Decoding (PNG decompress) happens on a background
@@ -285,6 +288,7 @@ internal partial class Program
     /// <summary>Dispose the device-bound render target + textures and rebuild them (after a device/GPU reset).</summary>
     private void RecreateTarget()
     {
+        _soloBitmaps.Clear();
         foreach (var bitmap in _ghosttyTextures.Values) { try { bitmap.Dispose(); } catch { } }
         _ghosttyTextures.Clear(); _ghosttyImageFailures.Clear();
         foreach (var cache in _imageCaches.Values)
@@ -313,6 +317,9 @@ internal partial class Program
         if (_rt is null || _brush is null) return;
         long tStart = Stopwatch.GetTimestamp();
         _uploadCount = 0; _uploadMs = 0;
+        _soloDrawMs = 0; _soloDrawCount = 0;
+        double bodyMs = 0, endMs = 0;
+        int rasterHits = _soloBitmaps.Hits, rasterMisses = _soloBitmaps.Misses;
         _imageOwnersThisFrame.Clear();
         _ghosttyImagesThisFrame.Clear();
         _ghosttyAnimationOwnersThisFrame.Clear();
@@ -321,7 +328,10 @@ internal partial class Program
             RenderBody();
             PruneHiddenImageOwners();
             PruneGhosttyImages();
+            if (_perfLog is not null) bodyMs = Stopwatch.GetElapsedTime(tStart).TotalMilliseconds;
+            long endStart = _perfLog is null ? 0 : Stopwatch.GetTimestamp();
             Result end = _rt.EndDraw(out _, out _);
+            if (_perfLog is not null) endMs = Stopwatch.GetElapsedTime(endStart).TotalMilliseconds;
             if (end.Failure)
             {
                 if (end.Code == D2DERR_RECREATE_TARGET) { RecreateTarget(); return; }
@@ -339,7 +349,7 @@ internal partial class Program
         catch (Exception ex) { Perf($"render ex: {ex.GetType().Name} {ex.Message}"); RecreateTarget(); return; }
 
         if (_perfLog is not null)
-            Perf($"frame render={Stopwatch.GetElapsedTime(tStart).TotalMilliseconds:F2}ms uploads={_uploadCount} uploadMs={_uploadMs:F2} t={DateTime.Now:HH:mm:ss.fff}");
+            Perf($"frame render={Stopwatch.GetElapsedTime(tStart).TotalMilliseconds:F2}ms uploads={_uploadCount} uploadMs={_uploadMs:F2} bodyMs={bodyMs:F2} endMs={endMs:F2} soloMs={_soloDrawMs:F2} soloCount={_soloDrawCount} rasterHits={_soloBitmaps.Hits-rasterHits} rasterMisses={_soloBitmaps.Misses-rasterMisses} core={_perfCore} t={DateTime.Now:HH:mm:ss.fff}");
     }
 
     /// <summary>Draw one terminal surface (cells, images, cursor) at origin (ox,oy) with its font metrics.</summary>
@@ -362,6 +372,7 @@ internal partial class Program
     private static bool GridTrue(int rune) => rune < 0x7F || FontHasGlyph(rune);
 
     private readonly SoloGlyphCache _soloGlyphs = new();
+    private readonly SoloGlyphBitmapCache _soloBitmaps = new();
 
     private void DrawSoloGlyph(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, int rune,
         IDWriteTextFormat format, float x, float y, float width, float height)
@@ -369,27 +380,18 @@ internal partial class Program
         var glyph = _soloGlyphs.Get(_dwrite, rune, format, width, height);
         DrawSoloLayout(rt, brush, glyph, x, y, width, height);
     }
-    private static void DrawSoloLayout(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush,
+    private void DrawSoloLayout(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush,
         SoloGlyphCache.Glyph glyph, float x, float y, float width, float height)
     {
         if (!glyph.HasInk) return;
-        var transform = rt.Transform;
-        rt.PushAxisAlignedClip(new Vortice.RawRectF(x, y, x + width, y + height), AntialiasMode.Aliased);
+        long drawStart = _perfLog is null ? 0 : Stopwatch.GetTimestamp();
         try
         {
-            if (glyph.Scale == 1f)
-                rt.DrawTextLayout(new System.Numerics.Vector2(x + glyph.Dx, y + glyph.Dy), glyph.Layout, brush, DrawTextOptions.EnableColorFont);
-            else
-            {
-                rt.Transform = System.Numerics.Matrix3x2.CreateScale(glyph.Scale)
-                    * System.Numerics.Matrix3x2.CreateTranslation(x + glyph.Dx, y + glyph.Dy) * transform;
-                rt.DrawTextLayout(System.Numerics.Vector2.Zero, glyph.Layout, brush, DrawTextOptions.EnableColorFont);
-            }
+            _soloBitmaps.Draw(rt, brush, glyph, x, y, width, height);
         }
         finally
         {
-            if (glyph.Scale != 1f) rt.Transform = transform;
-            rt.PopAxisAlignedClip();
+            if (_perfLog is not null) { _soloDrawMs += Stopwatch.GetElapsedTime(drawStart).TotalMilliseconds; _soloDrawCount++; }
         }
     }
 
@@ -420,6 +422,7 @@ internal partial class Program
         // capping sustained-output throughput (dotnet-stack showed the UI thread in Monitor.Enter
         // here while the pump held the lock — see docs/memory-profile-2026-07-09.md).
         var em = session.Emulator;
+        if (_perfLog is not null) _perfCore = em.GetType().Name;
         int cols, rows, hist, off;
         bool cursorVisible; int cursorCol, cursorRow, cursorShape;
         bool drawImages;
