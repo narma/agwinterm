@@ -43,7 +43,9 @@ internal partial class Program
             for (int c = 0; c < cols; c++)
             {
                 var cell = _cellSnap[r * cols + c];
-                if (cell.Width != 0) line.Append(cell.Grapheme ?? (cell.Rune == 0 ? " " : char.ConvertFromUtf32(cell.Rune)));
+                if (cell.Width != 0) line.Append(cell.Grapheme ?? (cell.Rune == 0 ? " " :
+                    cell.Rune is > 0 and <= 0xffff ? ((char)cell.Rune).ToString() :
+                    Rune.IsValid(cell.Rune) ? char.ConvertFromUtf32(cell.Rune) : "\ufffd"));
             }
             lines[r] = line.ToString().TrimEnd();
             var first = _cellSnap[r * cols];
