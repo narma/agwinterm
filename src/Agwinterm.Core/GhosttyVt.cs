@@ -57,6 +57,25 @@ public sealed unsafe class GhosttyVt : IDisposable
         }
     }
     private readonly object _lifetime = new();
+    public IReadOnlyList<(int Line, int Col0, int EndLine, int Col1)> Search(string query)
+    {
+        CheckAlive();
+        if (Encoding.UTF8.GetByteCount(query) > 65536) throw new ArgumentOutOfRangeException(nameof(query));
+        byte[] needle = Encoding.UTF8.GetBytes(query);
+        fixed (byte* text = needle)
+        {
+            int result = GhosttyNative.Search(_handle, text, (nuint)needle.Length, null, 0, out nuint count);
+            if (result != -3) GhosttyNative.Check(result);
+            if (count > 1000000) throw new InvalidDataException("Too many search matches.");
+            uint[] coordinates = new uint[checked((int)count * 4)];
+            fixed (uint* output = coordinates)
+                GhosttyNative.Check(GhosttyNative.Search(_handle, text, (nuint)needle.Length, output, count, out count));
+            var matches = new (int Line, int Col0, int EndLine, int Col1)[(int)count];
+            for (int i = 0; i < matches.Length; i++)
+                matches[i] = ((int)coordinates[i * 4], (int)coordinates[i * 4 + 1], (int)coordinates[i * 4 + 2], (int)coordinates[i * 4 + 3]);
+            return matches;
+        }
+    }
     public byte[] EncodeMouse(uint action, uint button, uint mods, float x, float y, uint cw, uint ch)
     {
         CheckAlive();
@@ -287,7 +306,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             GhosttyNative.Check(GhosttyNative.Restore(_handle, data, (nuint)nativeLength));
         _windows = windows; _hostColors = null; Volatile.Write(ref _holdDeadline, 0); RefreshInfo(); Title = ReadText(0); Cwd = ReadText(1);
     }
-    public void BeginCapture()
+    public void BeginCapture(int scrollOffset = 0)
     {
         CheckAlive();
         if (_capturing) throw new InvalidOperationException("A frame capture is already in progress.");
@@ -303,7 +322,8 @@ public sealed unsafe class GhosttyVt : IDisposable
         }
         GhosttyNative.Check(GhosttyNative.AnimationTick(_handle, out ulong animationDeadline));
         NextAnimationDeadline = checked((long)animationDeadline);
-        GhosttyNative.Check(GhosttyNative.Begin(_handle));
+        ArgumentOutOfRangeException.ThrowIfNegative(scrollOffset);
+        GhosttyNative.Check(GhosttyNative.Begin(_handle, (uint)scrollOffset));
         _capturing = true;
     }
     public void CompleteCapture()

@@ -244,7 +244,7 @@ internal partial class Program : ISessionHost, IWindowHost
     // In-terminal search (find bar over the active pane's buffer + scrollback).
     private bool _searchActive;
     private string _searchQuery = "";
-    private readonly List<(int Line, int Col0, int Col1)> _searchMatches = new(); // absolute line index (history ++ live)
+    private readonly List<(int Line, int Col0, int EndLine, int Col1)> _searchMatches = new(); // absolute grid endpoints
     private int _searchCur;
 
     // Keymap: chord (canonical string) -> action id or "command:<Label>"; custom commands from keymap.conf.
@@ -1266,20 +1266,27 @@ internal partial class Program : ISessionHost, IWindowHost
         lock (p.S.SyncRoot)
         {
             var em = p.S.Emulator;
-            int hist = em.HistoryCount, rows = em.Screen.Rows;
+            int hist = em.IsAltScreen ? 0 : em.HistoryCount, rows = em.Screen.Rows, cols = em.Screen.Cols;
             const int MaxHist = 2000;                       // bound the document the reader walks
             int keepHist = Math.Min(hist, MaxHist);
             int histStart = hist - keepHist;
             int n = keepHist + rows;
             var lines = new string[n];
-            for (int i = 0; i < keepHist; i++) lines[i] = em.DumpHistoryRow(histStart + i);
-            for (int r = 0; r < rows; r++) lines[keepHist + r] = em.DumpRow(r);
+            var cellLines = new TerminalTextLine[n];
+            var cells = new Cell[cols];
+            for (int i = 0; i < n; i++)
+            {
+                for (int col = 0; col < cols; col++)
+                    cells[col] = i < keepHist ? em.GetHistoryCell(histStart + i, col) : em.Screen[i - keepHist, col];
+                cellLines[i] = new TerminalTextLine(cells);
+                lines[i] = cellLines[i].Text;
+            }
             var starts = new int[n + 1];
             for (int i = 0; i < n; i++) starts[i + 1] = starts[i] + lines[i].Length + 1;   // +1 = '\n' joiner
             int total = n > 0 ? starts[n] - 1 : 0;          // no trailing newline after the last line
 
             int caretLine = keepHist + Math.Clamp(em.CursorRow, 0, rows - 1);
-            int caretCol = Math.Min(em.CursorCol, lines[caretLine].Length);
+            int caretCol = cellLines[caretLine].OffsetAtColumn(em.CursorCol);
             int caretOff = starts[caretLine] + caretCol;
 
             int off = em.IsAltScreen ? 0 : Math.Clamp(p.ScrollOffset, 0, hist);
@@ -1288,6 +1295,7 @@ internal partial class Program : ISessionHost, IWindowHost
             return new Uia.TextSnapshot
             {
                 Lines = lines,
+                CellLines = cellLines,
                 LineStart = starts,
                 TotalLength = total,
                 CaretOffset = caretOff,

@@ -454,6 +454,46 @@ using (var vt = new GhosttyVt(80, 24))
     Check(Encoding.UTF8.GetString(vt.EncodePaste("a\x1b[201~\0b")) == "\x1b[200~a [201~ b\x1b[201~", "native paste sanitizes embedded terminator and NUL");
     Check(vt.EncodePaste("").Length == 0, "empty native paste emits nothing");
 }
+using (var vt = new GhosttyVt(20, 4))
+{
+    vt.Resize(20, 4, 8, 18);
+    vt.Feed("\x1b]8;;https://example.org/history\x1b\\HISTORY\x1b]8;;\x1b\\\r\n\x1b_Ga=T,f=32,s=1,v=1,i=900,c=3,r=1,C=1;Ed9J/w==\x1b\\"u8);
+    Capture(vt);
+    var pixels = vt.FrameImages.Single().Image;
+    vt.Feed("\r\n2\r\n3\r\n4\r\n5\r\n6"u8);
+    Capture(vt); Check(vt.FrameImages.Count == 0, "scrolled image leaves active viewport");
+    int history = vt.HistoryCount;
+    vt.BeginCapture(history); vt.CompleteCapture();
+    Check(Row(vt, 0) == "HISTORY" && vt.Frame[0, 0].Hyperlink?.Uri == "https://example.org/history",
+        "history capture aligns text and hyperlink metadata");
+    Check(vt.FrameImages.Count == 1 && vt.FrameImages[0].Row == 1,
+        "native history capture retains image position");
+    Check(vt.FrameImages[0].Image.Generation == pixels.Generation, "history image retains native generation");
+    vt.BeginCapture(history);
+    vt.Feed("\x1b_Ga=d,d=I,i=900\x1b\\"u8);
+    vt.CompleteCapture();
+    Check(vt.FrameImages.Count == 1, "in-flight history capture survives image deletion");
+    vt.BeginCapture(history); vt.CompleteCapture();
+    Check(vt.FrameImages.Count == 0, "next history capture observes image deletion");
+    Capture(vt); Check(Row(vt, 3) == "6", "history painting leaves live parser and viewport intact");
+}
+using (var vt = new GhosttyVt(8, 4))
+{
+    vt.Feed(Encoding.UTF8.GetBytes("\x1b[?2027hA👩🏽‍💻B e\u0301\r\n123456789END"));
+    var emoji = vt.Search("👩🏽‍💻").Single();
+    Check(emoji.Line == 0 && emoji.Col0 == 1 && emoji.Col1 == 2, $"native search reports complete emoji cell span ({emoji})");
+    var combining = vt.Search("e\u0301").Single();
+    Check(combining.Col0 == 5 && combining.Col1 == 5, "native search retains combining grapheme coordinates");
+    var wrapped = vt.Search("789end").Single();
+    Check(wrapped.Line == 1 && wrapped.Col0 == 6 && wrapped.EndLine == 2 && wrapped.Col1 == 3,
+        "native search crosses soft wraps with ASCII case folding");
+    vt.Feed("\x1b[?1049hALT"u8);
+    Check(vt.Search("END").Count == 0 && vt.Search("ALT").Count == 1, "native search follows alternate screen");
+    vt.Feed("\x1b[?1049l"u8);
+    Check(vt.Search("END").Count == 1, "native search restores primary results");
+    var saved = vt.CaptureSnapshot(); vt.RestoreSnapshot(saved);
+    Check(vt.Search("END").Count == 1, "snapshot replacement rebuilds native search ownership");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

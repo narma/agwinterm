@@ -36,14 +36,14 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public int Rows => _rows;
     /// <summary>UI consumer only, under the session lock. Does not populate the query screen.</summary>
     private int _paintCellWidth = 8, _paintCellHeight = 18;
-    public void BeginPaint()
+    public void BeginPaint(int scrollOffset = 0)
     {
         if (_paintCellWidth != CellPixelWidth || _paintCellHeight != CellPixelHeight)
         {
             _vt.Resize(_cols, _rows, CellPixelWidth, CellPixelHeight);
             _paintCellWidth = CellPixelWidth; _paintCellHeight = CellPixelHeight;
         }
-        _vt.BeginCapture();
+        _vt.BeginCapture(scrollOffset);
     }
     /// <summary>UI consumer only, outside the session lock; queries use independent buffers.</summary>
     public ScreenBuffer CompletePaint() { _vt.CompleteCapture(); return _vt.Frame; }
@@ -63,6 +63,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public byte[] EncodeMouse(uint action, uint button, uint modifiers, float x, float y, uint cw, uint ch)
         => _vt.EncodeMouse(action, button, modifiers, x, y, cw, ch);
     public byte[] EncodePaste(string text) => _vt.EncodePaste(text);
+    public IReadOnlyList<(int Line, int Col0, int EndLine, int Col1)> Search(string query) => _vt.Search(query);
     /// <summary>UI-thread-only read of the last captured paint frame, including a synchronized hold.</summary>
     public ScreenBuffer LastPaintFrame => _vt.Frame;
     public void SetCursorDefault(CursorStyle style, bool blink)

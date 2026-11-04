@@ -94,6 +94,7 @@ struct AgwVt {
     GhosttyKeyEvent key_event;
     GhosttyMouseEncoder mouse_encoder;
     GhosttyMouseEvent mouse_event;
+    GhosttySearch search;
     uint64_t held_since, held_serial, capture_serial, last_serial;
     int holding, render_invalidated, capture_busy, last_valid;
     SRWLOCK capture_guard;
@@ -232,7 +233,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
     TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_ROWS, &rows));
     int result = 0;
     for (uint16_t y = 0; !result && y < rows; y++) {
-        GhosttyPoint point = { .tag = GHOSTTY_POINT_TAG_ACTIVE, .value = { .coordinate = { .x = 0, .y = y } } };
+        GhosttyPoint point = { .tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = { .coordinate = { .x = 0, .y = y } } };
         GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
         GhosttyRow row; bool linked;
         result = ghostty_terminal_grid_ref(vt->terminal, point, &ref);
@@ -427,6 +428,7 @@ void agwvt_free(AgwVt* vt) {
     ghostty_key_encoder_free(vt->key_encoder);
     ghostty_mouse_event_free(vt->mouse_event);
     ghostty_mouse_encoder_free(vt->mouse_encoder);
+    ghostty_search_free(vt->search);
     free_links(vt, vt->held_links); free_links(vt, vt->render_links);
     ghostty_render_state_free(vt->held);
     ghostty_render_state_free(vt->render);
@@ -582,6 +584,7 @@ int agwvt_restore(AgwVt* vt, const uint8_t* bytes, size_t length) {
         ghostty_tracked_grid_ref_free(probe);
         ghostty_terminal_free(replacement); ghostty_render_state_free(render); return result;
     }
+    ghostty_search_free(vt->search); vt->search = NULL;
     for (size_t i = 0; i < vt->mark_count; i++) free_mark(&vt->marks[i]);
     ghostty_tracked_grid_ref_free(vt->scroll_probe); vt->scroll_probe = probe; vt->scroll_epoch++;
     memcpy(vt->marks, restored_marks, sizeof(restored_marks)); vt->mark_count = mark_count;
@@ -680,10 +683,10 @@ int agwvt_scrollback(AgwVt* vt, size_t lines) {
     if (!vt) return GHOSTTY_INVALID_VALUE;
     return ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines);
 }
-int agwvt_begin(AgwVt* vt) {
+static int begin_capture(AgwVt* vt, int use_hold) {
     if (!vt || vt->capture_busy) return GHOSTTY_INVALID_VALUE;
     flush_anchors(vt);
-    int hold = vt->holding && vt->held && GetTickCount64() - vt->held_since < 1000;
+    int hold = use_hold && vt->holding && vt->held && GetTickCount64() - vt->held_since < 1000;
     if (!hold) {
         if (vt->render_invalidated) {
             GhosttyRenderState next = NULL;
@@ -710,6 +713,21 @@ int agwvt_begin(AgwVt* vt) {
     vt->capture_busy = 1;
     vt->updating = 1;
     return GHOSTTY_SUCCESS;
+}
+int agwvt_begin(AgwVt* vt) { return begin_capture(vt, 1); }
+int agwvt_begin_viewport(AgwVt* vt, uint32_t offset) {
+    if (!vt || vt->capture_busy) return GHOSTTY_INVALID_VALUE;
+    size_t history;
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS, &history));
+    GhosttyTerminalScrollViewport bottom = { .tag = GHOSTTY_SCROLL_VIEWPORT_BOTTOM };
+    GhosttyTerminalScrollViewport viewport = { .tag = GHOSTTY_SCROLL_VIEWPORT_ROW,
+        .value = { .row = history - (offset < history ? offset : history) } };
+    ghostty_terminal_scroll_viewport(vt->terminal, offset ? viewport : bottom);
+    int result = begin_capture(vt, offset == 0);
+    // The capture owns its viewport. Parsing, held-frame callbacks and explicit
+    // reads continue against the active area after releasing the session lock.
+    ghostty_terminal_scroll_viewport(vt->terminal, bottom);
+    return result;
 }
 int agwvt_end(AgwVt* vt) {
     if (!vt || !vt->updating) return GHOSTTY_INVALID_VALUE;
@@ -823,6 +841,34 @@ static GhosttyKey windows_key(uint32_t vk) {
         case VK_OEM_102: return GHOSTTY_KEY_INTL_BACKSLASH;
         default: return GHOSTTY_KEY_UNIDENTIFIED;
     }
+}
+int agwvt_search(AgwVt* vt, const uint8_t* text, size_t length, uint32_t* output, size_t capacity, size_t* count) {
+    if (!vt || (!text && length) || length > 65536 || (!output && capacity) || !count) return GHOSTTY_INVALID_VALUE;
+    if (!vt->search) TRY(ghostty_search_new(&vt->allocator, &vt->search, vt->terminal));
+    GhosttyString needle = { .ptr = text, .len = length };
+    TRY(ghostty_search_set(vt->search, GHOSTTY_SEARCH_OPT_NEEDLE, &needle));
+    TRY(ghostty_search_run(vt->search));
+    TRY(ghostty_search_get(vt->search, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, count));
+    if (*count > capacity) return GHOSTTY_OUT_OF_SPACE;
+    if (!*count) return GHOSTTY_SUCCESS;
+    if (*count > 1000000) return GHOSTTY_LIMIT_EXCEEDED;
+    size_t bytes = *count * sizeof(GhosttySelection);
+    GhosttySelection* selections = (GhosttySelection*)ghostty_alloc(&vt->allocator, bytes);
+    if (!selections) return GHOSTTY_OUT_OF_MEMORY;
+    GhosttySelectionBuffer buffer = { .ptr = selections, .cap = *count };
+    int result = ghostty_search_get(vt->search, GHOSTTY_SEARCH_DATA_MATCHES, &buffer);
+    for (size_t i = 0; !result && i < buffer.len; i++) {
+        GhosttyPointCoordinate start, end;
+        result = ghostty_terminal_point_from_grid_ref(vt->terminal, &selections[i].start, GHOSTTY_POINT_TAG_SCREEN, &start);
+        if (!result) result = ghostty_terminal_point_from_grid_ref(vt->terminal, &selections[i].end, GHOSTTY_POINT_TAG_SCREEN, &end);
+        GhosttyCell cell; GhosttyCellWide wide;
+        if (!result) result = ghostty_grid_ref_cell(&selections[i].end, &cell);
+        if (!result) result = ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+        if (!result) { output[i*4] = start.y; output[i*4+1] = start.x; output[i*4+2] = end.y;
+            output[i*4+3] = end.x + (wide == GHOSTTY_CELL_WIDE_WIDE ? 1 : 0); }
+    }
+    ghostty_free(&vt->allocator, (uint8_t*)selections, bytes);
+    return result;
 }
 int agwvt_mouse(AgwVt* vt, uint32_t action, uint32_t button, uint32_t mods,
     float x, float y, uint32_t cw, uint32_t ch, uint8_t* output, size_t capacity, size_t* length) {

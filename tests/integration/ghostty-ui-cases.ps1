@@ -50,6 +50,9 @@ Check 'Ghostty active screen readback' ($text.Contains('Ghostty native VT'))
 Check 'Ghostty combining cluster survives application text API' ($text.Contains($cluster))
 Check 'Ghostty emoji cluster survives application text API' ($text.Contains('👩🏽‍💻'))
 Check 'Ghostty hyperlink text survives application text API' ($text.Contains('LINK'))
+Check 'Ghostty find locates the complete emoji cluster' ((Rpc 'session.search' @{query='👩🏽‍💻'} $session) -eq '1 of 1')
+Check 'Ghostty find locates combining text' ((Rpc 'session.search' @{query=$cluster} $session) -eq '1 of 1')
+$null = Rpc 'session.search' @{action='close'} $session
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='
 $images = $esc+'[5;5H'+$esc+'_Ga=T,f=100,i=101,c=8,r=4,C=1;'+$png+$esc+'\'+
     $esc+'[5;17H'+$esc+'_Ga=T,f=32,s=1,v=1,i=102,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'
@@ -76,6 +79,31 @@ try {
 $null = Rpc 'session.write' @{text=($esc+'[?1049l')} $session
 $text = [string](Rpc 'session.text' @{} $session)
 Check 'Ghostty returns to primary shell screen' ($text.Contains('GHOSTTY_CONPTY_READY'))
+
+# Search positions the actual application viewport over a marker in history.
+# The image below it must follow that same native viewport, including clipping.
+$historyScene = $esc+'[2J'+$esc+'[H'+$esc+'[5;5H'+'GHOSTTY_HISTORY_IMAGE'+
+    $esc+'[6;5H'+$esc+'_Ga=T,f=32,s=1,v=1,i=901,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'+
+    $esc+'[20;1H'+("history padding`r`n" * 100)
+$null = Rpc 'session.write' @{text=$historyScene} $session
+$found = Rpc 'session.search' @{query='GHOSTTY_HISTORY_IMAGE'} $session
+Start-Sleep -Milliseconds 1200
+$bitmap = [Drawing.Bitmap]::new($rc.right, $rc.bottom); $graphics = [Drawing.Graphics]::FromImage($bitmap)
+try {
+    $dc = $graphics.GetHdc()
+    try { [void][HudOwnedJob]::PrintWindow($hwnd, $dc, 3) }
+    finally { $graphics.ReleaseHdc($dc) }
+    $bitmap.Save((Join-Path $artifact 'ghostty-history-frame.png'))
+    $green = 0
+    for ($y = 0; $y -lt $bitmap.Height; $y += 2) {
+        for ($x = 0; $x -lt $bitmap.Width; $x += 2) {
+            $pixel = $bitmap.GetPixel($x, $y)
+            if ($pixel.R -eq 17 -and $pixel.G -eq 223 -and $pixel.B -eq 73) { $green++ }
+        }
+    }
+    Check 'Ghostty history image reaches Direct2D after search scroll' ($green -gt 300) "green samples=$green; search=$found"
+} finally { $graphics.Dispose(); $bitmap.Dispose() }
+$null = Rpc 'session.search' @{action='close'} $session
 
 $null = Rpc 'config.set' @{key='session-host';value='server'}
 $serverSession = [string](Rpc 'session.new' @{name='ghostty-server';'no-select'=$true})

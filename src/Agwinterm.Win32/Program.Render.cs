@@ -431,7 +431,7 @@ internal partial class Program
             hist = em.HistoryCount;
             bool isAlt = em.IsAltScreen;
             off = isAlt ? 0 : Math.Clamp(scrollOffset, 0, hist);
-            nativePaint = off == 0 ? em as GhosttyTerminalCore : null;
+            nativePaint = em as GhosttyTerminalCore;
             // Explicit text/history reads have separate storage. A live Ghostty
             // paint never materializes that query screen under the PTY lock.
             var screen = nativePaint is null ? em.Screen : null;
@@ -446,7 +446,7 @@ internal partial class Program
             if (nativePaint is not null)
             {
                 nativePaint.SetCursorDefault(_config.CursorStyle, _config.CursorBlink);
-                nativePaint.BeginPaint();
+                nativePaint.BeginPaint(off);
             }
             else
             for (int r = 0; r < rows; r++)
@@ -527,8 +527,9 @@ internal partial class Program
                     for (int mi = 0; mi < _searchMatches.Count; mi++)
                     {
                         var m = _searchMatches[mi];
-                        if (m.Line != abs) continue;
-                        int from = Math.Clamp(m.Col0, 0, cols - 1), to = Math.Clamp(m.Col1, 0, cols - 1);
+                        if (abs < m.Line || abs > m.EndLine) continue;
+                        int from = Math.Clamp(abs == m.Line ? m.Col0 : 0, 0, cols - 1);
+                        int to = Math.Clamp(abs == m.EndLine ? m.Col1 : cols - 1, 0, cols - 1);
                         brush.Color = mi == _searchCur ? new Color4(235 / 255f, 175 / 255f, 45 / 255f, 1f)
                                                        : new Color4(150 / 255f, 110 / 255f, 25 / 255f, 1f);
                         rt.FillRectangle(new Rect(ox + from * cw, y, (to - from + 1) * cw, ch), brush);

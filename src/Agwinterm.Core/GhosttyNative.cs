@@ -51,6 +51,8 @@ internal static unsafe partial class GhosttyNative
                 _ = NativeLibrary.GetExport(library, "agwvt_key");
                 _ = NativeLibrary.GetExport(library, "agwvt_mouse");
                 _ = NativeLibrary.GetExport(library, "agwvt_paste");
+                _ = NativeLibrary.GetExport(library, "agwvt_begin_viewport");
+                _ = NativeLibrary.GetExport(library, "agwvt_search");
                 _ = NativeLibrary.GetExport(library, "agwvt_prepend_history");
                 if (!_resolverInstalled)
                 {
@@ -193,9 +195,12 @@ internal static unsafe partial class GhosttyNative
     [LibraryImport(Library, EntryPoint = "agwvt_prepend_history")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int PrependHistory(Handle handle, uint sourceCols, byte* text, nuint length, uint maxRows, out nuint added);
-    [LibraryImport(Library, EntryPoint = "agwvt_begin")]
+    [LibraryImport(Library, EntryPoint = "agwvt_begin_viewport")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial int Begin(Handle handle);
+    internal static partial int Begin(Handle handle, uint offset);
+    [LibraryImport(Library, EntryPoint = "agwvt_search")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int Search(Handle handle, byte* needle, nuint length, uint* matches, nuint capacity, out nuint count);
     [LibraryImport(Library, EntryPoint = "agwvt_end")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int End(Handle handle);

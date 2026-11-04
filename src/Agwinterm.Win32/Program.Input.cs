@@ -1214,6 +1214,12 @@ internal partial class Program
         var em = ap.S.Emulator;
         lock (ap.S.SyncRoot)
         {
+            if (em is GhosttyTerminalCore native)
+            {
+                _searchMatches.AddRange(native.Search(_searchQuery));
+                if (_searchCur >= _searchMatches.Count) _searchCur = 0;
+                return;
+            }
             int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
             var sb = new StringBuilder(cols);
             // On the alt screen the pane shows only the live grid: matches below `hist` belong to the
@@ -1232,7 +1238,7 @@ internal partial class Program
                 int idx = 0;
                 while ((idx = text.IndexOf(q, idx, StringComparison.Ordinal)) >= 0)
                 {
-                    _searchMatches.Add((line, idx, idx + q.Length - 1));
+                    _searchMatches.Add((line, idx, line, idx + q.Length - 1));
                     idx += q.Length;
                 }
             }
@@ -1273,7 +1279,11 @@ internal partial class Program
             case VK_RETURN: SearchStep(shift ? -1 : 1); return true;
             case 0x72: SearchStep(shift ? -1 : 1); return true; // F3
             case VK_BACK:
-                if (_searchQuery.Length > 0) { _searchQuery = _searchQuery[..^1]; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); RequestRedraw(); }
+                if (_searchQuery.Length > 0)
+                {
+                    int last = System.Globalization.StringInfo.ParseCombiningCharacters(_searchQuery)[^1];
+                    _searchQuery = _searchQuery[..last]; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); RequestRedraw();
+                }
                 return true;
         }
         return true; // consume all keys while the find bar is open

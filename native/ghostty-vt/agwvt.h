@@ -40,6 +40,8 @@ AGWVT_API int agwvt_info(AgwVt* vt, AgwVtInfo* out);
 AGWVT_API int agwvt_scrollback(AgwVt* vt, size_t lines);
 AGWVT_API int agwvt_prepend_history(AgwVt* vt, uint32_t source_cols, const uint8_t* bytes, size_t length, uint32_t max_rows, size_t* added);
 AGWVT_API int agwvt_begin(AgwVt* vt);
+AGWVT_API int agwvt_begin_viewport(AgwVt* vt, uint32_t offset);
+AGWVT_API int agwvt_search(AgwVt* vt, const uint8_t* text, size_t length, uint32_t* output, size_t capacity, size_t* count);
 AGWVT_API int agwvt_end(AgwVt* vt);
 // Metadata and pixels belong to the active capture, not the mutable terminal.
 AGWVT_API int agwvt_images(AgwVt* vt, AgwVtImage* images, size_t capacity, size_t* count, uint32_t stride);
