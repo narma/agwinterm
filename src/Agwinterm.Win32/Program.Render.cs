@@ -367,6 +367,11 @@ internal partial class Program
         IDWriteTextFormat format, float x, float y, float width, float height)
     {
         var glyph = _soloGlyphs.Get(_dwrite, rune, format, width, height);
+        DrawSoloLayout(rt, brush, glyph, x, y, width, height);
+    }
+    private static void DrawSoloLayout(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush,
+        SoloGlyphCache.Glyph glyph, float x, float y, float width, float height)
+    {
         if (!glyph.HasInk) return;
         var transform = rt.Transform;
         rt.PushAxisAlignedClip(new Vortice.RawRectF(x, y, x + width, y + height), AntialiasMode.Aliased);
@@ -556,8 +561,8 @@ internal partial class Program
                     {
                         float x = ox + c * cw;
                         brush.Color = C4(runFg);
-                        rt.DrawText(cluster, StyleFmt(fmt, runStyle), new Rect(x, y, cell.Width * cw, ch),
-                            brush, DrawTextOptions.Clip | DrawTextOptions.EnableColorFont);
+                        var glyph = _soloGlyphs.Get(_dwrite, cluster, StyleFmt(fmt, runStyle), cell.Width * cw, ch);
+                        DrawSoloLayout(rt, brush, glyph, x, y, cell.Width * cw, ch);
                         DrawDecorations(x, cell.Width * cw, y, runStyle);
                         c++; continue;
                     }
