@@ -35,11 +35,22 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public int Cols => _cols;
     public int Rows => _rows;
     /// <summary>UI consumer only, under the session lock. Does not populate the query screen.</summary>
-    public void BeginPaint() => _vt.BeginCapture();
+    private int _paintCellWidth = 8, _paintCellHeight = 18;
+    public void BeginPaint()
+    {
+        if (_paintCellWidth != CellPixelWidth || _paintCellHeight != CellPixelHeight)
+        {
+            _vt.Resize(_cols, _rows, CellPixelWidth, CellPixelHeight);
+            _paintCellWidth = CellPixelWidth; _paintCellHeight = CellPixelHeight;
+        }
+        _vt.BeginCapture();
+    }
     /// <summary>UI consumer only, outside the session lock; queries use independent buffers.</summary>
     public ScreenBuffer CompletePaint() { _vt.CompleteCapture(); return _vt.Frame; }
     public (int Col, int Row, bool Visible) PaintCursor => _vt.FrameCursor;
     public int PaintCursorShape => _vt.FrameCursorShape;
+    public IReadOnlyList<GhosttyImagePlacement> PaintImages => _vt.FrameImages;
+    public long NextAnimationDeadline => _vt.NextAnimationDeadline;
     /// <summary>UI-thread-only read of the last captured paint frame, including a synchronized hold.</summary>
     public ScreenBuffer LastPaintFrame => _vt.Frame;
     public void SetCursorDefault(CursorStyle style, bool blink)

@@ -285,6 +285,8 @@ internal partial class Program
     /// <summary>Dispose the device-bound render target + textures and rebuild them (after a device/GPU reset).</summary>
     private void RecreateTarget()
     {
+        foreach (var bitmap in _ghosttyTextures.Values) { try { bitmap.Dispose(); } catch { } }
+        _ghosttyTextures.Clear(); _ghosttyImageFailures.Clear();
         foreach (var cache in _imageCaches.Values)
             foreach (var b in cache.Values) { try { b.Dispose(); } catch { } }
         _imageCaches.Clear();
@@ -312,10 +314,13 @@ internal partial class Program
         long tStart = Stopwatch.GetTimestamp();
         _uploadCount = 0; _uploadMs = 0;
         _imageOwnersThisFrame.Clear();
+        _ghosttyImagesThisFrame.Clear();
+        _ghosttyAnimationOwnersThisFrame.Clear();
         try
         {
             RenderBody();
             PruneHiddenImageOwners();
+            PruneGhosttyImages();
             Result end = _rt.EndDraw(out _, out _);
             if (end.Failure)
             {
@@ -469,6 +474,10 @@ internal partial class Program
                 for (int c = 0; c < cols; c++) _cellSnap[r * cols + c] = screen[r, c];
         }
         // Drawing below reads only the snapshot + UI-thread state — no session lock held.
+        IReadOnlyList<GhosttyImagePlacement> nativeImages = !_noImages && nativePaint is not null ? nativePaint.PaintImages : [];
+        PrepareGhosttyImages(nativeImages);
+        if (!_noImages && nativePaint is not null) ScheduleGhosttyAnimation(nativePaint);
+        DrawGhosttyImages(nativeImages, GhosttyImageLayer.BelowBackground, ox, oy, cw, ch, cols, rows);
         {
             var snap = _cellSnap;
             Cell CellAt(int r, int c) => snap[r * cols + c];
@@ -494,6 +503,12 @@ internal partial class Program
                     brush.Color = C4(bg);
                     rt.FillRectangle(new Rect(ox + start * cw, y, (c - start) * cw, ch), brush);
                 }
+            }
+            DrawGhosttyImages(nativeImages, GhosttyImageLayer.BelowText, ox, oy, cw, ch, cols, rows);
+            for (int r = 0; r < rows; r++)
+            {
+                float y = oy + r * ch;
+                int c;
                 int abs = hist - off + r;
                 if (hasSel && abs >= sl0 && abs <= sl1)  // selection highlight (behind the text)
                 {
@@ -616,6 +631,7 @@ internal partial class Program
 
             if (!_noImages)
                 lock (session.SyncRoot) DrawImages(em, ox, oy, cw, ch, drawImages); // image state belongs to this pane
+            DrawGhosttyImages(nativeImages, GhosttyImageLayer.AboveText, ox, oy, cw, ch, cols, rows);
 
             if (off > 0) // scrollback position indicator on the pane's right edge
             {

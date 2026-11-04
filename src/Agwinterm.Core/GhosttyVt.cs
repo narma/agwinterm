@@ -21,6 +21,7 @@ public sealed unsafe class GhosttyVt : IDisposable
     private GhosttyNative.Image[] _imageMetadata = [];
     private readonly Dictionary<ulong, GhosttyImage> _imageCache = new();
     public IReadOnlyList<GhosttyImagePlacement> FrameImages { get; private set; } = [];
+    public long NextAnimationDeadline { get; private set; }
     private bool _capturing, _disposed;
     private GhosttyNative.Info _info;
     private Win32InputModeObserver _windows = new();
@@ -228,6 +229,8 @@ public sealed unsafe class GhosttyVt : IDisposable
             var dirty = new byte[rows]; var wraps = new int[rows];
             Frame = frame; _cells = cells; _dirty = dirty; _wraps = wraps;
         }
+        GhosttyNative.Check(GhosttyNative.AnimationTick(_handle, out ulong animationDeadline));
+        NextAnimationDeadline = checked((long)animationDeadline);
         GhosttyNative.Check(GhosttyNative.Begin(_handle));
         _capturing = true;
     }

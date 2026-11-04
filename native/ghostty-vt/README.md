@@ -35,7 +35,9 @@ File, temporary-file and shared-memory media remain disabled. Graphics captures
 retain generation-keyed pixels independently of live storage, including held
 and in-flight frames. Unchanged pixels are copied only once into each native
 and managed cache. Placements retain native layers, z-order, crops and offsets.
-Direct2D integration and animation scheduling are pending.
+Direct2D draws all three native layers with viewport clipping; premultiplication
+runs on bounded background tasks. Animations advance once per capture and use
+Ghostty's next-frame deadline, with no polling for static/stopped images.
 
 Native snapshots retain parser continuation and tracked command boundaries.
 The managed envelope includes the upstream revision, bounded Windows input
@@ -44,7 +46,7 @@ terminal and commits only after validation. This is a low-level snapshot
 contract; application restart/history-only persistence is not yet migrated.
 
 The application adapter still has migration gaps: remaining margin metadata,
-complete palette/theme integration, native Kitty image extraction, input
+complete palette/theme integration, graphics scrollback painting and host-image lifetimes, input
 encoders, history-only import/reattach, and deterministic session teardown.
 Live renderer conversion runs outside the session lock; history painting still
 uses the locked explicit read path. Do not enable this core by default or remove the old cores

@@ -47,6 +47,7 @@ internal static unsafe partial class GhosttyNative
                     throw new InvalidOperationException("Ghostty adapter ABI, layout or upstream revision mismatch; rebuild both DLLs together.");
                 foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore", "images", "image_pixels" })
                     _ = NativeLibrary.GetExport(library, "agwvt_" + entry);
+                _ = NativeLibrary.GetExport(library, "agwvt_animation_tick");
                 if (!_resolverInstalled)
                 {
                     NativeLibrary.SetDllImportResolver(typeof(GhosttyNative).Assembly,
@@ -197,6 +198,9 @@ internal static unsafe partial class GhosttyNative
     [LibraryImport(Library, EntryPoint = "agwvt_image_pixels")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int ImagePixels(Handle handle, ulong generation, byte* pixels, nuint capacity);
+    [LibraryImport(Library, EntryPoint = "agwvt_animation_tick")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int AnimationTick(Handle handle, out ulong deadline);
     [LibraryImport(Library, EntryPoint = "agwvt_cursor")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Cursor(Handle handle, out uint col, out uint row, out uint visible, out uint shape);

@@ -734,6 +734,16 @@ int agwvt_abort(AgwVt* vt) {
     ReleaseSRWLockExclusive(&vt->capture_guard);
     return GHOSTTY_SUCCESS;
 }
+int agwvt_animation_tick(AgwVt* vt, uint64_t* deadline) {
+    if (!vt || !deadline || vt->capture_busy) return GHOSTTY_INVALID_VALUE;
+    *deadline = 0;
+    uint64_t now = GetTickCount64();
+    if (vt->holding && now - vt->held_since < 1000) return GHOSTTY_SUCCESS;
+    GhosttyKittyGraphics graphics;
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &graphics));
+    int result = ghostty_kitty_graphics_animation_tick(graphics, now, deadline);
+    return result == GHOSTTY_NO_VALUE ? GHOSTTY_SUCCESS : result;
+}
 int agwvt_images(AgwVt* vt, AgwVtImage* images, size_t capacity, size_t* count, uint32_t stride) {
     if (!vt || !vt->capture_busy || vt->updating || !count || (!images && capacity) || stride != sizeof(AgwVtImage)) return GHOSTTY_INVALID_VALUE;
     *count = 0;

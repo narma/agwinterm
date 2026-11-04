@@ -343,6 +343,21 @@ using (var vt = new GhosttyVt(20, 5))
     vt.RestoreSnapshot(imageSnapshot); Capture(vt);
     Check(vt.FrameImages.Single().Image.Pixels.Span.SequenceEqual(new byte[] { 0, 255, 0, 255 }), "native snapshot restores graphics and pixels");
 }
+using (var vt = new GhosttyVt(20, 5))
+{
+    vt.Resize(20, 5, 8, 16);
+    vt.Feed(Encoding.ASCII.GetBytes("\u001b_Ga=T,f=32,i=2,s=1,v=1,q=2;/wAA/w==\u001b\\" +
+        "\u001b_Ga=f,f=32,i=2,s=1,v=1,z=40,q=2;AAD//w==\u001b\\" +
+        "\u001b_Ga=a,i=2,r=1,z=30,q=2\u001b\\\u001b_Ga=a,i=2,s=3,q=2\u001b\\"));
+    Capture(vt); var firstFrame = vt.FrameImages.Single().Image;
+    Check(vt.NextAnimationDeadline > 0, "playing animation supplies a redraw deadline");
+    Thread.Sleep((int)Math.Clamp(vt.NextAnimationDeadline - Environment.TickCount64 + 20, 1, 1000));
+    Capture(vt);
+    Check(vt.FrameImages.Single().Image.Generation != firstFrame.Generation &&
+        !vt.FrameImages.Single().Image.Pixels.Span.SequenceEqual(firstFrame.Pixels.Span), "animation advances pixels and generation without terminal input");
+    vt.Feed("\u001b_Ga=a,i=2,s=1,q=2\u001b\\"u8); Capture(vt);
+    Check(vt.NextAnimationDeadline == 0, "stopped animation requires no periodic redraw");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
