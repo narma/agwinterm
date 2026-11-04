@@ -401,17 +401,29 @@ public sealed class TerminalSession : ISession
                 int n = stream.Read(buffer, 0, buffer.Length);
                 if (n <= 0) break;
                 Volatile.Write(ref _pumpInFlight, 1);
-                if (DumpPath is not null)
-                    lock (_sync) System.IO.File.AppendAllBytes(DumpPath, buffer.AsSpan(0, n).ToArray());
                 // The tap runs under the same lock as the feed, so a reattach that snapshots the
                 // screen under it gets each chunk once: in the snapshot or through the tap.
                 lock (_sync)
                 {
                     if (_disposed) break;
-                    Emulator.Feed(buffer.AsSpan(0, n));
-                    if (RawOutput is { } tap) tap(buffer[..n]);
+                    int consumed = 0;
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    do
+                    {
+                        if (DumpPath is not null) System.IO.File.AppendAllBytes(DumpPath, buffer.AsSpan(0, n).ToArray());
+                        Emulator.Feed(buffer.AsSpan(0, n));
+                        if (RawOutput is { } tap) tap(buffer[..n]);
+                        Interlocked.Add(ref _pumpBytes, n); // after feed and tap
+                        consumed += n;
+                        // A curses repaint often spans multiple pipe reads. Publish
+                        // the currently available burst together, rather than letting
+                        // paint observe its insert/delete-line intermediate states.
+                        // Bound both work and lock time under continuous output.
+                        if (consumed >= 256 * 1024 || System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds >= 4 ||
+                            !PipeReadAvailability.HasData(stream)) break;
+                        n = stream.Read(buffer, 0, buffer.Length);
+                    } while (n > 0);
                 }
-                Interlocked.Add(ref _pumpBytes, n);   // after the feed and the tap: "settled" means both have it
                 Volatile.Write(ref _pumpInFlight, 0);
                 OutputReceived?.Invoke();
             }

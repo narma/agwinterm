@@ -29,6 +29,30 @@ internal partial class Program
     private double _soloDrawMs;
     private int _soloDrawCount;
     private string _perfCore = "none";
+    // Opt-in diagnostics for torn TUI updates; records the actual captured paint,
+    // not a later control-API screen read. Used only with isolated test sessions.
+    private static readonly string? _paintTrace = Environment.GetEnvironmentVariable("AGWINTERM_PAINT_TRACE");
+    private void TraceTerminalPaint(ITerminalCore core, int cols, int rows)
+    {
+        if (_paintTrace is null) return;
+        var lines = new string[rows];
+        var backgrounds = new uint[rows];
+        for (int r = 0; r < rows; r++)
+        {
+            var line = new StringBuilder(cols);
+            for (int c = 0; c < cols; c++)
+            {
+                var cell = _cellSnap[r * cols + c];
+                if (cell.Width != 0) line.Append(cell.Grapheme ?? (cell.Rune == 0 ? " " : char.ConvertFromUtf32(cell.Rune)));
+            }
+            lines[r] = line.ToString().TrimEnd();
+            var first = _cellSnap[r * cols];
+            Color bg = first.Attributes.HasFlag(CellAttributes.Inverse) ? first.Foreground : first.Background;
+            backgrounds[r] = (uint)(bg.R << 16 | bg.G << 8 | bg.B);
+        }
+        try { File.AppendAllText(_paintTrace, JsonSerializer.Serialize(new { tick = Stopwatch.GetTimestamp(), core = core.GetType().Name, cols, rows, lines, backgrounds }) + "\n"); }
+        catch (IOException) { }
+    }
 
     /// <summary>
     /// Draw current image placements. Decoding (PNG decompress) happens on a background
@@ -482,6 +506,7 @@ internal partial class Program
                 for (int c = 0; c < cols; c++) _cellSnap[r * cols + c] = screen[r, c];
         }
         // Drawing below reads only the snapshot + UI-thread state — no session lock held.
+        TraceTerminalPaint(em, cols, rows);
         IReadOnlyList<GhosttyImagePlacement> nativeImages = !_noImages && nativePaint is not null ? nativePaint.PaintImages : [];
         PrepareGhosttyImages(nativeImages);
         if (!_noImages && nativePaint is not null) ScheduleGhosttyAnimation(nativePaint);
