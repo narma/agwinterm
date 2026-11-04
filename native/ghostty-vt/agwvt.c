@@ -265,7 +265,7 @@ uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (info_size) *info_size = sizeof(AgwVtInfo);
     return 1;
 }
-const char* agwvt_revision(void) { return "ee02d019e8459ed4d09fac55753ad2363c5a8b01"; }
+const char* agwvt_revision(void) { return "40066da055311c991b5c45be67313ef2b3661539"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
@@ -824,8 +824,8 @@ int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
     if (!vt || action > 2 || mods > 1023 || consumed > 1023 || text_length > 4096 ||
         (!text && text_length) || (!output && capacity) || !length) return GHOSTTY_INVALID_VALUE;
     ghostty_key_encoder_setopt_from_terminal(vt->key_encoder, vt->terminal);
-    ghostty_key_event_set_action(vt->key_event, (GhosttyKeyAction)action);
-    ghostty_key_event_set_key(vt->key_event, windows_key(vk));
+    TRY(ghostty_key_event_set_action(vt->key_event, (GhosttyKeyAction)action));
+    TRY(ghostty_key_event_set_key(vt->key_event, windows_key(vk)));
     ghostty_key_event_set_mods(vt->key_event, (GhosttyMods)mods);
     ghostty_key_event_set_consumed_mods(vt->key_event, (GhosttyMods)consumed);
     ghostty_key_event_set_unshifted_codepoint(vt->key_event, unshifted);

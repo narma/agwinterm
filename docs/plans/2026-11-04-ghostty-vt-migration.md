@@ -10,13 +10,13 @@ Parity with agterm means relevant terminal behavior and feature coverage, not em
 
 ## Source evidence
 
-Local audit starts at `b48dbb9` (2026-11-04). Ghostty build revision: `ee02d019e8459ed4d09fac55753ad2363c5a8b01`, resolved from upstream HEAD and read by immutable raw URLs. Its `build.zig.zon` requires Zig **0.17.0**. The unmodified source builds with `-Demit-lib-vt=true -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -j4`. The official Zig archive is SHA-256 pinned in `native/ghostty-vt/pin.json`; the build records both output DLL hashes. MSVC-target output initially required a VC runtime absent from the clean test image; GNU-target output passes clean-Windows loading. The managed loader verifies provenance and both hashes before loading, then checks exports, ABI layouts and revision.
+Local audit starts at `b48dbb9` (2026-11-04). Ghostty build revision: `40066da055311c991b5c45be67313ef2b3661539`, explicitly requested by the user after the initial `ee02d019` audit. Its `build.zig.zon` requires Zig **0.17.0**. The source builds with `-Demit-lib-vt=true -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -j4`, plus the narrow history export described below. The official Zig archive is SHA-256 pinned in `native/ghostty-vt/pin.json`; the build records both output DLL hashes. MSVC-target output initially required a VC runtime absent from the clean test image; GNU-target output passes clean-Windows loading. The managed loader verifies provenance and both hashes before loading, then checks exports, ABI layouts and revision.
 
-- [Pinned terminal API](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/terminal.h)
-- [Pinned render API](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/render.h)
-- [Pinned snapshots](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/snapshot.h)
-- [Pinned graphics API](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/kitty_graphics.h)
-- [Pinned modes](https://github.com/ghostty-org/ghostty/blob/ee02d019e8459ed4d09fac55753ad2363c5a8b01/include/ghostty/vt/modes.h)
+- [Pinned terminal API](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/terminal.h)
+- [Pinned render API](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/render.h)
+- [Pinned snapshots](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/snapshot.h)
+- [Pinned graphics API](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/kitty_graphics.h)
+- [Pinned modes](https://github.com/ghostty-org/ghostty/blob/40066da055311c991b5c45be67313ef2b3661539/include/ghostty/vt/modes.h)
 - [Microsoft native interop guidance](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/best-practices)
 
 ## Existing coupling that must change
@@ -137,3 +137,5 @@ History saves now support native cores and protobuf graphemes. Restoration build
 The Windows headless host loads the configured Ghostty core; replicas use the same factory. Native attachment negotiates an optional protocol field, then reads one bounded, integrity-checked snapshot from the data pipe. Capturing/transferring state and registering raw output share the host's ingestion lock, including split escape sequences. Native clients retain legacy-host fallback; native hosts explicitly reject clients without snapshot support. Replica detach/disposal releases native ownership while preserving the host process on detach. Snapshot envelope construction uses one exact managed allocation instead of repeated full-payload copies.
 
 A separate self-contained `tests/Agwinterm.GhosttyServerHarness` exercises real named pipes, bundled ConPTY, detached output, split CSI, both screens, input modes, history, resize, PID continuity and exit. Publish it into a test-only `ghostty-server-tests` subdirectory beside the test application's executable; the `Ghostty` Hyper-V suite discovers and runs it inside the owned VM. This is test tooling, not a runtime dependency or release payload.
+
+Validation on `40066da`: Windows native and application Release builds pass; 125 native contracts pass; Hyper-V passes 13/13 UI checks including the separately launched application host, and the nested server harness passes 18/18 checks. Evidence: `artifacts/ghostty-ui-server-40066/results`. The managed suite passed 645 Core tests and 32 focused server/lifetime checks during this increment. Server acceptance exposed an adapter color-value normalization bug; indexed/default/RGB specs now use their canonical constructors, with an equality regression check. The new upstream key/action setters' results are checked. The upstream dependency/license manifest now exists; our release notice packaging still needs completing.
