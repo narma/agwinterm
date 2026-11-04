@@ -60,12 +60,19 @@ separate Ghostty terminal, lets Ghostty reflow it, then prepends native pages.
 The live screen, modes, parser continuation and tracked positions stay intact.
 History has a 64 MiB byte budget in addition to its configured line limit.
 
+Mouse and text paste use upstream encoders, including native mode selection,
+bracketed paste and control-character sanitization. Windows keyboard events use
+the upstream key encoder; DEC 9001 remains the Windows-specific path.
+History captures include native graphics and hyperlinks. Capture temporarily
+selects the requested viewport under the session lock and restores the live
+viewport before returning; conversion and drawing run outside the lock.
+Search uses native screen coordinates (including wide cells and soft wraps).
+Its current ASCII-only case folding and synchronous execution remain limitations.
+UI Automation maps UTF-16 ranges to complete graphemes and terminal columns.
+
 The application adapter still has migration gaps: remaining margin metadata,
-complete palette/theme integration, graphics scrollback painting and host-image lifetimes,
-mouse/paste encoders and expanded keyboard-layout/IME acceptance. Windows keyboard
-events already use the upstream key encoder; DEC 9001 remains the Windows-specific path.
-Live renderer conversion runs outside the session lock; history painting still
-uses the locked explicit read path. Do not enable this core by default or remove the old cores
+complete palette/theme integration, host-image lifetimes, expanded graphics
+placement acceptance and keyboard-layout/IME acceptance. Do not enable this core by default or remove the old cores
 until their required consumers have migrated (obsolete interfaces can be removed sooner). Sixel will not be implemented in this
 backend. See the migration audit for the complete contract map.
 
