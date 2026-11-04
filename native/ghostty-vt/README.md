@@ -24,7 +24,10 @@ Build after generating the DLLs to copy them alongside the application;
 allocations. Feed never exports a grid. Capture begins under the terminal's
 external lock and finishes using snapshot-owned data. Linked cells retain
 their own URI bytes, so concurrent writes cannot change an older frame.
-Only one capture consumer is allowed; disposal must wait for that consumer.
+Only one capture consumer is allowed. Managed disposal rejects new work and
+defers native destruction until an in-flight capture finishes; callers serialize
+disposal with terminal mutations using the session lock. In-process session
+teardown disposes its core explicitly, including failed/late process starts.
 Callbacks copy bounded host effects into a managed queue; they never reenter
 the terminal or throw across the C boundary.
 
@@ -47,7 +50,7 @@ contract; application restart/history-only persistence is not yet migrated.
 
 The application adapter still has migration gaps: remaining margin metadata,
 complete palette/theme integration, graphics scrollback painting and host-image lifetimes, input
-encoders, history-only import/reattach, and deterministic session teardown.
+encoders and history-only import/reattach (including server replica ownership).
 Live renderer conversion runs outside the session lock; history painting still
 uses the locked explicit read path. Do not enable this core by default or remove the old cores
 until those consumers have migrated. Sixel will not be implemented in this

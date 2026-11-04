@@ -198,5 +198,5 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         text.Append($"\u001b[={KeyboardFlags}u");
         return text.ToString();
     }
-    public void Dispose() => _vt.Dispose();
+    public void Dispose() { _vt.Dispose(); _hostImages.Clear(); _hostPlacements.Clear(); }
 }

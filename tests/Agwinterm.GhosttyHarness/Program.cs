@@ -358,6 +358,17 @@ using (var vt = new GhosttyVt(20, 5))
     vt.Feed("\u001b_Ga=a,i=2,s=1,q=2\u001b\\"u8); Capture(vt);
     Check(vt.NextAnimationDeadline == 0, "stopped animation requires no periodic redraw");
 }
+using (var vt = new GhosttyVt(20, 5))
+{
+    vt.Feed("closing"u8); vt.BeginCapture();
+    vt.Dispose();
+    bool rejected = false;
+    try { vt.Feed("late output"u8); } catch (ObjectDisposedException) { rejected = true; }
+    Check(rejected, "closing terminal rejects new input while a paint is in flight");
+    vt.CompleteCapture();
+    Check(Row(vt, 0) == "closing", "in-flight paint completes before native terminal disposal");
+    vt.Dispose();
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

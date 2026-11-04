@@ -97,4 +97,11 @@ internal partial class Program
         _ghosttyImageFailures.IntersectWith(_ghosttyImagesThisFrame);
         if (_ghosttyUploads.Count < pending) RequestRedraw(); // freed slots may unblock visible images
     }
+    private void DisposeGhosttyRendering()
+    {
+        foreach (var timer in _ghosttyAnimationTimers.Values) timer.Dispose();
+        _ghosttyAnimationTimers.Clear();
+        foreach (var bitmap in _ghosttyTextures.Values) bitmap.Dispose();
+        _ghosttyTextures.Clear();
+    }
 }

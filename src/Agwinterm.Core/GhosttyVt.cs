@@ -22,7 +22,9 @@ public sealed unsafe class GhosttyVt : IDisposable
     private readonly Dictionary<ulong, GhosttyImage> _imageCache = new();
     public IReadOnlyList<GhosttyImagePlacement> FrameImages { get; private set; } = [];
     public long NextAnimationDeadline { get; private set; }
+    private readonly object _lifetime = new();
     private bool _capturing, _disposed;
+    private volatile bool _disposeRequested;
     private GhosttyNative.Info _info;
     private Win32InputModeObserver _windows = new();
     public ScreenBuffer Frame { get; private set; }
@@ -97,7 +99,7 @@ public sealed unsafe class GhosttyVt : IDisposable
         if (cols is < 1 or > 32768 || rows is < 1 or > 32768 || (long)cols * rows > 4_000_000)
             throw new ArgumentOutOfRangeException(nameof(cols), "Terminal dimensions exceed the configured limit.");
     }
-    private void CheckAlive() => ObjectDisposedException.ThrowIf(_disposed, this);
+    private void CheckAlive() => ObjectDisposedException.ThrowIf(_disposeRequested, this);
     private void RefreshInfo() => GhosttyNative.Check(GhosttyNative.GetInfo(_handle, out _info));
     public void Feed(ReadOnlySpan<byte> bytes)
     {
@@ -236,7 +238,9 @@ public sealed unsafe class GhosttyVt : IDisposable
     }
     public void CompleteCapture()
     {
-        CheckAlive();
+        // Dispose may run under the session lock while this snapshot is being
+        // converted outside it. Finish the sole reader before releasing native state.
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_capturing) throw new InvalidOperationException("BeginCapture must precede CompleteCapture.");
         try
         {
@@ -278,7 +282,14 @@ public sealed unsafe class GhosttyVt : IDisposable
             _ = GhosttyNative.Abort(_handle);
             throw;
         }
-        finally { _capturing = false; }
+        finally
+        {
+            lock (_lifetime)
+            {
+                _capturing = false;
+                if (_disposeRequested) ReleaseNative();
+            }
+        }
     }
     private void CaptureImages()
     {
@@ -333,8 +344,17 @@ public sealed unsafe class GhosttyVt : IDisposable
     private static ColorSpec Spec(uint kind, uint value) => new((ColorSpecKind)kind, (byte)value, Unpack(value));
     public void Dispose()
     {
+        // Serialize with terminal mutations/begin-capture using the caller's
+        // session lock. The internal gate only coordinates the external reader.
+        lock (_lifetime)
+        {
+            _disposeRequested = true;
+            if (!_capturing) ReleaseNative();
+        }
+    }
+    private void ReleaseNative()
+    {
         if (_disposed) return;
-        if (_capturing) throw new InvalidOperationException("Finish the frame capture before disposing the terminal.");
-        _disposed = true; _handle.Dispose();
+        _disposed = true; _handle.Dispose(); _imageCache.Clear(); FrameImages = [];
     }
 }

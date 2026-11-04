@@ -701,6 +701,7 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_DESTROY:
+                DisposeGhosttyRendering();
                 _soloGlyphs.Dispose();
                 foreach (var pending in _softWebCloses.ToArray()) FinalizeSoftWebClose(pending);
                 foreach (var (_, page) in _webPages) CloseWebPage(page.Owner, page.Pane);
