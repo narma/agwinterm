@@ -117,9 +117,10 @@ internal partial class Program
         Drop(0, "session-host", "Session host (shells survive restarts)",
             new[] { "In-process (default)", "Pty-host server (experimental)", "Pty-host server: Rust (experimental)" },
             new[] { "in-process", "server", "server-rust" });
-        // Rust core opt-in: new sessions parse/render state in native/agwinterm-core.
+        // Core changes apply to newly created sessions; live native state is never switched.
         Drop(0, "emulator-core", "Terminal core (new sessions)",
-            new[] { "Managed (default)", "Rust (experimental)" }, new[] { "managed", "rust" });
+            new[] { "Managed (default)", "Rust (experimental)", "Ghostty (experimental)" },
+            new[] { "managed", "rust", "ghostty" });
         Sec(0, "Shell");
         Tog(0, "shell-integration", "Shell integration (live cwd)");
         // fresh-env: rebuild each new tab's env from the registry (new installs visible, no restart).
