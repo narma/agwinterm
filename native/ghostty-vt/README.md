@@ -1,7 +1,11 @@
 # Ghostty VT Windows adapter
 
 This is an experimental opt-in integration, not the default terminal core.
-The upstream source is unmodified and pinned by `pin.json`. The build uses
+The upstream source is pinned by `pin.json`. The build adds the narrow
+`history.zig` embedding export to prepend existing native pages; it does not
+replace upstream parsing, reflow or page ownership. The source checkout is
+restored byte-for-byte after building, and provenance records the extension hash.
+The build uses
 Zig's Windows GNU target so the DLLs do not require a separately installed
 Visual C++ redistributable. Zig is build tooling, not a runtime dependency.
 
@@ -46,7 +50,11 @@ Native snapshots retain parser continuation and tracked command boundaries.
 The managed envelope includes the upstream revision, bounded Windows input
 sidecar state, lengths, and a SHA-256 integrity check. Decode builds a separate
 terminal and commits only after validation. This is a low-level snapshot
-contract; application restart/history-only persistence is not yet migrated.
+contract. Application history persistence uses the existing attributed protobuf
+format (now including graphemes). Import parses inert attributed text into a
+separate Ghostty terminal, lets Ghostty reflow it, then prepends native pages.
+The live screen, modes, parser continuation and tracked positions stay intact.
+History has a 64 MiB byte budget in addition to its configured line limit.
 
 The application adapter still has migration gaps: remaining margin metadata,
 complete palette/theme integration, graphics scrollback painting and host-image lifetimes, input

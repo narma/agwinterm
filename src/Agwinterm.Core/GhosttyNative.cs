@@ -49,6 +49,7 @@ internal static unsafe partial class GhosttyNative
                     _ = NativeLibrary.GetExport(library, "agwvt_" + entry);
                 _ = NativeLibrary.GetExport(library, "agwvt_animation_tick");
                 _ = NativeLibrary.GetExport(library, "agwvt_key");
+                _ = NativeLibrary.GetExport(library, "agwvt_prepend_history");
                 if (!_resolverInstalled)
                 {
                     NativeLibrary.SetDllImportResolver(typeof(GhosttyNative).Assembly,
@@ -187,6 +188,9 @@ internal static unsafe partial class GhosttyNative
     [LibraryImport(Library, EntryPoint = "agwvt_scrollback")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Scrollback(Handle handle, nuint lines);
+    [LibraryImport(Library, EntryPoint = "agwvt_prepend_history")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int PrependHistory(Handle handle, uint sourceCols, byte* text, nuint length, uint maxRows, out nuint added);
     [LibraryImport(Library, EntryPoint = "agwvt_begin")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Begin(Handle handle);

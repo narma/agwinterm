@@ -388,6 +388,48 @@ using (var vt = new GhosttyVt(20, 5))
     vt.Feed("\u001b[<u"u8);
     Check(Key(0x41, 0, "a", 0) == "", "legacy key release produces no output");
 }
+using (var source = new GhosttyTerminalCore(12, 4))
+using (var destination = new GhosttyTerminalCore(6, 3))
+{
+    source.Feed("\u001b[?2027h\u001b[31;1mabcdefghijk中e\u0301\u001b[0m\r\nlegacy"u8);
+    byte[] blob = BufferPersist.Serialize(source);
+    Check(BufferPersist.TryParse(blob, out var history) && history.Rows.SelectMany(r => r.Cells).Any(c => c.Grapheme == "e\u0301"),
+        "history protobuf preserves native graphemes");
+    destination.Feed("LIVE\u001b[?1h\u001b]2;fresh shell\a\u001b[38;2;"u8);
+    using var selection = destination.CreateSelection(0, 0, 0, 3, false);
+    BufferPersist.Restore(destination, history);
+    destination.Feed("1;2;3m!"u8);
+    Check(destination.DumpRow(0) == "LIVE!" && destination.CursorCol == 5 && destination.Title == "fresh shell",
+        "history prepend preserves live screen cursor and title");
+    Check(destination.Screen[0, 4].Foreground == new Color(1, 2, 3), "history prepend preserves unfinished native parser input");
+    Check(Encoding.ASCII.GetString(destination.EncodeKey(0x26, 1, 0)) == "\u001bOA", "history prepend preserves live input modes");
+    var logical = new StringBuilder();
+    for (int row = 0; row < destination.HistoryCount; row++)
+    {
+        logical.Append(destination.DumpHistoryRow(row));
+        if (destination.GetRowWrapLength(row) < 0) logical.Append('\n');
+    }
+    Check(logical.ToString() == "abcdefghijk中e\u0301\nlegacy\n", "history reflow preserves logical lines and wide-glyph padding");
+    Check(destination.GetHistoryCell(0, 0).FgSpec.Index == 1 && destination.GetHistoryCell(0, 0).Attributes.HasFlag(CellAttributes.Bold),
+        "history prepend preserves indexed colors and attributes");
+    Check(selection.TryLocate(out int anchoredRow, out _, out _, out _) && anchoredRow == destination.HistoryCount,
+        "history prepend keeps live selection anchors on their original content");
+    destination.SeedScrollback(["older plain"]);
+    Check(destination.DumpHistoryRow(0).StartsWith("older") && destination.DumpRow(0) == "LIVE!", "plain legacy history also preserves live content");
+}
+using (var source = new GhosttyTerminalCore(20, 3))
+using (var destination = new GhosttyTerminalCore(20, 3))
+{
+    source.Feed("\u001b]8;;https://example.org/history\u001b\\linked\u001b]8;;\u001b\\"u8);
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(source), out var history), "parse linked history");
+    BufferPersist.Restore(destination, history);
+    Check(destination.GetHistoryCell(0, 0).Hyperlink?.Uri == "https://example.org/history", "prepended page owns hyperlink strings after scratch terminal destruction");
+    destination.Feed("\u001b[?1049hALT"u8);
+    destination.SeedScrollback(["primary history"]);
+    Check(destination.IsAltScreen && destination.DumpRow(0) == "ALT", "history import leaves active alternate screen unchanged");
+    destination.Feed("\u001b[?1049l"u8);
+    Check(destination.DumpHistoryRow(0) == "primary history", "history import targets primary screen while alternate is active");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

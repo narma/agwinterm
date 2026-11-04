@@ -145,9 +145,14 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
             foreach (var rune in line.EnumerateRunes()) text.Append(Rune.IsControl(rune) ? " " : rune.ToString());
             text.Append("\r\n");
         }
-        text.Append(new string('\n', _rows - 1));
-        text.Append("\u001b[H");
-        Feed(Encoding.UTF8.GetBytes(text.ToString()));
+        _vt.PrependHistory(_cols, Encoding.UTF8.GetBytes(text.ToString()), _scrollbackMax);
+        Invalidate();
+    }
+    public void RestoreHistory(Persist.PBuffer buffer)
+    {
+        byte[] encoded = GhosttyHistory.Encode(buffer);
+        _vt.PrependHistory(checked((int)buffer.Cols), encoded, _scrollbackMax);
+        Invalidate();
     }
     public IReadOnlyList<TerminalEmulator.ShellMark> Marks => _marks ??= _vt.ReadMarks();
     public string Title => _vt.Title;

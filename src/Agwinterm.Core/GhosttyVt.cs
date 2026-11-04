@@ -22,6 +22,16 @@ public sealed unsafe class GhosttyVt : IDisposable
     private readonly Dictionary<ulong, GhosttyImage> _imageCache = new();
     public IReadOnlyList<GhosttyImagePlacement> FrameImages { get; private set; } = [];
     public long NextAnimationDeadline { get; private set; }
+    public int PrependHistory(int sourceCols, ReadOnlySpan<byte> text, int maxRows)
+    {
+        CheckAlive();
+        ArgumentOutOfRangeException.ThrowIfNegative(maxRows);
+        nuint added;
+        fixed (byte* bytes = text)
+            GhosttyNative.Check(GhosttyNative.PrependHistory(_handle, checked((uint)sourceCols), bytes,
+                (nuint)text.Length, checked((uint)maxRows), out added));
+        RefreshInfo(); return checked((int)added);
+    }
     /// <summary>Encode using current native modes. Caller holds the terminal mutation lock.</summary>
     public byte[] EncodeKey(uint virtualKey, uint action, uint modifiers, string text = "", uint unshifted = 0, uint consumed = 0)
     {

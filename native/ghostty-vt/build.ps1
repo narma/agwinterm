@@ -28,10 +28,19 @@ if ((& git -C $source rev-parse HEAD) -ne $pin.revision) {
     CheckExit 'Pinned Ghostty checkout'
 }
 Push-Location $source
+$extensionPath = Join-Path $source 'src/terminal/c/agwinterm_history.zig'
+$libraryPath = Join-Path $source 'src/lib_vt.zig'
+$librarySource = [IO.File]::ReadAllBytes($libraryPath)
 try {
+    Copy-Item (Join-Path $PSScriptRoot 'history.zig') $extensionPath
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_history.zig`").prepend, .{ .name = `"agwinterm_ghostty_prepend_history`" }); }`n")
     & $zig build -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" --prefix $output -j4
     CheckExit 'Ghostty build'
-} finally { Pop-Location }
+} finally {
+    [IO.File]::WriteAllBytes($libraryPath, $librarySource)
+    if (Test-Path -LiteralPath $extensionPath) { Remove-Item -LiteralPath $extensionPath }
+    Pop-Location
+}
 $bin = Join-Path $output 'bin'
 # The shim uses Zig's bundled MinGW headers and Windows' inbox CRT, avoiding
 # a Visual Studio/VC redistributable installation. Both DLLs expose the x64 C ABI.
@@ -51,6 +60,7 @@ $hashes = @('ghostty-vt.dll','agwinterm_ghostty.dll') | ForEach-Object {
     upstreamTarget = $pin.target; adapterTarget = 'x86_64-windows-gnu'; abi = $pin.abi
     adapterSourceSha256 = (Get-FileHash (Join-Path $PSScriptRoot 'agwvt.c') -Algorithm SHA256).Hash
     adapterHeaderSha256 = (Get-FileHash (Join-Path $PSScriptRoot 'agwvt.h') -Algorithm SHA256).Hash
+    historyExtensionSha256 = (Get-FileHash (Join-Path $PSScriptRoot 'history.zig') -Algorithm SHA256).Hash
     utc = [DateTimeOffset]::UtcNow.ToString('O'); binaries = @($hashes)
 } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $output 'provenance.json')
 Copy-Item (Join-Path $output 'provenance.json') (Join-Path $bin 'ghostty-vt.provenance.json') -Force

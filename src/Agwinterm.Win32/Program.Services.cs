@@ -1768,9 +1768,7 @@ internal partial class Program
                                 lock (p.S.SyncRoot)
                                 {
                                     buf = p.S.Emulator.DumpBuffer().TakeLast(500).ToList();   // plain-text fallback
-                                    // Managed and Rust cores share the full-fidelity attributed buffer schema.
-                                    if (p.S.Emulator is TerminalEmulator or RustTerminalCore)
-                                        blob = Convert.ToBase64String(BufferPersist.Serialize(p.S.Emulator));
+                                    blob = Convert.ToBase64String(BufferPersist.Serialize(p.S.Emulator));
                                 }
                             }
                             catch { }
@@ -1969,13 +1967,16 @@ internal partial class Program
                                 var pane = ses.Panes[i];
                                 if (SuppressesRestoreReplay(pane)) continue;
                                 // Prefer the full-fidelity attributed blob; fall back to plain text.
-                                if (pl[i].BufferBlob is { Length: > 0 } b64 && pane.S.Emulator is TerminalEmulator or RustTerminalCore
+                                if (pl[i].BufferBlob is { Length: > 0 } b64
                                     && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))
                                 {
                                     lock (pane.S.SyncRoot)
                                     {
+                                        if (pane.S.Emulator is GhosttyTerminalCore)
+                                            pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
                                         BufferPersist.Restore(pane.S.Emulator, pbuf);
-                                        pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
+                                        if (pane.S.Emulator is not GhosttyTerminalCore)
+                                            pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
                                     }
                                 }
                                 else if (pl[i].Buffer is { Count: > 0 } b)

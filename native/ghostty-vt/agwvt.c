@@ -449,6 +449,8 @@ static int configure_terminal(AgwVt* vt, int initialize_colors) {
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_UNKNOWN_MAX_BYTES, &unknown_limit);
     size_t continuation_limit = 64 * 1024;
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES, &continuation_limit);
+    size_t history_bytes = 64u * 1024u * 1024u;
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &history_bytes);
     bool disabled = false;
     GhosttyString no_temp_directory = { .ptr = (const uint8_t*)"", .len = 0 };
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_RESIZE_PULL_SCROLLBACK, &disabled);
@@ -642,6 +644,31 @@ int agwvt_info(AgwVt* vt, AgwVtInfo* out) {
         if (mode.value) out->modes |= 1u << i;
     }
     return GHOSTTY_SUCCESS;
+}
+extern int agwinterm_ghostty_prepend_history(GhosttyTerminal destination, GhosttyTerminal source, uint32_t max_rows, size_t* added);
+int agwvt_prepend_history(AgwVt* vt, uint32_t source_cols, const uint8_t* bytes, size_t length, uint32_t max_rows, size_t* added) {
+    if (!vt || vt->capture_busy || !added || !source_cols || source_cols > 32768 ||
+        length > 64u * 1024u * 1024u || (!bytes && length)) return GHOSTTY_INVALID_VALUE;
+    *added = 0;
+    GhosttyTerminal source = NULL;
+    TRY(ghostty_terminal_new(&vt->allocator, &source, (uint16_t)source_cols, 1));
+    size_t lines = max_rows;
+    int result = ghostty_terminal_set(source, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines);
+    size_t history_bytes = 64u * 1024u * 1024u;
+    if (!result) result = ghostty_terminal_set(source, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &history_bytes);
+    if (!result) {
+        ghostty_terminal_vt_write(source, bytes, length);
+        bool failed = false;
+        result = ghostty_terminal_get(source, GHOSTTY_TERMINAL_DATA_VT_PROCESSING_ERROR, &failed);
+        if (!result && failed) result = GHOSTTY_OUT_OF_MEMORY;
+    }
+    uint16_t cols;
+    if (!result) result = ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+    if (!result) result = ghostty_terminal_resize(source, cols, 1, 8, 18);
+    if (!result) result = agwinterm_ghostty_prepend_history(vt->terminal, source, max_rows, added);
+    ghostty_terminal_free(source);
+    if (!result && *added) { vt->render_invalidated = 1; vt->scroll_epoch++; }
+    return result;
 }
 int agwvt_scrollback(AgwVt* vt, size_t lines) {
     if (!vt) return GHOSTTY_INVALID_VALUE;
