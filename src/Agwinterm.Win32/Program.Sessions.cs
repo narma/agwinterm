@@ -393,7 +393,8 @@ internal partial class Program
         public void CommandFinished(string token, long sequence)
         {
             if (!_pane.Completion.Accept(token, sequence, persist: _s is not ServerSession)
-                || sequence <= Volatile.Read(ref _pane.BindCompletionBaseline)) return;
+                || sequence <= Volatile.Read(ref _pane.BindCompletionBaseline)
+                || _pane.AgentResumeToken != token) return;
             // Invalidate a SessionStart lookup still in flight BEFORE queuing the clear. A
             // newer agent may bind before this UI action runs, in which case its binding wins.
             int seq = Interlocked.Increment(ref _pane.BindSeq);

@@ -177,12 +177,14 @@ internal partial class Program : IWslLiveHost
                 var result = _liveOperations.RestartAsync(binding, source, launch, pending => LiveUiAsync(() =>
                 {
                     p.Completion = completion; // checkpoint the new shell identity BEFORE it can start
-                    BindAgent(p, source == "agent" ? launch : null, 0);
                     p.LiveBinding = JsonSerializer.SerializeToElement(pending);
                     if (!SaveState(sync: true)) throw new IOException("Cannot save fresh-start reservation");
                 }), promptToken: completion.Token).GetAwaiter().GetResult();
                 return InvokeOnUiQueued<object>(() =>
                 {
+                    // Keep the prior recovery option through failed/lost reservations. Only a
+                    // confirmed replacement supersedes it; rollback must not destroy saved work.
+                    BindAgent(p, source == "agent" ? launch : null, 0);
                     p.LiveBinding = JsonSerializer.SerializeToElement(result);
                     SaveState(sync: true);
                     var next = ReplaceLivePane(selected.Session, p, result, freshStart: true);

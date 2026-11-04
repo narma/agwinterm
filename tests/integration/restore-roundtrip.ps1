@@ -568,18 +568,31 @@ Cell -Name 'agent-startup' -KillHostAfterClose -Conf @('session-host = server-ru
     if (-not (Wait-Prompt $s $sid)) { throw 'Shell did not start' }
     $null = Reply $s @('install', 'shell', '--target', $sid)
     $binding = "Write-Host ('UNEXPECTED_' + 'STARTUP_RESUME')"
-    $command = "& '$ctl' session bind `"$binding`" --json | Out-Null; Start-Sleep 3; Write-Host ('STARTUP_' + 'DONE')"
-    $created = Reply $s @('session', 'new', '--command', $command)
+    $gate = Join-Path $s.AppDir 'startup-release.flag'
+    $report = Join-Path $s.AppDir 'startup-bind.json'
+    $quotedBinding = $binding.Replace("'", "''")
+    $command = "`$env:DOTNET_ROOT='$env:DOTNET_ROOT'; `$env:DOTNET_ROOT_X64='$env:DOTNET_ROOT_X64'; & '$ctl' session bind '$quotedBinding' --json | Set-Content -LiteralPath '$report'; while (-not (Test-Path -LiteralPath '$gate')) { Start-Sleep -Milliseconds 100 }; Write-Host ('STARTUP_' + 'DONE')"
+    $scriptPath = Join-Path $s.AppDir 'startup-agent.ps1'
+    [IO.File]::WriteAllText($scriptPath, $command)
+    # Per-process override only: the guest's default execution policy stays intact.
+    $startupCommand = "powershell.exe -NoLogo -NoExit -ExecutionPolicy Bypass -File `"$scriptPath`""
+    $created = Reply $s @('session', 'new', '--command-mode', 'direct', '--command', $startupCommand)
     $startup = [string]$created.result
     Check 'agent-startup: startup-command pane created' $created.ok
     $sawBound = $false
     for ($i = 0; $i -lt 100; $i++) {
         $saved = Get-SavedSession $s $startup
-        if ($saved -and $saved.Panes[0].AgentResume -eq $binding) { $sawBound = $true }
+        if ($saved -and $saved.Panes[0].AgentResume -eq $binding) { $sawBound = $true; break }
+        Start-Sleep -Milliseconds 100
+    }
+    $bindReply = if (Test-Path -LiteralPath $report) { Get-Content -LiteralPath $report -Raw } else { 'no startup CLI reply' }
+    Check 'agent-startup: startup command really established a live binding' $sawBound ($bindReply + " SCREEN: " + (PaneText $s $startup))
+    [IO.File]::WriteAllText($gate, '')
+    for ($i = 0; $i -lt 100; $i++) {
+        $saved = Get-SavedSession $s $startup
         if ($saved -and (PaneText $s $startup).Contains('STARTUP_DONE') -and $null -eq $saved.Panes[0].AgentResume) { break }
         Start-Sleep -Milliseconds 100
     }
-    Check 'agent-startup: startup command really established a live binding' $sawBound
     Check 'agent-startup: first interactive prompt clears the completed startup binding' ($saved -and $null -eq $saved.Panes[0].AgentResume)
     return @{ Sid = $startup }
 } -Assert {
@@ -597,7 +610,15 @@ Cell -Name 'agent-slow-prompt' -KillHostAfterClose -Conf @('session-host = serve
     # profile, restored below; the user's host profile is never accessed.
     $profilePath = (& powershell.exe -NoProfile -Command '$PROFILE.CurrentUserCurrentHost').Trim()
     $profileText = [IO.File]::ReadAllText($profilePath)
-    [IO.File]::AppendAllText($profilePath, "`nStart-Sleep -Seconds 6`n")
+    $readyFile = Join-Path $s.AppDir 'slow-profile-ready.flag'
+    [IO.File]::AppendAllText($profilePath, "`nStart-Sleep -Seconds 15; [IO.File]::WriteAllText('$readyFile', '')`n")
+    $profilesPath = Join-Path $s.AppDir 'profiles.json'
+    $profiles = Get-Content -LiteralPath $profilesPath -Raw | ConvertFrom-Json
+    $profiles.profiles += [pscustomobject]@{ name = 'Slow prompt fixture'; command = 'powershell.exe'; args = @('-NoLogo', '-NoExit', '-ExecutionPolicy', 'Bypass') }
+    $profiles | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $profilesPath -Encoding utf8
+    $null = Reply $s @('profiles', 'reload')
+    $sid = [string](Reply $s @('session', 'new', '--profile', 'Slow prompt fixture')).result
+    if (-not (Wait-Prompt $s $sid)) { throw 'Slow fixture shell did not start' }
     Send-Ctl $s @('session', 'type', ("Write-Host ('SLOW_' + 'LIVE'); Start-Sleep 120" + [char]13), '--target', $sid) | Out-Null
     for ($i = 0; $i -lt 30; $i++) {
         if ((PaneText $s $sid).Contains('SLOW_LIVE')) { break }
@@ -605,18 +626,33 @@ Cell -Name 'agent-slow-prompt' -KillHostAfterClose -Conf @('session-host = serve
     }
     $binding = "Write-Host ('SLOW_' + 'RESUMED'); Start-Sleep 120"
     $null = Reply $s @('session', 'bind', $binding, '--target', $sid)
+    $cancelSid = [string](Reply $s @('session', 'new', '--profile', 'Slow prompt fixture')).result
+    if (-not (Wait-Prompt $s $cancelSid)) { throw 'Cancellation fixture shell did not start' }
+    Send-Ctl $s @('session', 'type', ("Write-Host ('CANCEL_' + 'LIVE'); Start-Sleep 120" + [char]13), '--target', $cancelSid) | Out-Null
+    for ($i = 0; $i -lt 30; $i++) {
+        if ((PaneText $s $cancelSid).Contains('CANCEL_LIVE')) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    $null = Reply $s @('session', 'bind', "Write-Host ('CANCEL_' + 'SHOULD_NOT_RUN'); Start-Sleep 120", '--target', $cancelSid)
+    Remove-Item -LiteralPath $readyFile -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 400
-    return @{ Sid = $sid; Binding = $binding; ProfilePath = $profilePath; ProfileText = $profileText }
+    return @{ Sid = $sid; CancelSid = $cancelSid; Binding = $binding; ProfilePath = $profilePath; ProfileText = $profileText; ReadyFile = $readyFile }
 } -Assert {
     param($s, $ctx)
     try {
+        $cleared = Reply $s @('session', 'bind', 'none', '--target', $ctx.CancelSid)
+        Check 'agent-slow-prompt: user can cancel recovery while the initial prompt is pending' $cleared.ok
         for ($i = 0; $i -lt 100; $i++) {
             if ((PaneText $s $ctx.Sid).Contains('SLOW_RESUMED')) { break }
             Start-Sleep -Milliseconds 200
         }
         $saved = Get-SavedSession $s $ctx.Sid
-        Check 'agent-slow-prompt: queued recovery runs after the six-second profile' ((PaneText $s $ctx.Sid).Contains('SLOW_RESUMED'))
+        Check 'agent-slow-prompt: the delayed profile actually ran' (Test-Path -LiteralPath $ctx.ReadyFile)
+        Check 'agent-slow-prompt: queued recovery runs after the fifteen-second profile' ((PaneText $s $ctx.Sid).Contains('SLOW_RESUMED'))
         Check 'agent-slow-prompt: the late initial prompt preserves recovery' ($saved.Panes[0].AgentResume -eq $ctx.Binding)
+        $cancelled = Get-SavedSession $s $ctx.CancelSid
+        Check 'agent-slow-prompt: delayed replay does not undo bind none' ($null -eq $cancelled.Panes[0].AgentResume)
+        Check 'agent-slow-prompt: cancelled command was never sent' (-not (PaneText $s $ctx.CancelSid).Contains('CANCEL_SHOULD_NOT_RUN'))
     } finally { [IO.File]::WriteAllText($ctx.ProfilePath, $ctx.ProfileText) }
 }
 

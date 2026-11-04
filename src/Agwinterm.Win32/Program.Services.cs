@@ -1999,6 +1999,7 @@ internal partial class Program
                         // into it would land in the live agent's prompt. The binding stays for
                         // future (non-adopted) restarts; nothing to relaunch now.
                         if (SuppressesRestoreReplay(apane)) continue;
+                        int replaySeq = Volatile.Read(ref apane.BindSeq);
                         _ = Task.Run(async () =>
                         {
                             // Readiness is a prompt, not elapsed startup time. A slow profile must
@@ -2008,7 +2009,8 @@ internal partial class Program
                             await apane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
                             Post(() =>
                             {
-                                if (OwningSes(apane) is null) return;
+                                if (OwningSes(apane) is null || Volatile.Read(ref apane.BindSeq) != replaySeq
+                                    || apane.AgentResume != agent) return;
                                 BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint));
                                 SaveState();
                                 try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
