@@ -243,21 +243,44 @@ try {
             if ($LASTEXITCODE -ne 1) { throw "Missing agent source should refuse: $bad" }
             $null = Ctl @('zmx','retry','--target',$paneId)
             Start-Sleep -Seconds 1
-            # Report a binding on an independent connection as soon as the replacement
-            # is reserved. Do not invoke a Windows executable from a detached Linux daemon:
-            # its inherited WSL interop endpoint may belong to an already closed launcher.
+            # Hold this fixture's ledger lock: reservation can be saved in Windows,
+            # but the Linux restart cannot complete until the new binding has landed.
+            $linuxReady = "$freshRecord-gate/ready"
+            $linuxRelease = "$freshRecord-gate/release"
+            $gateReady = (& wsl.exe -d $Distro --exec wslpath -w $linuxReady).Trim()
+            $gateRelease = (& wsl.exe -d $Distro --exec wslpath -w $linuxRelease).Trim()
+            $linuxGate = (& wsl.exe -d $Distro --exec wslpath -u "$PSScriptRoot/zmx/restart-gate.py").Trim()
+            $ledger = (Saved-Pane $paneId).LiveBinding.Endpoint.LedgerDirectory
+            $gateError = Join-Path $state 'restart-gate-error.log'
+            $gateClient = Start-Process wsl.exe -ArgumentList @('-d',$Distro,'--exec','python3',$linuxGate,$ledger,$linuxReady,$linuxRelease) `
+                -WindowStyle Hidden -RedirectStandardError $gateError -PassThru
             $restartReply = Join-Path $state 'restart-reply.json'
-            $restartClient = Start-Process $ctl -ArgumentList @('zmx','restart','--target',$paneId,'--source','pin','--pipe',$id,'--json') `
-                -WindowStyle Hidden -RedirectStandardOutput $restartReply -RedirectStandardError (Join-Path $state 'restart-error.log') -PassThru
+            $restartClient = $null
             try {
+                for ($i=0; $i -lt 100 -and -not (Test-Path $gateReady); $i++) { Start-Sleep -Milliseconds 50 }
+                if (-not (Test-Path $gateReady)) { throw "Ledger gate did not become ready: $(Get-Content $gateError -Raw)" }
+                $restartClient = Start-Process $ctl -ArgumentList @('zmx','restart','--target',$paneId,'--source','pin','--pipe',$id,'--json') `
+                    -WindowStyle Hidden -RedirectStandardOutput $restartReply -RedirectStandardError (Join-Path $state 'restart-error.log') -PassThru
                 for ($i=0; $i -lt 200 -and (Saved-Pane $paneId).PromptToken -eq $promptToken; $i++) { Start-Sleep -Milliseconds 25 }
                 if ((Saved-Pane $paneId).PromptToken -eq $promptToken) { throw 'Restart never reserved a replacement shell' }
                 $null = Ctl @('session','bind',$replacementBinding,'--target',$paneId)
+                for ($i=0; $i -lt 40 -and (Saved-Pane $paneId).AgentResume -ne $replacementBinding; $i++) { Start-Sleep -Milliseconds 25 }
+                $duringRestart = Saved-Pane $paneId
+                if ($duringRestart.AgentResume -ne $replacementBinding -or -not $duringRestart.LiveBinding.Pending -or $restartClient.HasExited) {
+                    throw 'The replacement binding must land while restart completion is still gated'
+                }
+                New-Item -ItemType File -Path $gateRelease | Out-Null
+                if (-not $gateClient.WaitForExit(5000) -or $gateClient.ExitCode -ne 0) { throw 'Ledger gate did not release cleanly' }
                 if (-not $restartClient.WaitForExit(20000) -or $restartClient.ExitCode -ne 0) { throw 'Restart control client failed' }
                 if (-not (Get-Content $restartReply -Raw | ConvertFrom-Json).ok) { throw 'Restart was refused' }
             } finally {
-                if (-not $restartClient.HasExited) { $restartClient.Kill(); $restartClient.WaitForExit() }
-                $restartClient.Dispose()
+                if (-not (Test-Path $gateRelease)) { New-Item -ItemType File -Path $gateRelease | Out-Null }
+                if (-not $gateClient.WaitForExit(5000)) { $gateClient.Kill(); $gateClient.WaitForExit() }
+                $gateClient.Dispose()
+                if ($restartClient) {
+                    if (-not $restartClient.HasExited) { $restartClient.Kill(); $restartClient.WaitForExit() }
+                    $restartClient.Dispose()
+                }
             }
             $script:recordDir = $freshRecord
             $newIdentity = $null
