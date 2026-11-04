@@ -40,7 +40,7 @@ internal static class RasterChecks
                     var bytes = new byte[128 * 96 * 4]; pixels.CopyPixels(128 * 4, bytes); return bytes;
                 }
                 byte[] direct = Render(false), first = Render(true), warm = Render(true), reused = Render(true);
-                if (!first.SequenceEqual(warm)) throw new Exception("Warm raster changed pixels");
+                if (!direct.SequenceEqual(first)) throw new Exception("Admission direct draw changed pixels");
                 if (!warm.SequenceEqual(reused)) throw new Exception("Raster reuse changed pixels");
                 int max = direct.Zip(warm, (a, b) => Math.Abs(a - b)).Max();
                 largestDifference = Math.Max(largestDifference, max);

@@ -23,12 +23,20 @@ $null=Rpc 'config.set' @{key='font-size';value='14'}
 $null=Rpc 'session.write' @{text=($esc+'[?1049h'+$esc+'[?25l')} $session
 $metrics=Rpc 'session.metrics' @{} $session
 $cols=[int]$metrics.cols;$rows=[int]$metrics.rows
-if($cols-lt 40 -or $rows-lt 10){throw "Unexpected benchmark grid: ${cols}x${rows}"}
+if($cols-lt 80 -or $rows-lt 16){throw "Unexpected benchmark grid: ${cols}x${rows}"}
+# Both experimental cores show a six-second startup toast. Its text/shadow is
+# part of full-window Render(), so let it expire before measuring terminal cost.
+Start-Sleep -Seconds 7
 $results=@()
 try {
-    foreach($ligatures in 'true','false') {
+    # Repeat in alternating orders to expose warmup/order and VM scheduling noise.
+    foreach ($round in 0..2) {
+    $modes = if ($round % 2) { @('false','true') } else { @('true','false') }
+    foreach($ligatures in $modes) {
         $null=Rpc 'config.set' @{key='ligatures';value=$ligatures}
-        foreach($scenario in 'ascii','mixed-0','mixed-4','mixed-16','mixed-64','dense') {
+        $scenarios = @('ascii','mixed-0','mixed-4','mixed-16','mixed-64','dense')
+        if ($round % 2) { [array]::Reverse($scenarios) }
+        foreach($scenario in $scenarios) {
             $emojiCount = if ($scenario.StartsWith('mixed-')) { [int]$scenario.Substring(6) } else { 0 }
             $payload=[Text.StringBuilder]::new()
             [void]$payload.Append($esc+'[0m'+$esc+'[2J')
@@ -71,7 +79,7 @@ try {
             Check "$scenario uses requested $selectedCore core without fallback" ($coreNames.Count -eq 1 -and $coreNames[0] -eq $expectedCore) ($coreNames -join ',')
             if ($coreNames.Count -ne 1 -or $coreNames[0] -ne $expectedCore) { throw 'Benchmark core mismatch' }
             $sorted=@($samples|Sort-Object)
-            $result=[ordered]@{scenario=$scenario;core=$coreNames[0];emojiCount=$emojiCount;ligatures=$ligatures;cols=$cols;rows=$rows;count=$samples.Count;
+            $result=[ordered]@{scenario=$scenario;round=$round;core=$coreNames[0];emojiCount=$emojiCount;ligatures=$ligatures;cols=$cols;rows=$rows;count=$samples.Count;
                 medianMs=$sorted[[int][Math]::Floor($sorted.Count*0.5)];p95Ms=$sorted[[int][Math]::Floor($sorted.Count*0.95)];
                 meanMs=($samples|Measure-Object -Average).Average;samplesMs=$samples}
             foreach ($field in 'bodyMs','endMs','soloMs','soloCount','rasterHits','rasterMisses') {
@@ -79,8 +87,9 @@ try {
                 if ($values.Count) { $result[$field+'Median']=$values[[int][Math]::Floor($values.Count*0.5)] }
             }
             $results+=$result
-            "$scenario ligatures=$ligatures median=$($result.medianMs)ms p95=$($result.p95Ms)ms"
+            "$scenario round=$round ligatures=$ligatures median=$($result.medianMs)ms p95=$($result.p95Ms)ms"
         }
+    }
     }
     $results|ConvertTo-Json -Depth 5|Set-Content (Join-Path $artifact 'terminal-performance.json')
 } finally {

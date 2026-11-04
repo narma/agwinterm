@@ -7,6 +7,7 @@ using Vortice.DirectWrite;
 using var factory = DWrite.DWriteCreateFactory<IDWriteFactory>();
 using var format = factory.CreateTextFormat("Consolas", 14f);
 RasterChecks.Run(factory, format);
+if (args.Contains("--raster-only")) return;
 using var bold = factory.CreateTextFormat("Consolas", null, FontWeight.Bold, FontStyle.Normal, FontStretch.Normal, 14f, "en-us");
 using var cache = new SoloGlyphCache();
 var a = cache.Get(factory, 0x1f534, format, 18, 18);
