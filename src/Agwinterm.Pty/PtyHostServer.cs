@@ -49,8 +49,8 @@ public sealed class PtyHostServer : IDisposable
         public readonly QueryReplies Replies = new();            // this host's answers, sent only while detached
     }
 
-    /// <summary>The host emulator's side of the host-action seam: it keeps the query replies and nothing
-    /// else. A bundled ConPTY forwards a child's queries instead of answering them (#339), so while no
+    /// <summary>The host emulator's side of the host-action seam: it keeps query replies and durable
+    /// authenticated shell-completion checkpoints. A bundled ConPTY forwards a child's queries instead of answering them (#339), so while no
     /// client is attached this host answers them, or the child would stall until the next attach.
     /// Filled by the feed, taken by the raw-output handler of the same chunk, both on the pump thread.
     /// The theme is the one the UI put in the pane's environment (<see cref="ThemeColors"/>); without it
@@ -61,10 +61,12 @@ public sealed class PtyHostServer : IDisposable
         public List<string> Take() { var taken = _pending; _pending = new(); return taken; }
         public void Respond(string reply) => _pending.Add(reply);
         public (Color Foreground, Color Background)? DefaultColors { get; set; }
+        public ShellCompletion? Completion { get; set; }
         public void Notify(string title, string body) { }
         public void Progress(int state, int value) { }
         public void ClipboardWrite(string text) { }
         public void Bell() { }
+        public void CommandFinished(string token, long sequence) => Completion?.Accept(token, sequence, persist: true);
         public void Unhandled(string kind, string detail) { }
     }
 
@@ -207,6 +209,9 @@ public sealed class PtyHostServer : IDisposable
             session = new TerminalSession(cols, rows) { Conpty = _conpty };
             hosted = new Hosted { Id = id, S = session, Creation = creation };
             hosted.Replies.DefaultColors = ThemeColors.Parse(env?.GetValueOrDefault(ThemeColors.EnvVar));
+            if (env?.GetValueOrDefault("AGWINTERM_PROMPT_TOKEN") is { } token && ShellCompletion.ValidToken(token)
+                && env.GetValueOrDefault("AGWINTERM_COMPLETION_FILE") is { Length: > 0 } completionFile)
+                hosted.Replies.Completion = new ShellCompletion(token, completionFile);
             session.Emulator.Host = hosted.Replies;
             // Forward raw output to whichever client is attached; child exit closes the data pipe (EOF
             // is the client's exit signal — the code is in `list`). Whoever got the chunk answers its

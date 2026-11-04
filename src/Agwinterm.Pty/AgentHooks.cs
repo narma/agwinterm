@@ -368,6 +368,9 @@ public static class AgentHooks
 
         // --- Generic agents: PowerShell-profile bridge keyed off $env:AGWINTERM_AGENT_RE ---
         lines.Add("Generic: " + GenericAgentInstaller.Install());
+        lines.Add(ShellIntegrationInstaller.Install());
+        try { lines.Add(ShellIntegrationInstaller.InstallPosix(Home)); }
+        catch (Exception ex) { lines.Add("Bash/zsh shell integration: " + ex.Message); }
 
         return string.Join("\n", lines);
     }

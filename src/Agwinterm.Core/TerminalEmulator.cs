@@ -824,6 +824,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
                 Host?.Notify("", text);
                 break;
             case 777: // OSC 777 ; notify ; <title> ; <body>
+                if (ShellCompletion.TryParse(text, out string token, out long sequence)) { Host?.CommandFinished(token, sequence); break; }
                 var parts = text.Split(';');
                 if (parts.Length >= 2 && parts[0] == "notify")
                     Host?.Notify(parts[1], parts.Length >= 3 ? string.Join(';', parts[2..]) : "");

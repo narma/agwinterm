@@ -1100,8 +1100,11 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         string? val = SessionOperations.Binding(agent);
-        Interlocked.Increment(ref hit.Value.pane.BindSeq);   // supersedes a SessionStart binding still resolving
-        PostVerb(() => { hit.Value.pane.AgentResume = val; SaveState(); });
+        var completion = hit.Value.pane.Completion;
+        long baseline = completion.Checkpoint;
+        Volatile.Write(ref hit.Value.pane.BindCompletionBaseline, baseline);
+        int seq = Interlocked.Increment(ref hit.Value.pane.BindSeq);   // supersedes a SessionStart binding still resolving
+        PostVerb(() => { if (Volatile.Read(ref hit.Value.pane.BindSeq) == seq && ReferenceEquals(hit.Value.pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(hit.Value.pane, val, baseline); SaveState(); } });
         return true;
     }
 
@@ -1115,6 +1118,9 @@ internal partial class Program
         var hit = FindPaneById(target!);
         if (hit is null) return false;
         var pane = hit.Value.pane;
+        var completion = pane.Completion;
+        long baseline = completion.Checkpoint;
+        Volatile.Write(ref pane.BindCompletionBaseline, baseline);
         int seq = Interlocked.Increment(ref pane.BindSeq);
         var profile = IntegrationProfile(target);
         if (profile is not null && WslIntegration.IsWsl(profile.Command))
@@ -1136,7 +1142,7 @@ internal partial class Program
                 if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
                 string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
                     AgentResume.ResumeFlags(agent, command));
-                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq) { pane.AgentResume = relaunch; SaveState(); } });
+                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && ReferenceEquals(pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline); SaveState(); } });
                 EmitEvent("bind", pane.Id, "bound: " + relaunch);
                 return true;
             }
@@ -1165,8 +1171,8 @@ internal partial class Program
                             Agwinterm.Pty.AgentResume.ResumeFlags(agent, cmdline));
                         Post(() =>
                         {
-                            if (Volatile.Read(ref pane.BindSeq) != seq) return;   // a later bind won
-                            pane.AgentResume = relaunch;
+                            if (Volatile.Read(ref pane.BindSeq) != seq || !ReferenceEquals(pane.Completion, completion) || completion.Checkpoint != baseline) return;   // a later bind, workload or shell completion won
+                            BindAgent(pane, relaunch, baseline);
                             SaveState();
                         });
                         outcome = "bound: " + relaunch;
@@ -1177,6 +1183,14 @@ internal partial class Program
             EmitEvent("bind", pane.Id, outcome);
         });
         return true;
+    }
+
+    private static void BindAgent(Pane pane, string? command, long baseline)
+    {
+        pane.AgentResume = command;
+        pane.AgentResumeToken = pane.Completion.Token;
+        pane.AgentResumeGeneration = baseline;
+        Volatile.Write(ref pane.BindCompletionBaseline, baseline);
     }
 
     // Pin (or clear, command = null) a restore command on a specific pane (agterm #271). Persisted so
@@ -1268,6 +1282,7 @@ internal partial class Program
             snap.Add((hit.Value.pane, hit.Value.ses, hit.Value.pane.S.ChildProcessId ?? 0));
         }
 
+        var checkpoints = snap.Select(s => (completion: s.pane.Completion, generation: s.pane.Completion.Checkpoint)).ToArray();
         if (!TryCapturePaneCommands(snap, 15000, out var byPid))
             return RestoreCaptureResult.Refuse(RestoreCaptureReply.QueryFailed);
 
@@ -1275,10 +1290,11 @@ internal partial class Program
         {
             var landed = new List<CapturedPane>(snap.Count);
             lock (_workspaces)
-                foreach (var (pane, ses, pid) in snap)
+                for (int i = 0; i < snap.Count; i++)
                 {
+                    var (pane, ses, pid) = snap[i];
                     if (!_workspaces.Contains(ses.Ws) || !ses.Ws.Sessions.Contains(ses) || !ses.AllPanes.Contains(pane)) continue;
-                    pane.CapturedCommand = pid > 0 && byPid.TryGetValue(pid, out var cmd) ? cmd : null;
+                    StoreCapturedCommand(pane, pid > 0 && byPid.TryGetValue(pid, out var cmd) ? cmd : null, checkpoints[i].completion, checkpoints[i].generation);
                     landed.Add(new CapturedPane(pane.Id, ses.Id, pane.CapturedCommand));
                 }
             // The snapshot is built here, on the UI thread, where the tree is, and STAMPED here, so

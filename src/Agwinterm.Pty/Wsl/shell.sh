@@ -1,6 +1,10 @@
 # Sourced by bash/zsh, after the user's prompt setup.
 if [ "${AGWINTERM_ENABLED:-}" = 1 ] && [ -z "${__agw_si:-}" ]; then
     __agw_si=1
+    # Only the outer pane shell may end its resume binding. Tool shells inherit
+    # this owner, so their prompts cannot unbind an agent that is still running.
+    export AGWINTERM_PROMPT_OWNER="${AGWINTERM_PROMPT_OWNER:-linux:$$}"
+    __agw_prompt_seq=0
     # The shared Codex daemon retains its first launcher's environment, so its
     # hooks cannot reliably address this pane. Keep terminal launches local.
     # Preserve user aliases/functions; those can opt in with --no-daemon themselves.
@@ -18,6 +22,10 @@ if [ "${AGWINTERM_ENABLED:-}" = 1 ] && [ -z "${__agw_si:-}" ]; then
     esac
     fi
     __agw_prompt() {
+        if [ -n "${AGWINTERM_PROMPT_TOKEN:-}" ] && [ "$AGWINTERM_PROMPT_OWNER" = "linux:$$" ]; then
+            __agw_prompt_seq=$((__agw_prompt_seq + 1))
+            printf '\033]777;agwinterm;command-finished;%s;%s\007' "$AGWINTERM_PROMPT_TOKEN" "$__agw_prompt_seq"
+        fi
         # Percent-encode bytes so spaces, %, Unicode and control characters cannot corrupt OSC 7.
         local remaining="$PWD" out='' c
         local LC_ALL=C

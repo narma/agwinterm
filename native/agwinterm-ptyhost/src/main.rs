@@ -9,6 +9,7 @@
 //! v1-behavior parity notes: deElevate refused loudly; hello is the hard gate.
 
 mod conpty;
+mod completion;
 mod creation;
 mod freshenv;
 #[cfg(test)]
@@ -150,6 +151,7 @@ struct Hosted {
     /// True while a chunk is read but not yet fed + forwarded (the feed can block on `term`).
     pump_in_flight: AtomicBool,
     exit_code: AtomicI32,
+    completion: Option<completion::Completion>,
 }
 
 struct Host {
@@ -643,6 +645,7 @@ fn handle_create(host: &Arc<Host>, c: proto::Create) -> Reply {
         pump_bytes: AtomicU64::new(0),
         pump_in_flight: AtomicBool::new(false),
         exit_code: AtomicI32::new(0),
+        completion: completion::Completion::from_env(&c.env),
     });
     let hosted2 = hosted.clone();
     let pump_hosted = hosted.clone();
@@ -662,7 +665,7 @@ fn handle_create(host: &Arc<Host>, c: proto::Create) -> Reply {
                 // the screen under both locks gets each chunk once: in the snapshot or in the stream.
                 let mut term = hosted.term.lock().unwrap();
                 term.feed(&buf[..n]);
-                let replies = query_replies(&mut term);
+                let replies = query_replies_with_completion(&mut term, hosted.completion.as_ref());
                 let mut data = hosted.data.lock().unwrap();
                 if let Some(d) = data.as_ref()
                     && !d.write_all(&buf[..n])
@@ -834,12 +837,16 @@ fn handle_attach(host: &Arc<Host>, a: proto::Attach) -> Reply {
 
 /// Drain the host emulator's actions, keeping the query replies. Draining on every feed also keeps
 /// the queue from filling while no client ever reads it.
-fn query_replies(term: &mut Terminal) -> Vec<String> {
+fn query_replies_with_completion(term: &mut Terminal, completion: Option<&completion::Completion>) -> Vec<String> {
     term.emu
         .take_host_actions()
         .into_iter()
         .filter_map(|a| match a {
             agwinterm_core::emulator::HostAction::Respond { reply } => Some(reply),
+            agwinterm_core::emulator::HostAction::CommandFinished { token, sequence } => {
+                if let Some(checkpoint) = completion { checkpoint.record(&token, sequence); }
+                None
+            }
             _ => None,
         })
         .collect()

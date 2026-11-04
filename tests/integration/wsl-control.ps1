@@ -168,7 +168,9 @@ try {
     $screen = Ctl @('session', 'text', '--target', $copy)
     Check ($screen.Contains('WSL_HOOKS_FINISHED')) 'Linux agent hooks finish successfully'
     $saved = Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
-    Check (($saved -join '').Contains('codex resume wsl-test-conversation --dangerously-bypass-approvals-and-sandbox')) 'Linux ancestry binds the session ID and permission flags'
+    $bindEvents = (Ctl @('events','--kind','bind')) | ConvertTo-Json -Depth 12 -Compress
+    Check ($bindEvents.Contains('codex resume wsl-test-conversation --dangerously-bypass-approvals-and-sandbox')) 'Linux ancestry binds the session ID and permission flags'
+    Check (-not ($saved -join '').Contains('wsl-test-conversation')) 'Returning to the Linux shell clears the exited agent binding on disk (#368)'
     $tree = Ctl @('tree')
     $copiedSession = $tree.workspaces.sessions | Where-Object id -eq $copy
     Check ($copiedSession.status -eq 'completed') 'Linux Stop hook updates pane status'

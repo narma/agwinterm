@@ -329,10 +329,15 @@ internal partial class Program : ISessionHost, IWindowHost
         public readonly WslRecoveryGate LiveRecovery = new();
         public string? StartCwd;   // dir the shell was launched in (fallback cwd when OSC 7 is absent)
         public volatile string? AutomaticName; // last coherent label; used while terminal output holds SyncRoot
-        public string? AgentResume; // resumable agent bound to this pane (e.g. "claude") — relaunched on restart
+        public AgentRecoveryState AgentRecovery = new();
+        public string? AgentResume { get => AgentRecovery.Command; set => AgentRecovery.Command = value; }
+        public ShellCompletion Completion { get => AgentRecovery.Completion; set => AgentRecovery.Completion = value; }
+        public string? AgentResumeToken { get => AgentRecovery.Token; set => AgentRecovery.Token = value; }
+        public long AgentResumeGeneration { get => AgentRecovery.Generation; set => AgentRecovery.Generation = value; }
+        public ref long BindCompletionBaseline => ref AgentRecovery.CompletionBaseline;
         // Bumped by every bind request; a SessionStart binding resolved in the background lands only if
         // no later bind arrived meanwhile, so startup-then-/clear cannot leave the older id bound (#316).
-        public int BindSeq;
+        public ref int BindSeq => ref AgentRecovery.Sequence;
         public string? RestoreCommand; // pinned restore command (agterm #271) — always re-run on restart
         // The captured foreground command — the restore slot (PaneState.Command, "" on disk = none), re-run
         // on restart when restore-commands is on. Written by `restore capture` and by the quit-time capture
@@ -340,6 +345,8 @@ internal partial class Program : ISessionHost, IWindowHost
         // local dictionary inside SaveState at quit, so every ordinary save wrote "" over the slot and a
         // crash / Stop-Process never filled it; one field, one writer per capture, one reader.
         public string? CapturedCommand;
+        public string? CapturedCommandToken;
+        public long CapturedCommandGeneration;
         // Overlay panes only (#227): completed once, with the outcome of THIS pane — "exit N" when its
         // program exits, "closed" when the overlay is closed or replaced first. `overlay open --block`
         // waits on the source of the pane it opened, so two blocking opens in one window each get
@@ -1536,6 +1543,7 @@ internal partial class Program : ISessionHost, IWindowHost
             {
                 Agwinterm.Pty.ClaudeIntegration.RefreshIfInstalled();
                 Agwinterm.Pty.GenericAgentInstaller.RefreshIfInstalled();
+                Agwinterm.Pty.ShellIntegrationInstaller.RefreshIfInstalled();
             });
             // Update awareness (Claude Code + agwinterm itself): startup + every 12h, quiet on
             // failure/offline. Knobs are re-read every cycle so `config set ...-check` applies

@@ -1355,6 +1355,21 @@ internal partial class Program
     private static string BackgroundsDir => Path.Combine(AppDir, "backgrounds"); // copied per-session watermark images
     // Per-window tree snapshot. Multi-window (F1b): each window persists to windows/<id>.json.
     private string StatePath => Path.Combine(AppDir, "windows", Id + ".json");
+    private static string CompletionPath(string token) => Path.Combine(AppDir, "agent-completions", token);
+    private readonly Dictionary<string, string> _restoredPromptTokens = new(StringComparer.OrdinalIgnoreCase);
+
+    private static void PruneCompletedRecovery(PaneState pane) =>
+        RestoreState.ReconcileCompletion(pane, token => ShellCompletion.Read(CompletionPath(token)));
+
+    // A process query may finish after its command did. Keep its original shell identity
+    // and prompt checkpoint, never stamp old results as belonging to the next command.
+    private static void StoreCapturedCommand(Pane pane, string? command, ShellCompletion completion, long generation)
+    {
+        if (!ReferenceEquals(pane.Completion, completion) || completion.Checkpoint != generation) return;
+        pane.CapturedCommand = command;
+        pane.CapturedCommandToken = completion.Token;
+        pane.CapturedCommandGeneration = generation;
+    }
 
     /// <summary>Load the window library index; migrate a legacy single-window state.json; ensure it's non-empty.</summary>
     private static void LoadOrMigrateIndex()
@@ -1604,11 +1619,11 @@ internal partial class Program
     private bool CaptureCommandsIntoPanes(IEnumerable<Ses> sessions)
     {
         var snapshot = sessions.SelectMany(s => PanesOf(s).Select(p => (pane: p, ses: s, pid: p.S.ChildProcessId ?? 0))).ToList();
-        var panes = snapshot.Select(s => s.pane);
+        var checkpoints = snapshot.Select(s => (s.pane, completion: s.pane.Completion, generation: s.pane.Completion.Checkpoint)).ToList();
         if (!TryCapturePaneCommands(snapshot, 4000, out var cmdByPid))
             return false;   // nothing known, nothing touched: the earlier checkpoints stand
-        foreach (var p in panes)
-            p.CapturedCommand = p.S.ChildProcessId is int pid && cmdByPid.TryGetValue(pid, out var c) ? c : null;
+        foreach (var (pane, completion, generation) in checkpoints)
+            StoreCapturedCommand(pane, pane.S.ChildProcessId is int pid && cmdByPid.TryGetValue(pid, out var c) ? c : null, completion, generation);
         return true;
     }
 
@@ -1759,7 +1774,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, AgentResume = p.AgentResume, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, CommandToken = p.CapturedCommandToken, CommandGeneration = p.CapturedCommandGeneration, AgentResume = p.AgentResume, PromptToken = p.Completion.Token, AgentResumeToken = p.AgentResumeToken, AgentResumeGeneration = p.AgentResumeGeneration, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -1859,6 +1874,10 @@ internal partial class Program
         }
         if (st?.Workspaces is null || !st.Workspaces.Any(w => w.Sessions is { Count: > 0 })) return false;
 
+        _restoredPromptTokens.Clear();
+        foreach (var pane in st.Workspaces.SelectMany(w => w.Sessions ?? new()).SelectMany(s => s.Panes ?? new()))
+            if (ShellCompletion.ValidToken(pane.PromptToken)) _restoredPromptTokens.TryAdd(pane.Id, pane.PromptToken!);
+
         _restoring = true;
         try
         {
@@ -1920,15 +1939,23 @@ internal partial class Program
                     {
                         for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
                         {
+                            // The host records completion even with no UI attached. Reconcile its
+                            // durable checkpoint before either adopting or replaying a binding.
+                            PruneCompletedRecovery(pl[i]);
                             ApplyPaneAppearance(ses.Panes[i], PaneAppearance.Restore(pl[i].Appearance));
                             ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
                             ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
                             ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;
+                            ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
+                            ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
+                            ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;
                             ses.Panes[i].RestoreCommand = string.IsNullOrWhiteSpace(pl[i].RestoreCommand) ? null : pl[i].RestoreCommand;
                             // The captured slot comes back too, so it is readable (tree's capturedCommands) before it
                             // is replayed and survives the save at the end of this restore — before P3 that save
                             // wrote "" over it (P3). Validated at replay (denylist), not here: it is a command line.
                             ses.Panes[i].CapturedCommand = string.IsNullOrWhiteSpace(pl[i].Command) ? null : pl[i].Command;
+                            ses.Panes[i].CapturedCommandToken = pl[i].CommandToken;
+                            ses.Panes[i].CapturedCommandGeneration = pl[i].CommandGeneration;
                         }
                         ses.Active = Math.Clamp(s.Active, 0, ses.Panes.Count - 1);
                     }
@@ -1980,10 +2007,25 @@ internal partial class Program
                         // into it would land in the live agent's prompt. The binding stays for
                         // future (non-adopted) restarts; nothing to relaunch now.
                         if (SuppressesRestoreReplay(apane)) continue;
+                        int replaySeq = Volatile.Read(ref apane.BindSeq);
                         _ = Task.Run(async () =>
                         {
-                            await Task.Delay(2500); // let the shell/profile settle so the wrapper function is defined
-                            try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
+                            // Readiness is a prompt, not elapsed startup time. A slow profile must
+                            // finish before its resumed command owns the next completion report.
+                            // Uninstrumented shells retain their legacy replay after a bounded wait;
+                            // reserving generation one also protects a later first prompt in that case.
+                            await apane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
+                            Post(() =>
+                            {
+                                if (OwningSes(apane) is null || Volatile.Read(ref apane.BindSeq) != replaySeq
+                                    || apane.AgentResume != agent) return;
+                                // The agent replay supersedes the old process capture. Keeping
+                                // its dead shell's token would make it a fallback after this agent exits.
+                                apane.CapturedCommand = null;
+                                BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint));
+                                SaveState();
+                                try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
+                            });
                         });
                     }
 
@@ -2019,10 +2061,22 @@ internal partial class Program
                             // Windows captures need PowerShell's call operator for quoted exe paths.
                             // Linux captures are already shell commands; a leading & is invalid in Bash.
                             string run = WslIntegration.IsWsl(ResolveProfile(ses.ProfileName)?.Command) ? cmd : "& " + cmd;
+                            int replaySeq = Volatile.Read(ref pane.BindSeq);
+                            string? captureToken = pane.CapturedCommandToken;
+                            long captureGeneration = pane.CapturedCommandGeneration;
                             _ = Task.Run(async () =>
                             {
-                                await Task.Delay(2500); // let the shell/profile settle; pwsh buffers stdin until ready
-                                try { pane.S.Write(System.Text.Encoding.UTF8.GetBytes(run + "\r")); } catch { }
+                                await pane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
+                                Post(() =>
+                                {
+                                    if (OwningSes(pane) is null || Volatile.Read(ref pane.BindSeq) != replaySeq
+                                        || pane.CapturedCommand != cmd || pane.CapturedCommandToken != captureToken
+                                        || pane.CapturedCommandGeneration != captureGeneration) return;
+                                    pane.CapturedCommandToken = pane.Completion.Token;
+                                    pane.CapturedCommandGeneration = Math.Max(1, pane.Completion.Checkpoint);
+                                    SaveState();
+                                    try { pane.S.Write(System.Text.Encoding.UTF8.GetBytes(run + "\r")); } catch { }
+                                });
                             });
                         }
                     }
@@ -2038,7 +2092,7 @@ internal partial class Program
                 lock (_workspaces) ws.Expanded = w.Expanded; // CreateSession forces Expanded=true; restore the saved state
             }
         }
-        finally { _restoring = false; }
+        finally { _restoring = false; _restoredPromptTokens.Clear(); }
 
         // Restore sidebar mode + workspace focus (Wave D1). Focus that no longer resolves is dropped.
         _sidebarMode = string.Equals(st.SidebarMode, "flagged", StringComparison.OrdinalIgnoreCase) ? SidebarMode.Flagged : SidebarMode.Tree;

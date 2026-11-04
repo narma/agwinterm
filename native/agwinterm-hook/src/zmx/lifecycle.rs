@@ -321,6 +321,14 @@ fn restart(request: &Value) -> Result<Outcome> {
         previous["specification"].clone()
     };
     let shell = spec.get("shellArgv").unwrap_or(&spec["argv"]).clone();
+    if let Some(token) = request.get("promptToken").filter(|v| !v.is_null()) {
+        let token = token.as_str().ok_or("invalid prompt token")?;
+        if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("invalid prompt token".into());
+        }
+        spec["environment"]["AGWINTERM_PROMPT_TOKEN"] = json!(token);
+        spec["environment"]["AGWINTERM_PROMPT_OWNER"] = json!("");
+    }
     spec["shellArgv"] = shell.clone();
     spec["argv"] = shell;
     if source != "shell" {
@@ -650,6 +658,7 @@ pub(super) fn dispatch(request: &Value) -> Result<Outcome> {
             "identity",
             "source",
             "command",
+            "promptToken",
         ],
         "reconcile-restart" => vec!["verb", "ledger", "operation", "newOperation", "identity"],
         "inventory" => vec!["verb", "executable", "socketDirectory"],

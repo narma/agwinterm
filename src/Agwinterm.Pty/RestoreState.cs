@@ -42,7 +42,7 @@ namespace Agwinterm.Pty;
 /// <summary>One pane of a session. <c>Command</c> is the captured foreground command (restore-commands;
 /// <c>""</c> = nothing captured), <c>RestoreCommand</c> the explicit pin (independent of the toggle),
 /// <c>AgentResume</c> the bound resumable agent. Cwd/FontSize are per pane since splits.</summary>
-public sealed class PaneState { [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public JsonElement LiveBinding { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Agwinterm.Core.PaneAppearance? Appearance { get; set; } public string Id { get; set; } = ""; public string Cwd { get; set; } = ""; public float FontSize { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? FontZoomed { get; set; } public float Ratio { get; set; } = 1f; public string Command { get; set; } = ""; public string? AgentResume { get; set; } public string? RestoreCommand { get; set; } public List<string>? Buffer { get; set; } public string? BufferBlob { get; set; } }
+public sealed class PaneState { [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public JsonElement LiveBinding { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Agwinterm.Core.PaneAppearance? Appearance { get; set; } public string Id { get; set; } = ""; public string Cwd { get; set; } = ""; public float FontSize { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? FontZoomed { get; set; } public float Ratio { get; set; } = 1f; public string Command { get; set; } = ""; [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? CommandToken { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public long CommandGeneration { get; set; } public string? AgentResume { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? PromptToken { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AgentResumeToken { get; set; } [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public long AgentResumeGeneration { get; set; } public string? RestoreCommand { get; set; } public List<string>? Buffer { get; set; } public string? BufferBlob { get; set; } }
 
 // Cwd/FontSize kept for backward-compat with pre-splits state.json (one pane per session).
 public sealed class SessionState
@@ -111,6 +111,19 @@ public sealed class AppState
 /// index): the POCOs above, indented, nothing else configured. See the format rule at the top of this file.</summary>
 public static class RestoreState
 {
+    /// <summary>Automatic recovery belongs to the shell command observed at capture/bind time.
+    /// A later durable prompt invalidates it, even when no UI witnessed completion. Explicit
+    /// restore pins and legacy captures without checkpoint metadata retain their semantics.</summary>
+    public static void ReconcileCompletion(PaneState pane, Func<string, long> readCheckpoint)
+    {
+        if (Agwinterm.Core.ShellCompletion.ValidToken(pane.AgentResumeToken)
+            && readCheckpoint(pane.AgentResumeToken!) > pane.AgentResumeGeneration)
+            pane.AgentResume = null;
+        if (Agwinterm.Core.ShellCompletion.ValidToken(pane.CommandToken)
+            && readCheckpoint(pane.CommandToken!) > pane.CommandGeneration)
+            pane.Command = "";
+    }
+
     /// <summary>The one options object — <c>WriteIndented</c> and nothing else. Reads use it too (indentation
     /// is irrelevant on read; property matching stays case-sensitive, the default).</summary>
     public static readonly JsonSerializerOptions Json = new() { WriteIndented = true };

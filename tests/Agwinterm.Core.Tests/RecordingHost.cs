@@ -10,6 +10,7 @@ public sealed class RecordingHost : IHostActions
     public readonly List<string> Responses = new();
     public readonly List<(string Kind, string Detail)> Unhandleds = new();
     public int Bells;
+    public int FinishedCommands;
 
     public void Notify(string title, string body) => Notifications.Add((title, body));
     public void Progress(int state, int value) => ProgressReports.Add((state, value));
@@ -17,5 +18,6 @@ public sealed class RecordingHost : IHostActions
     public void Respond(string reply) => Responses.Add(reply);
     public void Unhandled(string kind, string detail) => Unhandleds.Add((kind, detail));
     public void Bell() => Bells++;
+    public void CommandFinished(string token, long sequence) => FinishedCommands++;
     public (Color Foreground, Color Background)? DefaultColors { get; set; } = (Color.DefaultForeground, Color.DefaultBackground);
 }

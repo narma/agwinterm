@@ -239,6 +239,7 @@ public class RustEmulatorCoreTests
         public void Respond(string reply) => Log.Add($"Respond|{reply}");
         public void Unhandled(string kind, string detail) => Log.Add($"Unhandled|{kind}|{detail}");
         public void Bell() => Log.Add("Bell");
+        public void CommandFinished(string token, long sequence) => Log.Add($"CommandFinished|{token}|{sequence}");
         public (Color Foreground, Color Background)? DefaultColors { get; set; } = (Color.DefaultForeground, Color.DefaultBackground);
     }
 
@@ -251,6 +252,7 @@ public class RustEmulatorCoreTests
         // (Respond), and one each of the Unhandled taps (CSI, C0 BEL, ESC). OSC 9;9 (a cwd report)
         // must fire nothing on either core (#313).
         string script =
+            "\x1b]777;agwinterm;command-finished;0123456789abcdef0123456789abcdef;1\x07" +
             "\x1b]9;build done\x07" +
             "\x1b]9;4;1;42\x07" +
             "\x1b]9;9;C:/work\x07" +

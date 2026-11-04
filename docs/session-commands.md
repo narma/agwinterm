@@ -52,6 +52,28 @@ shell profiles, custom commands and restore replay retain their separate contrac
 In Lite, an exact empty argv (a bare `powershell.exe` direct session) stays exact across
 duplicate, Reopen Closed and a cold restore since agliteterm 0.19.3 (agliteterm #79).
 
+## Agent resume
+
+Agent resume bindings are cleared when the pane's outer shell returns to its
+prompt after a command. An agent left running when its PTY host is lost still
+resumes after restart; finishing an agent turn does not clear the binding.
+PowerShell's launch integration reports command completion automatically.
+For Bash/zsh (including WSL), run `agwintermctl install hooks` in that environment
+and restart the shell after upgrading: this also installs the shell integration.
+Nested tool shells do not clear their parent agent's binding. A shell without the
+integration cannot report agent exit; `agwintermctl session bind none` clears its
+binding explicitly.
+
+Completion reports carry a per-shell capability and an increasing prompt number;
+ordinary printed content and replayed old reports cannot clear recovery. Both PTY
+hosts checkpoint completion under `agent-completions/` in the app state directory,
+including while no window is open. Restore checks that checkpoint before replay,
+so an agent that exited while detached stays closed even if the host later dies.
+Automatically captured commands carry their own completion checkpoint too:
+`restore-commands = true` cannot replay a command that has since finished. A
+later capture of a different running command remains independent of the old
+agent binding. Explicitly pinned restore commands still run as requested.
+
 ## Recently closed work
 
 [Recent history](recent-work.md) exposes menu reopening through `recent list/open/clear`, preserves splits and restore pins, and retains failed workspace members for retry.

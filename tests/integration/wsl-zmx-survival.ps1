@@ -48,6 +48,14 @@ function Inspect {
     if ($LASTEXITCODE -ne 0) { throw 'Linux workload or daemon missing/replaced; live mode must remain disabled' }
     return ($raw -join "`n")
 }
+function Saved-Pane([string]$PaneId) {
+    foreach ($file in Get-ChildItem (Join-Path $state 'windows') -Filter '*.json') {
+        $saved = Get-Content $file.FullName -Raw | ConvertFrom-Json
+        foreach ($workspace in $saved.Workspaces) { foreach ($session in $workspace.Sessions) {
+            foreach ($pane in $session.Panes) { if ($pane.Id -eq $PaneId) { return $pane } }
+        } }
+    }
+}
 function Ctl([string[]]$Command) {
     $raw = & $ctl @Command --pipe $id --json
     if ($LASTEXITCODE -ne 0) { throw "Control failed: $Command $raw" }
@@ -169,6 +177,7 @@ try {
             $row = (Ctl @('tree')).workspaces[0].sessions[0]
             $paneId = @($row.liveSessions.PSObject.Properties.Name)[0]
             $before = $row.liveSessions.$paneId
+            $promptToken = (Saved-Pane $paneId).PromptToken
             $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
             if ($retryHosts.Count -ne 1) { throw 'Expected one fixture host before live-UI retry' }
             Stop-Process -Id $retryHosts[0].ProcessId -Force
@@ -185,6 +194,8 @@ try {
             }
             if ($retried.recovery -ne 'zmx-reattached' -or (Inspect) -ne $initial) { throw 'Local retry after host loss did not preserve workload' }
             Write-Host 'PASS local existing-only retry after Rust-host loss while UI remains open'
+            if ((Saved-Pane $paneId).PromptToken -ne $promptToken) { throw 'Retry changed the live shell completion capability' }
+            Write-Host 'PASS retry preserves the workload completion capability'
             $listed = Ctl @('zmx','list','--profile','ZMX survival')
             $found = @($listed.sessions)[0]
             if ($found.ownership -ne 'owned' -or $found.daemon -ne $before.daemon.Name) { throw 'Inventory lost ownership or daemon identity' }
@@ -203,6 +214,7 @@ try {
             Start-Sleep -Milliseconds 250
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-control-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw 'Follower input was lost or duplicated' }
+            $viewerToken = (Saved-Pane $viewer.paneId).PromptToken
             $null = Ctl @('zmx','lead','--target',$viewer.paneId)
             $leading = $false
             for ($i=0; $i -lt 40; $i++) {
@@ -211,6 +223,7 @@ try {
                 if ($viewerRow.liveSessions.($viewer.paneId).role -eq 'leader') { $leading=$true; break }
             }
             if (-not $leading) { throw 'Explicit leadership was not observed' }
+            if ((Saved-Pane $viewer.paneId).PromptToken -ne $viewerToken) { throw 'Leadership changed the existing workload completion capability' }
             $null = Ctl @('zmx','detach','--target',$viewer.paneId)
             if ((Inspect) -ne $initial) { throw 'Viewer detach killed workload' }
             $row = (Ctl @('tree')).workspaces.sessions | Where-Object { $_.id -eq $paneId }
@@ -220,6 +233,7 @@ try {
             $bad = & $ctl zmx restart --target $paneId --source shell --pipe $id --json
             if ($LASTEXITCODE -ne 1) { throw "Live restart should refuse: $bad" }
             $freshRecord = "$BuildDirectory/restart-$([guid]::NewGuid().ToString('N'))"
+            $replacementBinding = 'replacement-agent-recovery'
             $pin = "exec python3 '$linuxScript' run '$freshRecord'"
             $null = Ctl @('session','restore','--target',$paneId,'--command',$pin)
             $null = Ctl @('zmx','terminate','--target',$paneId,'--force')
@@ -229,15 +243,64 @@ try {
             if ($LASTEXITCODE -ne 1) { throw "Missing agent source should refuse: $bad" }
             $null = Ctl @('zmx','retry','--target',$paneId)
             Start-Sleep -Seconds 1
-            $null = Ctl @('zmx','restart','--target',$paneId,'--source','pin')
+            # Hold this fixture's ledger lock: reservation can be saved in Windows,
+            # but the Linux restart cannot complete until the new binding has landed.
+            $linuxReady = "$freshRecord-gate/ready"
+            $linuxRelease = "$freshRecord-gate/release"
+            $gateReady = (& wsl.exe -d $Distro --exec wslpath -w $linuxReady).Trim()
+            $gateRelease = (& wsl.exe -d $Distro --exec wslpath -w $linuxRelease).Trim()
+            $linuxGate = (& wsl.exe -d $Distro --exec wslpath -u "$PSScriptRoot/zmx/restart-gate.py").Trim()
+            $ledger = (Saved-Pane $paneId).LiveBinding.Endpoint.LedgerDirectory
+            $gateError = Join-Path $state 'restart-gate-error.log'
+            $gateClient = Start-Process wsl.exe -ArgumentList @('-d',$Distro,'--exec','python3',$linuxGate,$ledger,$linuxReady,$linuxRelease) `
+                -WindowStyle Hidden -RedirectStandardError $gateError -PassThru
+            $restartReply = Join-Path $state 'restart-reply.json'
+            $restartClient = $null
+            try {
+                for ($i=0; $i -lt 100 -and -not (Test-Path $gateReady); $i++) { Start-Sleep -Milliseconds 50 }
+                if (-not (Test-Path $gateReady)) { throw "Ledger gate did not become ready: $(Get-Content $gateError -Raw)" }
+                $restartClient = Start-Process $ctl -ArgumentList @('zmx','restart','--target',$paneId,'--source','pin','--pipe',$id,'--json') `
+                    -WindowStyle Hidden -RedirectStandardOutput $restartReply -RedirectStandardError (Join-Path $state 'restart-error.log') -PassThru
+                for ($i=0; $i -lt 200 -and (Saved-Pane $paneId).PromptToken -eq $promptToken; $i++) { Start-Sleep -Milliseconds 25 }
+                if ((Saved-Pane $paneId).PromptToken -eq $promptToken) { throw 'Restart never reserved a replacement shell' }
+                $null = Ctl @('session','bind',$replacementBinding,'--target',$paneId)
+                for ($i=0; $i -lt 40 -and (Saved-Pane $paneId).AgentResume -ne $replacementBinding; $i++) { Start-Sleep -Milliseconds 25 }
+                $duringRestart = Saved-Pane $paneId
+                if ($duringRestart.AgentResume -ne $replacementBinding -or -not $duringRestart.LiveBinding.Pending -or $restartClient.HasExited) {
+                    throw 'The replacement binding must land while restart completion is still gated'
+                }
+                New-Item -ItemType File -Path $gateRelease | Out-Null
+                if (-not $gateClient.WaitForExit(5000) -or $gateClient.ExitCode -ne 0) { throw 'Ledger gate did not release cleanly' }
+                if (-not $restartClient.WaitForExit(20000) -or $restartClient.ExitCode -ne 0) { throw 'Restart control client failed' }
+                if (-not (Get-Content $restartReply -Raw | ConvertFrom-Json).ok) { throw 'Restart was refused' }
+            } finally {
+                if (-not (Test-Path $gateRelease)) { New-Item -ItemType File -Path $gateRelease | Out-Null }
+                if (-not $gateClient.WaitForExit(5000)) { $gateClient.Kill(); $gateClient.WaitForExit() }
+                $gateClient.Dispose()
+                if ($restartClient) {
+                    if (-not $restartClient.HasExited) { $restartClient.Kill(); $restartClient.WaitForExit() }
+                    $restartClient.Dispose()
+                }
+            }
             $script:recordDir = $freshRecord
             $newIdentity = $null
             for ($i=0; $i -lt 60; $i++) {
                 Start-Sleep -Milliseconds 250
                 $readback = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
-                if ($readback.recovery -eq 'fresh-started') { $newIdentity=Inspect; break }
+                if ($readback.recovery -eq 'fresh-started') {
+                    # Transport readiness precedes the pinned command's own startup work.
+                    & wsl.exe -d $Distro --exec test -f "$recordDir/identity.json"
+                    if ($LASTEXITCODE -eq 0) { $newIdentity=Inspect; break }
+                }
             }
             if (-not $newIdentity -or $newIdentity -eq $initial -or $readback.bindingId -eq $before.bindingId) { throw 'Fresh start did not create a new incarnation' }
+            $freshToken = (Saved-Pane $paneId).PromptToken
+            $linuxToken = (& wsl.exe -d $Distro --exec cat "$recordDir/prompt-token").Trim()
+            if (-not $freshToken -or $freshToken -eq $promptToken -or $linuxToken -ne $freshToken) { throw 'Fresh workload and transport have different completion capabilities' }
+            Write-Host 'PASS explicit fresh start rotates and checkpoints the Linux shell capability'
+            for ($i=0; $i -lt 40 -and (Saved-Pane $paneId).AgentResume -ne $replacementBinding; $i++) { Start-Sleep -Milliseconds 100 }
+            if ((Saved-Pane $paneId).AgentResume -ne $replacementBinding) { throw 'Restart result erased the replacement workload binding' }
+            Write-Host 'PASS replacement binding survives restart completion and attachment replacement'
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-zero-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw 'Fresh source received additional replay commands' }
             $null = Ctl @('zmx','detach','--target',$paneId)
