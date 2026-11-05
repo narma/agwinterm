@@ -27,6 +27,23 @@ public class InputLifecycleTests
         session.Detach(); // local cancellation only, no kill/control connection
     }
 
+    [Fact]
+    public void StoppedTransportKeepsItsVisibleReplicaUntilPaneDisposal()
+    {
+        using var backend = new ServerSessionBackend("not-connected", null);
+        using var session = new ServerSession(backend, "pane", 80, 24);
+        int exits = 0;
+        session.Exited += _ => exits++;
+        session.Stop();
+        Assert.True(session.Stopped);
+        Assert.True(session.HasExited);
+        Assert.Throws<IOException>(() => session.Write("not consumed"u8));
+        session.Inject("terminated"u8);
+        session.Resize(90, 25);
+        Assert.Contains("terminated", session.SnapshotRow(0));
+        Assert.Equal(0, exits);
+    }
+
     private class ScriptedChannel : Stream
     {
         internal int Reads; internal bool SawFinalOutput; internal bool Disposed;

@@ -19,6 +19,7 @@ internal partial class Program
 {
     private static ServerSessionBackend? _legacyRestoreBackend;
     private static ServerSessionBackend? _legacyLiveRestoreBackend;
+    private static ServerSessionBackend? _nativeLiveRestoreBackend;
     private static ServerSessionBackend? _liveSessionBackend;
     private static (string Core, string Conpty)? _liveBackendConfig;
     private static bool RustLiveHostEnabled => _config.ConfiguredSessionHost == "server-rust";
@@ -38,18 +39,32 @@ internal partial class Program
 
     // A new default must not orphan shells created before the upgrade. This
     // backend has no executable: recovery may attach, but never start a Rust host.
-    private static ServerSession? TryRestoreRustSession(string id, int cols, int rows, string? liveTicket = null, bool cancelUnattached = false)
+    private static ServerSession? TryRestoreRustSession(string id, int cols, int rows)
     {
         string hostId = (_argPipe ?? _appId) + "-rust";
         if (!PtyHostClient.IsRunning(hostId)) return null;
-        var backend = liveTicket is null
-            ? _legacyRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust")
-            : _legacyLiveRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust", replicaCore: "managed");
+        var backend = _legacyRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust");
+        return TryAdoptExisting(backend, id, cols, rows);
+    }
+
+    private static ServerSession? TryRestoreOtherLiveHost(string id, int cols, int rows, string ticket, bool rustHost, bool cancelUnattached)
+    {
+        string hostId = (_argPipe ?? _appId) + (rustHost ? "-rust" : "");
+        if (!PtyHostClient.IsRunning(hostId)) return null;
+        var backend = rustHost
+            ? _legacyLiveRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust", replicaCore: "managed")
+            : _nativeLiveRestoreBackend ??= new ServerSessionBackend(hostId, null, replicaCore: "ghostty");
+        return TryAdoptExisting(backend, id, cols, rows, ticket, cancelUnattached);
+    }
+
+    private static ServerSession? TryAdoptExisting(ServerSessionBackend backend, string id, int cols, int rows,
+        string? ticket = null, bool cancelUnattached = false)
+    {
         ServerSession? candidate = null;
         try
         {
             candidate = (ServerSession)backend.Create(id, cols, rows);
-            if (candidate.TryAdopt(liveTicket, cancelUnattached)) return candidate;
+            if (candidate.TryAdopt(ticket, cancelUnattached)) return candidate;
         }
         catch { /* The ordinary restore path remains available if the host is gone. */ }
         candidate?.Dispose();
@@ -146,9 +161,10 @@ internal partial class Program
                     : liveBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
                     && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
-                if (!adopted && liveBackend.Name != "server-rust"
+                if (!adopted
                     && (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } oldTicket
-                    && TryRestoreRustSession(paneId, cols, rows, oldTicket, cancelUnattached: restoredRemote is not null) is { } previous)
+                    && TryRestoreOtherLiveHost(paneId, cols, rows, oldTicket, rustHost: liveBackend.Name != "server-rust",
+                        cancelUnattached: restoredRemote is not null) is { } previous)
                 {
                     session.Dispose();
                     session = previous;
@@ -246,6 +262,9 @@ internal partial class Program
         if (session is ServerSession themedServer) themedServer.UpdateTheme();
         session.Exited += code => Post(() =>
         {
+            // An exit may already be queued when explicit termination confirms the
+            // workload is missing. Never turn that result into a reconnect request.
+            if (session is ServerSession { Stopped: true }) return;
             OnPaneProcessExited(pane);   // split survivor promotion (agterm #121)
             NotifyProfileShellExit(pane, code);
             TryEnterExitHold(pane);

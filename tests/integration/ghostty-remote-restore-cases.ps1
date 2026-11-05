@@ -1,21 +1,23 @@
 # Dot-sourced by restore-roundtrip inside the owned UI VM. This verifies saved
 # remote-binding transport adoption, not SSH/origin availability: the transport
-# is a real Rust-hosted local shell, with structurally valid fixture metadata.
-$caseName = 'ghostty-remote-host-adoption'
-if ($Only -and $caseName -notlike $Only) { return }
+# is a real hosted local shell, with structurally valid fixture metadata.
+foreach ($originalCore in 'managed','ghostty') {
+$caseName = if ($originalCore -eq 'managed') { 'ghostty-remote-host-adoption' } else { 'ghostty-remote-reverse-adoption' }
+if ($Only -and $caseName -notlike $Only) { continue }
 "-- $caseName --"
 $s = $null
 try {
     foreach ($assembly in 'Google.Protobuf.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll') {
         [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $exe) $assembly))
     }
-    $s = Start-Sandbox -Exe $exe -Ctl $ctl -Pipe 'rr-remote-upgrade' -Conf @('session-host = server-rust','emulator-core = managed')
+    $s = Start-Sandbox -Exe $exe -Ctl $ctl -Pipe 'rr-remote-upgrade' -Conf @('session-host = server-rust',"emulator-core = $originalCore")
+    $hostNamespace = $s.Pipe + $(if ($originalCore -eq 'managed') { '-rust' } else { '' })
     $sid = Sid $s
     if (-not (Wait-Prompt $s $sid)) { throw 'Original hosted shell did not start' }
-    $probe = [Agwinterm.Pty.PtyHostClient]::Connect($s.Pipe + '-rust', 3000)
+    $probe = [Agwinterm.Pty.PtyHostClient]::Connect($hostNamespace, 3000)
     try {
         $original = @($probe.List() | Where-Object Id -eq $sid)[0]
-        $null = $probe.Create('abandoned-transport',80,24,'cmd.exe',[string[]]@('/c','ping -n 300 127.0.0.1'),$null,$null,$false,$false,$true,'','managed')
+        $null = $probe.Create('abandoned-transport',80,24,'cmd.exe',[string[]]@('/c','ping -n 300 127.0.0.1'),$null,$null,$false,$false,$true,'',$originalCore)
     } finally { $probe.Dispose() }
     if (-not $original.CreationTicket -or $original.ChildPid -le 0) { throw 'Missing exact hosted identity' }
     [void][AgwUi]::PostMessageW($s.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
@@ -41,14 +43,19 @@ try {
     foreach ($hostSetting in 'server-rust','in-process') {
         # No explicit core: upgrade to Ghostty, then change the ordinary host too.
         "session-host = $hostSetting" | Set-Content (Join-Path $s.AppDir 'agwinterm.conf') -Encoding utf8
+        $expectedCore = 'ghostty'
+        if ($originalCore -eq 'ghostty') {
+            $expectedCore = 'rust'
+            'emulator-core = rust' | Add-Content (Join-Path $s.AppDir 'agwinterm.conf')
+        }
         if (-not (Start-SandboxProcess $s @('--pipe',$s.Pipe,'--app-id',$s.AppId))) { throw 'Restoring UI did not start' }
         Start-Sleep -Seconds 2
-        Check "$hostSetting`: implicit Ghostty default" ((Reply $s @('config','get','emulator-core')).result -eq 'ghostty')
+        Check "$hostSetting`: requested core is $expectedCore" ((Reply $s @('config','get','emulator-core')).result -eq $expectedCore)
         $node = Node $s $sid
         Check "$hostSetting`: remote binding adopts surviving transport" ($node.liveSessions.$sid.recovery -eq 'host-adopted') ($node | ConvertTo-Json -Depth 8 -Compress)
         Check "$hostSetting`: saved commands and buffer are not replayed" ((PaneText $s $sid) -notlike '*SHOULD-NOT-*')
         if ($hostSetting -eq 'server-rust') { Start-Sleep -Seconds 33 }
-        $probe = [Agwinterm.Pty.PtyHostClient]::Connect($s.Pipe + '-rust', 3000)
+        $probe = [Agwinterm.Pty.PtyHostClient]::Connect($hostNamespace, 3000)
         try {
             $hosted = @($probe.List())
             $actual = @($hosted | Where-Object Id -eq $sid)[0]
@@ -64,4 +71,5 @@ finally {
         Get-TestAgentHosts $s | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         Stop-Sandbox $s
     }
+}
 }

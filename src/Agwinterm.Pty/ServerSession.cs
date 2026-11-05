@@ -129,6 +129,8 @@ public sealed class ServerSession : ISession
     private volatile bool _started;
     private readonly SessionStartFence _startFence = new();
     private volatile bool _disposed;
+    private volatile bool _stopped;
+    public bool Stopped => _stopped;
     private volatile string _creationTicket = "";
     private uint _creationHostPid;
 
@@ -434,7 +436,7 @@ public sealed class ServerSession : ISession
     /// these. An EOF for a session the host says is still alive is a supersede/detach: not an exit.</summary>
     private void OnStreamEnded()
     {
-        if (_disposed || HasExited) return;
+        if (_disposed || _stopped || HasExited) return;
         int? code = null;
         try
         {
@@ -444,6 +446,7 @@ public sealed class ServerSession : ISession
             code = info?.ExitCode;
         }
         catch { }                                                    // host gone → exited, code unknown
+        if (_disposed || _stopped) return;
         ExitCode = code;
         HasExited = true;
         try { Exited?.Invoke(code ?? 0); } catch { }
@@ -541,6 +544,8 @@ public sealed class ServerSession : ISession
     /// <summary>Close the transport while retaining the replica for a visible terminal/error surface.</summary>
     public void Stop()
     {
+        _stopped = true;
+        HasExited = true;
         MarkInputClosed();
         if (_startFence.Close(kill: true)) KillHosted();
         CancelRead();

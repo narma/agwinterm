@@ -57,8 +57,9 @@ when Ghostty is selected, including when it is the implicit default. Live-profil
 enablement still recognizes the configured `server-rust` preference; it does not
 force a legacy core. Explicit legacy cores retain the Rust transport.
 
-Saved bindings first adopt their exact surviving transport ticket. A legacy Rust
-host is probed without spawning one; its existing Managed replica is retained for
+Saved bindings first adopt their exact surviving transport ticket in either host
+namespace, including after switching the configured core in either direction.
+A legacy Rust host is probed without spawning one; its existing Managed replica is retained for
 that attachment so upgrading does not lose the running process. After host loss,
 existing-only daemon recovery uses the currently selected core, hence Ghostty by
 default. No claim is made that the Rust host supports native Ghostty snapshots.
@@ -82,10 +83,10 @@ No extra runtime dependency is introduced on Windows, WSL or remote hosts.
 | Keyboard | F2 routing, AltGr/dead keys, repeat/release ownership, focus, Win32 input and mixed-broadcast duplicate suppression |
 | Installed IME | `artifacts/hyperv-ghostty-ime-final/results`: real Pinyin commit/cancel, positioning, resize/refocus, native-core proof; bare portable also passed |
 | Restart/upgrade | `artifacts/hyperv-ghostty-restore-final/results`: history reflow through two restarts and adoption of a surviving ordinary Rust shell with its memory intact |
-| Live routing contracts | 405 focused Pty tests: core/host selection, WSL/remote binding validation, creation tickets and restore rules |
-| Native WSL/ZMX lifecycle | `artifacts/wsl-ui/ghostty-live-native-fixed`: real Ghostty Unicode-search proof, UI quit/crash, host loss plus 60-second idle interval, same Linux incarnation, existing-only retry, role changes, termination/fresh start, completion tokens, multi-window/layout controls |
+| Live routing contracts | 410 focused Pty tests: core/host selection, WSL/remote binding validation, creation tickets, restore rules and stopped-transport lifetime |
+| Native WSL/ZMX lifecycle | `artifacts/wsl-ui/ghostty-live-termination-fenced`: real Ghostty Unicode-search proof, UI quit/crash, host loss plus 60-second idle interval, same Linux incarnation, existing-only retry, role changes, termination/fresh start after delayed exit callbacks, completion tokens, multi-window/layout controls |
 | Existing WSL upgrade | `artifacts/wsl-ui/ghostty-live-native-upgrade`: surviving Rust transport adopted after removing explicit core; same workload reconnects through Ghostty after host loss; full lifecycle passes |
-| Saved remote transport upgrade | `artifacts/hyperv-ghostty-remote-adoption-final/results`: 10 checks; real Rust-hosted child and exact ticket survive a structurally valid saved remote binding, implicit Ghostty upgrade and ordinary-host setting change; no saved command/buffer replay; abandoned transport reaped while restored child survives |
+| Saved remote transport upgrade | `artifacts/hyperv-ghostty-remote-both-hosts/results`: 20 checks; real hosted child and exact ticket survive a structurally valid saved remote binding, core changes in both directions and ordinary-host setting changes; no saved command/buffer replay; abandoned transport reaped while restored child survives |
 | Packaging | Installer/portable include native DLLs, hashes, dependency/runtime notices and bundled ConPTY; standalone extraction hashes and CLI startup passed |
 | Prior aggregate gate | Commit `9efb990`: full GitHub CI green; Greptile review 38682286 clean, 5/5 |
 

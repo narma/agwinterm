@@ -259,6 +259,9 @@ try {
             $pin = "exec python3 '$linuxScript' run '$freshRecord'"
             $null = Ctl @('session','restore','--target',$paneId,'--command',$pin)
             $null = Ctl @('zmx','terminate','--target',$paneId,'--force')
+            # Let cancelled-reader/child-exit callbacks run before checking the
+            # durable result: a late EOF must not overwrite confirmed termination.
+            Start-Sleep -Seconds 3
             $missing = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
             if ($missing.recovery -ne 'missing') { throw 'Terminate did not report missing' }
             $bad = & $ctl zmx restart --target $paneId --source agent --pipe $id --json
