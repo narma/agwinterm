@@ -72,6 +72,9 @@ for ($poll = 0; $poll -lt 100 -and $selectedAfter -eq 'searching…'; $poll++) {
 }
 Check 'Ghostty automatic refresh keeps the selected match' ($selectedBefore -eq '2 of 2' -and $selectedAfter -eq '2 of 2') "before=$selectedBefore; after=$selectedAfter"
 Check 'Ghostty find folds astral Unicode case' ((Find-GhosttyText '𐐨') -eq '1 of 1')
+$null = Rpc 'session.write' @{text=($esc+'[7;1HStraße ﬃ')} $session
+Check 'Ghostty native find expands sharp-s' ((Find-GhosttyText 'STRASSE') -eq '1 of 1')
+Check 'Ghostty native find expands ligatures' ((Find-GhosttyText 'FFI') -eq '1 of 1')
 $null = Rpc 'session.search' @{query='missing old query'} $session
 Check 'Ghostty newer query supersedes pending scan' ((Find-GhosttyText 'привет') -eq '1 of 1')
 $null = Rpc 'session.search' @{query='missing cancelled query'} $session
@@ -203,6 +206,15 @@ for ($poll = 0; $poll -lt 200 -and $largeStatus -eq 'searching…'; $poll++) {
 $retainedText = [string](Rpc 'session.text' @{all=$true} $session)
 $retainedMatches = [regex]::Matches($retainedText, 'русский').Count
 Check 'Ghostty large-history Unicode results match retained native history' ($retainedMatches -ge 4000 -and $largeStatus -eq "1 of $retainedMatches") "status=$largeStatus; retained=$retainedMatches; emitted=5000"
+$null = Rpc 'session.search' @{query='РУССКИЙ'} $session
+$foundDuringOutput = $false
+for ($tick = 0; $tick -lt 40; $tick++) {
+    Start-Sleep -Milliseconds 25
+    $liveStatus = Rpc 'session.search' @{} $session
+    if ($liveStatus -match '^\d+ of \d+') { $foundDuringOutput = $true }
+    $null = Rpc 'session.write' @{text=($esc+'7'+$esc+"[1;1Hlive tick $tick"+$esc+'8')} $session
+}
+Check 'Ghostty native find makes progress during continuing output' $foundDuringOutput "last status=$liveStatus"
 $null = Rpc 'session.write' @{text="freshuniquehistorymarker`r`n"} $session
 Check 'Ghostty search sees output after a completed scan' ((Find-GhosttyText 'FRESHUNIQUEHISTORYMARKER') -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session

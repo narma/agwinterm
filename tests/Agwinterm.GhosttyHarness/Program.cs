@@ -631,6 +631,28 @@ using (var core = new GhosttyTerminalCore(80, 24))
     _ = changing.GetAwaiter().GetResult();
     var refreshed = incremental.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult();
     Check(refreshed.Matches.SequenceEqual(core.Search("history")), "native search reconciles reflow without stale coordinates");
+    using var live = core.CreateSearch("РУССКИЙ");
+    using var stopWriter = new CancellationTokenSource();
+    using var writerStarted = new ManualResetEventSlim();
+    var writer = Task.Run(() =>
+    {
+        writerStarted.Set();
+        while (!stopWriter.IsCancellationRequested)
+        {
+            lock (gate) core.Feed("LIVE OUTPUT\r\n"u8);
+            Thread.Sleep(1);
+        }
+    });
+    writerStarted.Wait();
+    try
+    {
+        var duringOutput = live.RunAsync(gate, CancellationToken.None);
+        Check(duringOutput.Wait(TimeSpan.FromSeconds(10)), "native search completes while output continues");
+        Check(duringOutput.Result.Matches.Count > 0, "live-output search publishes historical matches");
+    }
+    finally { stopWriter.Cancel(); writer.GetAwaiter().GetResult(); }
+    var afterOutput = live.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult();
+    Check(afterOutput.Matches.SequenceEqual(core.Search("РУССКИЙ")), "incremental results reconcile continued output exactly");
     using var cancellation = new CancellationTokenSource();
     var cancelTask = core.SearchAsync("absent", gate, cancellation.Token);
     cancellation.Cancel();
@@ -668,6 +690,41 @@ using (var core = new GhosttyTerminalCore(16, 8))
     core.ScrollbackMax = 0;
     Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.SequenceEqual(core.Search("strasse")),
         "native search reconciles pruned history");
+}
+using (var core = new GhosttyTerminalCore(80, 24))
+{
+    core.ScrollbackMax = 3000;
+    core.Feed(Encoding.UTF8.GetBytes(new string('x', 100100)));
+    using var capped = core.CreateSearch("X");
+    var result = capped.RunAsync(new object(), CancellationToken.None).GetAwaiter().GetResult();
+    Check(result.Truncated && result.Matches.Count == GhosttySearch.MatchLimit, $"native search caps exported results (count={result.Matches.Count}, truncated={result.Truncated}, history={core.HistoryCount})");
+    core.ScrollbackMax = 0;
+    result = capped.RunAsync(new object(), CancellationToken.None).GetAwaiter().GetResult();
+    Check(result.Matches.SequenceEqual(core.Search("X")), "capped search prunes stale references after eviction");
+    core.Dispose();
+    bool rejected = false;
+    try { capped.RunAsync(new object(), CancellationToken.None).GetAwaiter().GetResult(); }
+    catch (ObjectDisposedException) { rejected = true; }
+    Check(rejected, "search rejects a disposed core while safely retaining allocator ownership");
+}
+using (var core = new GhosttyTerminalCore(80, 24))
+{
+    core.ScrollbackMax = 3000;
+    core.Feed(Encoding.UTF8.GetBytes(new string('ß', 60000)));
+    using var search = core.CreateSearch("s");
+    var result = search.RunAsync(new object(), CancellationToken.None).GetAwaiter().GetResult();
+    Check(!result.Truncated && result.Matches.Count == 60000,
+        "folded duplicate offsets do not exhaust the unique match budget");
+}
+using (var core = new GhosttyTerminalCore(80, 24))
+{
+    core.ScrollbackMax = 3000;
+    core.Feed(Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("ab", 50050))));
+    var matches = core.Search("BA");
+    Check(matches.Count == 50049, "native search crosses page boundaries without duplicate overlap results");
+    Check(matches.All(m => m.Col0 % 2 == 1 && m.Col1 % 2 == 0 &&
+        (m.EndLine * 80 + m.Col1) - (m.Line * 80 + m.Col0) == 1),
+        "cross-page native search keeps forward cell endpoints");
 }
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 

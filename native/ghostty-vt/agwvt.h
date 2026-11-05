@@ -45,7 +45,7 @@ AGWVT_API int agwvt_begin_viewport(AgwVt* vt, uint32_t offset);
 AGWVT_API int agwvt_search(AgwVt* vt, const uint8_t* text, size_t length, uint32_t* output, size_t capacity, size_t* count);
 AGWVT_API int agwvt_search_new(AgwVt* vt, const uint8_t* text, size_t length, void** out);
 AGWVT_API void agwvt_search_free(void* search);
-AGWVT_API int agwvt_search_feed(void* search, uint32_t* status);
+AGWVT_API int agwvt_search_feed(void* search, uint32_t* status, size_t* count);
 AGWVT_API int agwvt_search_tick(void* search, uint32_t* status, size_t* count);
 AGWVT_API int agwvt_search_matches(void* search, uint32_t* output, size_t capacity, size_t* count);
 AGWVT_API int agwvt_end(AgwVt* vt);

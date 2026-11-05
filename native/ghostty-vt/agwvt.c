@@ -933,10 +933,11 @@ void agwvt_search_free(void* search) {
     s->next = s->owner->released_searches; s->owner->released_searches = s;
     ReleaseSRWLockExclusive(&s->owner->anchor_guard);
 }
-int agwvt_search_feed(void* search, uint32_t* status) {
-    AgwSearch* s = search; if (!s || !status) return GHOSTTY_INVALID_VALUE;
+int agwvt_search_feed(void* search, uint32_t* status, size_t* count) {
+    AgwSearch* s = search; if (!s || !status || !count) return GHOSTTY_INVALID_VALUE;
     TRY(ghostty_search_feed(s->search));
-    return ghostty_search_get(s->search, GHOSTTY_SEARCH_DATA_STATUS, status);
+    TRY(ghostty_search_get(s->search, GHOSTTY_SEARCH_DATA_STATUS, status));
+    return ghostty_search_get(s->search, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, count);
 }
 int agwvt_search_tick(void* search, uint32_t* status, size_t* count) {
     AgwSearch* s = search; if (!s || !status || !count) return GHOSTTY_INVALID_VALUE;

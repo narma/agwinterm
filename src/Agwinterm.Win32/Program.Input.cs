@@ -1210,6 +1210,7 @@ internal partial class Program
     private string? _searchError;
     private GhosttyAnchor? _searchAnchor;
     private GhosttySearch? _nativeFind;
+    private bool _searchNeedsScroll;
 
     private void CloseSearch()
     {
@@ -1218,6 +1219,7 @@ internal partial class Program
         _searchError = null; _searchTruncated = false;
         _searchAnchor?.Dispose(); _searchAnchor = null;
         _nativeFind?.Dispose(); _nativeFind = null;
+        _searchNeedsScroll = false;
         _searchMatches.Clear(); RequestRedraw();
     }
 
@@ -1237,7 +1239,7 @@ internal partial class Program
                 { RecomputeSearch(); return; }
                 lock (pane.S.SyncRoot)
                 {
-                    if (core.TextVersion != result.Version) { RecomputeSearch(preserveSelection); return; }
+                    if (core.TextVersion != result.Version) { RecomputeSearch(preserveSelection: true); return; }
                     _searchVersion = result.Version;
                     _searchCur = preserveSelection ? Math.Clamp(_searchCur, 0, Math.Max(0, result.Matches.Count - 1)) : 0;
                     if (preserveSelection && _searchAnchor is { } anchor && anchor.TryLocate(out int line, out int col))
@@ -1262,7 +1264,7 @@ internal partial class Program
                 }
                 _searchPending = false; _searchTruncated = result.Truncated;
                 _searchMatches.AddRange(result.Matches);
-                if (!preserveSelection) ScrollToMatch();
+                if (_searchNeedsScroll) { _searchNeedsScroll = false; ScrollToMatch(); }
                 RequestRedraw();
             });
         }
@@ -1299,7 +1301,7 @@ internal partial class Program
         _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
         _searchPending = false; _searchTruncated = false; _searchError = null;
         if (!preserveSelection) { _searchAnchor?.Dispose(); _searchAnchor = null; _searchCur = 0; }
-        if (!preserveSelection) { _nativeFind?.Dispose(); _nativeFind = null; }
+        if (!preserveSelection) { _nativeFind?.Dispose(); _nativeFind = null; _searchNeedsScroll = true; }
         _searchMatches.Clear();
         var ap = ActiveSurface();
         _searchPane = ap;

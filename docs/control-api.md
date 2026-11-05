@@ -21,13 +21,15 @@ limit was reached. `search unavailable` indicates that the scan could not finish
 Actions `next`, `prev` and `close` retain their existing meaning. A replacement
 query or closing the bar cancels the previous scan.
 
-Ghostty search uses invariant Unicode simple casing, includes complete grapheme
-cell coordinates and crosses soft wraps, but not hard newlines. It does not apply
-canonical normalization or multi-character case expansion (`ß` is not `ss`).
-Output, resize, screen changes or history eviction invalidate coordinates and
-restart the search. During sustained output, the status can remain `searching…`
-until a consistent scan completes; input and painting remain available.
-
+Ghostty search uses Unicode full case folding inside the native incremental
+search engine: `Straße` matches `STRASSE`, and ligatures expand for comparison.
+Matches retain original grapheme cell coordinates and cross soft wraps, but not
+hard newlines. Canonical normalization and locale-specific casing are not applied.
+The same native search keeps progress as output arrives; feed copies pages under
+the session lock and tick searches those copies outside it. Resize, screen changes,
+history eviction and snapshot restoration reconcile or recreate native state.
+Results are published only for the corresponding terminal version; input and
+painting remain available while a refresh is pending.
 ## Opt-in WSL live sessions (development)
 
 Rust remains the Windows PTY host. The local ZMX daemon runs only inside the

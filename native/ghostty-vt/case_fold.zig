@@ -5,6 +5,11 @@ const std = @import("std");
 const uucode = @import("uucode");
 const Coordinate = @import("../point.zig").Coordinate;
 
+pub fn asciiOnly(input: []const u8) bool {
+    for (input) |byte| if (byte >= 128) return false;
+    return true;
+}
+
 pub fn fold(
     alloc: std.mem.Allocator,
     input: []const u8,

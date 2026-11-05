@@ -47,9 +47,8 @@ public sealed class GhosttySearch : IDisposable
                     }
                     if (_status == 1 || _version != _core.TextVersion)
                     {
-                        GhosttyNative.Check(GhosttyNative.SearchFeed(handle, out _status));
+                        GhosttyNative.Check(GhosttyNative.SearchFeed(handle, out _status, out nuint currentCount));
                         _version = _core.TextVersion;
-                        GhosttyNative.Check(GhosttyNative.SearchMatches(handle, null, 0, out nuint currentCount));
                         _limited = currentCount > MatchLimit;
                     }
                     if (_status == 2 || _limited)

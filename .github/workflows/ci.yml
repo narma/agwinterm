@@ -31,7 +31,7 @@ jobs:
           key: ghostty-zig-windows-${{ hashFiles('native/ghostty-vt/pin.json') }}
       - name: Build pinned Ghostty and adapter
         shell: pwsh
-        run: ./native/ghostty-vt/build.ps1
+        run: ./native/ghostty-vt/build.ps1 -TestSearch
       - name: Exercise the native contract
         shell: pwsh
         run: dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin

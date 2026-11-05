@@ -52,15 +52,15 @@ try {
     Copy-Item (Join-Path $PSScriptRoot 'case_fold.zig') $foldExtension
     Copy-Item (Join-Path $PSScriptRoot 'search.zig') $searchExtension
     Copy-Item (Join-Path $PSScriptRoot 'history.zig') $extensionPath
-    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_history.zig`").prepend, .{ .name = `"agwinterm_ghostty_prepend_history`" }); }`n")
-    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_history.zig`").metadata, .{ .name = `"agwinterm_ghostty_metadata`" }); }`n")
-    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_search.zig`").unicodeNeedle, .{ .name = `"agwinterm_ghostty_search_unicode`" }); }`n")
-    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_search.zig`").tick, .{ .name = `"agwinterm_ghostty_search_tick`" }); }`n")
-    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_search.zig`").matches, .{ .name = `"agwinterm_ghostty_search_matches`" }); }`n")
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_history.zig`").prepend, .{ .name = `"agwinterm_ghostty_prepend_history`" }); }`n")
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_history.zig`").metadata, .{ .name = `"agwinterm_ghostty_metadata`" }); }`n")
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_search.zig`").unicodeNeedle, .{ .name = `"agwinterm_ghostty_search_unicode`" }); }`n")
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_search.zig`").tick, .{ .name = `"agwinterm_ghostty_search_tick`" }); }`n")
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_search.zig`").matches, .{ .name = `"agwinterm_ghostty_search_matches`" }); }`n")
     & $zig build -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" --prefix $output -j4
     CheckExit 'Ghostty build'
     if ($TestSearch) {
-        & $zig build test-lib-vt -Dtest-filter=search -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" -j1
+        & $zig build test-lib-vt -Dtest-filter=search -Doptimize=Debug "-Dtarget=$($pin.target)" -j1
         CheckExit 'Ghostty search tests'
     }
 } finally {

@@ -67,7 +67,7 @@ History captures include native graphics and hyperlinks. Capture temporarily
 selects the requested viewport under the session lock and restores the live
 viewport before returning; conversion and drawing run outside the lock.
 Search uses native screen coordinates (including wide cells and soft wraps).
-Its current ASCII-only case folding and synchronous execution remain limitations.
+The pinned search patch adds full Unicode folding using Ghostty's existing uucode tables, preserves original cell coordinates, and retains feed/tick progress on a worker. No managed text matcher or separately installed runtime is used. Run build.ps1 -TestSearch to include upstream search tests in Debug mode.
 UI Automation maps UTF-16 ranges to complete graphemes and terminal columns.
 
 The application adapter still has migration gaps: remaining margin metadata,

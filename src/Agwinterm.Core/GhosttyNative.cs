@@ -241,7 +241,7 @@ internal static unsafe partial class GhosttyNative
     private static partial void SearchFree(nint search);
     [LibraryImport(Library, EntryPoint = "agwvt_search_feed")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial int SearchFeed(SearchHandle search, out uint status);
+    internal static partial int SearchFeed(SearchHandle search, out uint status, out nuint count);
     [LibraryImport(Library, EntryPoint = "agwvt_search_tick")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int SearchTick(SearchHandle search, out uint status, out nuint count);

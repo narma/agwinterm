@@ -41,6 +41,9 @@ pub fn matches(handle: search.Search, offset: usize, output: [*]Selection, capac
     if (wrapper.terminal == null) return .invalid_value;
     const state = if (wrapper.search) |*s| s else { total.* = 0; return .success; };
     const screen = state.activeScreenSearch() orelse { total.* = 0; return .success; };
+    // A capped search may stop before upstream's end-of-history pruning pass.
+    // Validate cached history before exposing any untracked references.
+    if (offset == 0 and capacity == 0) screen.pruneHistory();
     total.* = screen.matchesLen();
     const count = @min(capacity, total.* -| offset);
     for (0..count) |i| {

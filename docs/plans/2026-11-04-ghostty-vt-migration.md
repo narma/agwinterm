@@ -242,3 +242,36 @@ but its matching is ASCII-case-insensitive only. The local, uncommitted upstream
 feedback proposes Unicode support in that existing pipeline so this fallback
 can eventually be removed. No upstream issue was opened. Stage 3 and the default
 switch/removal of legacy engines are not part of this increment.
+
+### Stage 2 follow-up: native Unicode search (2026-11-05)
+
+Supersedes the managed fallback and its limitations described above. Adapter ABI
+3 adds a Unicode search entry point to the pinned Ghostty search pipeline. Full
+Unicode folding uses the already bundled uucode tables, with original cell maps
+retained through expansions. Normalization and locale-specific casing remain out
+of scope. The C# text matcher and its implementation-specific tests are removed.
+
+One search object retains feed/tick progress across output, history prepend and
+screen changes. Feed/export run under terminal ownership; tick operates on copied
+pages off the UI thread. Snapshot restore recreates detached search ownership.
+Cancellation and disposal use SafeHandle retention and deferred native destruction.
+The UI retains progress when rejecting a stale result, including the first query.
+
+The pinned patch also fixes active/history overlap duplication and forward page
+ordering, deduplicates folded offsets before they consume the result budget, and
+captures the history boundary during feed so tick does not read a mutable tracked
+pin. Bounded export validates history references before an early capped return.
+The public upstream ASCII mode remains available; our find bar uses Unicode.
+
+Local checks: 649 Core tests and 208 native contracts, including continuous output,
+case expansions, restore/alternate screens, reflow, pruning, prepend, 100,000-match
+capping, 60,000 sharp-s cells, and matches spanning native pages. Upstream search
+tests run via build.ps1 -TestSearch in Debug (runtime validity checks enabled),
+while the shipped DLL stays ReleaseFast. Windows CI now includes this test step.
+GUI/server acceptance is recorded after the worker run below.
+
+Prepend-history assessment: keep the narrow native extension using Ghostty page
+allocation/cloning and its finalization API. Moving the same implementation into
+an internal PageList patch adds maintenance without improving current behavior.
+Persistent search discovers prepended history in the new regression contract.
+No upstream issue was opened; feedback remains local and uncommitted.
