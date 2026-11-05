@@ -1204,6 +1204,7 @@ internal partial class Program
 
     private CancellationTokenSource? _searchCancellation;
     private Pane? _searchPane;
+    private ITerminalCore? _searchCore;
     private long _searchVersion = -1;
     private bool _searchPending, _searchTruncated;
     private string? _searchError;
@@ -1212,7 +1213,7 @@ internal partial class Program
     private void CloseSearch()
     {
         _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
-        _searchPending = false; _searchActive = false; _searchPane = null;
+        _searchPending = false; _searchActive = false; _searchPane = null; _searchCore = null;
         _searchAnchor?.Dispose(); _searchAnchor = null;
         _searchMatches.Clear(); RequestRedraw();
     }
@@ -1233,7 +1234,8 @@ internal partial class Program
             Post(() =>
             {
                 if (!ReferenceEquals(_searchCancellation, owner) || !_searchActive) return;
-                if (!ReferenceEquals(ActiveSurface(), pane)) { RecomputeSearch(); return; }
+                if (!ReferenceEquals(ActiveSurface(), pane) || !ReferenceEquals(pane.S.Emulator, core))
+                { RecomputeSearch(); return; }
                 lock (pane.S.SyncRoot)
                 {
                     if (core.TextVersion != result.Version) { RecomputeSearch(preserveSelection); return; }
@@ -1271,6 +1273,8 @@ internal partial class Program
             Post(() =>
             {
                 if (!ReferenceEquals(_searchCancellation, owner)) return;
+                if (!ReferenceEquals(ActiveSurface(), pane) || !ReferenceEquals(pane.S.Emulator, core))
+                { RecomputeSearch(); return; }
                 _searchPending = false; _searchError = "search unavailable"; RequestRedraw();
             });
         }
@@ -1280,7 +1284,8 @@ internal partial class Program
     private void RefreshSearch(Pane pane)
     {
         if (!_searchActive || _searchQuery.Length == 0 || !ReferenceEquals(pane, ActiveSurface())) return;
-        if (!ReferenceEquals(_searchPane, pane)) { RecomputeSearch(); return; }
+        if (!ReferenceEquals(_searchPane, pane) || !ReferenceEquals(_searchCore, pane.S.Emulator))
+        { RecomputeSearch(); return; }
         if (!_searchPending && _searchError is null && pane.S.Emulator is GhosttyTerminalCore core)
         {
             bool changed;
@@ -1298,6 +1303,7 @@ internal partial class Program
         _searchMatches.Clear();
         var ap = ActiveSurface();
         _searchPane = ap;
+        _searchCore = ap?.S.Emulator;
         if (ap is null || _searchQuery.Length == 0) return;
         string q = _searchQuery.ToLowerInvariant();
         var em = ap.S.Emulator;

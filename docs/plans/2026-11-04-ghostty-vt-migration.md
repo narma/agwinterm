@@ -200,3 +200,45 @@ three rounds, mixed Latin/Russian + four emoji medians are 2.48–2.84 ms and de
 medians 3.09–3.25 ms in the prepared VM. These are VM render timings, not an input
 latency or physical GPU claim. First render runner launch rejected an unready
 VM desktop before application work; normal worker retry passed.
+
+## Stage 2: Unicode and background history search (2026-11-05)
+
+The Ghostty find bar now scans on a worker, copying one native row under the
+session lock and doing text matching outside it. It no longer invokes the
+blocking native search twice on the UI thread. A streaming KMP matcher uses
+invariant Unicode scalar uppercase, native grapheme endpoints and native soft
+wraps. Cyrillic, Greek final sigma and astral case pairs are covered. Hard newlines
+remain boundaries; canonical normalization and multi-scalar case expansions are
+not performed. This is text matching only: Ghostty still owns VT and reflow.
+
+Typing is debounced, replaced/closed requests are cancelled, and terminal-version
+checks reject mixed or stale coordinates. Pane/core replacement also invalidates
+the result. Automatic refresh preserves the chosen occurrence using a native
+tracked point and does not scroll the viewport. Results are capped at 100,000
+with an explicit `+` in the status; paint uses binary searches to skip matches
+outside each visible row. The control API exposes `searching…` and supports
+non-restarting status polls; legacy cores retain their existing refresh behavior.
+
+Validation: 657 Core tests and 188 native contracts pass. The native harness
+scans 20,000 mixed Latin/Cyrillic/emoji rows, verifies cancellation and resize
+invalidation, and observes concurrent session-lock access. One development-host
+sample took 143.78 ms with a maximum sampled lock wait of 0.06 ms. This is an
+exploratory measurement with sparse scheduling probes, not a latency guarantee
+or a Rust/agterm comparison. Evidence: artifacts/ghostty-stage2-contract.log.
+
+Hyper-V acceptance passes 33/33 GUI checks and 32/32 server checks in
+artifacts/hyperv-ghostty-stage2-final/results. It covers Unicode queries, replaced
+and closed requests, selected-match preservation, actual retained large-history
+counts, and image positioning after search scroll. The first fixture incorrectly
+assumed all 5,000 emitted rows were retained; the assertion now compares against
+the independent full native text dump (at least 4,000 retained fixture rows).
+That first run also hit the previously observed legacy Rust startup timeout;
+the unchanged Rust assertions pass on the rerun.
+
+Known limit: every terminal mutation invalidates the fallback scan, so continuous
+output may leave it pending until a consistent pass completes. The UI and PTY
+remain available. Upstream already has incremental `search_feed/search_tick`,
+but its matching is ASCII-case-insensitive only. The local, uncommitted upstream
+feedback proposes Unicode support in that existing pipeline so this fallback
+can eventually be removed. No upstream issue was opened. Stage 3 and the default
+switch/removal of legacy engines are not part of this increment.
