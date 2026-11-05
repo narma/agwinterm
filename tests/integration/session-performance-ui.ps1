@@ -6,7 +6,8 @@ param(
     [ValidateRange(1,100000)][int]$LatencySamples=2050,
     [ValidateSet('idle','ascii','unicode','tui','history','fixed-output')][string]$LatencyWorkload='idle',
     [ValidateSet('marker-burst','single-key')][string]$LatencyInputPattern='marker-burst',
-    [ValidateSet('in-process','server')][string]$LatencyHost='server'
+    [ValidateSet('in-process','server')][string]$LatencyHost='server',
+    [switch]$AllCandidates
 )
 $ErrorActionPreference='Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test SessionPerformance -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
@@ -15,7 +16,9 @@ if (-not (Test-Path -LiteralPath $baseline)) { throw 'Paired measurements requir
 # Both variants run serially in the same prepared VM. Each child invocation owns
 # a fresh app/host job and private namespace; its normal cleanup completes first.
 for($pair=1;$pair -le $Pairs;$pair++) {
-    foreach($variant in 'legacy',$LatencyCandidate) {
+    $variants=if($AllCandidates){@('legacy','single-owner','ui-owner-journal')}else{@('legacy',$LatencyCandidate)}
+    if($AllCandidates){$variants=@(for($i=0;$i -lt 3;$i++){$variants[($i+$pair-1)%3]})}
+    foreach($variant in $variants) {
         $variantExe=if($variant -eq 'legacy'){$baseline}else{$Exe}
         "Pair $pair/$Pairs : $variant / $LatencyWorkload"
         & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File "$PSScriptRoot/hud-ui.ps1" -Exe $variantExe `

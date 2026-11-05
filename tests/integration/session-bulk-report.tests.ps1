@@ -25,6 +25,12 @@ try {
     $memory=$report.comparisons|Where-Object metric -eq 'privateBytesRatio'
     if($cpu.outcome -ne 'pass' -or [Math]::Abs($cpu.ratio.mean-.8) -gt 1e-8 -or
         $throughput.outcome -ne 'pass' -or $memory.outcome -ne 'informational'){throw 'Incorrect fixed-work gate calculation'}
+    $null=& "$PSScriptRoot/../../tools/session-bulk-report.ps1" -Directory $temporary -BaselineVariant single-owner -Output $output
+    $reverse=Get-Content -LiteralPath $output -Raw|ConvertFrom-Json
+    if($reverse.baselineVariant -ne 'single-owner' -or
+        ($reverse.comparisons|Where-Object metric -eq 'cpuLowerRatio').outcome -ne 'fail' -or
+        ($reverse.comparisons|Where-Object metric -eq 'throughputRatio').outcome -ne 'fail' -or
+        @($reverse.comparisons|Where-Object variant -ne 'legacy').Count){throw 'Alternate baseline was not used for the paired comparison'}
     foreach($path in $files | Where-Object {$_ -like '*single-owner*'}){
         $data=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
         $data.cpuLowerMs=90; $data.cpuUpperMs=120

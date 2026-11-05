@@ -9,7 +9,7 @@ internal sealed record JournalMessage(JournalMessageKind Kind,ulong Epoch,long S
 /// <summary>Versioned framing only; no VT parsing. Each direction has an independent pipe.</summary>
 internal static class JournalWire
 {
-    private const int HeaderBytes=18;
+    internal const int HeaderBytes=18;
     public static byte[] Encode(JournalMessage message)
     {
         Validate(message.Kind,message.Epoch,message.Sequence,message.Payload.Length);
@@ -49,7 +49,7 @@ internal static class JournalWire
         await stream.ReadExactlyAsync(payload,cancellation).ConfigureAwait(false);
         return new(kind,epoch,sequence,payload);
     }
-    private static void Validate(JournalMessageKind kind,ulong epoch,long sequence,int payload)
+    internal static void Validate(JournalMessageKind kind,ulong epoch,long sequence,int payload)
     {
         bool valid=kind switch
         {

@@ -2,6 +2,8 @@
 
 Branch: `codex/ui-owner-ghostty-journal`. The earlier host-owner experiment is preserved at `b8e7a9c` on `codex/single-owner-ghostty-sessions`. Neither experiment changes the default backend.
 
+This report covers the original v9 prototype. The subsequent reader optimization and new three-way measurements are documented in [Journal transport optimization](ui-owner-journal-transport.md).
+
 ## Contract and scope
 
 Set `AGWINTERM_JOURNAL_OWNER=1` with `emulator-core = ghostty` and `session-host = server` for an isolated experimental instance. The UI owns the only Ghostty; the .NET broker owns ConPTY, raw output/resize events and checkpoint storage. There is no new runtime dependency or language rewrite. The broker loads the existing application package but creates no native terminal or parser.

@@ -103,10 +103,11 @@ public sealed partial class ServerSession
     private void ReadJournalLoop()
     {
         var data=_data!;
-        using var buffered=new BufferedStream(data,64*1024);
+        var pipeReader=data is System.IO.Pipes.PipeStream pipe ? new PresentationPipeIo(pipe,_readCancel.Token) : null;
+        var reader=new JournalReader(data,pipeReader is null ? null : pipeReader.Read);
         try
         {
-            var checkpoint=JournalWire.ReadAsync(buffered,_attachmentEpoch,_readCancel.Token).AsTask().GetAwaiter().GetResult();
+            var checkpoint=reader.Read(_attachmentEpoch,_readCancel.Token);
             if(checkpoint.Kind != JournalMessageKind.Checkpoint) throw new InvalidDataException("Journal stream must start with a checkpoint.");
             lock(_sync)
             {
@@ -114,14 +115,14 @@ public sealed partial class ServerSession
                 if(!checkpoint.Payload.IsEmpty) ((GhosttyTerminalCore)Emulator).RestoreSnapshot(checkpoint.Payload.Span);
                 _journalApplied=checkpoint.Sequence;
             }
-            var barrier=JournalWire.ReadAsync(buffered,_attachmentEpoch,_readCancel.Token).AsTask().GetAwaiter().GetResult();
+            var barrier=reader.Read(_attachmentEpoch,_readCancel.Token);
             if(barrier.Kind != JournalMessageKind.Live || barrier.Sequence < _journalApplied) throw new InvalidDataException("Invalid journal replay barrier.");
             _journalReplayThrough=barrier.Sequence;
             _journalReplaying=_journalApplied < _journalReplayThrough;
             if(!_journalReplaying) OutputReceived?.Invoke();
             while(true)
             {
-                var message=JournalWire.ReadAsync(buffered,_attachmentEpoch,_readCancel.Token).AsTask().GetAwaiter().GetResult();
+                var message=reader.Read(_attachmentEpoch,_readCancel.Token);
                 if(message.Kind == JournalMessageKind.Exit)
                 {
                     if(message.Sequence != _journalApplied) throw new InvalidDataException("Exit skipped journal output.");
@@ -156,7 +157,7 @@ public sealed partial class ServerSession
             }
         }
         catch(Exception ex) when(ex is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException) { }
-        finally { MarkInputClosed(); _presentationInput?.Dispose(); data.Dispose(); }
+        finally { pipeReader?.Dispose(); MarkInputClosed(); _presentationInput?.Dispose(); data.Dispose(); }
         OnStreamEnded();
     }
     private sealed class JournalOwnerActions(ServerSession session) : IHostActions

@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$Directory,
     [ValidateSet('ownership','trace')][string]$Comparison='ownership',
-    [Parameter(Mandatory)][string]$Output
+    [Parameter(Mandatory)][string]$Output,
+    [ValidateSet('legacy','single-owner','ui-owner-journal')][string]$BaselineVariant='legacy'
 )
 $ErrorActionPreference='Stop'
 function Confidence([double[]]$Values) {
@@ -23,8 +24,8 @@ if(-not $runs.Count){throw 'No completed bulk runs'}
 $comparisons=@()
 $groups=$runs|Group-Object {if($Comparison -eq 'ownership'){"$($_.hostMode)/$($_.traceMode)"}else{"$($_.hostMode)/$($_.presentation)"}}
 foreach($group in $groups) {
-    $before=@($group.Group|Where-Object {if($Comparison -eq 'ownership'){$_.presentation -eq 'legacy'}else{$_.traceMode -eq 'off'}})
-    $variants=if($Comparison -eq 'ownership'){@($group.Group.presentation | Where-Object {$_ -ne 'legacy'} | Sort-Object -Unique)}else{@('counters','full')}
+    $before=@($group.Group|Where-Object {if($Comparison -eq 'ownership'){$_.presentation -eq $BaselineVariant}else{$_.traceMode -eq 'off'}})
+    $variants=if($Comparison -eq 'ownership'){@($group.Group.presentation | Where-Object {$_ -ne $BaselineVariant} | Sort-Object -Unique)}else{@('counters','full')}
     foreach($variant in $variants) {
         $after=@($group.Group|Where-Object {if($Comparison -eq 'ownership'){$_.presentation -eq $variant}else{$_.traceMode -eq $variant}})
         if($before.Count -eq 0 -or $before.Count -ne $after.Count){throw "Unpaired bulk runs: $($group.Name)/$variant"}
@@ -57,7 +58,7 @@ foreach($group in $groups) {
         }
     }
 }
-@{comparison=$Comparison;runs=$runs;comparisons=$comparisons;cpuScope='UI plus owner, excludes child and conhost';
+@{comparison=$Comparison;baselineVariant=$BaselineVariant;runs=$runs;comparisons=$comparisons;cpuScope='UI plus owner, excludes child and conhost';
   endpoint='cached completion readback; 100 ms observation interval; no latency claim';memoryPolicy='informational bounded overhead; growth/leaks require separate soak'} |
     ConvertTo-Json -Depth 9|Set-Content -LiteralPath $Output
 $comparisons|Select-Object group,variant,metric,outcome|Format-Table
