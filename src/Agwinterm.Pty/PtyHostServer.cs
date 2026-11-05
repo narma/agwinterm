@@ -162,6 +162,7 @@ public sealed class PtyHostServer : IDisposable
                 Request.CmdOneofCase.Attach => HandleAttach(req.Attach),
                 Request.CmdOneofCase.Detach => WithSession(req.Detach.Id, h => { CloseData(h); return Ok(); }, req.Detach.CreationTicket),
                 Request.CmdOneofCase.Resize => HandleResize(req.Resize),
+                Request.CmdOneofCase.ThemeUpdate => HandleTheme(req.ThemeUpdate),
                 Request.CmdOneofCase.Kill => HandleKill(req.Kill),
                 Request.CmdOneofCase.PrepareCreate => HandlePrepare(req.PrepareCreate),
                 Request.CmdOneofCase.QueryCreate => HandleQuery(req.QueryCreate),
@@ -179,7 +180,7 @@ public sealed class PtyHostServer : IDisposable
         // The handshake is the protocol's forward-compat seam: a client offering a DIFFERENT
         // version is refused loudly (never half-understood), and the reply names ours.
         return h.Protocol == ProtocolVersion
-            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1 } }
+            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1 } }
             : Err($"protocol mismatch: host={ProtocolVersion} client={h.Protocol}");
     }
 
@@ -486,6 +487,22 @@ public sealed class PtyHostServer : IDisposable
         h.Resize.Run(() => h.S.Resize((int)r.Cols, (int)r.Rows));
         return Ok();
     }, r.CreationTicket);
+
+    private Reply HandleTheme(ThemeUpdate update) => WithSession(update.Id, h =>
+    {
+        var colors = ThemeColors.Parse(update.Colors);
+        var palette = ThemeColors.ParsePalette(update.Palette);
+        var cursor = ThemeColors.ParseColor(update.Cursor);
+        if (colors is null || palette is null || cursor is null) return Err("invalid terminal theme");
+        lock (h.S.SyncRoot)
+        {
+            h.Replies.DefaultColors = colors;
+            h.Replies.DefaultPalette = palette;
+            h.Replies.DefaultCursorColor = cursor;
+            if (h.S.Emulator is GhosttyTerminalCore native) native.SyncTheme();
+        }
+        return Ok();
+    }, update.CreationTicket);
 
     private Reply HandleKill(SessionRef request)
     {

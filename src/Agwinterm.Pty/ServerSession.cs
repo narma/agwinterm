@@ -282,6 +282,7 @@ public sealed class ServerSession : ISession
         });
         if (!published) att.Dispose(); // no read was ever issued
         if (published && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
+        if (published) UpdateTheme();
         return published;
     }
 
@@ -478,6 +479,34 @@ public sealed class ServerSession : ISession
         Rows = rows;
         if (_started && !HasExited)
             try { _backend.Client.Resize(_id, cols, rows, _creationTicket); } catch { }   // host gone → EOF path reports it
+    }
+
+    private readonly object _themeGate = new();
+    private long _themeSequence;
+    /// <summary>Coalesce live theme changes off the UI thread. Never replay VT or resize a child.</summary>
+    public void UpdateTheme()
+    {
+        string colors, palette, cursor, ticket;
+        long sequence;
+        lock (_sync)
+        {
+            if (_disposed || !_started || HasExited || Emulator is not GhosttyTerminalCore) return;
+            var host = Emulator.Host;
+            if (host?.DefaultColors is not { } defaults || host.DefaultPalette is not { } entries || host.DefaultCursorColor is not { } caret) return;
+            colors = ThemeColors.Format(defaults.Foreground, defaults.Background);
+            palette = ThemeColors.FormatPalette(entries); cursor = ThemeColors.FormatColor(caret);
+            ticket = _creationTicket;
+            sequence = Interlocked.Increment(ref _themeSequence);
+        }
+        _ = Task.Run(() =>
+        {
+            lock (_themeGate)
+            {
+                if (_disposed || sequence != Volatile.Read(ref _themeSequence)) return;
+                try { _backend.Client.UpdateTheme(_id, colors, palette, cursor, ticket); }
+                catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or TimeoutException) { }
+            }
+        });
     }
 
     public string SnapshotRow(int row)

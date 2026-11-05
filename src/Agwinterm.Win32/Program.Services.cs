@@ -679,7 +679,17 @@ internal partial class Program
 
     // ---- Theming ----
 
-    private void ApplyTheme(Theme t) { _theme = t; RecomputeChrome(); RequestRedraw(); }
+    private void ApplyTheme(Theme t)
+    {
+        _theme = t;
+        foreach (var window in _registry.Values.ToArray())
+        {
+            foreach (var pane in window.AllSessions().SelectMany(s => s.AllPanes))
+                if (pane.S is ServerSession server) server.UpdateTheme();
+            window.RequestRedraw();
+        }
+        RecomputeChrome(); RequestRedraw();
+    }
 
     /// <summary>Resolve the effective theme when "follow Windows light/dark" is on: pick theme-light or
     /// theme-dark per the current OS setting; when off, fall back to the single manual <c>theme</c>.

@@ -74,6 +74,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         _vt.SetCursorDefault(style, blink); _cursorStyle = style; _cursorBlink = blink;
     }
     private long _queryThemeVersion = -1;
+    public void SyncTheme() => SyncQueryTheme();
     private void SyncQueryTheme()
     {
         _vt.SyncHostColors();

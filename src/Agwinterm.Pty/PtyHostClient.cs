@@ -32,7 +32,16 @@ public sealed class PtyHostClient : IDisposable
     public bool IsUsable => !Volatile.Read(ref _unusable);
     public uint CreationRevision { get; private set; }
     public uint CoreSelectionRevision { get; private set; }
+    public uint ThemeRevision { get; private set; }
     public uint HostPid { get; private set; }
+
+    public bool UpdateTheme(string id, string colors, string palette, string cursor, string creationTicket = "")
+    {
+        if (ThemeRevision < 1) return false;
+        Request(new Request { ThemeUpdate = new ThemeUpdate { Id = id, CreationTicket = creationTicket,
+            Colors = colors, Palette = palette, Cursor = cursor } });
+        return true;
+    }
 
     internal PtyHostClient(Stream pipe, uint creationRevision = 0) { _pipe = pipe; CreationRevision = creationRevision; }
 
@@ -66,6 +75,7 @@ public sealed class PtyHostClient : IDisposable
                 throw new InvalidOperationException("pty-host protocol mismatch");
             client.CreationRevision = reply.Hello.CreationRevision;
             client.CoreSelectionRevision = reply.Hello.CoreSelectionRevision;
+            client.ThemeRevision = reply.Hello.ThemeRevision;
             client.HostPid = reply.Hello.Pid;
             return client;
         }

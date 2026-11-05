@@ -318,6 +318,7 @@ fn dispatch(host: &Arc<Host>, req: Request) -> Reply {
                     pid: std::process::id(),
                     creation_revision: 1,
                     core_selection_revision: 0, // legacy host: no per-session core selection
+                    theme_revision: 0,
                 })))
             } else {
                 err_reply(format!(
@@ -330,6 +331,7 @@ fn dispatch(host: &Arc<Host>, req: Request) -> Reply {
         Some(request::Cmd::PrepareCreate(p)) => handle_prepare(host, &p.id),
         Some(request::Cmd::QueryCreate(q)) => handle_query(host, &q),
         Some(request::Cmd::CancelCreate(c)) => handle_cancel(host, &c),
+        Some(request::Cmd::ThemeUpdate(_)) => err_reply("live theme updates require the .NET host"),
         Some(request::Cmd::Attach(a)) => handle_attach(host, a),
         Some(request::Cmd::Detach(d)) => with_session(host, &d.id, &d.creation_ticket, |h| {
             detach(h);

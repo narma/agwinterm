@@ -24,7 +24,7 @@ namespace Agwinterm.Pty.Proto {
     static PtyhostReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg1wdHlob3N0LnByb3RvEhFhZ3dpbnRlcm0ucHR5aG9zdCKpBAoHUmVxdWVz",
+            "Cg1wdHlob3N0LnByb3RvEhFhZ3dpbnRlcm0ucHR5aG9zdCLhBAoHUmVxdWVz",
             "dBIpCgVoZWxsbxgBIAEoCzIYLmFnd2ludGVybS5wdHlob3N0LkhlbGxvSAAS",
             "KwoGY3JlYXRlGAIgASgLMhkuYWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRlSAAS",
             "KwoGYXR0YWNoGAMgASgLMhkuYWd3aW50ZXJtLnB0eWhvc3QuQXR0YWNoSAAS",
@@ -36,64 +36,69 @@ namespace Agwinterm.Pty.Proto {
             "b3duSAASOgoOcHJlcGFyZV9jcmVhdGUYCSABKAsyIC5hZ3dpbnRlcm0ucHR5",
             "aG9zdC5QcmVwYXJlQ3JlYXRlSAASNgoMcXVlcnlfY3JlYXRlGAogASgLMh4u",
             "YWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIABI3Cg1jYW5jZWxfY3Jl",
-            "YXRlGAsgASgLMh4uYWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIAEIF",
-            "CgNjbWQiGQoFSGVsbG8SEAoIcHJvdG9jb2wYASABKA0iogIKBkNyZWF0ZRIK",
-            "CgJpZBgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJvd3MYAyABKA0SCwoDYXBw",
-            "GAQgASgJEgwKBGFyZ3MYBSADKAkSCwoDY3dkGAYgASgJEhAKCHZlcmJhdGlt",
-            "GAcgASgIEhIKCmRlX2VsZXZhdGUYCCABKAgSFQoNZnJlc2hfZW52X29mZhgJ",
-            "IAEoCBIvCgNlbnYYCiADKAsyIi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGUu",
-            "RW52RW50cnkSFwoPY3JlYXRpb25fdGlja2V0GAsgASgJEhUKDWVtdWxhdG9y",
-            "X2NvcmUYDCABKAkaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVl",
-            "GAIgASgJOgI4ASJXCgZBdHRhY2gSCgoCaWQYASABKAkSDwoHcmVwYWludBgC",
-            "IAEoCBIXCg9jcmVhdGlvbl90aWNrZXQYAyABKAkSFwoPbmF0aXZlX3NuYXBz",
-            "aG90GAQgASgIIjEKClNlc3Npb25SZWYSCgoCaWQYASABKAkSFwoPY3JlYXRp",
-            "b25fdGlja2V0GAIgASgJIkkKBlJlc2l6ZRIKCgJpZBgBIAEoCRIMCgRjb2xz",
-            "GAIgASgNEgwKBHJvd3MYAyABKA0SFwoPY3JlYXRpb25fdGlja2V0GAQgASgJ",
-            "IhsKDVByZXBhcmVDcmVhdGUSCgoCaWQYASABKAkiKQoLQ3JlYXRpb25SZWYS",
-            "CgoCaWQYASABKAkSDgoGdGlja2V0GAIgASgJIlwKDUNyZWF0aW9uUmVwbHkS",
-            "CgoCaWQYASABKAkSDgoGdGlja2V0GAIgASgJEi8KBXBoYXNlGAMgASgOMiAu",
-            "YWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25QaGFzZSIGCgRMaXN0IgoKCFNo",
-            "dXRkb3duIqICCgVSZXBseRIKCgJvaxgBIAEoCBINCgVlcnJvchgCIAEoCRIu",
-            "CgVoZWxsbxgDIAEoCzIdLmFnd2ludGVybS5wdHlob3N0LkhlbGxvUmVwbHlI",
-            "ABIwCgZjcmVhdGUYBCABKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGVS",
-            "ZXBseUgAEjAKBmF0dGFjaBgFIAEoCzIeLmFnd2ludGVybS5wdHlob3N0LkF0",
-            "dGFjaFJlcGx5SAASLAoEbGlzdBgGIAEoCzIcLmFnd2ludGVybS5wdHlob3N0",
-            "Lkxpc3RSZXBseUgAEjQKCGNyZWF0aW9uGAcgASgLMiAuYWd3aW50ZXJtLnB0",
-            "eWhvc3QuQ3JlYXRpb25SZXBseUgAQgYKBGJvZHkiZwoKSGVsbG9SZXBseRIQ",
-            "Cghwcm90b2NvbBgBIAEoDRILCgNwaWQYAiABKA0SGQoRY3JlYXRpb25fcmV2",
-            "aXNpb24YAyABKA0SHwoXY29yZV9zZWxlY3Rpb25fcmV2aXNpb24YBCABKA0i",
-            "MgoLQ3JlYXRlUmVwbHkSCgoCaWQYASABKAkSFwoPY3JlYXRpb25fdGlja2V0",
-            "GAIgASgJIvYBCgtBdHRhY2hSZXBseRIMCgRwaXBlGAEgASgJEgwKBGNvbHMY",
-            "AiABKA0SDAoEcm93cxgDIAEoDRIRCgljaGlsZF9waWQYBCABKA0SEgoKaGFz",
-            "X2V4aXRlZBgFIAEoCBIRCglleGl0X2NvZGUYBiABKAUSDQoFbW9kZXMYByAB",
-            "KAkSEgoKc2Nyb2xsYmFjaxgIIAMoCRIXCg9zY3JvbGxiYWNrX2Jsb2IYCSAB",
-            "KAwSFwoPY3JlYXRpb25fdGlja2V0GAogASgJEhcKD25hdGl2ZV9zbmFwc2hv",
-            "dBgLIAEoCBIVCg1lbXVsYXRvcl9jb3JlGAwgASgJIqkBCgtTZXNzaW9uSW5m",
-            "bxIKCgJpZBgBIAEoCRIMCgRjb2xzGAIgASgNEgwKBHJvd3MYAyABKA0SEQoJ",
-            "Y2hpbGRfcGlkGAQgASgNEhIKCmhhc19leGl0ZWQYBSABKAgSEQoJZXhpdF9j",
-            "b2RlGAYgASgFEg0KBXRpdGxlGAcgASgJEhAKCGF0dGFjaGVkGAggASgIEhcK",
-            "D2NyZWF0aW9uX3RpY2tldBgJIAEoCSI9CglMaXN0UmVwbHkSMAoIc2Vzc2lv",
-            "bnMYASADKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5TZXNzaW9uSW5mbyp/Cg1D",
-            "cmVhdGlvblBoYXNlEhQKEENSRUFUSU9OX1VOS05PV04QABIVChFDUkVBVElP",
-            "Tl9QUkVQQVJFRBABEhUKEUNSRUFUSU9OX0NSRUFUSU5HEAISEQoNQ1JFQVRJ",
-            "T05fTElWRRADEhcKE0NSRUFUSU9OX0NBTkNFTExJTkcQBEIWqgITQWd3aW50",
-            "ZXJtLlB0eS5Qcm90b2IGcHJvdG8z"));
+            "YXRlGAsgASgLMh4uYWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIABI2",
+            "Cgx0aGVtZV91cGRhdGUYDCABKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5UaGVt",
+            "ZVVwZGF0ZUgAQgUKA2NtZCIZCgVIZWxsbxIQCghwcm90b2NvbBgBIAEoDSKi",
+            "AgoGQ3JlYXRlEgoKAmlkGAEgASgJEgwKBGNvbHMYAiABKA0SDAoEcm93cxgD",
+            "IAEoDRILCgNhcHAYBCABKAkSDAoEYXJncxgFIAMoCRILCgNjd2QYBiABKAkS",
+            "EAoIdmVyYmF0aW0YByABKAgSEgoKZGVfZWxldmF0ZRgIIAEoCBIVCg1mcmVz",
+            "aF9lbnZfb2ZmGAkgASgIEi8KA2VudhgKIAMoCzIiLmFnd2ludGVybS5wdHlo",
+            "b3N0LkNyZWF0ZS5FbnZFbnRyeRIXCg9jcmVhdGlvbl90aWNrZXQYCyABKAkS",
+            "FQoNZW11bGF0b3JfY29yZRgMIAEoCRoqCghFbnZFbnRyeRILCgNrZXkYASAB",
+            "KAkSDQoFdmFsdWUYAiABKAk6AjgBIlcKBkF0dGFjaBIKCgJpZBgBIAEoCRIP",
+            "CgdyZXBhaW50GAIgASgIEhcKD2NyZWF0aW9uX3RpY2tldBgDIAEoCRIXCg9u",
+            "YXRpdmVfc25hcHNob3QYBCABKAgiMQoKU2Vzc2lvblJlZhIKCgJpZBgBIAEo",
+            "CRIXCg9jcmVhdGlvbl90aWNrZXQYAiABKAkiSQoGUmVzaXplEgoKAmlkGAEg",
+            "ASgJEgwKBGNvbHMYAiABKA0SDAoEcm93cxgDIAEoDRIXCg9jcmVhdGlvbl90",
+            "aWNrZXQYBCABKAkiYwoLVGhlbWVVcGRhdGUSCgoCaWQYASABKAkSFwoPY3Jl",
+            "YXRpb25fdGlja2V0GAIgASgJEg4KBmNvbG9ycxgDIAEoCRIPCgdwYWxldHRl",
+            "GAQgASgJEg4KBmN1cnNvchgFIAEoCSIbCg1QcmVwYXJlQ3JlYXRlEgoKAmlk",
+            "GAEgASgJIikKC0NyZWF0aW9uUmVmEgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
+            "IAEoCSJcCg1DcmVhdGlvblJlcGx5EgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
+            "IAEoCRIvCgVwaGFzZRgDIAEoDjIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0",
+            "aW9uUGhhc2UiBgoETGlzdCIKCghTaHV0ZG93biKiAgoFUmVwbHkSCgoCb2sY",
+            "ASABKAgSDQoFZXJyb3IYAiABKAkSLgoFaGVsbG8YAyABKAsyHS5hZ3dpbnRl",
+            "cm0ucHR5aG9zdC5IZWxsb1JlcGx5SAASMAoGY3JlYXRlGAQgASgLMh4uYWd3",
+            "aW50ZXJtLnB0eWhvc3QuQ3JlYXRlUmVwbHlIABIwCgZhdHRhY2gYBSABKAsy",
+            "Hi5hZ3dpbnRlcm0ucHR5aG9zdC5BdHRhY2hSZXBseUgAEiwKBGxpc3QYBiAB",
+            "KAsyHC5hZ3dpbnRlcm0ucHR5aG9zdC5MaXN0UmVwbHlIABI0CghjcmVhdGlv",
+            "bhgHIAEoCzIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0aW9uUmVwbHlIAEIG",
+            "CgRib2R5In8KCkhlbGxvUmVwbHkSEAoIcHJvdG9jb2wYASABKA0SCwoDcGlk",
+            "GAIgASgNEhkKEWNyZWF0aW9uX3JldmlzaW9uGAMgASgNEh8KF2NvcmVfc2Vs",
+            "ZWN0aW9uX3JldmlzaW9uGAQgASgNEhYKDnRoZW1lX3JldmlzaW9uGAUgASgN",
+            "IjIKC0NyZWF0ZVJlcGx5EgoKAmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tl",
+            "dBgCIAEoCSL2AQoLQXR0YWNoUmVwbHkSDAoEcGlwZRgBIAEoCRIMCgRjb2xz",
+            "GAIgASgNEgwKBHJvd3MYAyABKA0SEQoJY2hpbGRfcGlkGAQgASgNEhIKCmhh",
+            "c19leGl0ZWQYBSABKAgSEQoJZXhpdF9jb2RlGAYgASgFEg0KBW1vZGVzGAcg",
+            "ASgJEhIKCnNjcm9sbGJhY2sYCCADKAkSFwoPc2Nyb2xsYmFja19ibG9iGAkg",
+            "ASgMEhcKD2NyZWF0aW9uX3RpY2tldBgKIAEoCRIXCg9uYXRpdmVfc25hcHNo",
+            "b3QYCyABKAgSFQoNZW11bGF0b3JfY29yZRgMIAEoCSKpAQoLU2Vzc2lvbklu",
+            "Zm8SCgoCaWQYASABKAkSDAoEY29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhEK",
+            "CWNoaWxkX3BpZBgEIAEoDRISCgpoYXNfZXhpdGVkGAUgASgIEhEKCWV4aXRf",
+            "Y29kZRgGIAEoBRINCgV0aXRsZRgHIAEoCRIQCghhdHRhY2hlZBgIIAEoCBIX",
+            "Cg9jcmVhdGlvbl90aWNrZXQYCSABKAkiPQoJTGlzdFJlcGx5EjAKCHNlc3Np",
+            "b25zGAEgAygLMh4uYWd3aW50ZXJtLnB0eWhvc3QuU2Vzc2lvbkluZm8qfwoN",
+            "Q3JlYXRpb25QaGFzZRIUChBDUkVBVElPTl9VTktOT1dOEAASFQoRQ1JFQVRJ",
+            "T05fUFJFUEFSRUQQARIVChFDUkVBVElPTl9DUkVBVElORxACEhEKDUNSRUFU",
+            "SU9OX0xJVkUQAxIXChNDUkVBVElPTl9DQU5DRUxMSU5HEARCFqoCE0Fnd2lu",
+            "dGVybS5QdHkuUHJvdG9iBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Agwinterm.Pty.Proto.CreationPhase), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Request), global::Agwinterm.Pty.Proto.Request.Parser, new[]{ "Hello", "Create", "Attach", "Detach", "Resize", "Kill", "List", "Shutdown", "PrepareCreate", "QueryCreate", "CancelCreate" }, new[]{ "Cmd" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Request), global::Agwinterm.Pty.Proto.Request.Parser, new[]{ "Hello", "Create", "Attach", "Detach", "Resize", "Kill", "List", "Shutdown", "PrepareCreate", "QueryCreate", "CancelCreate", "ThemeUpdate" }, new[]{ "Cmd" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Hello), global::Agwinterm.Pty.Proto.Hello.Parser, new[]{ "Protocol" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Create), global::Agwinterm.Pty.Proto.Create.Parser, new[]{ "Id", "Cols", "Rows", "App", "Args", "Cwd", "Verbatim", "DeElevate", "FreshEnvOff", "Env", "CreationTicket", "EmulatorCore" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Attach), global::Agwinterm.Pty.Proto.Attach.Parser, new[]{ "Id", "Repaint", "CreationTicket", "NativeSnapshot" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionRef), global::Agwinterm.Pty.Proto.SessionRef.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Resize), global::Agwinterm.Pty.Proto.Resize.Parser, new[]{ "Id", "Cols", "Rows", "CreationTicket" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.ThemeUpdate), global::Agwinterm.Pty.Proto.ThemeUpdate.Parser, new[]{ "Id", "CreationTicket", "Colors", "Palette", "Cursor" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.PrepareCreate), global::Agwinterm.Pty.Proto.PrepareCreate.Parser, new[]{ "Id" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.CreationRef), global::Agwinterm.Pty.Proto.CreationRef.Parser, new[]{ "Id", "Ticket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.CreationReply), global::Agwinterm.Pty.Proto.CreationReply.Parser, new[]{ "Id", "Ticket", "Phase" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.List), global::Agwinterm.Pty.Proto.List.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Shutdown), global::Agwinterm.Pty.Proto.Shutdown.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Reply), global::Agwinterm.Pty.Proto.Reply.Parser, new[]{ "Ok", "Error", "Hello", "Create", "Attach", "List", "Creation" }, new[]{ "Body" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision", "CoreSelectionRevision" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision", "CoreSelectionRevision", "ThemeRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.CreateReply), global::Agwinterm.Pty.Proto.CreateReply.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket", "NativeSnapshot", "EmulatorCore" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionInfo), global::Agwinterm.Pty.Proto.SessionInfo.Parser, new[]{ "Id", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Title", "Attached", "CreationTicket" }, null, null, null, null),
@@ -189,6 +194,9 @@ namespace Agwinterm.Pty.Proto {
           break;
         case CmdOneofCase.CancelCreate:
           CancelCreate = other.CancelCreate.Clone();
+          break;
+        case CmdOneofCase.ThemeUpdate:
+          ThemeUpdate = other.ThemeUpdate.Clone();
           break;
       }
 
@@ -333,6 +341,18 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "theme_update" field.</summary>
+    public const int ThemeUpdateFieldNumber = 12;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Agwinterm.Pty.Proto.ThemeUpdate ThemeUpdate {
+      get { return cmdCase_ == CmdOneofCase.ThemeUpdate ? (global::Agwinterm.Pty.Proto.ThemeUpdate) cmd_ : null; }
+      set {
+        cmd_ = value;
+        cmdCase_ = value == null ? CmdOneofCase.None : CmdOneofCase.ThemeUpdate;
+      }
+    }
+
     private object cmd_;
     /// <summary>Enum of possible cases for the "cmd" oneof.</summary>
     public enum CmdOneofCase {
@@ -348,6 +368,7 @@ namespace Agwinterm.Pty.Proto {
       PrepareCreate = 9,
       QueryCreate = 10,
       CancelCreate = 11,
+      ThemeUpdate = 12,
     }
     private CmdOneofCase cmdCase_ = CmdOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -389,6 +410,7 @@ namespace Agwinterm.Pty.Proto {
       if (!object.Equals(PrepareCreate, other.PrepareCreate)) return false;
       if (!object.Equals(QueryCreate, other.QueryCreate)) return false;
       if (!object.Equals(CancelCreate, other.CancelCreate)) return false;
+      if (!object.Equals(ThemeUpdate, other.ThemeUpdate)) return false;
       if (CmdCase != other.CmdCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -408,6 +430,7 @@ namespace Agwinterm.Pty.Proto {
       if (cmdCase_ == CmdOneofCase.PrepareCreate) hash ^= PrepareCreate.GetHashCode();
       if (cmdCase_ == CmdOneofCase.QueryCreate) hash ^= QueryCreate.GetHashCode();
       if (cmdCase_ == CmdOneofCase.CancelCreate) hash ^= CancelCreate.GetHashCode();
+      if (cmdCase_ == CmdOneofCase.ThemeUpdate) hash ^= ThemeUpdate.GetHashCode();
       hash ^= (int) cmdCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -471,6 +494,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(90);
         output.WriteMessage(CancelCreate);
       }
+      if (cmdCase_ == CmdOneofCase.ThemeUpdate) {
+        output.WriteRawTag(98);
+        output.WriteMessage(ThemeUpdate);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -525,6 +552,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(90);
         output.WriteMessage(CancelCreate);
       }
+      if (cmdCase_ == CmdOneofCase.ThemeUpdate) {
+        output.WriteRawTag(98);
+        output.WriteMessage(ThemeUpdate);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -567,6 +598,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (cmdCase_ == CmdOneofCase.CancelCreate) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(CancelCreate);
+      }
+      if (cmdCase_ == CmdOneofCase.ThemeUpdate) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(ThemeUpdate);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -646,6 +680,12 @@ namespace Agwinterm.Pty.Proto {
             CancelCreate = new global::Agwinterm.Pty.Proto.CreationRef();
           }
           CancelCreate.MergeFrom(other.CancelCreate);
+          break;
+        case CmdOneofCase.ThemeUpdate:
+          if (ThemeUpdate == null) {
+            ThemeUpdate = new global::Agwinterm.Pty.Proto.ThemeUpdate();
+          }
+          ThemeUpdate.MergeFrom(other.ThemeUpdate);
           break;
       }
 
@@ -767,6 +807,15 @@ namespace Agwinterm.Pty.Proto {
             CancelCreate = subBuilder;
             break;
           }
+          case 98: {
+            global::Agwinterm.Pty.Proto.ThemeUpdate subBuilder = new global::Agwinterm.Pty.Proto.ThemeUpdate();
+            if (cmdCase_ == CmdOneofCase.ThemeUpdate) {
+              subBuilder.MergeFrom(ThemeUpdate);
+            }
+            input.ReadMessage(subBuilder);
+            ThemeUpdate = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -883,6 +932,15 @@ namespace Agwinterm.Pty.Proto {
             }
             input.ReadMessage(subBuilder);
             CancelCreate = subBuilder;
+            break;
+          }
+          case 98: {
+            global::Agwinterm.Pty.Proto.ThemeUpdate subBuilder = new global::Agwinterm.Pty.Proto.ThemeUpdate();
+            if (cmdCase_ == CmdOneofCase.ThemeUpdate) {
+              subBuilder.MergeFrom(ThemeUpdate);
+            }
+            input.ReadMessage(subBuilder);
+            ThemeUpdate = subBuilder;
             break;
           }
         }
@@ -2553,6 +2611,361 @@ namespace Agwinterm.Pty.Proto {
 
   }
 
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ThemeUpdate : pb::IMessage<ThemeUpdate>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ThemeUpdate> _parser = new pb::MessageParser<ThemeUpdate>(() => new ThemeUpdate());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ThemeUpdate> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[6]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ThemeUpdate() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ThemeUpdate(ThemeUpdate other) : this() {
+      id_ = other.id_;
+      creationTicket_ = other.creationTicket_;
+      colors_ = other.colors_;
+      palette_ = other.palette_;
+      cursor_ = other.cursor_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ThemeUpdate Clone() {
+      return new ThemeUpdate(this);
+    }
+
+    /// <summary>Field number for the "id" field.</summary>
+    public const int IdFieldNumber = 1;
+    private string id_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Id {
+      get { return id_; }
+      set {
+        id_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "creation_ticket" field.</summary>
+    public const int CreationTicketFieldNumber = 2;
+    private string creationTicket_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string CreationTicket {
+      get { return creationTicket_; }
+      set {
+        creationTicket_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "colors" field.</summary>
+    public const int ColorsFieldNumber = 3;
+    private string colors_ = "";
+    /// <summary>
+    /// rrggbb;rrggbb
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Colors {
+      get { return colors_; }
+      set {
+        colors_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "palette" field.</summary>
+    public const int PaletteFieldNumber = 4;
+    private string palette_ = "";
+    /// <summary>
+    /// 16 or 256 semicolon-separated rrggbb entries
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Palette {
+      get { return palette_; }
+      set {
+        palette_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "cursor" field.</summary>
+    public const int CursorFieldNumber = 5;
+    private string cursor_ = "";
+    /// <summary>
+    /// rrggbb
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Cursor {
+      get { return cursor_; }
+      set {
+        cursor_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ThemeUpdate);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ThemeUpdate other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Id != other.Id) return false;
+      if (CreationTicket != other.CreationTicket) return false;
+      if (Colors != other.Colors) return false;
+      if (Palette != other.Palette) return false;
+      if (Cursor != other.Cursor) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Id.Length != 0) hash ^= Id.GetHashCode();
+      if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
+      if (Colors.Length != 0) hash ^= Colors.GetHashCode();
+      if (Palette.Length != 0) hash ^= Palette.GetHashCode();
+      if (Cursor.Length != 0) hash ^= Cursor.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Id.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Id);
+      }
+      if (CreationTicket.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(CreationTicket);
+      }
+      if (Colors.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Colors);
+      }
+      if (Palette.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(Palette);
+      }
+      if (Cursor.Length != 0) {
+        output.WriteRawTag(42);
+        output.WriteString(Cursor);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Id.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Id);
+      }
+      if (CreationTicket.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(CreationTicket);
+      }
+      if (Colors.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Colors);
+      }
+      if (Palette.Length != 0) {
+        output.WriteRawTag(34);
+        output.WriteString(Palette);
+      }
+      if (Cursor.Length != 0) {
+        output.WriteRawTag(42);
+        output.WriteString(Cursor);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Id.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Id);
+      }
+      if (CreationTicket.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(CreationTicket);
+      }
+      if (Colors.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Colors);
+      }
+      if (Palette.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Palette);
+      }
+      if (Cursor.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Cursor);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ThemeUpdate other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Id.Length != 0) {
+        Id = other.Id;
+      }
+      if (other.CreationTicket.Length != 0) {
+        CreationTicket = other.CreationTicket;
+      }
+      if (other.Colors.Length != 0) {
+        Colors = other.Colors;
+      }
+      if (other.Palette.Length != 0) {
+        Palette = other.Palette;
+      }
+      if (other.Cursor.Length != 0) {
+        Cursor = other.Cursor;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Id = input.ReadString();
+            break;
+          }
+          case 18: {
+            CreationTicket = input.ReadString();
+            break;
+          }
+          case 26: {
+            Colors = input.ReadString();
+            break;
+          }
+          case 34: {
+            Palette = input.ReadString();
+            break;
+          }
+          case 42: {
+            Cursor = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Id = input.ReadString();
+            break;
+          }
+          case 18: {
+            CreationTicket = input.ReadString();
+            break;
+          }
+          case 26: {
+            Colors = input.ReadString();
+            break;
+          }
+          case 34: {
+            Palette = input.ReadString();
+            break;
+          }
+          case 42: {
+            Cursor = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
   /// <summary>
   /// Preparation never starts a child. A lost prepare reply may be abandoned safely. A client must
   /// never allocate a replacement ticket or replay a legacy create after an ambiguous create reply.
@@ -2572,7 +2985,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[6]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[7]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2770,7 +3183,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[7]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[8]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3005,7 +3418,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[8]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[9]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3277,7 +3690,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[9]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[10]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3438,7 +3851,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[10]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[11]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3599,7 +4012,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[11]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[12]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4129,7 +4542,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[12]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[13]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4153,6 +4566,7 @@ namespace Agwinterm.Pty.Proto {
       pid_ = other.pid_;
       creationRevision_ = other.creationRevision_;
       coreSelectionRevision_ = other.coreSelectionRevision_;
+      themeRevision_ = other.themeRevision_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -4216,6 +4630,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "theme_revision" field.</summary>
+    public const int ThemeRevisionFieldNumber = 5;
+    private uint themeRevision_;
+    /// <summary>
+    /// 1 = update live query defaults without injecting VT
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ThemeRevision {
+      get { return themeRevision_; }
+      set {
+        themeRevision_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -4235,6 +4664,7 @@ namespace Agwinterm.Pty.Proto {
       if (Pid != other.Pid) return false;
       if (CreationRevision != other.CreationRevision) return false;
       if (CoreSelectionRevision != other.CoreSelectionRevision) return false;
+      if (ThemeRevision != other.ThemeRevision) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -4246,6 +4676,7 @@ namespace Agwinterm.Pty.Proto {
       if (Pid != 0) hash ^= Pid.GetHashCode();
       if (CreationRevision != 0) hash ^= CreationRevision.GetHashCode();
       if (CoreSelectionRevision != 0) hash ^= CoreSelectionRevision.GetHashCode();
+      if (ThemeRevision != 0) hash ^= ThemeRevision.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -4280,6 +4711,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(32);
         output.WriteUInt32(CoreSelectionRevision);
       }
+      if (ThemeRevision != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(ThemeRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4306,6 +4741,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(32);
         output.WriteUInt32(CoreSelectionRevision);
       }
+      if (ThemeRevision != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(ThemeRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4327,6 +4766,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (CoreSelectionRevision != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CoreSelectionRevision);
+      }
+      if (ThemeRevision != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ThemeRevision);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -4351,6 +4793,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.CoreSelectionRevision != 0) {
         CoreSelectionRevision = other.CoreSelectionRevision;
+      }
+      if (other.ThemeRevision != 0) {
+        ThemeRevision = other.ThemeRevision;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -4385,6 +4830,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 32: {
             CoreSelectionRevision = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            ThemeRevision = input.ReadUInt32();
             break;
           }
         }
@@ -4422,6 +4871,10 @@ namespace Agwinterm.Pty.Proto {
             CoreSelectionRevision = input.ReadUInt32();
             break;
           }
+          case 40: {
+            ThemeRevision = input.ReadUInt32();
+            break;
+          }
         }
       }
     }
@@ -4444,7 +4897,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[13]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[14]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4679,7 +5132,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[14]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[15]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5297,7 +5750,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[15]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[16]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5791,7 +6244,7 @@ namespace Agwinterm.Pty.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[16]; }
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[17]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]

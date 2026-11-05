@@ -168,8 +168,10 @@ OSC 4/10/11/12 overrides remain native-owned and resets use the latest defaults.
 Theme changes refresh explicit screen/history reads even without new output.
 In-flight paints retain their captured palette and cursor colors. New .NET
 hosted sessions receive the initial palette and cursor in their environment,
-including before a UI attaches. Live changes to a surviving host's query-reply
-theme still need a protocol update; UI replicas already repaint with the new theme.
+including before a UI attaches. Live theme changes and reattachment now also update the surviving .NET host over a
+capability-negotiated control request with incarnation checks. Updates are coalesced
+off the UI thread and preserve parser continuation and OSC overrides; older hosts
+receive no unknown request.
 
 The narrow pinned-source extension exposes live cursor shape/blinking, vertical
 scroll margins and explicit background-override presence. No parser, reflow or
@@ -179,8 +181,13 @@ Adapter ABI is now 2, with matching provenance/layout checks rejecting old pairs
 
 177 native contracts pass, including repeated selection and command-boundary
 reflow at widths 20/8/40/5/80, metadata after snapshot restore, OSC reset and
-in-flight color ownership. Core tests pass 648/648. Hyper-V Ghostty passes 23/23,
+in-flight color ownership. Core tests pass 648/648. Hyper-V Ghostty passes 24/24 with 32 nested server checks,
 including actual OSC palette pixels, live theme switching and reset to the new
 palette. Evidence: artifacts/hyperv-ghostty-stage1/results and
 artifacts/ghostty-stage1-contract.log. This does not claim stages 2/3 or full
 Windows/WSL/agterm parity, and does not remove legacy engines.
+
+Final server evidence: artifacts/hyperv-ghostty-stage1-server-final/results.
+The first server run passed new theme checks but timed out awaiting the legacy
+Rust marker; the diagnostic rerun passed unchanged Rust assertions. Cause is not
+confirmed. Native theme/parser/snapshot checks passed in both runs.

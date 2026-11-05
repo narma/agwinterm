@@ -56,6 +56,20 @@ try
         core.RestoreSnapshot(attachment.NativeSnapshot!);
         return core.IsAltScreen && core.DumpRow(0).StartsWith("ALT");
     }), "native snapshot includes alternate screen before first replica");
+    Check(client.ThemeRevision == 1 && client.UpdateTheme("native", "112233;445566",
+        ThemeColors.FormatPalette(Theme.DefaultPalette()), "778899"), "host accepts a live theme update");
+    using (var attachment = client.Attach("native", nativeSnapshot: true))
+    using (var themed = new GhosttyTerminalCore(1, 1))
+    {
+        themed.RestoreSnapshot(attachment.NativeSnapshot!);
+        themed.BeginPaint(); var frame = themed.CompletePaint();
+        Check(frame[0, 0].Foreground == new Color(0x11, 0x22, 0x33) && themed.PaintCursorColor == new Color(0x77, 0x88, 0x99),
+            "detached host snapshot carries new theme without PTY output");
+    }
+    bool invalidThemeRejected = false;
+    try { client.UpdateTheme("native", "invalid", ThemeColors.FormatPalette(Theme.DefaultPalette()), "778899"); }
+    catch (InvalidOperationException) { invalidThemeRejected = true; }
+    Check(invalidThemeRejected, "host rejects malformed theme without updating terminal state");
     bool rejected = false;
     try { using var legacy = client.Attach("native"); }
     catch (InvalidOperationException ex) when (ex.Message.Contains("native snapshots")) { rejected = true; }
@@ -108,7 +122,9 @@ try
     TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
     var rustFirst = (ServerSession)backend.Create("rust-reconnect", 60, 10);
     await rustFirst.StartAsync("cmd.exe", ["/d", "/q", "/k", "echo RUST_RECONNECT_SCREEN"]);
-    Check(Wait(() => Text(rustFirst).Contains("RUST_RECONNECT_SCREEN")), "Rust host receives visible output");
+    bool rustVisible = Wait(() => Text(rustFirst).Contains("RUST_RECONNECT_SCREEN"));
+    if (!rustVisible) Console.WriteLine($"Rust diagnostic: exited={rustFirst.HasExited}; pid={rustFirst.ChildProcessId}; text={Text(rustFirst)}");
+    Check(rustVisible, "Rust host receives visible output");
     int? rustPid = rustFirst.ChildProcessId;
     rustFirst.Detach();
     Check(Wait(() => !client.List().Single(s => s.Id == "rust-reconnect").Attached), "Rust replica detaches without closing its shell");

@@ -30,6 +30,7 @@ message Request {
     PrepareCreate prepare_create = 9;
     CreationRef query_create = 10;
     CreationRef cancel_create = 11;
+    ThemeUpdate theme_update = 12;
   }
 }
 
@@ -71,6 +72,14 @@ message Resize {
   string creation_ticket = 4;   // optional expected incarnation; mismatch refuses
 }
 
+message ThemeUpdate {
+  string id = 1;
+  string creation_ticket = 2;
+  string colors = 3;  // rrggbb;rrggbb
+  string palette = 4; // 16 or 256 semicolon-separated rrggbb entries
+  string cursor = 5;  // rrggbb
+}
+
 // Preparation never starts a child. A lost prepare reply may be abandoned safely. A client must
 // never allocate a replacement ticket or replay a legacy create after an ambiguous create reply.
 message PrepareCreate { string id = 1; }
@@ -104,6 +113,7 @@ message HelloReply {
   uint32 pid = 2;
   uint32 creation_revision = 3; // 0 = legacy limitations; 1 = prepare/query/cancel + incarnation checks
   uint32 core_selection_revision = 4; // 1 = per-session core selection and authoritative attach core
+  uint32 theme_revision = 5; // 1 = update live query defaults without injecting VT
 }
 
 message CreateReply {
