@@ -288,3 +288,39 @@ not a calibrated Rust comparison or latency guarantee.
 ABI 4 distinguishes the final feed(status, count) signature from the intermediate
 ABI 3 build; the loader rejects the earlier manifest before native calls. The
 additional rejection contract brings the native harness to 209 checks.
+
+### Stage 3: Windows keyboard acceptance (2026-11-05)
+
+F2 is no longer a global rename shortcut. It reaches the terminal by default;
+sidebar focus (F6) owns F2 for rename, and an explicit keymap binding still wins
+in terminal focus.
+
+Capture non-mutating Windows layout translation before TranslateMessage changes
+its dead-key state. Normalize printable AltGr before native encoding and shortcut
+matching. Committed WM_CHAR text bypasses the legacy blanket Win32-input-mode
+filter; only characters paired with an encoded Ghostty key-down are suppressed.
+Win32 input records retain every committed UTF-16 unit, including a dead-key
+combination that yields two characters. Repeat and release targets remain tied
+to the original press; sidebar focus does not leak printable text to the shell.
+Native committed text is encoded per broadcast recipient without a UTF-8/string
+round trip, with read-only and closed receivers excluded.
+
+Acceptance uses real keys on the worker-owned Windows guest, a UTF-16 console
+reader with a persistent UTF-8 encoder, and native encoder contracts. Initial
+47 GUI + 32 server checks passed (hyperv-ghostty-input-unicode). Expanded focus
+and broadcast runs passed their keyboard checks but reproduced the pre-existing
+Rust-host initial-output timeout in the optional server harness. Assertions were
+not relaxed. Core tests: 650; native contracts: 212, including Kitty repeat/release.
+
+Scope limits: committed IME text is covered, but an installed IME's candidate
+window/composition lifecycle is not. Mixed Ghostty/legacy physical-key broadcast
+still uses the transitional legacy fallback. Default-core switching and legacy
+backend removal are not part of this acceptance step. Upstream feedback stays
+local in artifacts/ghostty-upstream-feedback.txt; no upstream issue was opened.
+
+Final keyboard run: artifacts/hyperv-ghostty-input-final/results passed all 57
+GUI/input assertions, including multi-character dead keys and per-recipient
+broadcast. The optional server aggregate failed at the unchanged Rust initial
+output assertion (58 total assertions, 1 failure). This is not a fully green
+combined suite and does not mark the migration ready to merge. Release preview:
+artifacts/ghostty-input-preview/Start-Preview.cmd.

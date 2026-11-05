@@ -49,9 +49,9 @@ public static class NativeInputSink {
 "@
 [NativeInputSink]::Run($Log)
 '@ | Set-Content -LiteralPath $inputScript
-function InputBytes {
-    if(-not(Test-Path -LiteralPath $inputLog)){return ''}
-    $stream=[IO.File]::Open($inputLog,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+function InputBytes([string]$path=$inputLog) {
+    if(-not(Test-Path -LiteralPath $path)){return ''}
+    $stream=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
     $reader=[IO.StreamReader]::new($stream)
     try{return $reader.ReadToEnd()}finally{$reader.Dispose()}
 }
@@ -115,6 +115,9 @@ try {
     InputCheck 'Ghostty Win32-input dead-key composition arrives once' 'é' {
         [GhosttyInputFixture]::Tap(0xDE);[GhosttyInputFixture]::Tap(0x45)
     }
+    InputCheck 'Ghostty Win32-input preserves both characters of an uncombined dead key' "'x" {
+        [GhosttyInputFixture]::Tap(0xDE);[GhosttyInputFixture]::Tap(0x58)
+    }
     InputLayout '00000409'
     $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
     InputCheck 'Sidebar focus does not leak printable text into terminal' '' {
@@ -131,6 +134,31 @@ try {
             [GhosttyInputFixture]::Key(0x72,$true)
             $null=Rpc 'session.select' @{} $inputSession
         }
+    }
+    $secondLog=Join-Path $artifact 'ghostty-input-second.txt'
+    $secondCommand=$inputCommand.Replace($inputLog,$secondLog)
+    $secondSession=[string](Rpc 'session.new' @{name='ghostty-input-second';command=$secondCommand;'command-mode'='direct'})
+    try {
+        $secondReady=$false
+        for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $secondSession)).Contains('INPUT-SINK-READY')){$secondReady=$true;break};Start-Sleep -Milliseconds 100}
+        if(-not $secondReady){throw 'Second input sink did not start'}
+        $null=Rpc 'session.write' @{text=($esc+'[?9001l'+$esc+'[?1h')} $secondSession
+        $null=Rpc 'session.write' @{text=($esc+'[?1l')} $inputSession
+        $null=Rpc 'session.select' @{} $inputSession
+        $null=Rpc 'broadcast' @{op='on'}
+        InputCheck 'Broadcast encodes normal cursor mode for first recipient' ($esc+'[A') { [GhosttyInputFixture]::Tap(0x26) }
+        Check 'Broadcast encodes application cursor mode for second recipient' ((InputBytes $secondLog)-ceq '1B4F41')
+        InputCheck 'Broadcast preserves committed Unicode for first recipient' '😀' {
+            foreach($c in '😀'.ToCharArray()){[void][GhosttyInputFixture]::SendMessageW($hwnd,0x102,[IntPtr][int]$c,[IntPtr]1)}
+        }
+        Check 'Broadcast preserves committed Unicode for second recipient' ((InputBytes $secondLog)-ceq '1B4F41F09F9880')
+        $null=Rpc 'session.readonly' @{op='on'} $secondSession
+        InputCheck 'Broadcast still reaches writable recipient' 'a' { [GhosttyInputFixture]::Tap(0x41) }
+        Check 'Broadcast skips read-only recipient' ((InputBytes $secondLog)-ceq '1B4F41F09F9880')
+    } finally {
+        $null=Rpc 'broadcast' @{op='off'}
+        $null=Rpc 'session.close' @{} $secondSession
+        $null=Rpc 'session.select' @{} $inputSession
     }
 } finally {
     foreach($key in @(0xA0,0xA1,0xA2,0xA3,0xA4,0xA5)){[GhosttyInputFixture]::Key($key,$true)}

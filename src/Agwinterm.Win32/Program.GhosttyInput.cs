@@ -7,14 +7,14 @@ namespace Agwinterm.Win32;
 
 internal partial class Program
 {
-    private sealed record NativeKeyTarget(Pane Pane, string Text, uint Unshifted, uint Consumed, bool AltGr, int Unicode)
+    private sealed record NativeKeyTarget(Pane Pane, string Text, uint Unshifted, uint Consumed, bool AltGr, string Unicode)
     {
         public ISession Session => Pane.S;
     }
     private readonly Dictionary<int, NativeKeyTarget[]> _ghosttyKeysDown = new();
     private int _ghosttyCharsToSkip;
     private char _ghosttyHighSurrogate;
-    private sealed record NativeKeyText(int Vk, int Chars, string Text, uint Unshifted, bool AltGr, int Unicode);
+    private sealed record NativeKeyText(int Vk, int Chars, string Text, uint Unshifted, bool AltGr, string Unicode);
     private NativeKeyText? _ghosttyKeyText;
 
     // TranslateMessage mutates Windows' dead-key state. Capture the text before it
@@ -25,7 +25,7 @@ internal partial class Program
         char[] translated = new char[16];
         uint scan = MapVirtualKeyW((uint)vk, 0); nint layout = GetKeyboardLayout(0);
         int chars = ToUnicodeEx((uint)vk, scan, state, translated, translated.Length, 4, layout);
-        int unicode = chars > 0 ? translated[0] : 0;
+        string unicode = chars > 0 ? new string(translated, 0, Math.Min(chars, translated.Length)) : "";
         bool altGr = (state[VK_CONTROL] & 0x80) != 0 && (state[0xA5] & 0x80) != 0;
         if (!altGr)
         {
@@ -44,17 +44,40 @@ internal partial class Program
         return new(vk, chars, text, unshifted, altGr && text.Length != 0, unicode);
     }
 
+    private static string Win32KeyTextSequence(int vk, bool down, bool ctrl, bool shift, bool alt, string unicode)
+    {
+        if (unicode.Length <= 1) return Win32KeySeq(vk, down, ctrl, shift, alt, unicode.Length == 0 ? 0 : unicode[0]);
+        // A failed dead-key combination can commit two characters; Windows input
+        // records carry one UTF-16 unit each, so preserve every committed unit.
+        var sequence = new StringBuilder();
+        foreach (char character in unicode) sequence.Append(Win32KeySeq(vk, down, ctrl, shift, alt, character));
+        return sequence.ToString();
+    }
+
     private bool TryGhosttyCharacter(char character)
     {
-        if (BroadcastActive || ActiveSurface() is not { S.Emulator: GhosttyTerminalCore core } pane) return false;
+        if (ActiveSurface() is not { S.Emulator: GhosttyTerminalCore } surface) return false;
         if (char.IsHighSurrogate(character)) { _ghosttyHighSurrogate = character; return true; }
         string text = char.IsLowSurrogate(character) && _ghosttyHighSurrogate != 0
             ? new string([_ghosttyHighSurrogate, character]) : character.ToString();
         _ghosttyHighSurrogate = '\0';
         if (!Rune.TryGetRuneAt(text, 0, out var rune)) return true;
-        byte[] bytes;
-        lock (pane.S.SyncRoot) bytes = core.EncodeKey(0, 1, 0, text, (uint)rune.Value);
-        if (bytes.Length != 0) Send(Encoding.UTF8.GetString(bytes));
+        List<Pane> targets;
+        if (BroadcastActive)
+        {
+            lock (_workspaces) targets = _active!.Ws.Sessions.SelectMany(session => session.Panes).ToList();
+        }
+        else targets = [surface];
+        foreach (var pane in targets)
+        {
+            if (pane.ReadOnly || pane.S.InputClosed) continue;
+            byte[] bytes;
+            lock (pane.S.SyncRoot)
+                bytes = pane.S.Emulator is GhosttyTerminalCore core
+                    ? core.EncodeKey(0, 1, 0, text, (uint)rune.Value) : Encoding.UTF8.GetBytes(text);
+            if (bytes.Length != 0 && SessionInput.TryWrite(pane.S, bytes))
+            { pane.ScrollOffset = 0; pane.ClearSel(); }
+        }
         return true;
     }
 
@@ -94,7 +117,7 @@ internal partial class Program
             lock (pane.S.SyncRoot)
             {
                 var core = (GhosttyTerminalCore)pane.S.Emulator;
-                bytes = core.Win32InputMode ? Encoding.UTF8.GetBytes(Win32KeySeq(vk, true, ctrl, shift, alt, keyText.Unicode))
+                bytes = core.Win32InputMode ? Encoding.UTF8.GetBytes(Win32KeyTextSequence(vk, true, ctrl, shift, alt, keyText.Unicode))
                     : core.EncodeKey((uint)vk, action, mods, text, unshifted, consumed);
             }
             if (bytes.Length > 0)
@@ -125,7 +148,7 @@ internal partial class Program
                 lock (target.Session.SyncRoot)
                 {
                     var core = (GhosttyTerminalCore)target.Session.Emulator;
-                    bytes = core.Win32InputMode ? Encoding.UTF8.GetBytes(Win32KeySeq(vk, false,
+                    bytes = core.Win32InputMode ? Encoding.UTF8.GetBytes(Win32KeyTextSequence(vk, false,
                         ctrl && !target.AltGr, shift, alt && !target.AltGr, target.Unicode))
                         : core.EncodeKey((uint)vk, 0, target.AltGr ? mods & ~6u : mods, target.Text, target.Unshifted, target.Consumed);
                 }

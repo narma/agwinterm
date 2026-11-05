@@ -460,6 +460,7 @@ using (var vt = new GhosttyVt(20, 5))
     Check(Key(0x08) == "\b", "native backarrow mode");
     vt.Feed("\u001b[>3u"u8);
     Check(Key(0x41, 2, "a").Contains("97;5u"), "native Kitty disambiguation");
+    Check(Key(0x41, 2, "a", 2).Contains(":2u"), "native Kitty key repeat");
     Check(Key(0x41, 2, "a", 0).Contains(":3u"), "native Kitty key release");
     vt.Feed("\u001b[<u"u8);
     Check(Key(0x41, 0, "a", 0) == "", "legacy key release produces no output");
