@@ -42,6 +42,7 @@ $librarySource = [IO.File]::ReadAllBytes($libraryPath)
 try {
     Copy-Item (Join-Path $PSScriptRoot 'history.zig') $extensionPath
     [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_history.zig`").prepend, .{ .name = `"agwinterm_ghostty_prepend_history`" }); }`n")
+    [IO.File]::AppendAllText($libraryPath, "`ncomptime { @export(&@import(`"terminal/c/agwinterm_history.zig`").metadata, .{ .name = `"agwinterm_ghostty_metadata`" }); }`n")
     & $zig build -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" --prefix $output -j4
     CheckExit 'Ghostty build'
 } finally {

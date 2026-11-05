@@ -405,6 +405,8 @@ internal partial class Program
             SessionInput.TryWrite(_s, Encoding.UTF8.GetBytes(reply));
         }
         public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
+        public IReadOnlyList<Color>? DefaultPalette => _theme.Palette;
+        public Color? DefaultCursorColor => _theme.Cursor;
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
         public void CommandFinished(string token, long sequence)
         {

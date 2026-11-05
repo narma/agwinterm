@@ -31,6 +31,49 @@ finally
 }
 if (!GhosttyVt.TryLoad(args[0], out string? error)) throw new InvalidOperationException(error);
 
+using (var core = new GhosttyTerminalCore(20, 6, CursorStyle.Bar, false))
+{
+    Check(core.CursorShape == 6, "cursor defaults available before the first paint");
+    core.Feed("\u001b[3 q\u001b[2;5r\u001b[?25l"u8);
+    Check(core.CursorShape == 3 && !core.CursorVisible && core.ScrollTop == 1 && core.ScrollBottom == 4,
+        "live cursor and scrolling margins update without paint");
+    core.Feed("\u001b]11;#000000\a"u8);
+    Check(core.DynamicBg == 0xff000000, "explicit black background retains override presence");
+    var snapshot = core.CaptureSnapshot();
+    using var restored = new GhosttyTerminalCore(1, 1);
+    restored.RestoreSnapshot(snapshot);
+    Check(restored.CursorShape == 3 && restored.ScrollTop == 1 && restored.ScrollBottom == 4 && restored.DynamicBg == 0xff000000,
+        "metadata survives snapshot before painting");
+    core.Feed("\u001bc"u8);
+    Check(core.CursorShape == 6 && core.CursorVisible && core.ScrollTop == 0 && core.ScrollBottom == 5,
+        "RIS resets live cursor and margin metadata");
+    core.Feed("\u001b]111\a"u8);
+    Check(core.DynamicBg == 0, "OSC 111 removes background override presence");
+}
+
+using (var core = new GhosttyTerminalCore(20, 5))
+{
+    var palette = Theme.DefaultPalette(); palette[1] = new Color(12, 34, 56);
+    var host = new Host { Colors = (new Color(100, 110, 120), new Color(1, 2, 3)), Palette = palette, Cursor = new Color(9, 8, 7) };
+    core.Host = host;
+    core.Feed("\u001b[31mA\u001b[0mB"u8);
+    core.BeginPaint(); var frame = core.CompletePaint();
+    Check(frame[0, 0].Foreground == palette[1] && frame[0, 1].Foreground == host.Colors.Value.Foreground && core.PaintCursorColor == host.Cursor,
+        "theme palette defaults and cursor reach native paint");
+    core.Feed("\u001b]4;1;#aabbcc\a\u001b]10;#223344\a\u001b]12;#334455\a"u8);
+    core.BeginPaint(); frame = core.CompletePaint();
+    Check(frame[0, 0].Foreground == new Color(0xaa, 0xbb, 0xcc) && frame[0, 1].Foreground == new Color(0x22, 0x33, 0x44) && core.PaintCursorColor == new Color(0x33, 0x44, 0x55),
+        "OSC palette foreground and cursor changes recolor existing cells");
+    _ = core.Screen;
+    host.Palette = Theme.DefaultPalette(); host.Palette[1] = new Color(99, 88, 77);
+    host.Colors = (new Color(4, 5, 6), new Color(7, 8, 9)); host.Cursor = new Color(6, 5, 4);
+    Check(core.Screen[0, 1].Background == new Color(7, 8, 9) && core.Screen[0, 0].Foreground == new Color(0xaa, 0xbb, 0xcc),
+        "hidden query refreshes theme without output and preserves OSC override");
+    core.Feed("\u001b]104;1\a\u001b]110\a\u001b]112\a"u8);
+    core.BeginPaint(); frame = core.CompletePaint();
+    Check(frame[0, 0].Foreground == host.Palette[1] && frame[0, 1].Foreground == new Color(4, 5, 6) && core.PaintCursorColor == host.Cursor,
+        "OSC resets use the latest theme defaults");
+}
 using (var vt = new GhosttyVt(20, 5))
 {
     vt.Feed("Hello\r\n\u001b[31;1mred\u001b[0m"u8); Capture(vt);
@@ -529,6 +572,10 @@ sealed class Host : IHostActions
     public void Progress(int state, int value) => ProgressValue = value;
     public void ClipboardWrite(string text) => Clipboard = text;
     public (Color Foreground, Color Background)? Colors;
+    public Color[]? Palette;
+    public Color? Cursor;
+    public IReadOnlyList<Color>? DefaultPalette => Palette;
+    public Color? DefaultCursorColor => Cursor;
     public (Color Foreground, Color Background)? DefaultColors => Colors;
     public void CommandFinished(string token, long sequence) => Completed = sequence;
     public void Unhandled(string kind, string detail) { }

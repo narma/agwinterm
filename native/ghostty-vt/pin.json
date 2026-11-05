@@ -4,5 +4,5 @@
   "zigWindowsUrl": "https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip",
   "zigWindowsSha256": "b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428",
   "target": "x86_64-windows-gnu",
-  "abi": 1
+  "abi": 2
 }

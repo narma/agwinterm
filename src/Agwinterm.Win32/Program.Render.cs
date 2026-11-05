@@ -524,7 +524,7 @@ internal partial class Program
                 while (c < cols)  // Pass 1: coalesced background fills
                 {
                     Cell cell = CellAt(r, c);
-                    Color bg = EffectiveBg(cell, localBackground);
+                    Color bg = EffectiveBg(cell, localBackground, nativePaint is not null);
                     if (selPane?.Appearance is not null && cell.BgSpec.Kind == ColorSpecKind.Default && !cell.Attributes.HasFlag(CellAttributes.Inverse)) { c++; continue; }
                     if (selPane?.Appearance is null && bg == _theme.DefaultBackground && localBackground is null) { c++; continue; }
                     int start = c;
@@ -532,7 +532,7 @@ internal partial class Program
                     {
                         Cell cc = CellAt(r, c);
                         if (selPane?.Appearance is not null && cc.BgSpec.Kind == ColorSpecKind.Default && !cc.Attributes.HasFlag(CellAttributes.Inverse)) break;
-                        if (cc.Width != 0 && EffectiveBg(cc, localBackground) != bg) break;
+                        if (cc.Width != 0 && EffectiveBg(cc, localBackground, nativePaint is not null) != bg) break;
                         c++;
                     }
                     brush.Color = C4(bg);
@@ -585,7 +585,7 @@ internal partial class Program
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
-                    Color runFg = EffectiveFg(cell, localBackground);
+                    Color runFg = EffectiveFg(cell, localBackground, nativePaint is not null);
                     CellAttributes runStyle = DisplayStyle(cell);
                     if (cell.Grapheme is { } cluster)
                     {
@@ -643,7 +643,7 @@ internal partial class Program
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
                         if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask)) break; }
-                        else if (EffectiveFg(cc, localBackground) != runFg || DisplayStyle(cc) != runStyle) break;
+                        else if (EffectiveFg(cc, localBackground, nativePaint is not null) != runFg || DisplayStyle(cc) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);
                         c++;
                         if (!blank) lastNonBlank = _run.Length;
@@ -695,7 +695,7 @@ internal partial class Program
             if (cursorVisible && off == 0)
             {
                 float cx = ox + cursorCol * cw, cy = oy + cursorRow * ch;
-                brush.Color = C4(_theme.Cursor);
+                brush.Color = C4(nativePaint?.PaintCursorColor ?? _theme.Cursor);
                 // DECSCUSR (cursorShape): 0 = fall back to the user's config; 1/2 block, 3/4 underline,
                 // 5/6 bar; odd = blinking, even = steady. Style 0 also inherits the config blink.
                 CursorStyle shape = cursorShape switch

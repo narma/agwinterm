@@ -19,6 +19,7 @@ typedef struct {
     uint32_t cols, rows, cursor_col, cursor_row, cursor_visible, alt_screen;
     uint32_t history, keyboard_flags, modes, background, default_background;
     uint64_t scroll_epoch;
+    uint32_t cursor_shape, scroll_top, scroll_bottom, background_override;
 } AgwVtInfo;
 typedef struct { int32_t prompt, command, output, end, exit_code, has_exit_code; } AgwVtMark;
 typedef struct {
@@ -57,6 +58,8 @@ AGWVT_API int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
 AGWVT_API int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uint32_t* shape);
 AGWVT_API int agwvt_cursor_default(AgwVt* vt, uint32_t style, uint32_t blink);
 AGWVT_API int agwvt_colors(AgwVt* vt, uint32_t foreground, uint32_t background);
+AGWVT_API int agwvt_theme(AgwVt* vt, const uint32_t* palette, uint32_t cursor);
+AGWVT_API int agwvt_frame_colors(AgwVt* vt, uint32_t* background, uint32_t* cursor);
 // Only dirty rows are written. Text offsets refer to this call's UTF-8 arena.
 // Call clean only after a successful transfer; OUT_OF_SPACE permits retry.
 AGWVT_API int agwvt_cells(AgwVt* vt, AgwVtCell* cells, size_t capacity,

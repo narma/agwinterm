@@ -31,6 +31,9 @@ public interface IHostActions
     /// report (an app-set OSC 11 background wins over the theme's). Null when the host does not know
     /// the theme: OSC 10 then gets no reply and OSC 11 only an app-set background, never a made-up color.</summary>
     (Color Foreground, Color Background)? DefaultColors { get; }
+    /// <summary>Optional terminal theme defaults. OSC overrides remain owned by the terminal.</summary>
+    IReadOnlyList<Color>? DefaultPalette => null;
+    Color? DefaultCursorColor => null;
 
     /// <summary>The program rang the bell (BEL, 0x07). The host decides what that means —
     /// an audible beep, a visual flash, an attention cue, or nothing — per user config.</summary>

@@ -6,6 +6,22 @@ const PageList = @import("../PageList.zig");
 const lib = @import("../lib.zig");
 const Result = @import("result.zig").Result;
 
+// Scalar metadata absent from the public C getters. No parser or render capture.
+pub fn metadata(handle: terminal.Terminal, shape: *u32, top: *u32, bottom: *u32, background_override: *u32) callconv(lib.calling_conv) Result {
+    const instance = handle orelse return .invalid_value;
+    const t = instance.terminal;
+    shape.* = switch (t.screens.active.cursor.cursor_style) {
+        .bar => 5,
+        .underline => 3,
+        .block, .block_hollow => 1,
+    };
+    if (!t.modes.get(.cursor_blinking)) shape.* += 1;
+    top.* = t.scrolling_region.top;
+    bottom.* = t.scrolling_region.bottom;
+    background_override.* = @intFromBool(t.colors.background.override != null);
+    return .success;
+}
+
 pub fn prepend(destination_: terminal.Terminal, source_: terminal.Terminal, max_rows: u32, added: *usize) callconv(lib.calling_conv) Result {
     added.* = 0;
     const destination = destination_ orelse return .invalid_value;

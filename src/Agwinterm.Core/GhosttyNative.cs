@@ -26,7 +26,7 @@ internal static unsafe partial class GhosttyNative
                 // revision alone cannot detect an accidentally replaced upstream DLL.
                 using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.provenance.json")));
                 var provenance = manifest.RootElement;
-                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 1)
+                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 2)
                     throw new InvalidOperationException("Ghostty build provenance does not match the expected revision/ABI.");
                 foreach (string filename in new[] { "ghostty-vt.dll", "agwinterm_ghostty.dll" })
                 {
@@ -42,7 +42,7 @@ internal static unsafe partial class GhosttyNative
                 var abi = (delegate* unmanaged[Cdecl]<uint*, uint*, uint>)NativeLibrary.GetExport(library, "agwvt_abi");
                 var revision = (delegate* unmanaged[Cdecl]<byte*>)NativeLibrary.GetExport(library, "agwvt_revision");
                 uint cellSize, infoSize;
-                if (abi(&cellSize, &infoSize) != 1 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
+                if (abi(&cellSize, &infoSize) != 2 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
                     Marshal.PtrToStringUTF8((nint)revision()) != Revision)
                     throw new InvalidOperationException("Ghostty adapter ABI, layout or upstream revision mismatch; rebuild both DLLs together.");
                 foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore", "images", "image_pixels" })
@@ -87,6 +87,7 @@ internal static unsafe partial class GhosttyNative
     {
         public uint Cols, Rows, CursorCol, CursorRow, CursorVisible, AltScreen, History, KeyboardFlags, Modes, Background, DefaultBackground;
         public ulong ScrollEpoch;
+        public uint CursorShape, ScrollTop, ScrollBottom, BackgroundOverride;
     }
     [StructLayout(LayoutKind.Sequential)]
     internal struct Mark { public int Prompt, Command, Output, End, ExitCode, HasExitCode; }
@@ -233,6 +234,12 @@ internal static unsafe partial class GhosttyNative
     [LibraryImport(Library, EntryPoint = "agwvt_colors")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Colors(Handle handle, uint foreground, uint background);
+    [LibraryImport(Library, EntryPoint = "agwvt_theme")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int Theme(Handle handle, uint* palette, uint cursor);
+    [LibraryImport(Library, EntryPoint = "agwvt_frame_colors")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int FrameColors(Handle handle, out uint background, out uint cursor);
     [LibraryImport(Library, EntryPoint = "agwvt_abort")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Abort(Handle handle);

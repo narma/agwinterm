@@ -113,9 +113,11 @@ public sealed unsafe class GhosttyVt : IDisposable
     public int ChangedRows { get; private set; }
     public (int Col, int Row, bool Visible) FrameCursor { get; private set; }
     public int FrameCursorShape { get; private set; }
+    public Color FrameBackground { get; private set; }
+    public Color FrameCursorColor { get; private set; }
     public void SetCursorDefault(CursorStyle style, bool blink)
     {
-        CheckAlive(); GhosttyNative.Check(GhosttyNative.CursorDefault(_handle, (uint)style, blink ? 1u : 0u));
+        CheckAlive(); GhosttyNative.Check(GhosttyNative.CursorDefault(_handle, (uint)style, blink ? 1u : 0u)); RefreshInfo();
     }
     public int GetFrameWrapLength(int row) => Frame.WrapLengths[row];
     public int CursorRow => (int)_info.CursorRow;
@@ -123,6 +125,10 @@ public sealed unsafe class GhosttyVt : IDisposable
     public int Rows => (int)_info.Rows;
     public int CursorCol => (int)_info.CursorCol;
     public bool CursorVisible => _info.CursorVisible != 0;
+    public int CursorShape => (int)_info.CursorShape;
+    public int ScrollTop => (int)_info.ScrollTop;
+    public int ScrollBottom => (int)_info.ScrollBottom;
+    public bool HasBackgroundOverride => _info.BackgroundOverride != 0;
     public bool IsAltScreen => _info.AltScreen != 0;
     public int HistoryCount => (int)_info.History;
     public int KeyboardFlags => (int)_info.KeyboardFlags;
@@ -138,13 +144,29 @@ public sealed unsafe class GhosttyVt : IDisposable
     public bool Win32InputMode => _windows.Enabled;
     public IHostActions? Host { get; set; }
     private (Color Foreground, Color Background)? _hostColors;
-    private void SyncHostColors()
+    private IReadOnlyList<Color>? _hostPalette;
+    private Color? _hostCursor;
+    public long ThemeVersion { get; private set; }
+    public void SyncHostColors()
     {
         var colors = Host?.DefaultColors;
-        if (colors is null || colors == _hostColors) return;
         static uint Pack(Color color) => (uint)(color.R << 16 | color.G << 8 | color.B);
-        GhosttyNative.Check(GhosttyNative.Colors(_handle, Pack(colors.Value.Foreground), Pack(colors.Value.Background)));
-        _hostColors = colors; RefreshInfo();
+        bool changed = false;
+        if (colors is not null && colors != _hostColors)
+        {
+            GhosttyNative.Check(GhosttyNative.Colors(_handle, Pack(colors.Value.Foreground), Pack(colors.Value.Background)));
+            _hostColors = colors; changed = true;
+        }
+        var palette = Host?.DefaultPalette;
+        var cursor = Host?.DefaultCursorColor;
+        if (!ReferenceEquals(palette, _hostPalette) || cursor != _hostCursor)
+        {
+            Span<uint> packed = stackalloc uint[256];
+            for (int i = 0; i < 256; i++) packed[i] = Pack(palette is not null && i < palette.Count ? palette[i] : Color.FromIndex(i));
+            fixed (uint* ptr = packed) GhosttyNative.Check(GhosttyNative.Theme(_handle, ptr, Pack(cursor ?? colors?.Foreground ?? Color.DefaultForeground)));
+            _hostPalette = palette; _hostCursor = cursor; changed = true;
+        }
+        if (changed) { ThemeVersion++; RefreshInfo(); }
     }
     public string Title { get; private set; } = "";
     public string Cwd { get; private set; } = "";
@@ -304,7 +326,7 @@ public sealed unsafe class GhosttyVt : IDisposable
         var windows = new Win32InputModeObserver(); windows.Restore(snapshot.Slice(56, windowsLength).ToArray());
         fixed (byte* data = snapshot.Slice(56 + windowsLength, nativeLength))
             GhosttyNative.Check(GhosttyNative.Restore(_handle, data, (nuint)nativeLength));
-        _windows = windows; _hostColors = null; Volatile.Write(ref _holdDeadline, 0); RefreshInfo(); Title = ReadText(0); Cwd = ReadText(1);
+        _windows = windows; _hostColors = null; _hostPalette = null; _hostCursor = null; Volatile.Write(ref _holdDeadline, 0); RefreshInfo(); Title = ReadText(0); Cwd = ReadText(1);
     }
     public void BeginCapture(int scrollOffset = 0)
     {
@@ -338,6 +360,9 @@ public sealed unsafe class GhosttyVt : IDisposable
             GhosttyNative.Check(GhosttyNative.Cursor(_handle, out uint cursorCol, out uint cursorRow, out uint cursorVisible, out uint cursorShape));
             FrameCursor = ((int)cursorCol, (int)cursorRow, cursorVisible != 0);
             FrameCursorShape = (int)cursorShape;
+            GhosttyNative.Check(GhosttyNative.FrameColors(_handle, out uint frameBackground, out uint frameCursor));
+            FrameBackground = new Color((byte)(frameBackground >> 16), (byte)(frameBackground >> 8), (byte)frameBackground);
+            FrameCursorColor = new Color((byte)(frameCursor >> 16), (byte)(frameCursor >> 8), (byte)frameCursor);
             CaptureImages();
             while (true)
             {

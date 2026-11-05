@@ -49,6 +49,8 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public ScreenBuffer CompletePaint() { _vt.CompleteCapture(); return _vt.Frame; }
     public (int Col, int Row, bool Visible) PaintCursor => _vt.FrameCursor;
     public int PaintCursorShape => _vt.FrameCursorShape;
+    public Color PaintBackground => _vt.FrameBackground;
+    public Color PaintCursorColor => _vt.FrameCursorColor;
     public IReadOnlyList<GhosttyImagePlacement> PaintImages => _vt.FrameImages;
     public long NextAnimationDeadline => _vt.NextAnimationDeadline;
     public byte[] CaptureSnapshot() => _vt.CaptureSnapshot();
@@ -71,8 +73,16 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         if (_cursorStyle == style && _cursorBlink == blink) return;
         _vt.SetCursorDefault(style, blink); _cursorStyle = style; _cursorBlink = blink;
     }
+    private long _queryThemeVersion = -1;
+    private void SyncQueryTheme()
+    {
+        _vt.SyncHostColors();
+        if (_queryThemeVersion == _vt.ThemeVersion) return;
+        _queryThemeVersion = _vt.ThemeVersion; _screenDirty = true; _historyIndex = -1;
+    }
     private void EnsureScreen()
     {
+        SyncQueryTheme();
         if (!_screenDirty) return;
         if (_queryScreen.Cols != _cols || _queryScreen.Rows != _rows)
         { _queryScreen = new ScreenBuffer(_cols, _rows); _queryRow = new Cell[_cols]; }
@@ -99,8 +109,8 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public int CursorCol => _vt.CursorCol;
     public bool CursorVisible => _vt.CursorVisible;
     public bool IsAltScreen => _vt.IsAltScreen;
-    public int ScrollTop => 0;
-    public int ScrollBottom => _rows - 1;
+    public int ScrollTop => _vt.ScrollTop;
+    public int ScrollBottom => _vt.ScrollBottom;
     private bool Mode(int bit) => (_vt.Modes & (1u << bit)) != 0;
     public bool MouseClick => Mode(0);
     public bool MouseDrag => Mode(1);
@@ -113,11 +123,8 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public bool FocusReporting => Mode(6);
     public bool SynchronizedOutput => _vt.IsSynchronizedOutputHeld;
     public bool Win32InputMode => _vt.Win32InputMode;
-    // Preserve the existing presence bit, including an explicitly black background.
-    // Upstream's public getters currently distinguish effective/default RGB, not
-    // an explicit override whose value happens to equal the default.
-    public uint DynamicBg => _vt.Background == _vt.DefaultBackground ? 0 : 0xff000000u | _vt.Background;
-    public int CursorShape => 0;
+    public uint DynamicBg => _vt.HasBackgroundOverride ? 0xff000000u | _vt.Background : 0;
+    public int CursorShape => _vt.CursorShape;
     public int KeyboardFlags => _vt.KeyboardFlags;
     public int ScrollbackMax
     {
@@ -133,6 +140,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         => new(this, ar, ac, fr, fc, block);
     private void ReadHistory(int row)
     {
+        SyncQueryTheme();
         if (_historyIndex == row) return;
         _historyWrap = _vt.ReadRow(row, true, _historyRow); _historyIndex = row;
     }

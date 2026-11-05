@@ -279,7 +279,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 1;
+    return 2;
 }
 const char* agwvt_revision(void) { return "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
@@ -639,6 +639,7 @@ int agwvt_resize(AgwVt* vt, uint32_t cols, uint32_t rows, uint32_t cw, uint32_t 
     return ghostty_tracked_grid_ref_set(vt->scroll_probe, vt->terminal, top);
 }
 static uint32_t rgb(GhosttyColorRgb value) { return ((uint32_t)value.r << 16) | ((uint32_t)value.g << 8) | value.b; }
+extern int agwinterm_ghostty_metadata(GhosttyTerminal, uint32_t*, uint32_t*, uint32_t*, uint32_t*);
 int agwvt_info(AgwVt* vt, AgwVtInfo* out) {
     if (!vt || !out) return GHOSTTY_INVALID_VALUE;
     memset(out, 0, sizeof(*out));
@@ -659,6 +660,7 @@ int agwvt_info(AgwVt* vt, AgwVtInfo* out) {
     out->keyboard_flags = keyboard; out->background = rgb(bg);
     out->default_background = rgb(default_bg);
     out->scroll_epoch = vt->scroll_epoch;
+    TRY(agwinterm_ghostty_metadata(vt->terminal, &out->cursor_shape, &out->scroll_top, &out->scroll_bottom, &out->background_override));
     const uint16_t modes[] = {1000,1002,1003,1006,1016,2004,1004,2026,9};
     for (unsigned i = 0; i < sizeof(modes)/sizeof(modes[0]); i++) {
         GhosttyTerminalModeConfig mode = { .mode = ghostty_mode_new(modes[i], false) };
@@ -787,6 +789,26 @@ int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uin
     *visible = cursor.viewport_has_value && cursor.visible;
     *shape = (cursor.visual_style == GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR ? 5u :
         cursor.visual_style == GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE ? 3u : 1u) + (cursor.blinking ? 0u : 1u);
+    return GHOSTTY_SUCCESS;
+}
+int agwvt_theme(AgwVt* vt, const uint32_t* palette, uint32_t cursor) {
+    if (!vt || !palette || cursor > 0xffffff) return GHOSTTY_INVALID_VALUE;
+    GhosttyColorRgb colors[256];
+    for (unsigned i = 0; i < 256; i++) {
+        uint32_t p = palette[i];
+        if (p > 0xffffff) return GHOSTTY_INVALID_VALUE;
+        colors[i] = (GhosttyColorRgb){(uint8_t)(p >> 16), (uint8_t)(p >> 8), (uint8_t)p};
+    }
+    GhosttyColorRgb c = {(uint8_t)(cursor >> 16), (uint8_t)(cursor >> 8), (uint8_t)cursor};
+    TRY(ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, &colors));
+    return ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &c);
+}
+int agwvt_frame_colors(AgwVt* vt, uint32_t* background, uint32_t* cursor) {
+    if (!vt || vt->updating || !vt->capture_busy || !background || !cursor) return GHOSTTY_INVALID_VALUE;
+    GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
+    TRY(ghostty_render_state_get(vt->capture, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors));
+    *background = rgb(colors.background);
+    *cursor = rgb(colors.cursor_has_value ? colors.cursor : colors.foreground);
     return GHOSTTY_SUCCESS;
 }
 int agwvt_abort(AgwVt* vt) {
