@@ -4,6 +4,33 @@ namespace Agwinterm.Pty.Tests;
 
 public class SessionBackendTests
 {
+    [Theory]
+    [InlineData("", "managed")]
+    [InlineData("emulator-core = ghostty", "managed")]
+    [InlineData("emulator-core = rust", "rust")]
+    [InlineData("emulator-core = managed", "managed")]
+    public void LiveTransport_PreservesRustHostIndependentlyOfOrdinaryCore(string setting, string expectedCore)
+    {
+        var config = Agwinterm.Core.TerminalConfig.Parse("session-host = server-rust\n" + setting);
+        using var live = SessionBackends.ResolveLive(config, "isolated-live", null);
+        Assert.Equal("server-rust", config.ConfiguredSessionHost);
+        Assert.Equal("server-rust", live.Name);
+        Assert.Equal(expectedCore, live.ReplicaCore);
+        Assert.StartsWith("--pipe \"isolated-live-rust\"", live.SpawnArgs);
+        Assert.Equal(config.EmulatorCore == "ghostty" ? "server" : "server-rust",
+            SessionBackends.Resolve(config.SessionHost, "isolated-live", null).Name);
+    }
+
+    [Fact]
+    public void SavedLiveBinding_CanResolveItsOriginalHostAfterOrdinaryHostChanges()
+    {
+        var config = new Agwinterm.Core.TerminalConfig { SessionHost = "in-process" };
+        using var live = SessionBackends.ResolveLive(config, "saved-live", null);
+        Assert.Equal("server-rust", live.Name);
+        Assert.Equal("managed", live.ReplicaCore);
+        Assert.Equal("in-process", config.SessionHost);
+    }
+
     [Fact]
     public void InProcessBackend_CreatesWorkingSessions()
     {

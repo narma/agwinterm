@@ -50,7 +50,8 @@ internal partial class Program
         if (existing.Value is not null) return true;
         try
         {
-            if (_sessionBackend.Name != "server-rust") throw new IOException("Remote jobs require Rust PTY hosting");
+            // The imported binding owns its Rust live transport. A viewer job is
+            // an ordinary command and may use the native-capable Ghostty host.
             Pane? pane = null;
             if (body.TryGetProperty("pane", out var address) && address.ValueKind != JsonValueKind.Null)
             {

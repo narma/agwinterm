@@ -17,6 +17,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     private readonly string _spawnArgs;
     internal string SpawnArgs => _spawnArgs;
     private readonly string _name;
+    internal string? ReplicaCore { get; }
     private readonly object _lock = new();
     private PtyHostClient? _client;
     private bool _disposed;
@@ -28,13 +29,14 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     /// <param name="spawnArgs">Argument string for the host exe. The C# host is the app itself
     /// (<c>--pty-host --pipe ...</c>); the Rust host is a standalone binary (<c>--pipe ...</c>).</param>
     /// <param name="name">Diagnostics name ("server" or "server-rust").</param>
-    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server")
+    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null)
     {
         _appId = appId;
         _startupClaims = StartupHostClaims.ForNamespace(appId);
         _exePath = exePath;
         _spawnArgs = spawnArgs ?? $"--pty-host --pipe \"{appId}\"";
         _name = name;
+        ReplicaCore = replicaCore;
     }
 
     public string Name => _name;
@@ -150,7 +152,7 @@ public sealed class ServerSession : ISession
         _id = id;
         Cols = cols;
         Rows = rows;
-        Emulator = TerminalSession.CreateCore(cols, rows);
+        Emulator = TerminalSession.CreateCore(cols, rows, backend.ReplicaCore);
     }
 
     /// <summary>True when this handle reconnected to a SURVIVING hosted session instead of spawning

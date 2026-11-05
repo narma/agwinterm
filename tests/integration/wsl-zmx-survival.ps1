@@ -1,5 +1,5 @@
 param([string]$Distro = 'Ubuntu', [Parameter(Mandatory)][string]$BuildDirectory, [switch]$DiagnosticKeepalive, [switch]$LifetimeGuard, [switch]$ProfileLive, [switch]$LifecycleControls,
-    [string]$PeerDistro, [string]$PeerUser, [string]$PeerExecutable)
+    [string]$PeerDistro, [string]$PeerUser, [string]$PeerExecutable, [switch]$UpgradeToGhostty)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslZmxSurvival -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference = $false
@@ -105,8 +105,10 @@ try {
         $profiles | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $state 'profiles.json')
     }
     'session-host = server-rust' | Set-Content (Join-Path $state 'agwinterm.conf')
+    if ($UpgradeToGhostty) { 'emulator-core = rust' | Add-Content (Join-Path $state 'agwinterm.conf') }
     if ($ProfileLive) { @('restore-commands = true','restore-buffer = true') | Add-Content (Join-Path $state 'agwinterm.conf') }
     Start-Ui
+    if (!$UpgradeToGhostty -and (Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Expected implicit Ghostty default' }
     $initial = $null
     for ($i=0; $i -lt 40; $i++) {
         try { $initial = Inspect; break } catch { Start-Sleep -Milliseconds 250 }
@@ -118,12 +120,17 @@ try {
     $hostProcess = Get-Process -Id $hosts[0].ProcessId
     if (-not [ZmxTestWindow]::Close($ui.Id)) { throw 'Cannot request graceful test UI quit' }
     if (-not $ui.WaitForExit(15000)) { throw 'Test UI quit timed out' }
+    if ($UpgradeToGhostty) {
+        $conf=Join-Path $state 'agwinterm.conf'
+        @(Get-Content $conf | Where-Object { $_ -notmatch '^emulator-core\s*=' }) | Set-Content $conf
+    }
     if ((Inspect) -ne $initial) { throw 'Identity changed after UI quit' }
     Write-Host 'PASS same Linux incarnation after UI quit'
     if ($ProfileLive) {
         foreach ($kind in @('agent','pin','captured')) {
             Set-ReplayFixture $kind
             Start-Ui
+            if ((Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Restore did not use implicit Ghostty default' }
             Start-Sleep -Seconds 3
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-zero-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw "Unexpected $kind replay during host adoption" }

@@ -90,6 +90,9 @@ public sealed class TerminalConfig
     /// blocking-threaded so the .NET 10 IOCP crash class is absent). Both server modes let sessions
     /// survive UI updates/crashes; server-rust falls back to in-process if the binary is missing.</summary>
     private string _sessionHost = "in-process";
+    // Live transports still require the Rust host, independently of the host
+    // selected for new ordinary Ghostty terminals.
+    public string ConfiguredSessionHost => _sessionHost;
     public string SessionHost
     {
         // The Rust host cannot own Ghostty snapshots/reflow. Retain the requested

@@ -62,7 +62,7 @@ internal partial class Program
             {
                 lock (_registry) if (!_registry.Values.Contains(this))
                     throw new InvalidOperationException("Selected local window closed");
-                if (_sessionBackend.Name != "server-rust" || _isQuickWindow) throw new InvalidOperationException("Remote import requires a Rust-hosted ordinary window");
+                if (!RustLiveHostEnabled || _isQuickWindow) throw new InvalidOperationException("Remote import requires a Rust-hosted ordinary window");
                 var ws = ActiveWorkspace();
                 var id = Guid.NewGuid().ToString();
                 var session = CreateSession(id, selected.Session.Name, null, ws, false,

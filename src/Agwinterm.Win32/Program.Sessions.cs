@@ -18,6 +18,22 @@ namespace Agwinterm.Win32;
 internal partial class Program
 {
     private static ServerSessionBackend? _legacyRestoreBackend;
+    private static ServerSessionBackend? _liveSessionBackend;
+    private static (string Core, string Conpty)? _liveBackendConfig;
+    private static bool RustLiveHostEnabled => _config.ConfiguredSessionHost == "server-rust";
+
+    private static ServerSessionBackend LiveSessionBackend()
+    {
+        var key = (_config.EmulatorCore, _config.Conpty);
+        if (_liveSessionBackend is null || _liveBackendConfig != key)
+        {
+            // Existing panes retain their backend when settings change, just as
+            // ordinary panes do. Never dispose a backend still owning live handles.
+            _liveSessionBackend = SessionBackends.ResolveLive(_config, _argPipe ?? _appId, AppExePath);
+            _liveBackendConfig = key;
+        }
+        return _liveSessionBackend;
+    }
 
     // A new default must not orphan shells created before the upgrade. This
     // backend has no executable: recovery may attach, but never start a Rust host.
@@ -112,18 +128,19 @@ internal partial class Program
         if (liveRequested)
         {
             if (!hasLiveBinding)
-                liveError = WslLiveProfiles.Validate(liveProfile!, _sessionBackend.Name,
+                liveError = WslLiveProfiles.Validate(liveProfile!, _config.ConfiguredSessionHost,
                     _isQuickWindow ? WslLiveSurface.Quick : handoff is not null ? WslLiveSurface.Handoff
                     : shellWrap || paneId.Contains(":scratch:", StringComparison.Ordinal) ? WslLiveSurface.Program : WslLiveSurface.Ordinary);
-            if (_sessionBackend.Name != "server-rust") liveError = "WSL live sessions require the Rust PTY host";
+            if (!hasLiveBinding && !RustLiveHostEnabled) liveError = "WSL live sessions require the Rust PTY host";
             if (deElevate || sessionCommand is not null || !string.IsNullOrWhiteSpace(command))
                 liveError = "This launch surface does not support WSL live sessions";
             try
             {
                 if (liveError is not null) throw new InvalidOperationException(liveError);
-                session = (restoredRemote is not null || restoredLive is not null) && _sessionBackend is ServerSessionBackend remoteBackend
-                    ? remoteBackend.CreateExistingOnlyTransport(paneId, cols, rows)
-                    : _sessionBackend.Create(paneId, cols, rows);
+                var liveBackend = LiveSessionBackend();
+                session = restoredRemote is not null || restoredLive is not null
+                    ? liveBackend.CreateExistingOnlyTransport(paneId, cols, rows)
+                    : liveBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
                     && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
             }

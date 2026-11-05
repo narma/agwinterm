@@ -36,7 +36,8 @@ public static class SessionBackends
     /// A missing Rust binary falls through to a null exe, so Create throws and the UI falls back to
     /// in-process (same graceful path as an unreachable C# host). <paramref name="conpty"/> is the
     /// <c>conpty</c> key, which a pty-host reads when it starts (#339).</summary>
-    public static ISessionBackend Resolve(string? configured, string appId, string? exePath, string? conpty = null)
+    public static ISessionBackend Resolve(string? configured, string appId, string? exePath, string? conpty = null,
+        string? replicaCore = null)
     {
         // Always explicit: a pty-host started without the flag keeps the inbox conhost.
         string conptyArg = conpty is null ? "" : conpty == "inbox" ? " --conpty inbox" : " --conpty bundled";
@@ -46,10 +47,17 @@ public static class SessionBackends
         {
             string rustAppId = appId + "-rust";
             string? rustHost = FindRustHost(exePath);
-            return new ServerSessionBackend(rustAppId, rustHost, $"--pipe \"{rustAppId}\"{conptyArg}", name: "server-rust");
+            return new ServerSessionBackend(rustAppId, rustHost, $"--pipe \"{rustAppId}\"{conptyArg}", name: "server-rust", replicaCore: replicaCore);
         }
         return InProcessSessionBackend.Instance;
     }
+
+    // The Rust transport does not negotiate Ghostty snapshots. Keep its existing
+    // managed live replica (including role-title filtering) when the ordinary
+    // default becomes Ghostty; an explicitly chosen legacy core is preserved.
+    public static ServerSessionBackend ResolveLive(Agwinterm.Core.TerminalConfig config, string appId, string? exePath)
+        => (ServerSessionBackend)Resolve("server-rust", appId, exePath, config.Conpty,
+            config.EmulatorCore == "ghostty" ? "managed" : config.EmulatorCore);
 
     /// <summary>Locate agwinterm-ptyhost.exe next to the app exe (the installer ships it there).</summary>
     private static string? FindRustHost(string? exePath)

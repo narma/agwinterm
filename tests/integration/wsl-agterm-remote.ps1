@@ -1,6 +1,6 @@
 param([string]$Distro='Ubuntu', [Parameter(Mandatory)][string]$LinuxUser, [Parameter(Mandatory)][string]$Destination,
     [Parameter(Mandatory)][string]$AgentSocket, [Parameter(Mandatory)][string]$OriginSocket,
-    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge, [bool]$PassiveOnly=$false)
+    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge, [bool]$PassiveOnly=$false, [switch]$UpgradeToGhostty)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslAgtermRemote -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -77,6 +77,7 @@ function Await-Presentation([scriptblock]$Check) {
 try {
     $null=New-Item -ItemType Directory -Path $state
     @('session-host = server-rust','restore-commands = true','restore-buffer = true') | Set-Content (Join-Path $state 'agwinterm.conf')
+    if ($UpgradeToGhostty) { 'emulator-core = rust' | Add-Content (Join-Path $state 'agwinterm.conf') }
     Start-Ui
     $window=[string]((Ctl @('window','list')).windows | Where-Object active)[0].id
     $remote=@('--distribution',$Distro,'--user',$LinuxUser,'--host',$Destination,'--agent-socket',$AgentSocket,'--origin-socket',$OriginSocket)
@@ -370,6 +371,10 @@ public static class RemoteAskProbe {
         Write-Host "PASS borrowed import/input/read $pane role=$($live.role)"
     }
     $ui.Kill(); $ui.WaitForExit()
+    if ($UpgradeToGhostty) {
+        $conf=Join-Path $state 'agwinterm.conf'
+        @(Get-Content $conf | Where-Object { $_ -notmatch '^emulator-core\s*=' }) | Set-Content $conf
+    }
     foreach ($file in Get-ChildItem (Join-Path $state 'windows') -Filter '*.json') {
         $checkpoint=Get-Content $file.FullName -Raw | ConvertFrom-Json -Depth 100
         foreach ($saved in $checkpoint.Workspaces.Sessions.Panes | Where-Object { $_.LiveBinding.Provider -eq 'agterm-ssh' }) {
@@ -385,6 +390,7 @@ public static class RemoteAskProbe {
         if ((Ctl @('session','text','--target',$item.paneId)) -like '*SHOULD-NOT-*') { throw 'Remote restore injected saved commands/buffer' }
     }
     Write-Host 'PASS exact-ticket UI restart'
+    if ((Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Expected Ghostty default after remote restore' }
     $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
     if ($hosts.Count -ne 1) { throw 'Expected exactly one test-owned Rust host' }
     Stop-Process -Id $hosts[0].ProcessId -Force
