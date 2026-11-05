@@ -9,6 +9,30 @@ namespace Agwinterm.Core.Tests;
 public class UiaContextTests
 {
     [Fact]
+    public void ThemeChangesReachHiddenAndCoverTerminalsExactlyOnce()
+    {
+        var app = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Type("Program"));
+        object Field(object target, string name) => target.GetType().GetField(name, Flags)!.GetValue(target)!;
+        var workspace = New("Program+Workspace");
+        var session = New("Program+Ses");
+        var panes = Enumerable.Range(0, 7).Select(_ => New("Program+Pane")).ToArray();
+        ((System.Collections.IList)Field(session, "Panes")).Add(panes[0]);
+        Set(session, "HiddenSplit", panes[1]);
+        Set(session, "Scratch", panes[2]);
+        Set(Field(session, "Overlay"), "Term", panes[3]);
+        Set(Field(panes[1], "Overlay"), "Term", panes[4]);
+        Set(app, "_quick", panes[5]); Set(app, "_cover", panes[2]);
+        Set(Field(panes[2], "Overlay"), "Term", panes[6]);
+        ((System.Collections.IList)Field(workspace, "Sessions")).Add(session);
+        var workspaceField = Type("Program").GetField("_workspaces", Flags)!;
+        var workspaces = (System.Collections.IList)Activator.CreateInstance(workspaceField.FieldType)!;
+        workspaces.Add(workspace); workspaceField.SetValue(app, workspaces);
+        var actual = ((System.Collections.IEnumerable)Call(app, "ThemeSurfaces")!).Cast<object>().ToArray();
+        Assert.Equal(panes.Length, actual.Length);
+        Assert.All(panes, pane => Assert.Contains(pane, actual));
+    }
+
+    [Fact]
     public void CharacterNavigationDoesNotSplitEmojiOrCombiningText()
     {
         var owner = New("Uia");

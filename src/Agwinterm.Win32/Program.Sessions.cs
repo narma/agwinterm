@@ -187,6 +187,8 @@ internal partial class Program
             Post(() => RouteStatusSound(pane, name, blockedDefault: false));
         };
         session.Emulator.Host = new PaneHost(this, pane, session);   // the host-action seam (see IHostActions)
+        // TryAdopt may have completed before the pane's host/theme existed.
+        if (session is ServerSession themedServer) themedServer.UpdateTheme();
         session.Exited += code => Post(() =>
         {
             OnPaneProcessExited(pane);   // split survivor promotion (agterm #121)

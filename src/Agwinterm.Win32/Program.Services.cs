@@ -682,13 +682,35 @@ internal partial class Program
     private void ApplyTheme(Theme t)
     {
         _theme = t;
-        foreach (var window in _registry.Values.ToArray())
+        var windows = new HashSet<Program>(_registry.Values) { this };
+        if (_quickHost is { } quick) windows.Add(quick);
+        foreach (var window in windows)
         {
-            foreach (var pane in window.AllSessions().SelectMany(s => s.AllPanes))
+            foreach (var pane in window.ThemeSurfaces())
                 if (pane.S is ServerSession server) server.UpdateTheme();
             window.RequestRedraw();
         }
         RecomputeChrome(); RequestRedraw();
+    }
+
+    private IEnumerable<Pane> ThemeSurfaces()
+    {
+        var pending = new Stack<Pane>();
+        foreach (var session in AllSessions())
+        {
+            foreach (var pane in session.AllPanes) pending.Push(pane);
+            if (session.Scratch is { } scratch) pending.Push(scratch);
+            if (session.Overlay.Term is { } overlay) pending.Push(overlay);
+        }
+        if (_quick is { } quick) pending.Push(quick);
+        if (_cover is { } cover) pending.Push(cover);
+        var visited = new HashSet<Pane>();
+        while (pending.TryPop(out var pane))
+        {
+            if (!visited.Add(pane)) continue;
+            yield return pane;
+            if (pane.Overlay.Term is { } overlay) pending.Push(overlay);
+        }
     }
 
     /// <summary>Resolve the effective theme when "follow Windows light/dark" is on: pick theme-light or

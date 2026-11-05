@@ -191,3 +191,12 @@ Final server evidence: artifacts/hyperv-ghostty-stage1-server-final/results.
 The first server run passed new theme checks but timed out awaiting the legacy
 Rust marker; the diagnostic rerun passed unchanged Rust assertions. Cause is not
 confirmed. Native theme/parser/snapshot checks passed in both runs.
+
+Review follow-up: reattachment sends the theme after PaneHost assignment, and
+live theme updates enumerate hidden splits, scratch, quick and overlay terminals
+without duplicate updates. A host-free UI ownership regression passes; Core is
+649/649. The renderer suite passes 20/20 and performance fixture 96/96. Across
+three rounds, mixed Latin/Russian + four emoji medians are 2.48–2.84 ms and dense
+medians 3.09–3.25 ms in the prepared VM. These are VM render timings, not an input
+latency or physical GPU claim. First render runner launch rejected an unready
+VM desktop before application work; normal worker retry passed.
