@@ -452,6 +452,9 @@ using (var vt = new GhosttyVt(20, 5))
     Check(Key(0x26, 2) == "\u001b[1;5A", "native modified cursor key encoding");
     Check(Key(0x41, 2, "a") == "\u0001", "native Ctrl+A encoding");
     Check(Key(0x41, 0, "ф") == "ф", "native input preserves keyboard layout text");
+    Check(Encoding.UTF8.GetString(vt.EncodeKey(0, 1, 0, "😀", 0x1f600)) == "😀", "native committed astral text encoding");
+    Check(Encoding.UTF8.GetString(vt.EncodeKey(0x51, 1, 0, "@", 'q')) == "@",
+        "native layout text with normalized Windows AltGr modifiers");
     Check(Key(0x08) == "\u007f", "native default backspace");
     vt.Feed("\u001b[?67h"u8);
     Check(Key(0x08) == "\b", "native backarrow mode");

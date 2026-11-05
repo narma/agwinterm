@@ -1,0 +1,140 @@
+# Real keyboard input is permitted only on the owned guest desktop.
+if (-not (($env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount') -or
+    ($env:AGWINTERM_HYPERV_UI -eq '1' -and (& "$PSScriptRoot/hyperv-ui-context.ps1")))) {
+    throw 'Ghostty input acceptance requires a verified isolated Windows guest.'
+}
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class GhosttyInputFixture {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowExW(IntPtr parent,IntPtr after,string name,string text);
+    public static IntPtr FindRename(IntPtr parent) => FindWindowExW(parent,IntPtr.Zero,"EDIT",null);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayoutW(string name,uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);
+    [DllImport("user32.dll")] static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
+    public static void Key(byte key,bool up) { keybd_event(key,0,(up?2u:0u)|(key==0xA5?1u:0u),UIntPtr.Zero); }
+    public static void Tap(byte key) { Key(key,false); System.Threading.Thread.Sleep(30); Key(key,true); }
+}
+'@
+$inputScript=Join-Path $artifact 'ghostty-input-sink.ps1'
+$inputLog=Join-Path $artifact 'ghostty-input-bytes.txt'
+@'
+param([string]$Log)
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class NativeInputSink {
+    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int n);
+    [DllImport("kernel32.dll")] static extern bool SetConsoleMode(IntPtr h,uint mode);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool ReadConsoleW(IntPtr h,[Out] char[] text,uint count,out uint read,IntPtr control);
+    public static void Run(string log) {
+        Console.InputEncoding=System.Text.Encoding.UTF8;
+        Console.OutputEncoding=new System.Text.UTF8Encoding(false);
+        if(!SetConsoleMode(GetStdHandle(-10),0x200)||!SetConsoleMode(GetStdHandle(-11),7)) throw new Exception("VT console mode");
+        Console.Write("\x1b[?9001lINPUT-SINK-READY\r\n");
+        // Console input is UTF-16. Keep an encoder across reads: ConPTY may deliver
+        // the two KEY_EVENT records of an astral character in separate reads.
+        var buffer=new char[4096];
+        var bytes=new byte[16384];
+        var encoder=System.Text.Encoding.UTF8.GetEncoder();
+        for(;;) {
+            if(!ReadConsoleW(GetStdHandle(-10),buffer,(uint)buffer.Length,out uint read,IntPtr.Zero)) throw new Exception("ReadConsoleW");
+            int count=encoder.GetBytes(buffer,0,(int)read,bytes,0,false);
+            System.IO.File.AppendAllText(log,Convert.ToHexString(bytes,0,count));
+        }
+    }
+}
+"@
+[NativeInputSink]::Run($Log)
+'@ | Set-Content -LiteralPath $inputScript
+function InputBytes {
+    if(-not(Test-Path -LiteralPath $inputLog)){return ''}
+    $stream=[IO.File]::Open($inputLog,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+    $reader=[IO.StreamReader]::new($stream)
+    try{return $reader.ReadToEnd()}finally{$reader.Dispose()}
+}
+function InputLayout([string]$name) {
+    $layout=[GhosttyInputFixture]::LoadKeyboardLayoutW($name,0)
+    if($layout-eq [IntPtr]::Zero){throw "Keyboard layout unavailable: $name"}
+    [void][GhosttyInputFixture]::SendMessageW($hwnd,0x50,[IntPtr]::Zero,$layout)
+}
+function InputCheck([string]$name,[string]$expected,[scriptblock]$action) {
+    $before=InputBytes
+    & $action
+    $hex=[Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($expected))
+    for($i=0;$i-lt 50;$i++) { if((InputBytes).Length-ge ($before.Length+$hex.Length)){break};Start-Sleep -Milliseconds 50 }
+    Start-Sleep -Milliseconds 100
+    $actual=(InputBytes).Substring($before.Length)
+    Check $name ($actual-ceq $hex) "expected=$hex actual=$actual"
+}
+$inputCommand='"'+(Join-Path $PSHOME 'pwsh.exe')+'" -NoProfile -NonInteractive -File "'+$inputScript+'" -Log "'+$inputLog+'"'
+$inputSession=[string](Rpc 'session.new' @{name='ghostty-input';command=$inputCommand;'command-mode'='direct'})
+try {
+    $ready=$false
+    for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $inputSession)).Contains('INPUT-SINK-READY')){$ready=$true;break};Start-Sleep -Milliseconds 100}
+    if(-not $ready){throw 'Input byte sink did not start'}
+    $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
+    [void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
+    Start-Sleep -Milliseconds 150
+    if([GhosttyInputFixture]::GetForegroundWindow()-ne $hwnd){throw 'Input fixture does not own foreground'}
+    InputLayout '00000409'
+    InputCheck 'F2 reaches the terminal application' ($esc+'OQ') { [GhosttyInputFixture]::Tap(0x71) }
+    [GhosttyInputFixture]::Tap(0x75)
+    [GhosttyInputFixture]::Tap(0x71)
+    Start-Sleep -Milliseconds 150
+    $renameEdit=[GhosttyInputFixture]::FindRename($hwnd)
+    Check 'F2 in sidebar opens session rename' ($renameEdit-ne [IntPtr]::Zero)
+    [GhosttyInputFixture]::Tap(0x1B)
+    [GhosttyInputFixture]::Tap(0x1B)
+    InputCheck 'Ghostty real US key arrives once' 'a' { [GhosttyInputFixture]::Tap(0x41) }
+    InputCheck 'Ghostty real shifted key arrives once' 'A' {
+        try{[GhosttyInputFixture]::Key(0xA0,$false);[GhosttyInputFixture]::Tap(0x41)}finally{[GhosttyInputFixture]::Key(0xA0,$true)}
+    }
+    InputLayout '00000419'
+    InputCheck 'Ghostty real Russian layout reaches child' 'ф' { [GhosttyInputFixture]::Tap(0x41) }
+    InputLayout '00000407'
+    InputCheck 'Ghostty real AltGr emits layout text without Ctrl-Alt prefix' '@' {
+        try{[GhosttyInputFixture]::Key(0xA5,$false);[GhosttyInputFixture]::Tap(0x51)}finally{[GhosttyInputFixture]::Key(0xA5,$true)}
+    }
+    InputLayout '00020409'
+    InputCheck 'Ghostty dead-key composition reaches child once' 'é' {
+        [GhosttyInputFixture]::Tap(0xDE);[GhosttyInputFixture]::Tap(0x45)
+    }
+    InputLayout '00000409'
+    InputCheck 'Ghostty committed UTF-16 text preserves surrogate pair' '😀' {
+        foreach($c in '😀'.ToCharArray()){[void][GhosttyInputFixture]::SendMessageW($hwnd,0x102,[IntPtr][int]$c,[IntPtr]1)}
+    }
+    $null=Rpc 'session.write' @{text=($esc+'[?9001h')} $inputSession
+    InputCheck 'Ghostty committed text also reaches Win32-input session' '漢' {
+        [void][GhosttyInputFixture]::SendMessageW($hwnd,0x102,[IntPtr][int][char]'漢',[IntPtr]1)
+    }
+    InputCheck 'Ghostty Win32-input key is not duplicated by WM_CHAR' 'a' { [GhosttyInputFixture]::Tap(0x41) }
+    InputLayout '00020409'
+    InputCheck 'Ghostty Win32-input dead-key composition arrives once' 'é' {
+        [GhosttyInputFixture]::Tap(0xDE);[GhosttyInputFixture]::Tap(0x45)
+    }
+    InputLayout '00000409'
+    $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
+    InputCheck 'Sidebar focus does not leak printable text into terminal' '' {
+        [GhosttyInputFixture]::Tap(0x75);[GhosttyInputFixture]::Tap(0x41);[GhosttyInputFixture]::Tap(0x1B)
+    }
+    InputCheck 'Held function key repeats stay with original session after selection changes' ($esc+'OR'+$esc+'OR') {
+        try {
+            [GhosttyInputFixture]::Key(0x72,$false)
+            Start-Sleep -Milliseconds 60
+            $null=Rpc 'session.select' @{} $session
+            [GhosttyInputFixture]::Key(0x72,$false)
+            Start-Sleep -Milliseconds 60
+        } finally {
+            [GhosttyInputFixture]::Key(0x72,$true)
+            $null=Rpc 'session.select' @{} $inputSession
+        }
+    }
+} finally {
+    foreach($key in @(0xA0,0xA1,0xA2,0xA3,0xA4,0xA5)){[GhosttyInputFixture]::Key($key,$true)}
+    InputLayout '00000409'
+    $null=Rpc 'session.close' @{} $inputSession
+    $null=Rpc 'session.select' @{} $session
+}

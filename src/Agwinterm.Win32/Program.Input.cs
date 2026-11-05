@@ -1457,6 +1457,8 @@ internal partial class Program
     private bool OnKeyDown(int vk)
     {
         bool ctrl = KeyDown(VK_CONTROL), shift = KeyDown(VK_SHIFT), alt = KeyDown(VK_MENU) || _altContext;
+        if (_ghosttyKeyText is { AltGr: true } layoutText && layoutText.Vk == vk)
+            ctrl = alt = false; // layout text must not activate Ctrl+Alt application shortcuts
 
         // While a popup menu is up — the sidebar's context menu or a menu-bar dropdown — it owns the
         // keyboard (↑↓ Home End Enter Space Esc, ←→ between bar menus or out of a flyout, Alt+letter;
@@ -1667,15 +1669,20 @@ internal partial class Program
     /// <c>CSI Vk;Sc;Uc;Kd;Cs;Rc _</c> — Vk virtual-key, Sc scan code, Uc translated char (0 for
     /// non-text keys; it also carries Ctrl/Shift semantics, e.g. Ctrl+A -> 0x01), Kd=1 (down),
     /// Cs control-key-state bitmask, Rc=1. ConPTY decodes it back into a KEY_EVENT_RECORD.</summary>
-    private static string Win32KeySeq(int vk, bool down, bool ctrl, bool shift, bool alt)
+    private static string Win32KeySeq(int vk, bool down, bool ctrl, bool shift, bool alt, int? translatedUnicode = null)
     {
         uint sc = MapVirtualKeyW((uint)vk, 0);           // MAPVK_VK_TO_VSC
-        var ks = new byte[256];
-        GetKeyboardState(ks);
-        var buf = new char[8];
-        // wFlags bit 2 = don't mutate the kernel keyboard state (so the pending WM_CHAR is untouched).
-        int n = ToUnicodeEx((uint)vk, sc, ks, buf, buf.Length, 0x4, GetKeyboardLayout(0));
-        int uc = n >= 1 ? buf[0] : 0;
+        int uc;
+        if (translatedUnicode is { } captured) uc = captured;
+        else
+        {
+            var ks = new byte[256];
+            GetKeyboardState(ks);
+            var buf = new char[8];
+            // Do not mutate the kernel keyboard state.
+            int n = ToUnicodeEx((uint)vk, sc, ks, buf, buf.Length, 0x4, GetKeyboardLayout(0));
+            uc = n >= 1 ? buf[0] : 0;
+        }
         int cs = (shift ? 0x10 : 0) | (ctrl ? 0x8 : 0) | (alt ? 0x2 : 0); // SHIFT|LEFT_CTRL|LEFT_ALT
         return $"\x1b[{vk};{sc};{uc};{(down ? 1 : 0)};{cs};1_";
     }

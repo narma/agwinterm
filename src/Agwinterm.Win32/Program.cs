@@ -734,8 +734,16 @@ internal partial class Program : ISessionHost, IWindowHost
         {
             if (DispatchWebContinuation(msg)) continue;
             if (_registry.Values.Distinct().Any(window => window._webPages.Count != 0 && window.WebNavigationKey(msg))) continue;
-            TranslateMessage(ref msg);
-            DispatchMessageW(ref msg);
+            _registry.TryGetValue(msg.hwnd, out var inputWindow);
+            if (inputWindow is not null && msg.message is WM_KEYDOWN or WM_SYSKEYDOWN
+                && inputWindow.ActiveSurface()?.S.Emulator is GhosttyTerminalCore)
+                inputWindow._ghosttyKeyText = ReadNativeKeyText((int)msg.wParam);
+            try
+            {
+                TranslateMessage(ref msg);
+                DispatchMessageW(ref msg);
+            }
+            finally { if (inputWindow is not null) inputWindow._ghosttyKeyText = null; }
         }
     }
 

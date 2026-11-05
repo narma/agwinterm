@@ -324,7 +324,9 @@ internal partial class Program
                 else
                 {
                     _altArmed = false;
-                    if (msg == WM_SYSKEYDOWN && ((long)lParam & 0x20000000) != 0 && MenuBarMnemonic((int)wParam)) { _menuAteChar = true; return IntPtr.Zero; }
+                    if (msg == WM_SYSKEYDOWN && ((long)lParam & 0x20000000) != 0
+                        && _ghosttyKeyText is not { AltGr: true }
+                        && MenuBarMnemonic((int)wParam)) { _menuAteChar = true; return IntPtr.Zero; }
                 }
                 if (_dragging && (int)wParam == VK_ESCAPE)
                 {
@@ -418,6 +420,7 @@ internal partial class Program
                         if (c >= 0x20 && c != 0x7f) { _searchQuery += c; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); RequestRedraw(); }
                         return IntPtr.Zero;
                     }
+                    if (_chromeFocus) return IntPtr.Zero;
                     // win32-input-mode encodes the char in the key-down sequence's Uc field, so
                     // sending it again here would duplicate it for this pane. Checked HERE, below the
                     // overlay handlers, not above them: while the action palette / settings dropdown /
@@ -426,8 +429,10 @@ internal partial class Program
                     // ConPTY enables, so any pane running Claude Code did it. The overlay opened,
                     // arrows and Enter worked (those are handled in OnKeyDown, above this path), but
                     // no text ever arrived.
-                    if (ActiveSurface()?.S.Emulator.Win32InputMode == true) return IntPtr.Zero;
+                    // Ghostty suppresses only characters paired with an encoded key-down.
+                    // Unpaired WM_CHAR (IME/Unicode injection) still needs to reach ConPTY.
                     if (c >= 0x20 && c != 0x7f && TryGhosttyCharacter(c)) return IntPtr.Zero;
+                    if (ActiveSurface()?.S.Emulator.Win32InputMode == true) return IntPtr.Zero;
                     if (c >= 0x20 && c != 0x7f) Send(c.ToString());
                     return IntPtr.Zero;
                 }

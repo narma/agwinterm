@@ -258,6 +258,9 @@ try {
     $null = Rpc 'config.set' @{key='session-host';value='in-process'}
 }
 
+# Real keyboard acceptance runs only on the owned guest desktop.
+. "$PSScriptRoot/ghostty-input-ui-cases.ps1"
+
 # Optional self-contained server contract payload, staged only for this test run.
 $serverHarness = Join-Path $nativeDirectory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe'
 if (Test-Path -LiteralPath $serverHarness) {
