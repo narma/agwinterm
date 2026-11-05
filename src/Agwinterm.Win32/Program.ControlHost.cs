@@ -947,7 +947,11 @@ internal partial class Program
         else if (ActiveSurface() is { } pane)
         {
             if (pane.S.Emulator is GhosttyTerminalCore) RefreshSearch(pane);
-            else { RecomputeSearch(); ScrollToMatch(); }
+            else
+            {
+                RecomputeSearch(preserveSelection: ReferenceEquals(_searchPane, pane) && ReferenceEquals(_searchCore, pane.S.Emulator));
+                ScrollToMatch();
+            }
         }
         RequestRedraw();
         return SearchStatus();

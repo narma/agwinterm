@@ -207,6 +207,29 @@ $null = Rpc 'session.write' @{text="freshuniquehistorymarker`r`n"} $session
 Check 'Ghostty search sees output after a completed scan' ((Find-GhosttyText 'FRESHUNIQUEHISTORYMARKER') -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session
 
+$null = Rpc 'config.set' @{key='emulator-core';value='managed'}
+$legacySearch = [string](Rpc 'session.new' @{name='legacy-search-control'})
+try {
+    $null = Rpc 'session.type' @{text="echo LEGACY_SEARCH_READY`r"} $legacySearch
+    for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        if (([string](Rpc 'session.text' @{} $legacySearch)).Contains('LEGACY_SEARCH_READY')) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    Start-Sleep -Milliseconds 250
+    $null = Rpc 'session.write' @{text=($esc+'[?1049h'+$esc+'[2J'+$esc+'[Hlegacyfind legacyfind')} $legacySearch
+    $initial = Rpc 'session.search' @{query='legacyfind'} $legacySearch
+    $next = Rpc 'session.search' @{action='next'} $legacySearch
+    $polled = Rpc 'session.search' @{} $legacySearch
+    Check 'Legacy search poll preserves selected occurrence' ($initial -eq '1 of 2' -and $next -eq '2 of 2' -and $polled -eq '2 of 2') "initial=$initial; next=$next; poll=$polled"
+    $null = Rpc 'session.write' @{text="`r`nlegacyfind"} $legacySearch
+    Check 'Legacy search poll refreshes output without resetting selection' ((Rpc 'session.search' @{} $legacySearch) -eq '2 of 3')
+} finally {
+    $null = Rpc 'session.search' @{action='close'} $legacySearch
+    $null = Rpc 'session.close' @{} $legacySearch
+    $null = Rpc 'config.set' @{key='emulator-core';value='ghostty'}
+    $null = Rpc 'session.focus' @{} $session
+}
+
 $null = Rpc 'config.set' @{key='session-host';value='server'}
 $serverSession = [string](Rpc 'session.new' @{name='ghostty-server';'no-select'=$true})
 try {
