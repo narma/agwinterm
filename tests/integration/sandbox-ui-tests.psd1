@@ -1,5 +1,7 @@
 @{
-    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','EmulatorCore') }
+    SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation') }
+    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern') }
+    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner') }
     Win32Control = @{ Path='tests/integration/win32-control.ps1'; Exe=$true; Strict=$true; Options=@() }
     Conformance = @{ Path='tests/conformance/conformance.ps1'; Exe=$true; Strict=$true; Options=@(); OptionalInputs=@('Spec') }
     RestoreRoundtrip = @{ Path='tests/integration/restore-roundtrip.ps1'; Exe=$true; Strict=$true; Options=@('Only') }

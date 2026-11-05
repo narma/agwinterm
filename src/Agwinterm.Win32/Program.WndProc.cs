@@ -207,8 +207,15 @@ internal partial class Program
                     System.Threading.Interlocked.Exchange(ref _redrawPending, 0);
                     // Frame cap (RedrawMinIntervalMs): paint immediately when quiet; under sustained
                     // output defer to a one-shot timer so floods render at ~66fps instead of per chunk.
+                    // A real owner frame following accepted interactive input bypasses this
+                    // flood cap once. Input itself never invalidates an unreceived frame.
                     long since = Environment.TickCount64 - _lastPaintTick;
-                    if (since >= RedrawMinIntervalMs) InvalidateRect(hwnd, IntPtr.Zero, false);
+                    bool urgent=Interlocked.Exchange(ref _urgentRedrawPending,0) != 0;
+                    if (urgent || since >= RedrawMinIntervalMs)
+                    {
+                        if(_redrawTimerArmed) { KillTimer(hwnd,(IntPtr)RedrawTimer); _redrawTimerArmed=false; }
+                        InvalidateRect(hwnd, IntPtr.Zero, false);
+                    }
                     else if (!_redrawTimerArmed)
                     {
                         _redrawTimerArmed = true;
@@ -709,8 +716,11 @@ internal partial class Program
                 if (!_windowActive) { _altArmed = false; LeaveMenuBar(); }   // an Alt+Tab away is not a lone Alt tap
                 // Focus reporting (DECSET ?1004): on a real focus transition, tell the active pane's
                 // app the terminal gained (ESC[I) or lost (ESC[O) focus, so it can pause/resume.
-                if (_windowActive != wasActive && _session is { } fs && fs.Emulator.FocusReporting)
-                    SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
+                if (_windowActive != wasActive && _session is { } fs)
+                {
+                    if (HasSemanticInput(fs)) SubmitOwnerInput(fs,new TerminalInput.Focus(_windowActive));
+                    else if (fs.Emulator.FocusReporting) SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
+                }
                 if (_config.UnfocusedDim > 0) RequestRedraw();
                 if (_isQuickWindow && !_windowActive && _quickVisible && !_quickPinned
                     && (lParam == IntPtr.Zero || GetAncestor(lParam, 3 /* GA_ROOTOWNER */) != _hwnd)) DismissQuick(blur: true);

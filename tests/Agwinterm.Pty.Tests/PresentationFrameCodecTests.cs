@@ -1,0 +1,79 @@
+using System.Buffers.Binary;
+using Agwinterm.Core;
+using Xunit;
+
+namespace Agwinterm.Pty.Tests;
+
+public class PresentationFrameCodecTests
+{
+    private static TerminalFrame Frame(ulong sequence, params Cell[] cells) => new(new("owner",1,0,sequence,(long)sequence),
+        new(cells.Length,1,0,0,0,0,0,true,1,false,false,default,default,"title","cwd"),cells);
+    private static (TerminalFrame Frame, bool Exited, int ExitCode) Decode(byte[] bytes, TerminalFrame.Lease? previous = null)
+        => PresentationFrameCodec.Decode(bytes[4..],previous,"owner",1);
+
+    [Fact]
+    public void FullAndDeltaKeepGraphemesLinksStylesAndOldLease()
+    {
+        var styled = Cell.Empty with { Rune = 0x4e2d, Width = 2, Grapheme = "中\u0301", Attributes = CellAttributes.Bold,
+            Foreground = new(1,2,3), FgSpec = ColorSpec.Indexed(12), Hyperlink = new("https://example.test","id=1") };
+        using var first = Frame(1,styled,Cell.Empty with {Width=0},Cell.Empty);
+        using var firstLease = first.Acquire();
+        var read = Decode(PresentationFrameCodec.Encode(firstLease));
+        using var decoded = read.Frame; using var old = decoded.Acquire();
+        Assert.Equal(styled,old[0,0]);
+        using var next = Frame(2,styled,Cell.Empty with {Width=0},Cell.Empty with {Rune='Z'});
+        using var nextLease = next.Acquire();
+        byte[] delta = PresentationFrameCodec.Encode(nextLease,firstLease,true,7);
+        var result = Decode(delta,old);
+        using var changed = result.Frame; using var changedLease = changed.Acquire();
+        Assert.Equal('Z',changedLease[0,2].Rune); Assert.Equal(' ',old[0,2].Rune);
+        Assert.True(result.Exited); Assert.Equal(7,result.ExitCode);
+        Assert.Throws<InvalidDataException>(() => Decode(delta));
+    }
+
+    [Fact]
+    public void ChangedViewportRevisionForcesAFullFrameWithoutTheOldBase()
+    {
+        using var first=Frame(1,Cell.Empty);
+        using var old=first.Acquire();
+        using var next=new TerminalFrame(first.Identity with { Sequence=2,ViewportRevision=1 },first.State,[Cell.Empty with { Rune='R' }]);
+        using var current=next.Acquire();
+        using var decoded=Decode(PresentationFrameCodec.Encode(current,old)).Frame;
+        using var lease=decoded.Acquire();
+        Assert.Equal(1ul,lease.Identity.ViewportRevision);
+        Assert.Equal('R',lease[0,0].Rune);
+    }
+
+    [Fact]
+    public void UnchangedViewportUsesSmallMetadataOnlyDelta()
+    {
+        var cells = Enumerable.Repeat(Cell.Empty,120).ToArray();
+        using var first = Frame(1,cells); using var a = first.Acquire();
+        using var next = Frame(2,cells); using var b = next.Acquire();
+        byte[] full = PresentationFrameCodec.Encode(b), delta = PresentationFrameCodec.Encode(b,a);
+        Assert.True(delta.Length < full.Length);
+        using var decoded = Decode(delta,a).Frame;
+        using var lease = decoded.Acquire(); Assert.Equal(Cell.Empty,lease[0,119]);
+    }
+
+    [Fact]
+    public async Task OversizePrefixIsRejectedBeforeReadingPayload()
+    {
+        byte[] prefix = new byte[4]; BinaryPrimitives.WriteInt32LittleEndian(prefix,PresentationFrameCodec.MaximumBytes+1);
+        using var stream = new MemoryStream(prefix);
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await PresentationFrameCodec.ReadAsync(stream,null,"owner",1,default));
+    }
+
+    [Fact]
+    public void MalformedLengthsAndFencesNeverPublishPartialFrame()
+    {
+        using var frame = Frame(1,Cell.Empty); using var lease = frame.Acquire();
+        byte[] valid = PresentationFrameCodec.Encode(lease);
+        Assert.Throws<InvalidDataException>(() => PresentationFrameCodec.Decode(valid[4..],null,"replacement",1));
+        Assert.Throws<InvalidDataException>(() => PresentationFrameCodec.Decode(valid[4..],null,"owner",2));
+        byte[] hugeHeader = valid[4..]; BinaryPrimitives.WriteInt32LittleEndian(hugeHeader,int.MaxValue);
+        Assert.Throws<InvalidDataException>(() => PresentationFrameCodec.Decode(hugeHeader,null,"owner",1));
+        Assert.Throws<InvalidDataException>(() => Decode([.. valid,0]));
+        Assert.Throws<EndOfStreamException>(() => Decode(valid[..^1]));
+    }
+}

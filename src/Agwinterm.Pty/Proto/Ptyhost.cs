@@ -38,57 +38,90 @@ namespace Agwinterm.Pty.Proto {
             "YWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIABI3Cg1jYW5jZWxfY3Jl",
             "YXRlGAsgASgLMh4uYWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25SZWZIABI2",
             "Cgx0aGVtZV91cGRhdGUYDCABKAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5UaGVt",
-            "ZVVwZGF0ZUgAQgUKA2NtZCIZCgVIZWxsbxIQCghwcm90b2NvbBgBIAEoDSKi",
+            "ZVVwZGF0ZUgAQgUKA2NtZCIZCgVIZWxsbxIQCghwcm90b2NvbBgBIAEoDSK4",
             "AgoGQ3JlYXRlEgoKAmlkGAEgASgJEgwKBGNvbHMYAiABKA0SDAoEcm93cxgD",
             "IAEoDRILCgNhcHAYBCABKAkSDAoEYXJncxgFIAMoCRILCgNjd2QYBiABKAkS",
             "EAoIdmVyYmF0aW0YByABKAgSEgoKZGVfZWxldmF0ZRgIIAEoCBIVCg1mcmVz",
             "aF9lbnZfb2ZmGAkgASgIEi8KA2VudhgKIAMoCzIiLmFnd2ludGVybS5wdHlo",
             "b3N0LkNyZWF0ZS5FbnZFbnRyeRIXCg9jcmVhdGlvbl90aWNrZXQYCyABKAkS",
-            "FQoNZW11bGF0b3JfY29yZRgMIAEoCRoqCghFbnZFbnRyeRILCgNrZXkYASAB",
-            "KAkSDQoFdmFsdWUYAiABKAk6AjgBIlcKBkF0dGFjaBIKCgJpZBgBIAEoCRIP",
-            "CgdyZXBhaW50GAIgASgIEhcKD2NyZWF0aW9uX3RpY2tldBgDIAEoCRIXCg9u",
-            "YXRpdmVfc25hcHNob3QYBCABKAgiMQoKU2Vzc2lvblJlZhIKCgJpZBgBIAEo",
-            "CRIXCg9jcmVhdGlvbl90aWNrZXQYAiABKAkiSQoGUmVzaXplEgoKAmlkGAEg",
-            "ASgJEgwKBGNvbHMYAiABKA0SDAoEcm93cxgDIAEoDRIXCg9jcmVhdGlvbl90",
-            "aWNrZXQYBCABKAkiYwoLVGhlbWVVcGRhdGUSCgoCaWQYASABKAkSFwoPY3Jl",
-            "YXRpb25fdGlja2V0GAIgASgJEg4KBmNvbG9ycxgDIAEoCRIPCgdwYWxldHRl",
-            "GAQgASgJEg4KBmN1cnNvchgFIAEoCSIbCg1QcmVwYXJlQ3JlYXRlEgoKAmlk",
-            "GAEgASgJIikKC0NyZWF0aW9uUmVmEgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
-            "IAEoCSJcCg1DcmVhdGlvblJlcGx5EgoKAmlkGAEgASgJEg4KBnRpY2tldBgC",
-            "IAEoCRIvCgVwaGFzZRgDIAEoDjIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0",
-            "aW9uUGhhc2UiBgoETGlzdCIKCghTaHV0ZG93biKiAgoFUmVwbHkSCgoCb2sY",
-            "ASABKAgSDQoFZXJyb3IYAiABKAkSLgoFaGVsbG8YAyABKAsyHS5hZ3dpbnRl",
-            "cm0ucHR5aG9zdC5IZWxsb1JlcGx5SAASMAoGY3JlYXRlGAQgASgLMh4uYWd3",
-            "aW50ZXJtLnB0eWhvc3QuQ3JlYXRlUmVwbHlIABIwCgZhdHRhY2gYBSABKAsy",
-            "Hi5hZ3dpbnRlcm0ucHR5aG9zdC5BdHRhY2hSZXBseUgAEiwKBGxpc3QYBiAB",
-            "KAsyHC5hZ3dpbnRlcm0ucHR5aG9zdC5MaXN0UmVwbHlIABI0CghjcmVhdGlv",
-            "bhgHIAEoCzIgLmFnd2ludGVybS5wdHlob3N0LkNyZWF0aW9uUmVwbHlIAEIG",
-            "CgRib2R5In8KCkhlbGxvUmVwbHkSEAoIcHJvdG9jb2wYASABKA0SCwoDcGlk",
-            "GAIgASgNEhkKEWNyZWF0aW9uX3JldmlzaW9uGAMgASgNEh8KF2NvcmVfc2Vs",
-            "ZWN0aW9uX3JldmlzaW9uGAQgASgNEhYKDnRoZW1lX3JldmlzaW9uGAUgASgN",
-            "IjIKC0NyZWF0ZVJlcGx5EgoKAmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tl",
-            "dBgCIAEoCSL2AQoLQXR0YWNoUmVwbHkSDAoEcGlwZRgBIAEoCRIMCgRjb2xz",
-            "GAIgASgNEgwKBHJvd3MYAyABKA0SEQoJY2hpbGRfcGlkGAQgASgNEhIKCmhh",
-            "c19leGl0ZWQYBSABKAgSEQoJZXhpdF9jb2RlGAYgASgFEg0KBW1vZGVzGAcg",
-            "ASgJEhIKCnNjcm9sbGJhY2sYCCADKAkSFwoPc2Nyb2xsYmFja19ibG9iGAkg",
-            "ASgMEhcKD2NyZWF0aW9uX3RpY2tldBgKIAEoCRIXCg9uYXRpdmVfc25hcHNo",
-            "b3QYCyABKAgSFQoNZW11bGF0b3JfY29yZRgMIAEoCSKpAQoLU2Vzc2lvbklu",
-            "Zm8SCgoCaWQYASABKAkSDAoEY29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhEK",
-            "CWNoaWxkX3BpZBgEIAEoDRISCgpoYXNfZXhpdGVkGAUgASgIEhEKCWV4aXRf",
-            "Y29kZRgGIAEoBRINCgV0aXRsZRgHIAEoCRIQCghhdHRhY2hlZBgIIAEoCBIX",
-            "Cg9jcmVhdGlvbl90aWNrZXQYCSABKAkiPQoJTGlzdFJlcGx5EjAKCHNlc3Np",
-            "b25zGAEgAygLMh4uYWd3aW50ZXJtLnB0eWhvc3QuU2Vzc2lvbkluZm8qfwoN",
-            "Q3JlYXRpb25QaGFzZRIUChBDUkVBVElPTl9VTktOT1dOEAASFQoRQ1JFQVRJ",
-            "T05fUFJFUEFSRUQQARIVChFDUkVBVElPTl9DUkVBVElORxACEhEKDUNSRUFU",
-            "SU9OX0xJVkUQAxIXChNDUkVBVElPTl9DQU5DRUxMSU5HEARCFqoCE0Fnd2lu",
-            "dGVybS5QdHkuUHJvdG9iBnByb3RvMw=="));
+            "FQoNZW11bGF0b3JfY29yZRgMIAEoCRIUCgxzaW5nbGVfb3duZXIYDSABKAga",
+            "KgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJ2",
+            "CgZBdHRhY2gSCgoCaWQYASABKAkSDwoHcmVwYWludBgCIAEoCBIXCg9jcmVh",
+            "dGlvbl90aWNrZXQYAyABKAkSFwoPbmF0aXZlX3NuYXBzaG90GAQgASgIEh0K",
+            "FXByZXNlbnRhdGlvbl9yZXZpc2lvbhgFIAEoDSIxCgpTZXNzaW9uUmVmEgoK",
+            "AmlkGAEgASgJEhcKD2NyZWF0aW9uX3RpY2tldBgCIAEoCSJJCgZSZXNpemUS",
+            "CgoCaWQYASABKAkSDAoEY29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhcKD2Ny",
+            "ZWF0aW9uX3RpY2tldBgEIAEoCSJjCgtUaGVtZVVwZGF0ZRIKCgJpZBgBIAEo",
+            "CRIXCg9jcmVhdGlvbl90aWNrZXQYAiABKAkSDgoGY29sb3JzGAMgASgJEg8K",
+            "B3BhbGV0dGUYBCABKAkSDgoGY3Vyc29yGAUgASgJIhsKDVByZXBhcmVDcmVh",
+            "dGUSCgoCaWQYASABKAkiKQoLQ3JlYXRpb25SZWYSCgoCaWQYASABKAkSDgoG",
+            "dGlja2V0GAIgASgJIlwKDUNyZWF0aW9uUmVwbHkSCgoCaWQYASABKAkSDgoG",
+            "dGlja2V0GAIgASgJEi8KBXBoYXNlGAMgASgOMiAuYWd3aW50ZXJtLnB0eWhv",
+            "c3QuQ3JlYXRpb25QaGFzZSIGCgRMaXN0IgoKCFNodXRkb3duIqICCgVSZXBs",
+            "eRIKCgJvaxgBIAEoCBINCgVlcnJvchgCIAEoCRIuCgVoZWxsbxgDIAEoCzId",
+            "LmFnd2ludGVybS5wdHlob3N0LkhlbGxvUmVwbHlIABIwCgZjcmVhdGUYBCAB",
+            "KAsyHi5hZ3dpbnRlcm0ucHR5aG9zdC5DcmVhdGVSZXBseUgAEjAKBmF0dGFj",
+            "aBgFIAEoCzIeLmFnd2ludGVybS5wdHlob3N0LkF0dGFjaFJlcGx5SAASLAoE",
+            "bGlzdBgGIAEoCzIcLmFnd2ludGVybS5wdHlob3N0Lkxpc3RSZXBseUgAEjQK",
+            "CGNyZWF0aW9uGAcgASgLMiAuYWd3aW50ZXJtLnB0eWhvc3QuQ3JlYXRpb25S",
+            "ZXBseUgAQgYKBGJvZHkingEKCkhlbGxvUmVwbHkSEAoIcHJvdG9jb2wYASAB",
+            "KA0SCwoDcGlkGAIgASgNEhkKEWNyZWF0aW9uX3JldmlzaW9uGAMgASgNEh8K",
+            "F2NvcmVfc2VsZWN0aW9uX3JldmlzaW9uGAQgASgNEhYKDnRoZW1lX3Jldmlz",
+            "aW9uGAUgASgNEh0KFXByZXNlbnRhdGlvbl9yZXZpc2lvbhgGIAEoDSIyCgtD",
+            "cmVhdGVSZXBseRIKCgJpZBgBIAEoCRIXCg9jcmVhdGlvbl90aWNrZXQYAiAB",
+            "KAkiwwIKC0F0dGFjaFJlcGx5EgwKBHBpcGUYASABKAkSDAoEY29scxgCIAEo",
+            "DRIMCgRyb3dzGAMgASgNEhEKCWNoaWxkX3BpZBgEIAEoDRISCgpoYXNfZXhp",
+            "dGVkGAUgASgIEhEKCWV4aXRfY29kZRgGIAEoBRINCgVtb2RlcxgHIAEoCRIS",
+            "CgpzY3JvbGxiYWNrGAggAygJEhcKD3Njcm9sbGJhY2tfYmxvYhgJIAEoDBIX",
+            "Cg9jcmVhdGlvbl90aWNrZXQYCiABKAkSFwoPbmF0aXZlX3NuYXBzaG90GAsg",
+            "ASgIEhUKDWVtdWxhdG9yX2NvcmUYDCABKAkSHQoVcHJlc2VudGF0aW9uX3Jl",
+            "dmlzaW9uGA0gASgNEhIKCmlucHV0X3BpcGUYDiABKAkSGAoQYXR0YWNobWVu",
+            "dF9lcG9jaBgPIAEoBCKpAQoLU2Vzc2lvbkluZm8SCgoCaWQYASABKAkSDAoE",
+            "Y29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhEKCWNoaWxkX3BpZBgEIAEoDRIS",
+            "CgpoYXNfZXhpdGVkGAUgASgIEhEKCWV4aXRfY29kZRgGIAEoBRINCgV0aXRs",
+            "ZRgHIAEoCRIQCghhdHRhY2hlZBgIIAEoCBIXCg9jcmVhdGlvbl90aWNrZXQY",
+            "CSABKAkiPQoJTGlzdFJlcGx5EjAKCHNlc3Npb25zGAEgAygLMh4uYWd3aW50",
+            "ZXJtLnB0eWhvc3QuU2Vzc2lvbkluZm8i5gQKF1ByZXNlbnRhdGlvbkZyYW1l",
+            "SGVhZGVyEhAKCHJldmlzaW9uGAEgASgNEhMKC2luY2FybmF0aW9uGAIgASgJ",
+            "EhgKEGF0dGFjaG1lbnRfZXBvY2gYAyABKAQSEAoIc2VxdWVuY2UYBCABKAQS",
+            "FQoNYmFzZV9zZXF1ZW5jZRgFIAEoBBIZChF2aWV3cG9ydF9yZXZpc2lvbhgG",
+            "IAEoBBIbChN0ZXJtaW5hbF9nZW5lcmF0aW9uGAcgASgDEgwKBGNvbHMYCCAB",
+            "KA0SDAoEcm93cxgJIAEoDRIUCgxoaXN0b3J5X3Jvd3MYCiABKA0SFQoNc2Ny",
+            "b2xsX29mZnNldBgLIAEoDRIZChFzY3JvbGxfZ2VuZXJhdGlvbhgMIAEoAxIS",
+            "CgpjdXJzb3JfY29sGA0gASgNEhIKCmN1cnNvcl9yb3cYDiABKA0SFgoOY3Vy",
+            "c29yX3Zpc2libGUYDyABKAgSFAoMY3Vyc29yX3NoYXBlGBAgASgNEhgKEGFs",
+            "dGVybmF0ZV9zY3JlZW4YESABKAgSEgoKYmFja2dyb3VuZBgSIAEoDRIUCgxj",
+            "dXJzb3JfY29sb3IYEyABKA0SDQoFdGl0bGUYFCABKAkSCwoDY3dkGBUgASgJ",
+            "Eg0KBW1vZGVzGBYgASgNEhYKDmtleWJvYXJkX2ZsYWdzGBcgASgNEhIKCnNj",
+            "cm9sbF90b3AYGCABKA0SFQoNc2Nyb2xsX2JvdHRvbRgZIAEoDRISCgpoYXNf",
+            "ZXhpdGVkGBogASgIEhEKCWV4aXRfY29kZRgbIAEoBRIWCg5jYXB0dXJlZF90",
+            "aWNrcxgcIAEoAyK6BAoRUHJlc2VudGF0aW9uSW5wdXQSEwoLaW5jYXJuYXRp",
+            "b24YASABKAkSGAoQYXR0YWNobWVudF9lcG9jaBgCIAEoBBIQCghzZXF1ZW5j",
+            "ZRgDIAEoBBIMCgRraW5kGAQgASgNEhMKC3ZpcnR1YWxfa2V5GAUgASgNEg4K",
+            "BmFjdGlvbhgGIAEoDRIRCgltb2RpZmllcnMYByABKA0SDAoEdGV4dBgIIAEo",
+            "CRIRCgl1bnNoaWZ0ZWQYCSABKA0SGgoSY29uc3VtZWRfbW9kaWZpZXJzGAog",
+            "ASgNEhcKD3dpbmRvd3NfdW5pY29kZRgLIAEoBRIdChV3aW5kb3dzX2NvbnRy",
+            "b2xfc3RhdGUYDCABKA0SEQoJc2Nhbl9jb2RlGA0gASgNEg4KBmJ1dHRvbhgO",
+            "IAEoDRIJCgF4GA8gASgCEgkKAXkYECABKAISEgoKY2VsbF93aWR0aBgRIAEo",
+            "DRITCgtjZWxsX2hlaWdodBgSIAEoDRIPCgdmb2N1c2VkGBMgASgIEgsKA3Jh",
+            "dxgUIAEoDBIUCgx3aW5kb3dzX3RleHQYFSABKAkSFgoOZnJhbWVfc2VxdWVu",
+            "Y2UYFiABKAQSOQoIdmlld3BvcnQYFyABKAsyJy5hZ3dpbnRlcm0ucHR5aG9z",
+            "dC5QcmVzZW50YXRpb25WaWV3cG9ydBIZChFoYXNfY2VsbF9wb3NpdGlvbhgY",
+            "IAEoCBITCgtjZWxsX2NvbHVtbhgZIAEoDRIQCghjZWxsX3JvdxgaIAEoDSKV",
+            "AQoUUHJlc2VudGF0aW9uVmlld3BvcnQSEAoIcmV2aXNpb24YASABKAQSDAoE",
+            "Y29scxgCIAEoDRIMCgRyb3dzGAMgASgNEhIKCmNlbGxfd2lkdGgYBCABKA0S",
+            "EwoLY2VsbF9oZWlnaHQYBSABKA0SFQoNc2Nyb2xsX29mZnNldBgGIAEoDRIP",
+            "Cgd2aXNpYmxlGAcgASgIKn8KDUNyZWF0aW9uUGhhc2USFAoQQ1JFQVRJT05f",
+            "VU5LTk9XThAAEhUKEUNSRUFUSU9OX1BSRVBBUkVEEAESFQoRQ1JFQVRJT05f",
+            "Q1JFQVRJTkcQAhIRCg1DUkVBVElPTl9MSVZFEAMSFwoTQ1JFQVRJT05fQ0FO",
+            "Q0VMTElORxAEQhaqAhNBZ3dpbnRlcm0uUHR5LlByb3RvYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Agwinterm.Pty.Proto.CreationPhase), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Request), global::Agwinterm.Pty.Proto.Request.Parser, new[]{ "Hello", "Create", "Attach", "Detach", "Resize", "Kill", "List", "Shutdown", "PrepareCreate", "QueryCreate", "CancelCreate", "ThemeUpdate" }, new[]{ "Cmd" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Hello), global::Agwinterm.Pty.Proto.Hello.Parser, new[]{ "Protocol" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Create), global::Agwinterm.Pty.Proto.Create.Parser, new[]{ "Id", "Cols", "Rows", "App", "Args", "Cwd", "Verbatim", "DeElevate", "FreshEnvOff", "Env", "CreationTicket", "EmulatorCore" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Attach), global::Agwinterm.Pty.Proto.Attach.Parser, new[]{ "Id", "Repaint", "CreationTicket", "NativeSnapshot" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Create), global::Agwinterm.Pty.Proto.Create.Parser, new[]{ "Id", "Cols", "Rows", "App", "Args", "Cwd", "Verbatim", "DeElevate", "FreshEnvOff", "Env", "CreationTicket", "EmulatorCore", "SingleOwner" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Attach), global::Agwinterm.Pty.Proto.Attach.Parser, new[]{ "Id", "Repaint", "CreationTicket", "NativeSnapshot", "PresentationRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionRef), global::Agwinterm.Pty.Proto.SessionRef.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Resize), global::Agwinterm.Pty.Proto.Resize.Parser, new[]{ "Id", "Cols", "Rows", "CreationTicket" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.ThemeUpdate), global::Agwinterm.Pty.Proto.ThemeUpdate.Parser, new[]{ "Id", "CreationTicket", "Colors", "Palette", "Cursor" }, null, null, null, null),
@@ -98,11 +131,14 @@ namespace Agwinterm.Pty.Proto {
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.List), global::Agwinterm.Pty.Proto.List.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Shutdown), global::Agwinterm.Pty.Proto.Shutdown.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.Reply), global::Agwinterm.Pty.Proto.Reply.Parser, new[]{ "Ok", "Error", "Hello", "Create", "Attach", "List", "Creation" }, new[]{ "Body" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision", "CoreSelectionRevision", "ThemeRevision" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.HelloReply), global::Agwinterm.Pty.Proto.HelloReply.Parser, new[]{ "Protocol", "Pid", "CreationRevision", "CoreSelectionRevision", "ThemeRevision", "PresentationRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.CreateReply), global::Agwinterm.Pty.Proto.CreateReply.Parser, new[]{ "Id", "CreationTicket" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket", "NativeSnapshot", "EmulatorCore" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.AttachReply), global::Agwinterm.Pty.Proto.AttachReply.Parser, new[]{ "Pipe", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Modes", "Scrollback", "ScrollbackBlob", "CreationTicket", "NativeSnapshot", "EmulatorCore", "PresentationRevision", "InputPipe", "AttachmentEpoch" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.SessionInfo), global::Agwinterm.Pty.Proto.SessionInfo.Parser, new[]{ "Id", "Cols", "Rows", "ChildPid", "HasExited", "ExitCode", "Title", "Attached", "CreationTicket" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.ListReply), global::Agwinterm.Pty.Proto.ListReply.Parser, new[]{ "Sessions" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.ListReply), global::Agwinterm.Pty.Proto.ListReply.Parser, new[]{ "Sessions" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.PresentationFrameHeader), global::Agwinterm.Pty.Proto.PresentationFrameHeader.Parser, new[]{ "Revision", "Incarnation", "AttachmentEpoch", "Sequence", "BaseSequence", "ViewportRevision", "TerminalGeneration", "Cols", "Rows", "HistoryRows", "ScrollOffset", "ScrollGeneration", "CursorCol", "CursorRow", "CursorVisible", "CursorShape", "AlternateScreen", "Background", "CursorColor", "Title", "Cwd", "Modes", "KeyboardFlags", "ScrollTop", "ScrollBottom", "HasExited", "ExitCode", "CapturedTicks" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.PresentationInput), global::Agwinterm.Pty.Proto.PresentationInput.Parser, new[]{ "Incarnation", "AttachmentEpoch", "Sequence", "Kind", "VirtualKey", "Action", "Modifiers", "Text", "Unshifted", "ConsumedModifiers", "WindowsUnicode", "WindowsControlState", "ScanCode", "Button", "X", "Y", "CellWidth", "CellHeight", "Focused", "Raw", "WindowsText", "FrameSequence", "Viewport", "HasCellPosition", "CellColumn", "CellRow" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Pty.Proto.PresentationViewport), global::Agwinterm.Pty.Proto.PresentationViewport.Parser, new[]{ "Revision", "Cols", "Rows", "CellWidth", "CellHeight", "ScrollOffset", "Visible" }, null, null, null, null)
           }));
     }
     #endregion
@@ -1198,6 +1234,7 @@ namespace Agwinterm.Pty.Proto {
       env_ = other.env_.Clone();
       creationTicket_ = other.creationTicket_;
       emulatorCore_ = other.emulatorCore_;
+      singleOwner_ = other.singleOwner_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1361,6 +1398,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "single_owner" field.</summary>
+    public const int SingleOwnerFieldNumber = 13;
+    private bool singleOwner_;
+    /// <summary>
+    /// presentation_revision >= 1; requires Ghostty, no raw-stream fallback
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SingleOwner {
+      get { return singleOwner_; }
+      set {
+        singleOwner_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1388,6 +1440,7 @@ namespace Agwinterm.Pty.Proto {
       if (!Env.Equals(other.Env)) return false;
       if (CreationTicket != other.CreationTicket) return false;
       if (EmulatorCore != other.EmulatorCore) return false;
+      if (SingleOwner != other.SingleOwner) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1407,6 +1460,7 @@ namespace Agwinterm.Pty.Proto {
       hash ^= Env.GetHashCode();
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
       if (EmulatorCore.Length != 0) hash ^= EmulatorCore.GetHashCode();
+      if (SingleOwner != false) hash ^= SingleOwner.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1467,6 +1521,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(98);
         output.WriteString(EmulatorCore);
       }
+      if (SingleOwner != false) {
+        output.WriteRawTag(104);
+        output.WriteBool(SingleOwner);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1519,6 +1577,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(98);
         output.WriteString(EmulatorCore);
       }
+      if (SingleOwner != false) {
+        output.WriteRawTag(104);
+        output.WriteBool(SingleOwner);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1560,6 +1622,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (EmulatorCore.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(EmulatorCore);
+      }
+      if (SingleOwner != false) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1604,6 +1669,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.EmulatorCore.Length != 0) {
         EmulatorCore = other.EmulatorCore;
+      }
+      if (other.SingleOwner != false) {
+        SingleOwner = other.SingleOwner;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1670,6 +1738,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 98: {
             EmulatorCore = input.ReadString();
+            break;
+          }
+          case 104: {
+            SingleOwner = input.ReadBool();
             break;
           }
         }
@@ -1739,6 +1811,10 @@ namespace Agwinterm.Pty.Proto {
             EmulatorCore = input.ReadString();
             break;
           }
+          case 104: {
+            SingleOwner = input.ReadBool();
+            break;
+          }
         }
       }
     }
@@ -1785,6 +1861,7 @@ namespace Agwinterm.Pty.Proto {
       repaint_ = other.repaint_;
       creationTicket_ = other.creationTicket_;
       nativeSnapshot_ = other.nativeSnapshot_;
+      presentationRevision_ = other.presentationRevision_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1848,6 +1925,18 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "presentation_revision" field.</summary>
+    public const int PresentationRevisionFieldNumber = 5;
+    private uint presentationRevision_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint PresentationRevision {
+      get { return presentationRevision_; }
+      set {
+        presentationRevision_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1867,6 +1956,7 @@ namespace Agwinterm.Pty.Proto {
       if (Repaint != other.Repaint) return false;
       if (CreationTicket != other.CreationTicket) return false;
       if (NativeSnapshot != other.NativeSnapshot) return false;
+      if (PresentationRevision != other.PresentationRevision) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1878,6 +1968,7 @@ namespace Agwinterm.Pty.Proto {
       if (Repaint != false) hash ^= Repaint.GetHashCode();
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
       if (NativeSnapshot != false) hash ^= NativeSnapshot.GetHashCode();
+      if (PresentationRevision != 0) hash ^= PresentationRevision.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1912,6 +2003,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(32);
         output.WriteBool(NativeSnapshot);
       }
+      if (PresentationRevision != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(PresentationRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1938,6 +2033,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(32);
         output.WriteBool(NativeSnapshot);
       }
+      if (PresentationRevision != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(PresentationRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1959,6 +2058,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (NativeSnapshot != false) {
         size += 1 + 1;
+      }
+      if (PresentationRevision != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(PresentationRevision);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1983,6 +2085,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.NativeSnapshot != false) {
         NativeSnapshot = other.NativeSnapshot;
+      }
+      if (other.PresentationRevision != 0) {
+        PresentationRevision = other.PresentationRevision;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -2019,6 +2124,10 @@ namespace Agwinterm.Pty.Proto {
             NativeSnapshot = input.ReadBool();
             break;
           }
+          case 40: {
+            PresentationRevision = input.ReadUInt32();
+            break;
+          }
         }
       }
     #endif
@@ -2052,6 +2161,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 32: {
             NativeSnapshot = input.ReadBool();
+            break;
+          }
+          case 40: {
+            PresentationRevision = input.ReadUInt32();
             break;
           }
         }
@@ -4567,6 +4680,7 @@ namespace Agwinterm.Pty.Proto {
       creationRevision_ = other.creationRevision_;
       coreSelectionRevision_ = other.coreSelectionRevision_;
       themeRevision_ = other.themeRevision_;
+      presentationRevision_ = other.presentationRevision_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -4645,6 +4759,21 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "presentation_revision" field.</summary>
+    public const int PresentationRevisionFieldNumber = 6;
+    private uint presentationRevision_;
+    /// <summary>
+    /// 1 = bounded viewport channel plus ordered semantic input
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint PresentationRevision {
+      get { return presentationRevision_; }
+      set {
+        presentationRevision_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -4665,6 +4794,7 @@ namespace Agwinterm.Pty.Proto {
       if (CreationRevision != other.CreationRevision) return false;
       if (CoreSelectionRevision != other.CoreSelectionRevision) return false;
       if (ThemeRevision != other.ThemeRevision) return false;
+      if (PresentationRevision != other.PresentationRevision) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -4677,6 +4807,7 @@ namespace Agwinterm.Pty.Proto {
       if (CreationRevision != 0) hash ^= CreationRevision.GetHashCode();
       if (CoreSelectionRevision != 0) hash ^= CoreSelectionRevision.GetHashCode();
       if (ThemeRevision != 0) hash ^= ThemeRevision.GetHashCode();
+      if (PresentationRevision != 0) hash ^= PresentationRevision.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -4715,6 +4846,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(40);
         output.WriteUInt32(ThemeRevision);
       }
+      if (PresentationRevision != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(PresentationRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -4745,6 +4880,10 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(40);
         output.WriteUInt32(ThemeRevision);
       }
+      if (PresentationRevision != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(PresentationRevision);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -4769,6 +4908,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (ThemeRevision != 0) {
         size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ThemeRevision);
+      }
+      if (PresentationRevision != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(PresentationRevision);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -4796,6 +4938,9 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.ThemeRevision != 0) {
         ThemeRevision = other.ThemeRevision;
+      }
+      if (other.PresentationRevision != 0) {
+        PresentationRevision = other.PresentationRevision;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -4836,6 +4981,10 @@ namespace Agwinterm.Pty.Proto {
             ThemeRevision = input.ReadUInt32();
             break;
           }
+          case 48: {
+            PresentationRevision = input.ReadUInt32();
+            break;
+          }
         }
       }
     #endif
@@ -4873,6 +5022,10 @@ namespace Agwinterm.Pty.Proto {
           }
           case 40: {
             ThemeRevision = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            PresentationRevision = input.ReadUInt32();
             break;
           }
         }
@@ -5164,6 +5317,9 @@ namespace Agwinterm.Pty.Proto {
       creationTicket_ = other.creationTicket_;
       nativeSnapshot_ = other.nativeSnapshot_;
       emulatorCore_ = other.emulatorCore_;
+      presentationRevision_ = other.presentationRevision_;
+      inputPipe_ = other.inputPipe_;
+      attachmentEpoch_ = other.attachmentEpoch_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -5340,6 +5496,42 @@ namespace Agwinterm.Pty.Proto {
       }
     }
 
+    /// <summary>Field number for the "presentation_revision" field.</summary>
+    public const int PresentationRevisionFieldNumber = 13;
+    private uint presentationRevision_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint PresentationRevision {
+      get { return presentationRevision_; }
+      set {
+        presentationRevision_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "input_pipe" field.</summary>
+    public const int InputPipeFieldNumber = 14;
+    private string inputPipe_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string InputPipe {
+      get { return inputPipe_; }
+      set {
+        inputPipe_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "attachment_epoch" field.</summary>
+    public const int AttachmentEpochFieldNumber = 15;
+    private ulong attachmentEpoch_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong AttachmentEpoch {
+      get { return attachmentEpoch_; }
+      set {
+        attachmentEpoch_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -5367,6 +5559,9 @@ namespace Agwinterm.Pty.Proto {
       if (CreationTicket != other.CreationTicket) return false;
       if (NativeSnapshot != other.NativeSnapshot) return false;
       if (EmulatorCore != other.EmulatorCore) return false;
+      if (PresentationRevision != other.PresentationRevision) return false;
+      if (InputPipe != other.InputPipe) return false;
+      if (AttachmentEpoch != other.AttachmentEpoch) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -5386,6 +5581,9 @@ namespace Agwinterm.Pty.Proto {
       if (CreationTicket.Length != 0) hash ^= CreationTicket.GetHashCode();
       if (NativeSnapshot != false) hash ^= NativeSnapshot.GetHashCode();
       if (EmulatorCore.Length != 0) hash ^= EmulatorCore.GetHashCode();
+      if (PresentationRevision != 0) hash ^= PresentationRevision.GetHashCode();
+      if (InputPipe.Length != 0) hash ^= InputPipe.GetHashCode();
+      if (AttachmentEpoch != 0UL) hash ^= AttachmentEpoch.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -5449,6 +5647,18 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(98);
         output.WriteString(EmulatorCore);
       }
+      if (PresentationRevision != 0) {
+        output.WriteRawTag(104);
+        output.WriteUInt32(PresentationRevision);
+      }
+      if (InputPipe.Length != 0) {
+        output.WriteRawTag(114);
+        output.WriteString(InputPipe);
+      }
+      if (AttachmentEpoch != 0UL) {
+        output.WriteRawTag(120);
+        output.WriteUInt64(AttachmentEpoch);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -5504,6 +5714,18 @@ namespace Agwinterm.Pty.Proto {
         output.WriteRawTag(98);
         output.WriteString(EmulatorCore);
       }
+      if (PresentationRevision != 0) {
+        output.WriteRawTag(104);
+        output.WriteUInt32(PresentationRevision);
+      }
+      if (InputPipe.Length != 0) {
+        output.WriteRawTag(114);
+        output.WriteString(InputPipe);
+      }
+      if (AttachmentEpoch != 0UL) {
+        output.WriteRawTag(120);
+        output.WriteUInt64(AttachmentEpoch);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -5547,6 +5769,15 @@ namespace Agwinterm.Pty.Proto {
       }
       if (EmulatorCore.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(EmulatorCore);
+      }
+      if (PresentationRevision != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(PresentationRevision);
+      }
+      if (InputPipe.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(InputPipe);
+      }
+      if (AttachmentEpoch != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(AttachmentEpoch);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -5593,6 +5824,15 @@ namespace Agwinterm.Pty.Proto {
       }
       if (other.EmulatorCore.Length != 0) {
         EmulatorCore = other.EmulatorCore;
+      }
+      if (other.PresentationRevision != 0) {
+        PresentationRevision = other.PresentationRevision;
+      }
+      if (other.InputPipe.Length != 0) {
+        InputPipe = other.InputPipe;
+      }
+      if (other.AttachmentEpoch != 0UL) {
+        AttachmentEpoch = other.AttachmentEpoch;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -5661,6 +5901,18 @@ namespace Agwinterm.Pty.Proto {
             EmulatorCore = input.ReadString();
             break;
           }
+          case 104: {
+            PresentationRevision = input.ReadUInt32();
+            break;
+          }
+          case 114: {
+            InputPipe = input.ReadString();
+            break;
+          }
+          case 120: {
+            AttachmentEpoch = input.ReadUInt64();
+            break;
+          }
         }
       }
     #endif
@@ -5726,6 +5978,18 @@ namespace Agwinterm.Pty.Proto {
           }
           case 98: {
             EmulatorCore = input.ReadString();
+            break;
+          }
+          case 104: {
+            PresentationRevision = input.ReadUInt32();
+            break;
+          }
+          case 114: {
+            InputPipe = input.ReadString();
+            break;
+          }
+          case 120: {
+            AttachmentEpoch = input.ReadUInt64();
             break;
           }
         }
@@ -6407,6 +6671,2779 @@ namespace Agwinterm.Pty.Proto {
             break;
           case 10: {
             sessions_.AddEntriesFrom(ref input, _repeated_sessions_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// Presentation data pipes carry bounded records: uint32 total length, uint32
+  /// protobuf-header length, PresentationFrameHeader, then the row payload. No VT
+  /// stream or native pointer is valid on these pipes. Row encoding is revisioned.
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class PresentationFrameHeader : pb::IMessage<PresentationFrameHeader>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<PresentationFrameHeader> _parser = new pb::MessageParser<PresentationFrameHeader>(() => new PresentationFrameHeader());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<PresentationFrameHeader> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[18]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationFrameHeader() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationFrameHeader(PresentationFrameHeader other) : this() {
+      revision_ = other.revision_;
+      incarnation_ = other.incarnation_;
+      attachmentEpoch_ = other.attachmentEpoch_;
+      sequence_ = other.sequence_;
+      baseSequence_ = other.baseSequence_;
+      viewportRevision_ = other.viewportRevision_;
+      terminalGeneration_ = other.terminalGeneration_;
+      cols_ = other.cols_;
+      rows_ = other.rows_;
+      historyRows_ = other.historyRows_;
+      scrollOffset_ = other.scrollOffset_;
+      scrollGeneration_ = other.scrollGeneration_;
+      cursorCol_ = other.cursorCol_;
+      cursorRow_ = other.cursorRow_;
+      cursorVisible_ = other.cursorVisible_;
+      cursorShape_ = other.cursorShape_;
+      alternateScreen_ = other.alternateScreen_;
+      background_ = other.background_;
+      cursorColor_ = other.cursorColor_;
+      title_ = other.title_;
+      cwd_ = other.cwd_;
+      modes_ = other.modes_;
+      keyboardFlags_ = other.keyboardFlags_;
+      scrollTop_ = other.scrollTop_;
+      scrollBottom_ = other.scrollBottom_;
+      hasExited_ = other.hasExited_;
+      exitCode_ = other.exitCode_;
+      capturedTicks_ = other.capturedTicks_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationFrameHeader Clone() {
+      return new PresentationFrameHeader(this);
+    }
+
+    /// <summary>Field number for the "revision" field.</summary>
+    public const int RevisionFieldNumber = 1;
+    private uint revision_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Revision {
+      get { return revision_; }
+      set {
+        revision_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "incarnation" field.</summary>
+    public const int IncarnationFieldNumber = 2;
+    private string incarnation_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Incarnation {
+      get { return incarnation_; }
+      set {
+        incarnation_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "attachment_epoch" field.</summary>
+    public const int AttachmentEpochFieldNumber = 3;
+    private ulong attachmentEpoch_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong AttachmentEpoch {
+      get { return attachmentEpoch_; }
+      set {
+        attachmentEpoch_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "sequence" field.</summary>
+    public const int SequenceFieldNumber = 4;
+    private ulong sequence_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong Sequence {
+      get { return sequence_; }
+      set {
+        sequence_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "base_sequence" field.</summary>
+    public const int BaseSequenceFieldNumber = 5;
+    private ulong baseSequence_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong BaseSequence {
+      get { return baseSequence_; }
+      set {
+        baseSequence_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "viewport_revision" field.</summary>
+    public const int ViewportRevisionFieldNumber = 6;
+    private ulong viewportRevision_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong ViewportRevision {
+      get { return viewportRevision_; }
+      set {
+        viewportRevision_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "terminal_generation" field.</summary>
+    public const int TerminalGenerationFieldNumber = 7;
+    private long terminalGeneration_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long TerminalGeneration {
+      get { return terminalGeneration_; }
+      set {
+        terminalGeneration_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cols" field.</summary>
+    public const int ColsFieldNumber = 8;
+    private uint cols_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Cols {
+      get { return cols_; }
+      set {
+        cols_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "rows" field.</summary>
+    public const int RowsFieldNumber = 9;
+    private uint rows_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Rows {
+      get { return rows_; }
+      set {
+        rows_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "history_rows" field.</summary>
+    public const int HistoryRowsFieldNumber = 10;
+    private uint historyRows_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint HistoryRows {
+      get { return historyRows_; }
+      set {
+        historyRows_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "scroll_offset" field.</summary>
+    public const int ScrollOffsetFieldNumber = 11;
+    private uint scrollOffset_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ScrollOffset {
+      get { return scrollOffset_; }
+      set {
+        scrollOffset_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "scroll_generation" field.</summary>
+    public const int ScrollGenerationFieldNumber = 12;
+    private long scrollGeneration_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long ScrollGeneration {
+      get { return scrollGeneration_; }
+      set {
+        scrollGeneration_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cursor_col" field.</summary>
+    public const int CursorColFieldNumber = 13;
+    private uint cursorCol_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CursorCol {
+      get { return cursorCol_; }
+      set {
+        cursorCol_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cursor_row" field.</summary>
+    public const int CursorRowFieldNumber = 14;
+    private uint cursorRow_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CursorRow {
+      get { return cursorRow_; }
+      set {
+        cursorRow_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cursor_visible" field.</summary>
+    public const int CursorVisibleFieldNumber = 15;
+    private bool cursorVisible_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool CursorVisible {
+      get { return cursorVisible_; }
+      set {
+        cursorVisible_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cursor_shape" field.</summary>
+    public const int CursorShapeFieldNumber = 16;
+    private uint cursorShape_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CursorShape {
+      get { return cursorShape_; }
+      set {
+        cursorShape_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "alternate_screen" field.</summary>
+    public const int AlternateScreenFieldNumber = 17;
+    private bool alternateScreen_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool AlternateScreen {
+      get { return alternateScreen_; }
+      set {
+        alternateScreen_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "background" field.</summary>
+    public const int BackgroundFieldNumber = 18;
+    private uint background_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Background {
+      get { return background_; }
+      set {
+        background_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cursor_color" field.</summary>
+    public const int CursorColorFieldNumber = 19;
+    private uint cursorColor_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CursorColor {
+      get { return cursorColor_; }
+      set {
+        cursorColor_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "title" field.</summary>
+    public const int TitleFieldNumber = 20;
+    private string title_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Title {
+      get { return title_; }
+      set {
+        title_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "cwd" field.</summary>
+    public const int CwdFieldNumber = 21;
+    private string cwd_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Cwd {
+      get { return cwd_; }
+      set {
+        cwd_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "modes" field.</summary>
+    public const int ModesFieldNumber = 22;
+    private uint modes_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Modes {
+      get { return modes_; }
+      set {
+        modes_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "keyboard_flags" field.</summary>
+    public const int KeyboardFlagsFieldNumber = 23;
+    private uint keyboardFlags_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint KeyboardFlags {
+      get { return keyboardFlags_; }
+      set {
+        keyboardFlags_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "scroll_top" field.</summary>
+    public const int ScrollTopFieldNumber = 24;
+    private uint scrollTop_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ScrollTop {
+      get { return scrollTop_; }
+      set {
+        scrollTop_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "scroll_bottom" field.</summary>
+    public const int ScrollBottomFieldNumber = 25;
+    private uint scrollBottom_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ScrollBottom {
+      get { return scrollBottom_; }
+      set {
+        scrollBottom_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "has_exited" field.</summary>
+    public const int HasExitedFieldNumber = 26;
+    private bool hasExited_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasExited {
+      get { return hasExited_; }
+      set {
+        hasExited_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "exit_code" field.</summary>
+    public const int ExitCodeFieldNumber = 27;
+    private int exitCode_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int ExitCode {
+      get { return exitCode_; }
+      set {
+        exitCode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "captured_ticks" field.</summary>
+    public const int CapturedTicksFieldNumber = 28;
+    private long capturedTicks_;
+    /// <summary>
+    /// opt-in QPC timestamp; 0 when diagnostics are disabled
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long CapturedTicks {
+      get { return capturedTicks_; }
+      set {
+        capturedTicks_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as PresentationFrameHeader);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(PresentationFrameHeader other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Revision != other.Revision) return false;
+      if (Incarnation != other.Incarnation) return false;
+      if (AttachmentEpoch != other.AttachmentEpoch) return false;
+      if (Sequence != other.Sequence) return false;
+      if (BaseSequence != other.BaseSequence) return false;
+      if (ViewportRevision != other.ViewportRevision) return false;
+      if (TerminalGeneration != other.TerminalGeneration) return false;
+      if (Cols != other.Cols) return false;
+      if (Rows != other.Rows) return false;
+      if (HistoryRows != other.HistoryRows) return false;
+      if (ScrollOffset != other.ScrollOffset) return false;
+      if (ScrollGeneration != other.ScrollGeneration) return false;
+      if (CursorCol != other.CursorCol) return false;
+      if (CursorRow != other.CursorRow) return false;
+      if (CursorVisible != other.CursorVisible) return false;
+      if (CursorShape != other.CursorShape) return false;
+      if (AlternateScreen != other.AlternateScreen) return false;
+      if (Background != other.Background) return false;
+      if (CursorColor != other.CursorColor) return false;
+      if (Title != other.Title) return false;
+      if (Cwd != other.Cwd) return false;
+      if (Modes != other.Modes) return false;
+      if (KeyboardFlags != other.KeyboardFlags) return false;
+      if (ScrollTop != other.ScrollTop) return false;
+      if (ScrollBottom != other.ScrollBottom) return false;
+      if (HasExited != other.HasExited) return false;
+      if (ExitCode != other.ExitCode) return false;
+      if (CapturedTicks != other.CapturedTicks) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Revision != 0) hash ^= Revision.GetHashCode();
+      if (Incarnation.Length != 0) hash ^= Incarnation.GetHashCode();
+      if (AttachmentEpoch != 0UL) hash ^= AttachmentEpoch.GetHashCode();
+      if (Sequence != 0UL) hash ^= Sequence.GetHashCode();
+      if (BaseSequence != 0UL) hash ^= BaseSequence.GetHashCode();
+      if (ViewportRevision != 0UL) hash ^= ViewportRevision.GetHashCode();
+      if (TerminalGeneration != 0L) hash ^= TerminalGeneration.GetHashCode();
+      if (Cols != 0) hash ^= Cols.GetHashCode();
+      if (Rows != 0) hash ^= Rows.GetHashCode();
+      if (HistoryRows != 0) hash ^= HistoryRows.GetHashCode();
+      if (ScrollOffset != 0) hash ^= ScrollOffset.GetHashCode();
+      if (ScrollGeneration != 0L) hash ^= ScrollGeneration.GetHashCode();
+      if (CursorCol != 0) hash ^= CursorCol.GetHashCode();
+      if (CursorRow != 0) hash ^= CursorRow.GetHashCode();
+      if (CursorVisible != false) hash ^= CursorVisible.GetHashCode();
+      if (CursorShape != 0) hash ^= CursorShape.GetHashCode();
+      if (AlternateScreen != false) hash ^= AlternateScreen.GetHashCode();
+      if (Background != 0) hash ^= Background.GetHashCode();
+      if (CursorColor != 0) hash ^= CursorColor.GetHashCode();
+      if (Title.Length != 0) hash ^= Title.GetHashCode();
+      if (Cwd.Length != 0) hash ^= Cwd.GetHashCode();
+      if (Modes != 0) hash ^= Modes.GetHashCode();
+      if (KeyboardFlags != 0) hash ^= KeyboardFlags.GetHashCode();
+      if (ScrollTop != 0) hash ^= ScrollTop.GetHashCode();
+      if (ScrollBottom != 0) hash ^= ScrollBottom.GetHashCode();
+      if (HasExited != false) hash ^= HasExited.GetHashCode();
+      if (ExitCode != 0) hash ^= ExitCode.GetHashCode();
+      if (CapturedTicks != 0L) hash ^= CapturedTicks.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Revision != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(Revision);
+      }
+      if (Incarnation.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Incarnation);
+      }
+      if (AttachmentEpoch != 0UL) {
+        output.WriteRawTag(24);
+        output.WriteUInt64(AttachmentEpoch);
+      }
+      if (Sequence != 0UL) {
+        output.WriteRawTag(32);
+        output.WriteUInt64(Sequence);
+      }
+      if (BaseSequence != 0UL) {
+        output.WriteRawTag(40);
+        output.WriteUInt64(BaseSequence);
+      }
+      if (ViewportRevision != 0UL) {
+        output.WriteRawTag(48);
+        output.WriteUInt64(ViewportRevision);
+      }
+      if (TerminalGeneration != 0L) {
+        output.WriteRawTag(56);
+        output.WriteInt64(TerminalGeneration);
+      }
+      if (Cols != 0) {
+        output.WriteRawTag(64);
+        output.WriteUInt32(Cols);
+      }
+      if (Rows != 0) {
+        output.WriteRawTag(72);
+        output.WriteUInt32(Rows);
+      }
+      if (HistoryRows != 0) {
+        output.WriteRawTag(80);
+        output.WriteUInt32(HistoryRows);
+      }
+      if (ScrollOffset != 0) {
+        output.WriteRawTag(88);
+        output.WriteUInt32(ScrollOffset);
+      }
+      if (ScrollGeneration != 0L) {
+        output.WriteRawTag(96);
+        output.WriteInt64(ScrollGeneration);
+      }
+      if (CursorCol != 0) {
+        output.WriteRawTag(104);
+        output.WriteUInt32(CursorCol);
+      }
+      if (CursorRow != 0) {
+        output.WriteRawTag(112);
+        output.WriteUInt32(CursorRow);
+      }
+      if (CursorVisible != false) {
+        output.WriteRawTag(120);
+        output.WriteBool(CursorVisible);
+      }
+      if (CursorShape != 0) {
+        output.WriteRawTag(128, 1);
+        output.WriteUInt32(CursorShape);
+      }
+      if (AlternateScreen != false) {
+        output.WriteRawTag(136, 1);
+        output.WriteBool(AlternateScreen);
+      }
+      if (Background != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteUInt32(Background);
+      }
+      if (CursorColor != 0) {
+        output.WriteRawTag(152, 1);
+        output.WriteUInt32(CursorColor);
+      }
+      if (Title.Length != 0) {
+        output.WriteRawTag(162, 1);
+        output.WriteString(Title);
+      }
+      if (Cwd.Length != 0) {
+        output.WriteRawTag(170, 1);
+        output.WriteString(Cwd);
+      }
+      if (Modes != 0) {
+        output.WriteRawTag(176, 1);
+        output.WriteUInt32(Modes);
+      }
+      if (KeyboardFlags != 0) {
+        output.WriteRawTag(184, 1);
+        output.WriteUInt32(KeyboardFlags);
+      }
+      if (ScrollTop != 0) {
+        output.WriteRawTag(192, 1);
+        output.WriteUInt32(ScrollTop);
+      }
+      if (ScrollBottom != 0) {
+        output.WriteRawTag(200, 1);
+        output.WriteUInt32(ScrollBottom);
+      }
+      if (HasExited != false) {
+        output.WriteRawTag(208, 1);
+        output.WriteBool(HasExited);
+      }
+      if (ExitCode != 0) {
+        output.WriteRawTag(216, 1);
+        output.WriteInt32(ExitCode);
+      }
+      if (CapturedTicks != 0L) {
+        output.WriteRawTag(224, 1);
+        output.WriteInt64(CapturedTicks);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Revision != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(Revision);
+      }
+      if (Incarnation.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Incarnation);
+      }
+      if (AttachmentEpoch != 0UL) {
+        output.WriteRawTag(24);
+        output.WriteUInt64(AttachmentEpoch);
+      }
+      if (Sequence != 0UL) {
+        output.WriteRawTag(32);
+        output.WriteUInt64(Sequence);
+      }
+      if (BaseSequence != 0UL) {
+        output.WriteRawTag(40);
+        output.WriteUInt64(BaseSequence);
+      }
+      if (ViewportRevision != 0UL) {
+        output.WriteRawTag(48);
+        output.WriteUInt64(ViewportRevision);
+      }
+      if (TerminalGeneration != 0L) {
+        output.WriteRawTag(56);
+        output.WriteInt64(TerminalGeneration);
+      }
+      if (Cols != 0) {
+        output.WriteRawTag(64);
+        output.WriteUInt32(Cols);
+      }
+      if (Rows != 0) {
+        output.WriteRawTag(72);
+        output.WriteUInt32(Rows);
+      }
+      if (HistoryRows != 0) {
+        output.WriteRawTag(80);
+        output.WriteUInt32(HistoryRows);
+      }
+      if (ScrollOffset != 0) {
+        output.WriteRawTag(88);
+        output.WriteUInt32(ScrollOffset);
+      }
+      if (ScrollGeneration != 0L) {
+        output.WriteRawTag(96);
+        output.WriteInt64(ScrollGeneration);
+      }
+      if (CursorCol != 0) {
+        output.WriteRawTag(104);
+        output.WriteUInt32(CursorCol);
+      }
+      if (CursorRow != 0) {
+        output.WriteRawTag(112);
+        output.WriteUInt32(CursorRow);
+      }
+      if (CursorVisible != false) {
+        output.WriteRawTag(120);
+        output.WriteBool(CursorVisible);
+      }
+      if (CursorShape != 0) {
+        output.WriteRawTag(128, 1);
+        output.WriteUInt32(CursorShape);
+      }
+      if (AlternateScreen != false) {
+        output.WriteRawTag(136, 1);
+        output.WriteBool(AlternateScreen);
+      }
+      if (Background != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteUInt32(Background);
+      }
+      if (CursorColor != 0) {
+        output.WriteRawTag(152, 1);
+        output.WriteUInt32(CursorColor);
+      }
+      if (Title.Length != 0) {
+        output.WriteRawTag(162, 1);
+        output.WriteString(Title);
+      }
+      if (Cwd.Length != 0) {
+        output.WriteRawTag(170, 1);
+        output.WriteString(Cwd);
+      }
+      if (Modes != 0) {
+        output.WriteRawTag(176, 1);
+        output.WriteUInt32(Modes);
+      }
+      if (KeyboardFlags != 0) {
+        output.WriteRawTag(184, 1);
+        output.WriteUInt32(KeyboardFlags);
+      }
+      if (ScrollTop != 0) {
+        output.WriteRawTag(192, 1);
+        output.WriteUInt32(ScrollTop);
+      }
+      if (ScrollBottom != 0) {
+        output.WriteRawTag(200, 1);
+        output.WriteUInt32(ScrollBottom);
+      }
+      if (HasExited != false) {
+        output.WriteRawTag(208, 1);
+        output.WriteBool(HasExited);
+      }
+      if (ExitCode != 0) {
+        output.WriteRawTag(216, 1);
+        output.WriteInt32(ExitCode);
+      }
+      if (CapturedTicks != 0L) {
+        output.WriteRawTag(224, 1);
+        output.WriteInt64(CapturedTicks);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Revision != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Revision);
+      }
+      if (Incarnation.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Incarnation);
+      }
+      if (AttachmentEpoch != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(AttachmentEpoch);
+      }
+      if (Sequence != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Sequence);
+      }
+      if (BaseSequence != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(BaseSequence);
+      }
+      if (ViewportRevision != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(ViewportRevision);
+      }
+      if (TerminalGeneration != 0L) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(TerminalGeneration);
+      }
+      if (Cols != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Cols);
+      }
+      if (Rows != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Rows);
+      }
+      if (HistoryRows != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(HistoryRows);
+      }
+      if (ScrollOffset != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ScrollOffset);
+      }
+      if (ScrollGeneration != 0L) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(ScrollGeneration);
+      }
+      if (CursorCol != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CursorCol);
+      }
+      if (CursorRow != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CursorRow);
+      }
+      if (CursorVisible != false) {
+        size += 1 + 1;
+      }
+      if (CursorShape != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(CursorShape);
+      }
+      if (AlternateScreen != false) {
+        size += 2 + 1;
+      }
+      if (Background != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(Background);
+      }
+      if (CursorColor != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(CursorColor);
+      }
+      if (Title.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(Title);
+      }
+      if (Cwd.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(Cwd);
+      }
+      if (Modes != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(Modes);
+      }
+      if (KeyboardFlags != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(KeyboardFlags);
+      }
+      if (ScrollTop != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(ScrollTop);
+      }
+      if (ScrollBottom != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(ScrollBottom);
+      }
+      if (HasExited != false) {
+        size += 2 + 1;
+      }
+      if (ExitCode != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(ExitCode);
+      }
+      if (CapturedTicks != 0L) {
+        size += 2 + pb::CodedOutputStream.ComputeInt64Size(CapturedTicks);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(PresentationFrameHeader other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Revision != 0) {
+        Revision = other.Revision;
+      }
+      if (other.Incarnation.Length != 0) {
+        Incarnation = other.Incarnation;
+      }
+      if (other.AttachmentEpoch != 0UL) {
+        AttachmentEpoch = other.AttachmentEpoch;
+      }
+      if (other.Sequence != 0UL) {
+        Sequence = other.Sequence;
+      }
+      if (other.BaseSequence != 0UL) {
+        BaseSequence = other.BaseSequence;
+      }
+      if (other.ViewportRevision != 0UL) {
+        ViewportRevision = other.ViewportRevision;
+      }
+      if (other.TerminalGeneration != 0L) {
+        TerminalGeneration = other.TerminalGeneration;
+      }
+      if (other.Cols != 0) {
+        Cols = other.Cols;
+      }
+      if (other.Rows != 0) {
+        Rows = other.Rows;
+      }
+      if (other.HistoryRows != 0) {
+        HistoryRows = other.HistoryRows;
+      }
+      if (other.ScrollOffset != 0) {
+        ScrollOffset = other.ScrollOffset;
+      }
+      if (other.ScrollGeneration != 0L) {
+        ScrollGeneration = other.ScrollGeneration;
+      }
+      if (other.CursorCol != 0) {
+        CursorCol = other.CursorCol;
+      }
+      if (other.CursorRow != 0) {
+        CursorRow = other.CursorRow;
+      }
+      if (other.CursorVisible != false) {
+        CursorVisible = other.CursorVisible;
+      }
+      if (other.CursorShape != 0) {
+        CursorShape = other.CursorShape;
+      }
+      if (other.AlternateScreen != false) {
+        AlternateScreen = other.AlternateScreen;
+      }
+      if (other.Background != 0) {
+        Background = other.Background;
+      }
+      if (other.CursorColor != 0) {
+        CursorColor = other.CursorColor;
+      }
+      if (other.Title.Length != 0) {
+        Title = other.Title;
+      }
+      if (other.Cwd.Length != 0) {
+        Cwd = other.Cwd;
+      }
+      if (other.Modes != 0) {
+        Modes = other.Modes;
+      }
+      if (other.KeyboardFlags != 0) {
+        KeyboardFlags = other.KeyboardFlags;
+      }
+      if (other.ScrollTop != 0) {
+        ScrollTop = other.ScrollTop;
+      }
+      if (other.ScrollBottom != 0) {
+        ScrollBottom = other.ScrollBottom;
+      }
+      if (other.HasExited != false) {
+        HasExited = other.HasExited;
+      }
+      if (other.ExitCode != 0) {
+        ExitCode = other.ExitCode;
+      }
+      if (other.CapturedTicks != 0L) {
+        CapturedTicks = other.CapturedTicks;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Revision = input.ReadUInt32();
+            break;
+          }
+          case 18: {
+            Incarnation = input.ReadString();
+            break;
+          }
+          case 24: {
+            AttachmentEpoch = input.ReadUInt64();
+            break;
+          }
+          case 32: {
+            Sequence = input.ReadUInt64();
+            break;
+          }
+          case 40: {
+            BaseSequence = input.ReadUInt64();
+            break;
+          }
+          case 48: {
+            ViewportRevision = input.ReadUInt64();
+            break;
+          }
+          case 56: {
+            TerminalGeneration = input.ReadInt64();
+            break;
+          }
+          case 64: {
+            Cols = input.ReadUInt32();
+            break;
+          }
+          case 72: {
+            Rows = input.ReadUInt32();
+            break;
+          }
+          case 80: {
+            HistoryRows = input.ReadUInt32();
+            break;
+          }
+          case 88: {
+            ScrollOffset = input.ReadUInt32();
+            break;
+          }
+          case 96: {
+            ScrollGeneration = input.ReadInt64();
+            break;
+          }
+          case 104: {
+            CursorCol = input.ReadUInt32();
+            break;
+          }
+          case 112: {
+            CursorRow = input.ReadUInt32();
+            break;
+          }
+          case 120: {
+            CursorVisible = input.ReadBool();
+            break;
+          }
+          case 128: {
+            CursorShape = input.ReadUInt32();
+            break;
+          }
+          case 136: {
+            AlternateScreen = input.ReadBool();
+            break;
+          }
+          case 144: {
+            Background = input.ReadUInt32();
+            break;
+          }
+          case 152: {
+            CursorColor = input.ReadUInt32();
+            break;
+          }
+          case 162: {
+            Title = input.ReadString();
+            break;
+          }
+          case 170: {
+            Cwd = input.ReadString();
+            break;
+          }
+          case 176: {
+            Modes = input.ReadUInt32();
+            break;
+          }
+          case 184: {
+            KeyboardFlags = input.ReadUInt32();
+            break;
+          }
+          case 192: {
+            ScrollTop = input.ReadUInt32();
+            break;
+          }
+          case 200: {
+            ScrollBottom = input.ReadUInt32();
+            break;
+          }
+          case 208: {
+            HasExited = input.ReadBool();
+            break;
+          }
+          case 216: {
+            ExitCode = input.ReadInt32();
+            break;
+          }
+          case 224: {
+            CapturedTicks = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Revision = input.ReadUInt32();
+            break;
+          }
+          case 18: {
+            Incarnation = input.ReadString();
+            break;
+          }
+          case 24: {
+            AttachmentEpoch = input.ReadUInt64();
+            break;
+          }
+          case 32: {
+            Sequence = input.ReadUInt64();
+            break;
+          }
+          case 40: {
+            BaseSequence = input.ReadUInt64();
+            break;
+          }
+          case 48: {
+            ViewportRevision = input.ReadUInt64();
+            break;
+          }
+          case 56: {
+            TerminalGeneration = input.ReadInt64();
+            break;
+          }
+          case 64: {
+            Cols = input.ReadUInt32();
+            break;
+          }
+          case 72: {
+            Rows = input.ReadUInt32();
+            break;
+          }
+          case 80: {
+            HistoryRows = input.ReadUInt32();
+            break;
+          }
+          case 88: {
+            ScrollOffset = input.ReadUInt32();
+            break;
+          }
+          case 96: {
+            ScrollGeneration = input.ReadInt64();
+            break;
+          }
+          case 104: {
+            CursorCol = input.ReadUInt32();
+            break;
+          }
+          case 112: {
+            CursorRow = input.ReadUInt32();
+            break;
+          }
+          case 120: {
+            CursorVisible = input.ReadBool();
+            break;
+          }
+          case 128: {
+            CursorShape = input.ReadUInt32();
+            break;
+          }
+          case 136: {
+            AlternateScreen = input.ReadBool();
+            break;
+          }
+          case 144: {
+            Background = input.ReadUInt32();
+            break;
+          }
+          case 152: {
+            CursorColor = input.ReadUInt32();
+            break;
+          }
+          case 162: {
+            Title = input.ReadString();
+            break;
+          }
+          case 170: {
+            Cwd = input.ReadString();
+            break;
+          }
+          case 176: {
+            Modes = input.ReadUInt32();
+            break;
+          }
+          case 184: {
+            KeyboardFlags = input.ReadUInt32();
+            break;
+          }
+          case 192: {
+            ScrollTop = input.ReadUInt32();
+            break;
+          }
+          case 200: {
+            ScrollBottom = input.ReadUInt32();
+            break;
+          }
+          case 208: {
+            HasExited = input.ReadBool();
+            break;
+          }
+          case 216: {
+            ExitCode = input.ReadInt32();
+            break;
+          }
+          case 224: {
+            CapturedTicks = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// Independent input pipe. Acceptance never waits for a frame/query round trip.
+  /// All records are fenced by incarnation/epoch and strictly increasing sequence.
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class PresentationInput : pb::IMessage<PresentationInput>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<PresentationInput> _parser = new pb::MessageParser<PresentationInput>(() => new PresentationInput());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<PresentationInput> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[19]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationInput() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationInput(PresentationInput other) : this() {
+      incarnation_ = other.incarnation_;
+      attachmentEpoch_ = other.attachmentEpoch_;
+      sequence_ = other.sequence_;
+      kind_ = other.kind_;
+      virtualKey_ = other.virtualKey_;
+      action_ = other.action_;
+      modifiers_ = other.modifiers_;
+      text_ = other.text_;
+      unshifted_ = other.unshifted_;
+      consumedModifiers_ = other.consumedModifiers_;
+      windowsUnicode_ = other.windowsUnicode_;
+      windowsControlState_ = other.windowsControlState_;
+      scanCode_ = other.scanCode_;
+      button_ = other.button_;
+      x_ = other.x_;
+      y_ = other.y_;
+      cellWidth_ = other.cellWidth_;
+      cellHeight_ = other.cellHeight_;
+      focused_ = other.focused_;
+      raw_ = other.raw_;
+      windowsText_ = other.windowsText_;
+      frameSequence_ = other.frameSequence_;
+      viewport_ = other.viewport_ != null ? other.viewport_.Clone() : null;
+      hasCellPosition_ = other.hasCellPosition_;
+      cellColumn_ = other.cellColumn_;
+      cellRow_ = other.cellRow_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationInput Clone() {
+      return new PresentationInput(this);
+    }
+
+    /// <summary>Field number for the "incarnation" field.</summary>
+    public const int IncarnationFieldNumber = 1;
+    private string incarnation_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Incarnation {
+      get { return incarnation_; }
+      set {
+        incarnation_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "attachment_epoch" field.</summary>
+    public const int AttachmentEpochFieldNumber = 2;
+    private ulong attachmentEpoch_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong AttachmentEpoch {
+      get { return attachmentEpoch_; }
+      set {
+        attachmentEpoch_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "sequence" field.</summary>
+    public const int SequenceFieldNumber = 3;
+    private ulong sequence_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong Sequence {
+      get { return sequence_; }
+      set {
+        sequence_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "kind" field.</summary>
+    public const int KindFieldNumber = 4;
+    private uint kind_;
+    /// <summary>
+    /// 1 key, 2 text, 3 paste, 4 mouse, 5 focus, 6 raw bytes
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Kind {
+      get { return kind_; }
+      set {
+        kind_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "virtual_key" field.</summary>
+    public const int VirtualKeyFieldNumber = 5;
+    private uint virtualKey_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint VirtualKey {
+      get { return virtualKey_; }
+      set {
+        virtualKey_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "action" field.</summary>
+    public const int ActionFieldNumber = 6;
+    private uint action_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Action {
+      get { return action_; }
+      set {
+        action_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "modifiers" field.</summary>
+    public const int ModifiersFieldNumber = 7;
+    private uint modifiers_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Modifiers {
+      get { return modifiers_; }
+      set {
+        modifiers_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "text" field.</summary>
+    public const int TextFieldNumber = 8;
+    private string text_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Text {
+      get { return text_; }
+      set {
+        text_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "unshifted" field.</summary>
+    public const int UnshiftedFieldNumber = 9;
+    private uint unshifted_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Unshifted {
+      get { return unshifted_; }
+      set {
+        unshifted_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "consumed_modifiers" field.</summary>
+    public const int ConsumedModifiersFieldNumber = 10;
+    private uint consumedModifiers_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ConsumedModifiers {
+      get { return consumedModifiers_; }
+      set {
+        consumedModifiers_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "windows_unicode" field.</summary>
+    public const int WindowsUnicodeFieldNumber = 11;
+    private int windowsUnicode_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int WindowsUnicode {
+      get { return windowsUnicode_; }
+      set {
+        windowsUnicode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "windows_control_state" field.</summary>
+    public const int WindowsControlStateFieldNumber = 12;
+    private uint windowsControlState_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint WindowsControlState {
+      get { return windowsControlState_; }
+      set {
+        windowsControlState_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "scan_code" field.</summary>
+    public const int ScanCodeFieldNumber = 13;
+    private uint scanCode_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ScanCode {
+      get { return scanCode_; }
+      set {
+        scanCode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button" field.</summary>
+    public const int ButtonFieldNumber = 14;
+    private uint button_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Button {
+      get { return button_; }
+      set {
+        button_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "x" field.</summary>
+    public const int XFieldNumber = 15;
+    private float x_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float X {
+      get { return x_; }
+      set {
+        x_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "y" field.</summary>
+    public const int YFieldNumber = 16;
+    private float y_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float Y {
+      get { return y_; }
+      set {
+        y_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cell_width" field.</summary>
+    public const int CellWidthFieldNumber = 17;
+    private uint cellWidth_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CellWidth {
+      get { return cellWidth_; }
+      set {
+        cellWidth_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cell_height" field.</summary>
+    public const int CellHeightFieldNumber = 18;
+    private uint cellHeight_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CellHeight {
+      get { return cellHeight_; }
+      set {
+        cellHeight_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "focused" field.</summary>
+    public const int FocusedFieldNumber = 19;
+    private bool focused_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Focused {
+      get { return focused_; }
+      set {
+        focused_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "raw" field.</summary>
+    public const int RawFieldNumber = 20;
+    private pb::ByteString raw_ = pb::ByteString.Empty;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pb::ByteString Raw {
+      get { return raw_; }
+      set {
+        raw_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "windows_text" field.</summary>
+    public const int WindowsTextFieldNumber = 21;
+    private string windowsText_ = "";
+    /// <summary>
+    /// all committed UTF-16 units from Windows translation
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string WindowsText {
+      get { return windowsText_; }
+      set {
+        windowsText_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "frame_sequence" field.</summary>
+    public const int FrameSequenceFieldNumber = 22;
+    private ulong frameSequence_;
+    /// <summary>
+    /// kind 7: successfully presented frame credit
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong FrameSequence {
+      get { return frameSequence_; }
+      set {
+        frameSequence_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "viewport" field.</summary>
+    public const int ViewportFieldNumber = 23;
+    private global::Agwinterm.Pty.Proto.PresentationViewport viewport_;
+    /// <summary>
+    /// kind 8: fenced resize/scroll/visibility
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Agwinterm.Pty.Proto.PresentationViewport Viewport {
+      get { return viewport_; }
+      set {
+        viewport_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "has_cell_position" field.</summary>
+    public const int HasCellPositionFieldNumber = 24;
+    private bool hasCellPosition_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCellPosition {
+      get { return hasCellPosition_; }
+      set {
+        hasCellPosition_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cell_column" field.</summary>
+    public const int CellColumnFieldNumber = 25;
+    private uint cellColumn_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CellColumn {
+      get { return cellColumn_; }
+      set {
+        cellColumn_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cell_row" field.</summary>
+    public const int CellRowFieldNumber = 26;
+    private uint cellRow_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CellRow {
+      get { return cellRow_; }
+      set {
+        cellRow_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as PresentationInput);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(PresentationInput other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Incarnation != other.Incarnation) return false;
+      if (AttachmentEpoch != other.AttachmentEpoch) return false;
+      if (Sequence != other.Sequence) return false;
+      if (Kind != other.Kind) return false;
+      if (VirtualKey != other.VirtualKey) return false;
+      if (Action != other.Action) return false;
+      if (Modifiers != other.Modifiers) return false;
+      if (Text != other.Text) return false;
+      if (Unshifted != other.Unshifted) return false;
+      if (ConsumedModifiers != other.ConsumedModifiers) return false;
+      if (WindowsUnicode != other.WindowsUnicode) return false;
+      if (WindowsControlState != other.WindowsControlState) return false;
+      if (ScanCode != other.ScanCode) return false;
+      if (Button != other.Button) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(X, other.X)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(Y, other.Y)) return false;
+      if (CellWidth != other.CellWidth) return false;
+      if (CellHeight != other.CellHeight) return false;
+      if (Focused != other.Focused) return false;
+      if (Raw != other.Raw) return false;
+      if (WindowsText != other.WindowsText) return false;
+      if (FrameSequence != other.FrameSequence) return false;
+      if (!object.Equals(Viewport, other.Viewport)) return false;
+      if (HasCellPosition != other.HasCellPosition) return false;
+      if (CellColumn != other.CellColumn) return false;
+      if (CellRow != other.CellRow) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Incarnation.Length != 0) hash ^= Incarnation.GetHashCode();
+      if (AttachmentEpoch != 0UL) hash ^= AttachmentEpoch.GetHashCode();
+      if (Sequence != 0UL) hash ^= Sequence.GetHashCode();
+      if (Kind != 0) hash ^= Kind.GetHashCode();
+      if (VirtualKey != 0) hash ^= VirtualKey.GetHashCode();
+      if (Action != 0) hash ^= Action.GetHashCode();
+      if (Modifiers != 0) hash ^= Modifiers.GetHashCode();
+      if (Text.Length != 0) hash ^= Text.GetHashCode();
+      if (Unshifted != 0) hash ^= Unshifted.GetHashCode();
+      if (ConsumedModifiers != 0) hash ^= ConsumedModifiers.GetHashCode();
+      if (WindowsUnicode != 0) hash ^= WindowsUnicode.GetHashCode();
+      if (WindowsControlState != 0) hash ^= WindowsControlState.GetHashCode();
+      if (ScanCode != 0) hash ^= ScanCode.GetHashCode();
+      if (Button != 0) hash ^= Button.GetHashCode();
+      if (X != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(X);
+      if (Y != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Y);
+      if (CellWidth != 0) hash ^= CellWidth.GetHashCode();
+      if (CellHeight != 0) hash ^= CellHeight.GetHashCode();
+      if (Focused != false) hash ^= Focused.GetHashCode();
+      if (Raw.Length != 0) hash ^= Raw.GetHashCode();
+      if (WindowsText.Length != 0) hash ^= WindowsText.GetHashCode();
+      if (FrameSequence != 0UL) hash ^= FrameSequence.GetHashCode();
+      if (viewport_ != null) hash ^= Viewport.GetHashCode();
+      if (HasCellPosition != false) hash ^= HasCellPosition.GetHashCode();
+      if (CellColumn != 0) hash ^= CellColumn.GetHashCode();
+      if (CellRow != 0) hash ^= CellRow.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Incarnation.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Incarnation);
+      }
+      if (AttachmentEpoch != 0UL) {
+        output.WriteRawTag(16);
+        output.WriteUInt64(AttachmentEpoch);
+      }
+      if (Sequence != 0UL) {
+        output.WriteRawTag(24);
+        output.WriteUInt64(Sequence);
+      }
+      if (Kind != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(Kind);
+      }
+      if (VirtualKey != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(VirtualKey);
+      }
+      if (Action != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(Action);
+      }
+      if (Modifiers != 0) {
+        output.WriteRawTag(56);
+        output.WriteUInt32(Modifiers);
+      }
+      if (Text.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(Text);
+      }
+      if (Unshifted != 0) {
+        output.WriteRawTag(72);
+        output.WriteUInt32(Unshifted);
+      }
+      if (ConsumedModifiers != 0) {
+        output.WriteRawTag(80);
+        output.WriteUInt32(ConsumedModifiers);
+      }
+      if (WindowsUnicode != 0) {
+        output.WriteRawTag(88);
+        output.WriteInt32(WindowsUnicode);
+      }
+      if (WindowsControlState != 0) {
+        output.WriteRawTag(96);
+        output.WriteUInt32(WindowsControlState);
+      }
+      if (ScanCode != 0) {
+        output.WriteRawTag(104);
+        output.WriteUInt32(ScanCode);
+      }
+      if (Button != 0) {
+        output.WriteRawTag(112);
+        output.WriteUInt32(Button);
+      }
+      if (X != 0F) {
+        output.WriteRawTag(125);
+        output.WriteFloat(X);
+      }
+      if (Y != 0F) {
+        output.WriteRawTag(133, 1);
+        output.WriteFloat(Y);
+      }
+      if (CellWidth != 0) {
+        output.WriteRawTag(136, 1);
+        output.WriteUInt32(CellWidth);
+      }
+      if (CellHeight != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteUInt32(CellHeight);
+      }
+      if (Focused != false) {
+        output.WriteRawTag(152, 1);
+        output.WriteBool(Focused);
+      }
+      if (Raw.Length != 0) {
+        output.WriteRawTag(162, 1);
+        output.WriteBytes(Raw);
+      }
+      if (WindowsText.Length != 0) {
+        output.WriteRawTag(170, 1);
+        output.WriteString(WindowsText);
+      }
+      if (FrameSequence != 0UL) {
+        output.WriteRawTag(176, 1);
+        output.WriteUInt64(FrameSequence);
+      }
+      if (viewport_ != null) {
+        output.WriteRawTag(186, 1);
+        output.WriteMessage(Viewport);
+      }
+      if (HasCellPosition != false) {
+        output.WriteRawTag(192, 1);
+        output.WriteBool(HasCellPosition);
+      }
+      if (CellColumn != 0) {
+        output.WriteRawTag(200, 1);
+        output.WriteUInt32(CellColumn);
+      }
+      if (CellRow != 0) {
+        output.WriteRawTag(208, 1);
+        output.WriteUInt32(CellRow);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Incarnation.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Incarnation);
+      }
+      if (AttachmentEpoch != 0UL) {
+        output.WriteRawTag(16);
+        output.WriteUInt64(AttachmentEpoch);
+      }
+      if (Sequence != 0UL) {
+        output.WriteRawTag(24);
+        output.WriteUInt64(Sequence);
+      }
+      if (Kind != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(Kind);
+      }
+      if (VirtualKey != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(VirtualKey);
+      }
+      if (Action != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(Action);
+      }
+      if (Modifiers != 0) {
+        output.WriteRawTag(56);
+        output.WriteUInt32(Modifiers);
+      }
+      if (Text.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(Text);
+      }
+      if (Unshifted != 0) {
+        output.WriteRawTag(72);
+        output.WriteUInt32(Unshifted);
+      }
+      if (ConsumedModifiers != 0) {
+        output.WriteRawTag(80);
+        output.WriteUInt32(ConsumedModifiers);
+      }
+      if (WindowsUnicode != 0) {
+        output.WriteRawTag(88);
+        output.WriteInt32(WindowsUnicode);
+      }
+      if (WindowsControlState != 0) {
+        output.WriteRawTag(96);
+        output.WriteUInt32(WindowsControlState);
+      }
+      if (ScanCode != 0) {
+        output.WriteRawTag(104);
+        output.WriteUInt32(ScanCode);
+      }
+      if (Button != 0) {
+        output.WriteRawTag(112);
+        output.WriteUInt32(Button);
+      }
+      if (X != 0F) {
+        output.WriteRawTag(125);
+        output.WriteFloat(X);
+      }
+      if (Y != 0F) {
+        output.WriteRawTag(133, 1);
+        output.WriteFloat(Y);
+      }
+      if (CellWidth != 0) {
+        output.WriteRawTag(136, 1);
+        output.WriteUInt32(CellWidth);
+      }
+      if (CellHeight != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteUInt32(CellHeight);
+      }
+      if (Focused != false) {
+        output.WriteRawTag(152, 1);
+        output.WriteBool(Focused);
+      }
+      if (Raw.Length != 0) {
+        output.WriteRawTag(162, 1);
+        output.WriteBytes(Raw);
+      }
+      if (WindowsText.Length != 0) {
+        output.WriteRawTag(170, 1);
+        output.WriteString(WindowsText);
+      }
+      if (FrameSequence != 0UL) {
+        output.WriteRawTag(176, 1);
+        output.WriteUInt64(FrameSequence);
+      }
+      if (viewport_ != null) {
+        output.WriteRawTag(186, 1);
+        output.WriteMessage(Viewport);
+      }
+      if (HasCellPosition != false) {
+        output.WriteRawTag(192, 1);
+        output.WriteBool(HasCellPosition);
+      }
+      if (CellColumn != 0) {
+        output.WriteRawTag(200, 1);
+        output.WriteUInt32(CellColumn);
+      }
+      if (CellRow != 0) {
+        output.WriteRawTag(208, 1);
+        output.WriteUInt32(CellRow);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Incarnation.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Incarnation);
+      }
+      if (AttachmentEpoch != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(AttachmentEpoch);
+      }
+      if (Sequence != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Sequence);
+      }
+      if (Kind != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Kind);
+      }
+      if (VirtualKey != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(VirtualKey);
+      }
+      if (Action != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Action);
+      }
+      if (Modifiers != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Modifiers);
+      }
+      if (Text.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Text);
+      }
+      if (Unshifted != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Unshifted);
+      }
+      if (ConsumedModifiers != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ConsumedModifiers);
+      }
+      if (WindowsUnicode != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(WindowsUnicode);
+      }
+      if (WindowsControlState != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(WindowsControlState);
+      }
+      if (ScanCode != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ScanCode);
+      }
+      if (Button != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Button);
+      }
+      if (X != 0F) {
+        size += 1 + 4;
+      }
+      if (Y != 0F) {
+        size += 2 + 4;
+      }
+      if (CellWidth != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(CellWidth);
+      }
+      if (CellHeight != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(CellHeight);
+      }
+      if (Focused != false) {
+        size += 2 + 1;
+      }
+      if (Raw.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeBytesSize(Raw);
+      }
+      if (WindowsText.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(WindowsText);
+      }
+      if (FrameSequence != 0UL) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt64Size(FrameSequence);
+      }
+      if (viewport_ != null) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(Viewport);
+      }
+      if (HasCellPosition != false) {
+        size += 2 + 1;
+      }
+      if (CellColumn != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(CellColumn);
+      }
+      if (CellRow != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(CellRow);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(PresentationInput other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Incarnation.Length != 0) {
+        Incarnation = other.Incarnation;
+      }
+      if (other.AttachmentEpoch != 0UL) {
+        AttachmentEpoch = other.AttachmentEpoch;
+      }
+      if (other.Sequence != 0UL) {
+        Sequence = other.Sequence;
+      }
+      if (other.Kind != 0) {
+        Kind = other.Kind;
+      }
+      if (other.VirtualKey != 0) {
+        VirtualKey = other.VirtualKey;
+      }
+      if (other.Action != 0) {
+        Action = other.Action;
+      }
+      if (other.Modifiers != 0) {
+        Modifiers = other.Modifiers;
+      }
+      if (other.Text.Length != 0) {
+        Text = other.Text;
+      }
+      if (other.Unshifted != 0) {
+        Unshifted = other.Unshifted;
+      }
+      if (other.ConsumedModifiers != 0) {
+        ConsumedModifiers = other.ConsumedModifiers;
+      }
+      if (other.WindowsUnicode != 0) {
+        WindowsUnicode = other.WindowsUnicode;
+      }
+      if (other.WindowsControlState != 0) {
+        WindowsControlState = other.WindowsControlState;
+      }
+      if (other.ScanCode != 0) {
+        ScanCode = other.ScanCode;
+      }
+      if (other.Button != 0) {
+        Button = other.Button;
+      }
+      if (other.X != 0F) {
+        X = other.X;
+      }
+      if (other.Y != 0F) {
+        Y = other.Y;
+      }
+      if (other.CellWidth != 0) {
+        CellWidth = other.CellWidth;
+      }
+      if (other.CellHeight != 0) {
+        CellHeight = other.CellHeight;
+      }
+      if (other.Focused != false) {
+        Focused = other.Focused;
+      }
+      if (other.Raw.Length != 0) {
+        Raw = other.Raw;
+      }
+      if (other.WindowsText.Length != 0) {
+        WindowsText = other.WindowsText;
+      }
+      if (other.FrameSequence != 0UL) {
+        FrameSequence = other.FrameSequence;
+      }
+      if (other.viewport_ != null) {
+        if (viewport_ == null) {
+          Viewport = new global::Agwinterm.Pty.Proto.PresentationViewport();
+        }
+        Viewport.MergeFrom(other.Viewport);
+      }
+      if (other.HasCellPosition != false) {
+        HasCellPosition = other.HasCellPosition;
+      }
+      if (other.CellColumn != 0) {
+        CellColumn = other.CellColumn;
+      }
+      if (other.CellRow != 0) {
+        CellRow = other.CellRow;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Incarnation = input.ReadString();
+            break;
+          }
+          case 16: {
+            AttachmentEpoch = input.ReadUInt64();
+            break;
+          }
+          case 24: {
+            Sequence = input.ReadUInt64();
+            break;
+          }
+          case 32: {
+            Kind = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            VirtualKey = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            Action = input.ReadUInt32();
+            break;
+          }
+          case 56: {
+            Modifiers = input.ReadUInt32();
+            break;
+          }
+          case 66: {
+            Text = input.ReadString();
+            break;
+          }
+          case 72: {
+            Unshifted = input.ReadUInt32();
+            break;
+          }
+          case 80: {
+            ConsumedModifiers = input.ReadUInt32();
+            break;
+          }
+          case 88: {
+            WindowsUnicode = input.ReadInt32();
+            break;
+          }
+          case 96: {
+            WindowsControlState = input.ReadUInt32();
+            break;
+          }
+          case 104: {
+            ScanCode = input.ReadUInt32();
+            break;
+          }
+          case 112: {
+            Button = input.ReadUInt32();
+            break;
+          }
+          case 125: {
+            X = input.ReadFloat();
+            break;
+          }
+          case 133: {
+            Y = input.ReadFloat();
+            break;
+          }
+          case 136: {
+            CellWidth = input.ReadUInt32();
+            break;
+          }
+          case 144: {
+            CellHeight = input.ReadUInt32();
+            break;
+          }
+          case 152: {
+            Focused = input.ReadBool();
+            break;
+          }
+          case 162: {
+            Raw = input.ReadBytes();
+            break;
+          }
+          case 170: {
+            WindowsText = input.ReadString();
+            break;
+          }
+          case 176: {
+            FrameSequence = input.ReadUInt64();
+            break;
+          }
+          case 186: {
+            if (viewport_ == null) {
+              Viewport = new global::Agwinterm.Pty.Proto.PresentationViewport();
+            }
+            input.ReadMessage(Viewport);
+            break;
+          }
+          case 192: {
+            HasCellPosition = input.ReadBool();
+            break;
+          }
+          case 200: {
+            CellColumn = input.ReadUInt32();
+            break;
+          }
+          case 208: {
+            CellRow = input.ReadUInt32();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Incarnation = input.ReadString();
+            break;
+          }
+          case 16: {
+            AttachmentEpoch = input.ReadUInt64();
+            break;
+          }
+          case 24: {
+            Sequence = input.ReadUInt64();
+            break;
+          }
+          case 32: {
+            Kind = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            VirtualKey = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            Action = input.ReadUInt32();
+            break;
+          }
+          case 56: {
+            Modifiers = input.ReadUInt32();
+            break;
+          }
+          case 66: {
+            Text = input.ReadString();
+            break;
+          }
+          case 72: {
+            Unshifted = input.ReadUInt32();
+            break;
+          }
+          case 80: {
+            ConsumedModifiers = input.ReadUInt32();
+            break;
+          }
+          case 88: {
+            WindowsUnicode = input.ReadInt32();
+            break;
+          }
+          case 96: {
+            WindowsControlState = input.ReadUInt32();
+            break;
+          }
+          case 104: {
+            ScanCode = input.ReadUInt32();
+            break;
+          }
+          case 112: {
+            Button = input.ReadUInt32();
+            break;
+          }
+          case 125: {
+            X = input.ReadFloat();
+            break;
+          }
+          case 133: {
+            Y = input.ReadFloat();
+            break;
+          }
+          case 136: {
+            CellWidth = input.ReadUInt32();
+            break;
+          }
+          case 144: {
+            CellHeight = input.ReadUInt32();
+            break;
+          }
+          case 152: {
+            Focused = input.ReadBool();
+            break;
+          }
+          case 162: {
+            Raw = input.ReadBytes();
+            break;
+          }
+          case 170: {
+            WindowsText = input.ReadString();
+            break;
+          }
+          case 176: {
+            FrameSequence = input.ReadUInt64();
+            break;
+          }
+          case 186: {
+            if (viewport_ == null) {
+              Viewport = new global::Agwinterm.Pty.Proto.PresentationViewport();
+            }
+            input.ReadMessage(Viewport);
+            break;
+          }
+          case 192: {
+            HasCellPosition = input.ReadBool();
+            break;
+          }
+          case 200: {
+            CellColumn = input.ReadUInt32();
+            break;
+          }
+          case 208: {
+            CellRow = input.ReadUInt32();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class PresentationViewport : pb::IMessage<PresentationViewport>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<PresentationViewport> _parser = new pb::MessageParser<PresentationViewport>(() => new PresentationViewport());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<PresentationViewport> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Agwinterm.Pty.Proto.PtyhostReflection.Descriptor.MessageTypes[20]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationViewport() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationViewport(PresentationViewport other) : this() {
+      revision_ = other.revision_;
+      cols_ = other.cols_;
+      rows_ = other.rows_;
+      cellWidth_ = other.cellWidth_;
+      cellHeight_ = other.cellHeight_;
+      scrollOffset_ = other.scrollOffset_;
+      visible_ = other.visible_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PresentationViewport Clone() {
+      return new PresentationViewport(this);
+    }
+
+    /// <summary>Field number for the "revision" field.</summary>
+    public const int RevisionFieldNumber = 1;
+    private ulong revision_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong Revision {
+      get { return revision_; }
+      set {
+        revision_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cols" field.</summary>
+    public const int ColsFieldNumber = 2;
+    private uint cols_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Cols {
+      get { return cols_; }
+      set {
+        cols_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "rows" field.</summary>
+    public const int RowsFieldNumber = 3;
+    private uint rows_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Rows {
+      get { return rows_; }
+      set {
+        rows_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cell_width" field.</summary>
+    public const int CellWidthFieldNumber = 4;
+    private uint cellWidth_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CellWidth {
+      get { return cellWidth_; }
+      set {
+        cellWidth_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "cell_height" field.</summary>
+    public const int CellHeightFieldNumber = 5;
+    private uint cellHeight_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint CellHeight {
+      get { return cellHeight_; }
+      set {
+        cellHeight_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "scroll_offset" field.</summary>
+    public const int ScrollOffsetFieldNumber = 6;
+    private uint scrollOffset_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint ScrollOffset {
+      get { return scrollOffset_; }
+      set {
+        scrollOffset_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "visible" field.</summary>
+    public const int VisibleFieldNumber = 7;
+    private bool visible_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Visible {
+      get { return visible_; }
+      set {
+        visible_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as PresentationViewport);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(PresentationViewport other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Revision != other.Revision) return false;
+      if (Cols != other.Cols) return false;
+      if (Rows != other.Rows) return false;
+      if (CellWidth != other.CellWidth) return false;
+      if (CellHeight != other.CellHeight) return false;
+      if (ScrollOffset != other.ScrollOffset) return false;
+      if (Visible != other.Visible) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Revision != 0UL) hash ^= Revision.GetHashCode();
+      if (Cols != 0) hash ^= Cols.GetHashCode();
+      if (Rows != 0) hash ^= Rows.GetHashCode();
+      if (CellWidth != 0) hash ^= CellWidth.GetHashCode();
+      if (CellHeight != 0) hash ^= CellHeight.GetHashCode();
+      if (ScrollOffset != 0) hash ^= ScrollOffset.GetHashCode();
+      if (Visible != false) hash ^= Visible.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Revision != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(Revision);
+      }
+      if (Cols != 0) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(Cols);
+      }
+      if (Rows != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(Rows);
+      }
+      if (CellWidth != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(CellWidth);
+      }
+      if (CellHeight != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(CellHeight);
+      }
+      if (ScrollOffset != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(ScrollOffset);
+      }
+      if (Visible != false) {
+        output.WriteRawTag(56);
+        output.WriteBool(Visible);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Revision != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(Revision);
+      }
+      if (Cols != 0) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(Cols);
+      }
+      if (Rows != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(Rows);
+      }
+      if (CellWidth != 0) {
+        output.WriteRawTag(32);
+        output.WriteUInt32(CellWidth);
+      }
+      if (CellHeight != 0) {
+        output.WriteRawTag(40);
+        output.WriteUInt32(CellHeight);
+      }
+      if (ScrollOffset != 0) {
+        output.WriteRawTag(48);
+        output.WriteUInt32(ScrollOffset);
+      }
+      if (Visible != false) {
+        output.WriteRawTag(56);
+        output.WriteBool(Visible);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Revision != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Revision);
+      }
+      if (Cols != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Cols);
+      }
+      if (Rows != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Rows);
+      }
+      if (CellWidth != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CellWidth);
+      }
+      if (CellHeight != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(CellHeight);
+      }
+      if (ScrollOffset != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ScrollOffset);
+      }
+      if (Visible != false) {
+        size += 1 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(PresentationViewport other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Revision != 0UL) {
+        Revision = other.Revision;
+      }
+      if (other.Cols != 0) {
+        Cols = other.Cols;
+      }
+      if (other.Rows != 0) {
+        Rows = other.Rows;
+      }
+      if (other.CellWidth != 0) {
+        CellWidth = other.CellWidth;
+      }
+      if (other.CellHeight != 0) {
+        CellHeight = other.CellHeight;
+      }
+      if (other.ScrollOffset != 0) {
+        ScrollOffset = other.ScrollOffset;
+      }
+      if (other.Visible != false) {
+        Visible = other.Visible;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Revision = input.ReadUInt64();
+            break;
+          }
+          case 16: {
+            Cols = input.ReadUInt32();
+            break;
+          }
+          case 24: {
+            Rows = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            CellWidth = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            CellHeight = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            ScrollOffset = input.ReadUInt32();
+            break;
+          }
+          case 56: {
+            Visible = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Revision = input.ReadUInt64();
+            break;
+          }
+          case 16: {
+            Cols = input.ReadUInt32();
+            break;
+          }
+          case 24: {
+            Rows = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            CellWidth = input.ReadUInt32();
+            break;
+          }
+          case 40: {
+            CellHeight = input.ReadUInt32();
+            break;
+          }
+          case 48: {
+            ScrollOffset = input.ReadUInt32();
+            break;
+          }
+          case 56: {
+            Visible = input.ReadBool();
             break;
           }
         }

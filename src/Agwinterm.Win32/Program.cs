@@ -317,6 +317,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <see cref="Ses.Axis"/>: left→right when vertical, top→bottom when horizontal.</summary>
     private sealed class Pane
     {
+        public int InputFramePending; // consumed only by the next real presentation update
         public required string Id;
         public required ISession S;
         public JsonElement LiveBinding;
@@ -515,6 +516,7 @@ internal partial class Program : ISessionHost, IWindowHost
     private bool _cursorOn = true;
     private readonly StringBuilder _run = new(256);   // reused per text run (no per-cell alloc)
     private int _redrawPending;                       // coalesces redraw requests into one paint
+    private int _urgentRedrawPending;
     // Frame cap for output-driven repaints: under sustained PTY output, paint at most ~66fps instead
     // of back-to-back full renders (which saturate a core and starve the pump via grid-lock contention).
     // The first frame after a quiet period still paints immediately — no interactive latency cost.
@@ -652,7 +654,7 @@ internal partial class Program : ISessionHost, IWindowHost
         // Process-global setup (config/themes/keymap + window class + shared D2D/DWrite objects).
         _config = LoadOrCreateConfig();
         ConPtyApi.Select(_config.Conpty != "inbox");
-        _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
+        _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
         ResolveEmulatorCore();
         _allThemes = LoadThemes();
         _theme = FindTheme(_config.Theme);
@@ -746,7 +748,7 @@ internal partial class Program : ISessionHost, IWindowHost
             if (_registry.Values.Distinct().Any(window => window._webPages.Count != 0 && window.WebNavigationKey(msg))) continue;
             _registry.TryGetValue(msg.hwnd, out var inputWindow);
             if (inputWindow is not null && msg.message is WM_KEYDOWN or WM_SYSKEYDOWN
-                && inputWindow.ActiveSurface()?.S.Emulator is GhosttyTerminalCore)
+                && inputWindow.ActiveSurface() is { } inputSurface && HasOwnerInput(inputSurface.S))
                 inputWindow._ghosttyKeyText = ReadNativeKeyText((int)msg.wParam);
             try
             {

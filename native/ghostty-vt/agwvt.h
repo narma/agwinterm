@@ -33,6 +33,11 @@ typedef void (*AgwVtEvent)(void* context, uint32_t kind, const uint8_t* data, si
 
 AGWVT_API uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size);
 AGWVT_API const char* agwvt_revision(void);
+// Optional diagnostics: Ghostty budget allocator only (excludes CRT/COM and AgwVt wrapper).
+AGWVT_API void agwvt_allocation_stats(uint64_t* current, uint64_t* peak, uint64_t* allocated, uint64_t* allocations, uint64_t* frees);
+// Page bytes bypass the allocator. Images are reported separately and may also
+// be included in allocator counters; do not sum image bytes into that total.
+AGWVT_API void agwvt_page_stats(uint64_t* resident, uint64_t* virtual_bytes, uint64_t* image_bytes);
 AGWVT_API int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, AgwVt** out);
 AGWVT_API void agwvt_free(AgwVt* vt);
 AGWVT_API int agwvt_feed(AgwVt* vt, const uint8_t* bytes, size_t len);

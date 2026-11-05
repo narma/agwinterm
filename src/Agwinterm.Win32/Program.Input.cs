@@ -478,7 +478,10 @@ internal partial class Program
 
     /// <summary>Coalesce many output/decode notifications into a single pending repaint.</summary>
     private void RequestRedraw()
+        => RequestRedraw(false);
+    private void RequestRedraw(bool urgent)
     {
+        if(urgent) Interlocked.Exchange(ref _urgentRedrawPending,1);
         if (System.Threading.Interlocked.Exchange(ref _redrawPending, 1) == 0)
             PostMessageW(_hwnd, WM_APP_REDRAW, IntPtr.Zero, IntPtr.Zero);
     }
@@ -567,6 +570,20 @@ internal partial class Program
     private void SendMouseTo(Pane pane, (float ox, float oy, float cw, float ch) view,
         int btn, int dipX, int dipY, int deviceX, int deviceY, bool press)
     {
+        if (pane.ReadOnly || pane.S.InputClosed) return;
+        if (HasSemanticInput(pane.S))
+        {
+            var (ox, oy, cw, ch) = view;
+            var point = MouseReport.MapCoordinates(dipX, dipY, deviceX, deviceY,
+                ox, oy, cw, ch, Scale, pane.S.Cols, pane.S.Rows);
+            uint cellWidth = (uint)Math.Max(1, (int)MathF.Round(cw * Scale));
+            uint cellHeight = (uint)Math.Max(1, (int)MathF.Round(ch * Scale));
+            uint button = (btn & ~32) switch { 0 => 1, 1 => 3, 2 => 2, 64 => 4, 65 => 5, _ => 0 };
+            uint mods = (KeyDown(VK_SHIFT) ? 1u : 0) | (KeyDown(VK_CONTROL) ? 2u : 0) | (KeyDown(VK_MENU) ? 4u : 0);
+            SubmitOwnerInput(pane.S, new TerminalInput.Mouse((btn & 32) != 0 ? 2u : press ? 0u : 1u, button, mods,
+                point.PixelX,point.PixelY,cellWidth,cellHeight,point.Column,point.Row));
+            return;
+        }
         byte[] bytes;
         lock (pane.S.SyncRoot)
         {
@@ -1177,6 +1194,12 @@ internal partial class Program
                 : "The clipboard text contains control characters. Paste anyway?";
             if (MessageBoxW(_hwnd, msg, "Paste", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
         }
+        if (HasSemanticInput(pane.S))
+        {
+            if (SubmitOwnerInput(pane.S,new TerminalInput.Paste(t)) == TerminalInputAcceptance.Accepted)
+            { pane.ScrollOffset = 0; pane.S.NotifyActivity(); RequestRedraw(); }
+            return;
+        }
         byte[] bytes;
         lock (pane.S.SyncRoot)
         {
@@ -1456,6 +1479,7 @@ internal partial class Program
     /// <summary>Returns true if the key was consumed (matches the WinUI key table).</summary>
     private bool OnKeyDown(int vk)
     {
+        if (vk == VK_RETURN) TerminalLatencyTrace.EnterReceived();
         bool ctrl = KeyDown(VK_CONTROL), shift = KeyDown(VK_SHIFT), alt = KeyDown(VK_MENU) || _altContext;
         if (_ghosttyKeyText is { AltGr: true } layoutText && layoutText.Vk == vk)
             ctrl = alt = false; // layout text must not activate Ctrl+Alt application shortcuts

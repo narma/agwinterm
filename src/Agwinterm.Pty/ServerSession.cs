@@ -18,6 +18,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     internal string SpawnArgs => _spawnArgs;
     private readonly string _name;
     internal string? ReplicaCore { get; }
+    internal bool SingleOwner { get; }
     private readonly object _lock = new();
     private PtyHostClient? _client;
     private bool _disposed;
@@ -29,7 +30,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     /// <param name="spawnArgs">Argument string for the host exe. The C# host is the app itself
     /// (<c>--pty-host --pipe ...</c>); the Rust host is a standalone binary (<c>--pipe ...</c>).</param>
     /// <param name="name">Diagnostics name ("server" or "server-rust").</param>
-    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null)
+    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null, bool singleOwner = false)
     {
         _appId = appId;
         _startupClaims = StartupHostClaims.ForNamespace(appId);
@@ -37,6 +38,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
         _spawnArgs = spawnArgs ?? $"--pty-host --pipe \"{appId}\"";
         _name = name;
         ReplicaCore = replicaCore;
+        SingleOwner = singleOwner;
     }
 
     public string Name => _name;
@@ -120,6 +122,23 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
 /// </summary>
 public sealed class ServerSession : ISession
 {
+    public bool UsesPresentation => _backend.SingleOwner;
+    public ISessionPresentation? Presentation { get; }
+    private ulong _viewportRevision;
+    private int _viewportScroll, _viewportCellWidth=8, _viewportCellHeight=18;
+    private bool _viewportVisible=true;
+    private PresentationInputSender? _presentationInput;
+    private ulong _attachmentEpoch;
+    private ulong _presentedSequence;
+    public void AcknowledgeFrame(ulong sequence)
+    {
+        lock(_sync)
+        {
+            if(sequence <= _presentedSequence || InputClosed) return;
+            if(SubmitInput(new TerminalInput.FramePresented(sequence)) == TerminalInputAcceptance.Accepted) _presentedSequence=sequence;
+        }
+    }
+    private readonly TerminalLatencyTrace.MarkerReader? _latencyReceive = TerminalLatencyTrace.Enabled ? new() : null;
     private readonly object _sync = new();
     private readonly ServerSessionBackend _backend;
     private readonly string _id;   // = the pane id; names the hosted session (the adoption key)
@@ -154,7 +173,9 @@ public sealed class ServerSession : ISession
         _id = id;
         Cols = cols;
         Rows = rows;
-        Emulator = TerminalSession.CreateCore(cols, rows, backend.ReplicaCore);
+        Emulator = backend.SingleOwner ? new PresentedTerminalView(cols,rows) : TerminalSession.CreateCore(cols, rows, backend.ReplicaCore);
+        if(backend.SingleOwner) Presentation=new RemoteSessionPresentation(this);
+        if (Emulator is GhosttyTerminalCore ghostty) ghostty.MarkLegacyReplica();
     }
 
     /// <summary>True when this handle reconnected to a SURVIVING hosted session instead of spawning
@@ -235,12 +256,12 @@ public sealed class ServerSession : ISession
                     int cols = Cols, rows = Rows;
                     client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
                         verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket,
-                        emulatorCore: TerminalSession.CoreName(Emulator));
+                        emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation);
                     if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
                     if (_startFence.IsClosed) return;
                     // Even the first attachment can follow output from a fast child.
                     // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
-                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true)) && (Cols != cols || Rows != rows))
+                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -256,7 +277,14 @@ public sealed class ServerSession : ISession
             // Same shape as TerminalSession's de-elevate failure: surface it IN the pane instead of
             // leaving a dead surface (or crashing an unobserved fire-and-forget task).
             var msg = $"\r\n\x1b[31m[agwinterm] pty-host session failed to start:\x1b[0m\r\n  {ex.Message}\r\n";
-            lock (_sync) { if (!_disposed) Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg)); }
+            lock (_sync)
+            {
+                if (!_disposed)
+                {
+                    if(Emulator is PresentedTerminalView view) view.ShowError("PTY host session failed to start:\n"+ex.Message);
+                    else Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg));
+                }
+            }
             OutputReceived?.Invoke();
             MarkInputClosed(); ExitCode = 1; HasExited = true;
             return;
@@ -270,6 +298,14 @@ public sealed class ServerSession : ISession
             if (_disposed) { att.Dispose(); return false; }
             try
             {
+                if (UsesPresentation)
+                {
+                    if (att.PresentationRevision != 1 || att.Input is null || att.AttachmentEpoch == 0)
+                        throw new IOException("Missing negotiated presentation transport.");
+                    _attachmentEpoch = att.AttachmentEpoch;
+                }
+                else
+                {
                 PrepareReplica(att);
                 if (att.NativeSnapshot is { } snapshot)
                 {
@@ -285,12 +321,14 @@ public sealed class ServerSession : ISession
                         Emulator.SeedScrollback(att.Scrollback);
                     Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(att.Modes));
                 }
+                }
             }
             catch { att.Dispose(); throw; }
         }
         bool published = _startFence.Publish(() =>
         {
             _data = att.Data; _childPid = att.ChildPid;
+            if (UsesPresentation) _presentationInput = new(att.Input!,att.CreationTicket,att.AttachmentEpoch);
             _started = true; // from here the reader alone owns disposal, even if close cancels it now
             _ = Task.Factory.StartNew(ReadLoop, CancellationToken.None,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default);
@@ -312,6 +350,7 @@ public sealed class ServerSession : ISession
         var replacement = TerminalSession.CreateCore(Cols, Rows, core);
         try
         {
+            if (replacement is GhosttyTerminalCore ghostty) ghostty.MarkLegacyReplica();
             replacement.Host = Emulator.Host;
             replacement.ScrollbackMax = Emulator.ScrollbackMax;
             replacement.CellPixelWidth = Emulator.CellPixelWidth;
@@ -368,7 +407,7 @@ public sealed class ServerSession : ISession
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0); _creationHostPid = client.HostPid; }
         catch
         {
             // Recovery may find a checkpoint written before Create reached publication.
@@ -409,6 +448,7 @@ public sealed class ServerSession : ISession
     /// operation is ever in flight at close (that race is a native AV in the IOCP poller).</summary>
     private void ReadLoop()
     {
+        if (UsesPresentation) { ReadPresentationLoop(); return; }
         var data = _data!;
         var buffer = new byte[64 * 1024];
         try
@@ -419,6 +459,7 @@ public sealed class ServerSession : ISession
                 // can unblock us); same read cadence as before, now with a cancel seam.
                 int n = data.ReadAsync(buffer, 0, buffer.Length, _readCancel.Token).GetAwaiter().GetResult();
                 if (n <= 0) break;
+                _latencyReceive?.Output(buffer.AsSpan(0, n), 25);
                 lock (_sync) { if (_disposed) break; Emulator.Feed(buffer.AsSpan(0, n)); }
                 OutputReceived?.Invoke();
             }
@@ -468,9 +509,15 @@ public sealed class ServerSession : ISession
 
     public void Write(ReadOnlySpan<byte> bytes)
     {
+        if (UsesPresentation)
+        {
+            var acceptance = SubmitInput(new TerminalInput.Raw(bytes.ToArray()));
+            if (acceptance != TerminalInputAcceptance.Accepted) throw new IOException("Presentation input was not accepted: "+acceptance);
+            return;
+        }
         if (InputClosed) throw new IOException("Session input is closed.");
         var data = _data ?? throw new InvalidOperationException("Session not started.");
-        try { data.Write(bytes); data.Flush(); }
+        try { data.Write(bytes); data.Flush(); TerminalLatencyTrace.Record(22, bytes.Length); }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         { MarkInputClosed(); throw; }
     }
@@ -478,6 +525,18 @@ public sealed class ServerSession : ISession
     public void Resize(int cols, int rows)
     {
         if (cols <= 0 || rows <= 0) return;
+        if(UsesPresentation)
+        {
+            lock(_sync)
+            {
+                ObjectDisposedException.ThrowIf(_disposed,this);
+                if((long)cols*rows > TerminalFrame.MaximumCells || cols > 10000 || rows > 10000) throw new ArgumentOutOfRangeException(nameof(cols));
+                if(Cols == cols && Rows == rows) return;
+                Cols=cols; Rows=rows;
+                if(_started && !HasExited) SendViewportLocked();
+            }
+            return;
+        }
         lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Resize(cols, rows); }
         Cols = cols;
         Rows = rows;
@@ -494,7 +553,7 @@ public sealed class ServerSession : ISession
         long sequence;
         lock (_sync)
         {
-            if (_disposed || !_started || HasExited || Emulator is not GhosttyTerminalCore) return;
+            if (_disposed || !_started || HasExited || Emulator is not (GhosttyTerminalCore or PresentedTerminalView)) return;
             var host = Emulator.Host;
             if (host?.DefaultColors is not { } defaults || host.DefaultPalette is not { } entries || host.DefaultCursorColor is not { } caret) return;
             colors = ThemeColors.Format(defaults.Foreground, defaults.Background);
@@ -553,9 +612,85 @@ public sealed class ServerSession : ISession
 
     private void CancelRead()
     {
+        _presentationInput?.Dispose();
         try { _readCancel.Cancel(); } catch (ObjectDisposedException) { }
         // PublishAttachment either assigns the pipe to a reader, or closes the unpublished pipe.
         // Never inspect _started here to guess whether a concurrent publisher has issued a read.
+    }
+
+    public TerminalInputAcceptance SubmitInput(TerminalInput input,bool persistentUiThread=false)
+    {
+        if (InputClosed) return TerminalInputAcceptance.Closed;
+        var result = _presentationInput?.Submit(input,persistentUiThread) ?? TerminalInputAcceptance.Closed;
+        if (result != TerminalInputAcceptance.Accepted) MarkInputClosed();
+        return result;
+    }
+    private TerminalInputAcceptance SendViewportLocked()
+        => SubmitInput(new TerminalInput.Viewport(++_viewportRevision,Cols,Rows,_viewportCellWidth,_viewportCellHeight,_viewportScroll,_viewportVisible));
+    internal TerminalFrame.Lease? CapturePresentation(int scrollOffset,int cellWidth,int cellHeight)
+    {
+        if(scrollOffset < 0 || cellWidth is < 1 or > 65535 || cellHeight is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(scrollOffset));
+        lock(_sync)
+        {
+            if(_disposed) return null;
+            bool changed=_viewportScroll != scrollOffset || _viewportCellWidth != cellWidth || _viewportCellHeight != cellHeight || !_viewportVisible;
+            _viewportScroll=scrollOffset; _viewportCellWidth=cellWidth; _viewportCellHeight=cellHeight; _viewportVisible=true;
+            if(_started && !HasExited && (changed || _viewportRevision == 0)) SendViewportLocked();
+            return ((PresentedTerminalView)Emulator).AcquireFrame();
+        }
+    }
+    internal TerminalInputAcceptance ExecutePresentation(TerminalCommand command)
+    {
+        lock(_sync)
+        {
+            if(_disposed || InputClosed) return TerminalInputAcceptance.Closed;
+            switch(command)
+            {
+                case TerminalCommand.Resize resize:
+                    if(resize.ViewportRevision < _viewportRevision || resize.Columns is < 1 or > 10000 || resize.Rows is < 1 or > 10000 ||
+                        (long)resize.Columns*resize.Rows > TerminalFrame.MaximumCells || resize.CellWidth is < 1 or > 65535 || resize.CellHeight is < 1 or > 65535)
+                        throw new ArgumentOutOfRangeException(nameof(command));
+                    Cols=resize.Columns; Rows=resize.Rows; _viewportCellWidth=resize.CellWidth; _viewportCellHeight=resize.CellHeight;
+                    _viewportRevision=Math.Max(_viewportRevision,resize.ViewportRevision);
+                    break;
+                case TerminalCommand.Viewport viewport:
+                    if(viewport.ViewportRevision < _viewportRevision || viewport.ScrollOffset < 0) throw new ArgumentOutOfRangeException(nameof(command));
+                    _viewportScroll=viewport.ScrollOffset; _viewportVisible=viewport.Visible;
+                    _viewportRevision=Math.Max(_viewportRevision,viewport.ViewportRevision);
+                    break;
+                default: throw new NotSupportedException("Remote owner command transport is not implemented yet.");
+            }
+            return SendViewportLocked();
+        }
+    }
+    private void ReadPresentationLoop()
+    {
+        var data = _data!;
+        using var buffered = new BufferedStream(data,64*1024);
+        var framePool = System.Buffers.ArrayPool<Cell>.Create(TerminalFrame.MaximumCells,3);
+        TerminalFrame.Lease? previous = null;
+        try
+        {
+            while (true)
+            {
+                var decoded = PresentationFrameCodec.ReadAsync(buffered,previous,_creationTicket,_attachmentEpoch,_readCancel.Token,framePool).AsTask().GetAwaiter().GetResult();
+                using var frame = decoded.Frame;
+                bool stale;
+                lock (_sync)
+                {
+                    if (_disposed) break;
+                    stale=!decoded.Exited && frame.Identity.ViewportRevision < _viewportRevision;
+                    if(!stale) ((PresentedTerminalView)Emulator).Publish(frame);
+                }
+                previous?.Dispose(); previous=frame.Acquire();
+                if(stale) AcknowledgeFrame(frame.Identity.Sequence);
+                else OutputReceived?.Invoke();
+                if (decoded.Exited) { ExitCode=decoded.ExitCode; HasExited=true; Exited?.Invoke(decoded.ExitCode); break; }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or Google.Protobuf.InvalidProtocolBufferException) { }
+        finally { previous?.Dispose(); MarkInputClosed(); _presentationInput?.Dispose(); data.Dispose(); }
+        OnStreamEnded();
     }
     private void DisposeReplica()
     {

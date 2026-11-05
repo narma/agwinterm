@@ -233,7 +233,8 @@ internal partial class Program
             // partial redraw never reaches the screen — the closing 2026l chunk clears the mode and
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
             // blink interval, so a crash that leaves ?2026 open can't freeze the pane for long.
-            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput) RequestRedraw();
+            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput)
+                RequestRedraw(session is ServerSession { UsesPresentation:true } && Interlocked.Exchange(ref pane.InputFramePending,0) != 0);
             else if (session.Emulator is GhosttyTerminalCore && IsSurfaceVisible(pane)) ScheduleSyncRedraw(pane);
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
@@ -257,7 +258,9 @@ internal partial class Program
             explicitSoundStatus = session.Status;
             Post(() => RouteStatusSound(pane, name, blockedDefault: false));
         };
-        session.Emulator.Host = new PaneHost(this, pane, session);   // the host-action seam (see IHostActions)
+        var paneHost=new PaneHost(this,pane,session);
+        if(session.Presentation is LocalSessionPresentation localPresentation) localPresentation.SetHost(paneHost);
+        else session.Emulator.Host=paneHost;   // legacy host-action seam (see IHostActions)
         // TryAdopt may have completed before the pane's host/theme existed.
         if (session is ServerSession themedServer) themedServer.UpdateTheme();
         session.Exited += code => Post(() =>

@@ -21,7 +21,13 @@ public sealed class InProcessSessionBackend : ISessionBackend
 {
     public static readonly InProcessSessionBackend Instance = new();
     public string Name => "in-process";
-    public ISession Create(string id, int cols, int rows) => new TerminalSession(cols, rows);
+    public ISession Create(string id, int cols, int rows)
+    {
+        var session=new TerminalSession(cols,rows);
+        if(session.Emulator is Agwinterm.Core.GhosttyTerminalCore && Environment.GetEnvironmentVariable("AGWINTERM_SINGLE_OWNER") == "1")
+            session.EnablePresentation();
+        return session;
+    }
 }
 
 public static class SessionBackends
@@ -42,7 +48,11 @@ public static class SessionBackends
         // Always explicit: a pty-host started without the flag keeps the inbox conhost.
         string conptyArg = conpty is null ? "" : conpty == "inbox" ? " --conpty inbox" : " --conpty bundled";
         if (string.Equals(configured, "server", StringComparison.OrdinalIgnoreCase))
-            return new ServerSessionBackend(appId, exePath, $"--pty-host --pipe \"{appId}\"{conptyArg}", replicaCore: replicaCore);
+        {
+            bool singleOwner = replicaCore == "ghostty" && Environment.GetEnvironmentVariable("AGWINTERM_SINGLE_OWNER") == "1";
+            string serverId = singleOwner ? appId + "-presentation-v1" : appId;
+            return new ServerSessionBackend(serverId, exePath, $"--pty-host --pipe \"{serverId}\"{conptyArg}", replicaCore: replicaCore, singleOwner: singleOwner);
+        }
         if (string.Equals(configured, "server-rust", StringComparison.OrdinalIgnoreCase))
         {
             string rustAppId = appId + "-rust";

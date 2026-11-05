@@ -1205,7 +1205,7 @@ internal partial class Program
         {
             // Live switch (#105 2d): NEW sessions use the chosen backend immediately; existing panes
             // keep the one they were born with (both kinds coexist fine) and converge on restart.
-            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
+            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
             Note(_config.ConfiguredSessionHost == "server-rust" && _config.EmulatorCore == "ghostty"
                 ? "Rust server preference saved. Ghostty sessions use the compatible PTY server; existing sessions keep their host."
                 : _config.SessionHost switch
@@ -1220,7 +1220,7 @@ internal partial class Program
             // New in-process sessions use the chosen ConPTY now. A running pty-host keeps the one it
             // started with; the next one it starts gets the new key.
             var api = ConPtyApi.Select(_config.Conpty != "inbox");
-            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
+            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
             Note($"conpty — new sessions use {api.Description}; a running pty-host keeps its own until it restarts");
         }
         if (Has("emulator-core"))

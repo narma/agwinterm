@@ -7,6 +7,23 @@ namespace Agwinterm.Win32;
 
 internal partial class Program
 {
+    private static bool HasOwnerInput(ISession session) => session.Emulator is GhosttyTerminalCore or PresentedTerminalView;
+    private static bool HasSemanticInput(ISession session) => session.Presentation is not null || session is ServerSession { UsesPresentation: true };
+    private static TerminalInputAcceptance SubmitOwnerInput(ISession session, TerminalInput input)
+        => session is ServerSession { UsesPresentation: true } remote ? remote.SubmitInput(input,persistentUiThread:true)
+            : session.Presentation is { } presentation ? presentation.Submit(input)
+            : TerminalInputAcceptance.Closed;
+    private static bool SendOwnerKey(Pane pane, ISession session, uint vk,uint action,uint mods,string text,uint unshifted,uint consumed,
+        bool ctrl,bool shift,bool alt,string windowsText)
+    {
+        // Mark before submission so a very fast echo cannot beat its repaint hint.
+        // This does not request paint: only a subsequent complete owner frame can.
+        if(action != 0) Interlocked.Exchange(ref pane.InputFramePending,1);
+        bool accepted=SubmitOwnerInput(session,new TerminalInput.Key(vk,action,mods,text,unshifted,consumed,windowsText.Length == 1 ? windowsText[0] : 0,
+            (shift ? 0x10u : 0) | (ctrl ? 0x8u : 0) | (alt ? 0x2u : 0),MapVirtualKeyW(vk,0),windowsText.Length == 1 ? "" : windowsText)) == TerminalInputAcceptance.Accepted;
+        if(!accepted) Interlocked.Exchange(ref pane.InputFramePending,0);
+        return accepted;
+    }
     private sealed record NativeKeyTarget(Pane Pane, string Text, uint Unshifted, uint Consumed, bool AltGr, string Unicode)
     {
         public ISession Session => Pane.S;
@@ -56,7 +73,8 @@ internal partial class Program
 
     private bool TryGhosttyCharacter(char character)
     {
-        if (ActiveSurface() is not { S.Emulator: GhosttyTerminalCore } surface) return false;
+        var surface=ActiveSurface();
+        if (surface is null || !HasOwnerInput(surface.S)) return false;
         if (char.IsHighSurrogate(character)) { _ghosttyHighSurrogate = character; return true; }
         string text = char.IsLowSurrogate(character) && _ghosttyHighSurrogate != 0
             ? new string([_ghosttyHighSurrogate, character]) : character.ToString();
@@ -71,6 +89,11 @@ internal partial class Program
         foreach (var pane in targets)
         {
             if (pane.ReadOnly || pane.S.InputClosed) continue;
+            if (HasSemanticInput(pane.S))
+            {
+                if (SendOwnerKey(pane,pane.S,0,1,0,text,(uint)rune.Value,0,false,false,false,text)) { pane.ScrollOffset=0; pane.ClearSel(); }
+                continue;
+            }
             byte[] bytes;
             lock (pane.S.SyncRoot)
                 bytes = pane.S.Emulator is GhosttyTerminalCore core
@@ -85,7 +108,7 @@ internal partial class Program
     {
         var surface = ActiveSurface();
         _ghosttyKeysDown.TryGetValue(vk, out var held);
-        if (held is null && surface?.S.Emulator is not GhosttyTerminalCore) return false;
+        if (held is null && (surface is null || !HasOwnerInput(surface.S))) return false;
         List<Pane> targets;
         if (held is not null) targets = held.Select(target => target.Pane).ToList();
         else if (BroadcastActive)
@@ -93,7 +116,7 @@ internal partial class Program
             lock (_workspaces) targets = _active!.Ws.Sessions.SelectMany(session => session.Panes).ToList();
             // Preserve the transitional mixed-core broadcast route until all
             // receivers share native encoding; never silently omit a receiver.
-            if (targets.Any(p => p.S.Emulator is not GhosttyTerminalCore)) return false;
+            if (targets.Any(p => !HasOwnerInput(p.S))) return false;
         }
         else targets = [surface!];
         if (held is null && surface!.ReadOnly && !BroadcastActive) { ShowToast("pane is read-only"); return true; }
@@ -113,6 +136,13 @@ internal partial class Program
         foreach (var pane in targets)
         {
             if (pane.ReadOnly || pane.S.InputClosed) continue;
+            if (HasSemanticInput(pane.S))
+            {
+                if (!SendOwnerKey(pane,pane.S,(uint)vk,action,mods,text,unshifted,consumed,ctrl,shift,alt,keyText.Unicode)) continue;
+                if (!Keymap.IsModifierKey(vk)) { pane.ScrollOffset=0; pane.ClearSel(); }
+                sent.Add(new(pane,text,unshifted,consumed,keyText.AltGr,keyText.Unicode));
+                continue;
+            }
             byte[] bytes;
             lock (pane.S.SyncRoot)
             {
@@ -144,6 +174,12 @@ internal partial class Program
             if (target.Session.InputClosed) continue;
             try
             {
+                if (HasSemanticInput(target.Session))
+                {
+                    SendOwnerKey(target.Pane,target.Session,(uint)vk,0,target.AltGr ? mods & ~6u : mods,target.Text,target.Unshifted,target.Consumed,
+                        ctrl && !target.AltGr,shift,alt && !target.AltGr,target.Unicode);
+                    continue;
+                }
                 byte[] bytes;
                 lock (target.Session.SyncRoot)
                 {

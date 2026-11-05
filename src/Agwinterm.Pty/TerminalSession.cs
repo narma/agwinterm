@@ -18,6 +18,16 @@ public sealed class TerminalSession : ISession
     private int _pumpInFlight; // 1 while a chunk is read but not yet fed + tapped (the feed can block on _sync)
 
     public ITerminalCore Emulator { get; }
+    private LocalSessionPresentation? _presentation;
+    public ISessionPresentation? Presentation => Volatile.Read(ref _presentation);
+    internal LocalSessionPresentation EnablePresentation()
+    {
+        lock(_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed,this);
+            return _presentation ??= new(this);
+        }
+    }
     public int Cols { get; private set; }
     public int Rows { get; private set; }
 
@@ -31,6 +41,8 @@ public sealed class TerminalSession : ISession
     /// The copy is made only while subscribed. Raised on the pump thread — a slow handler stalls
     /// THIS session's feed, so consumers must be quick or buffer themselves.</summary>
     public event Action<byte[]>? RawOutput;
+    private readonly TerminalLatencyTrace.MarkerReader? _latencyInput = TerminalLatencyTrace.Enabled ? new() : null;
+    private readonly TerminalLatencyTrace.MarkerReader? _latencyOutput = TerminalLatencyTrace.Enabled ? new() : null;
 
     /// <summary>Push-based agent status (set via the control API), and a change notification.</summary>
     public StatusSignal StatusSignal { get; } = new();
@@ -406,8 +418,10 @@ public sealed class TerminalSession : ISession
                 Volatile.Write(ref _pumpInFlight, 1);
                 // The tap runs under the same lock as the feed, so a reattach that snapshots the
                 // screen under it gets each chunk once: in the snapshot or through the tap.
+                long waitingSince = TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 lock (_sync)
                 {
+                    using var timing = new TerminalLatencyTrace.LockTiming(waitingSince, 20);
                     if (_disposed) break;
                     int consumed = 0;
                     long started = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -415,6 +429,7 @@ public sealed class TerminalSession : ISession
                     {
                         if (DumpPath is not null) System.IO.File.AppendAllBytes(DumpPath, buffer.AsSpan(0, n).ToArray());
                         Emulator.Feed(buffer.AsSpan(0, n));
+                        _latencyOutput?.Output(buffer.AsSpan(0, n));
                         if (RawOutput is { } tap) tap(buffer[..n]);
                         Interlocked.Add(ref _pumpBytes, n); // after feed and tap
                         consumed += n;
@@ -461,14 +476,34 @@ public sealed class TerminalSession : ISession
     /// <summary>Send bytes (e.g. keystrokes) to the child's input.</summary>
     public void Write(ReadOnlySpan<byte> bytes)
     {
+        if (Presentation is { } presentation)
+        {
+            var accepted = presentation.Submit(new TerminalInput.Raw(bytes.ToArray()));
+            if (accepted != TerminalInputAcceptance.Accepted) throw new IOException($"Session input was not accepted: {accepted}.");
+            return;
+        }
+        WriteOwner(bytes);
+    }
+
+    // Only the ordered owner writer bypasses the semantic queue.
+    internal void WriteOwner(ReadOnlySpan<byte> bytes)
+    {
         if (InputClosed) throw new IOException("Session input is closed.");
         var stream = _connection?.WriterStream ?? throw new InvalidOperationException("Session not started.");
-        try { stream.Write(bytes); stream.Flush(); }
+        long sample = _latencyInput?.Input(bytes) ?? 0;
+        TerminalLatencyTrace.Record(2, sample);
+        try { stream.Write(bytes); stream.Flush(); TerminalLatencyTrace.Record(3, sample); }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         { MarkInputClosed(); throw; }
     }
 
     public void Resize(int cols, int rows)
+    {
+        if(cols <= 0 || rows <= 0) return;
+        if(Presentation is LocalSessionPresentation presentation) presentation.Resize(cols,rows);
+        else ResizeOwner(cols,rows);
+    }
+    internal void ResizeOwner(int cols,int rows)
     {
         if (cols <= 0 || rows <= 0) return;
         lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Resize(cols, rows); }
@@ -497,6 +532,7 @@ public sealed class TerminalSession : ISession
     internal bool DisposeHosted()
     {
         MarkInputClosed();
+        _presentation?.Dispose(); // capture gate must never be acquired under _sync
         var connection = _connection;
         if (connection is null) { DisposeCore(); return true; } // creation failed before obtaining a connection
         if (!HostedCleanup.TryComplete(connection.WaitForExit, connection.Kill, connection.Dispose)) return false;
@@ -508,6 +544,7 @@ public sealed class TerminalSession : ISession
     public void Dispose()
     {
         MarkInputClosed();
+        _presentation?.Dispose();
         IPtyConnection? c;
         lock (_sync) { c = _connection; _connection = null; DisposeCore(); }
         try { c?.Kill(); } catch { /* already exited */ }

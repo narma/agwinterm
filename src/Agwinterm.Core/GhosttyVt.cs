@@ -188,6 +188,7 @@ public sealed unsafe class GhosttyVt : IDisposable
     private string _notificationTitle = "";
     private long _holdDeadline;
     public bool IsSynchronizedOutputHeld => Environment.TickCount64 < Volatile.Read(ref _holdDeadline);
+    public long SynchronizedOutputDeadline => Volatile.Read(ref _holdDeadline);
     public IReadOnlyList<TerminalEmulator.ShellMark> ReadMarks()
     {
         CheckAlive();
@@ -221,12 +222,14 @@ public sealed unsafe class GhosttyVt : IDisposable
             throw new ArgumentOutOfRangeException(nameof(cols), "Terminal dimensions exceed the configured limit.");
     }
     private void CheckAlive() => ObjectDisposedException.ThrowIf(_disposeRequested, this);
+    internal void MarkLegacyReplica() { CheckAlive(); _handle.MarkReplica(); }
     private void RefreshInfo() => GhosttyNative.Check(GhosttyNative.GetInfo(_handle, out _info));
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         CheckAlive();
         SyncHostColors();
         fixed (byte* data = bytes) GhosttyNative.Check(GhosttyNative.Feed(_handle, data, (nuint)bytes.Length));
+        GhosttyDiagnostics.Feed(bytes.Length, _handle.Role);
         _windows.Feed(bytes);
         RefreshInfo();
         DrainEvents();
@@ -363,6 +366,7 @@ public sealed unsafe class GhosttyVt : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(scrollOffset);
         GhosttyNative.Check(GhosttyNative.Begin(_handle, (uint)scrollOffset));
         _capturing = true;
+        GhosttyDiagnostics.Capture(1);
     }
     public void CompleteCapture()
     {
@@ -418,6 +422,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             lock (_lifetime)
             {
                 _capturing = false;
+                GhosttyDiagnostics.Capture(-1);
                 if (_disposeRequested) ReleaseNative();
             }
         }

@@ -51,6 +51,7 @@ message Create {
   map<string, string> env = 10;
   string creation_ticket = 11;  // creation_revision >= 1: host-issued, single-use spawn authority
   string emulator_core = 12;   // core_selection_revision >= 1: managed/rust/ghostty; empty = host default
+  bool single_owner = 13;      // presentation_revision >= 1; requires Ghostty, no raw-stream fallback
 }
 
 message Attach {
@@ -58,6 +59,7 @@ message Attach {
   bool repaint = 2;
   string creation_ticket = 3;   // optional expected incarnation; mismatch refuses
   bool native_snapshot = 4;    // accept length-prefixed Ghostty snapshot before raw PTY bytes
+  uint32 presentation_revision = 5;
 }
 
 message SessionRef {
@@ -114,6 +116,7 @@ message HelloReply {
   uint32 creation_revision = 3; // 0 = legacy limitations; 1 = prepare/query/cancel + incarnation checks
   uint32 core_selection_revision = 4; // 1 = per-session core selection and authoritative attach core
   uint32 theme_revision = 5; // 1 = update live query defaults without injecting VT
+  uint32 presentation_revision = 6; // 1 = bounded viewport channel plus ordered semantic input
 }
 
 message CreateReply {
@@ -138,6 +141,9 @@ message AttachReply {
   string creation_ticket = 10;
   bool native_snapshot = 11;   // data pipe starts with uint32 LE length + snapshot
   string emulator_core = 12;   // authoritative session core, independent of current UI preference
+  uint32 presentation_revision = 13;
+  string input_pipe = 14;
+  uint64 attachment_epoch = 15;
 }
 
 message SessionInfo {
@@ -154,4 +160,79 @@ message SessionInfo {
 
 message ListReply {
   repeated SessionInfo sessions = 1;
+}
+
+// Presentation data pipes carry bounded records: uint32 total length, uint32
+// protobuf-header length, PresentationFrameHeader, then the row payload. No VT
+// stream or native pointer is valid on these pipes. Row encoding is revisioned.
+message PresentationFrameHeader {
+  uint32 revision = 1;
+  string incarnation = 2;
+  uint64 attachment_epoch = 3;
+  uint64 sequence = 4;
+  uint64 base_sequence = 5;
+  uint64 viewport_revision = 6;
+  int64 terminal_generation = 7;
+  uint32 cols = 8;
+  uint32 rows = 9;
+  uint32 history_rows = 10;
+  uint32 scroll_offset = 11;
+  int64 scroll_generation = 12;
+  uint32 cursor_col = 13;
+  uint32 cursor_row = 14;
+  bool cursor_visible = 15;
+  uint32 cursor_shape = 16;
+  bool alternate_screen = 17;
+  uint32 background = 18;
+  uint32 cursor_color = 19;
+  string title = 20;
+  string cwd = 21;
+  uint32 modes = 22;
+  uint32 keyboard_flags = 23;
+  uint32 scroll_top = 24;
+  uint32 scroll_bottom = 25;
+  bool has_exited = 26;
+  int32 exit_code = 27;
+  int64 captured_ticks = 28; // opt-in QPC timestamp; 0 when diagnostics are disabled
+}
+
+// Independent input pipe. Acceptance never waits for a frame/query round trip.
+// All records are fenced by incarnation/epoch and strictly increasing sequence.
+message PresentationInput {
+  string incarnation = 1;
+  uint64 attachment_epoch = 2;
+  uint64 sequence = 3;
+  uint32 kind = 4; // 1 key, 2 text, 3 paste, 4 mouse, 5 focus, 6 raw bytes
+  uint32 virtual_key = 5;
+  uint32 action = 6;
+  uint32 modifiers = 7;
+  string text = 8;
+  uint32 unshifted = 9;
+  uint32 consumed_modifiers = 10;
+  int32 windows_unicode = 11;
+  uint32 windows_control_state = 12;
+  uint32 scan_code = 13;
+  uint32 button = 14;
+  float x = 15;
+  float y = 16;
+  uint32 cell_width = 17;
+  uint32 cell_height = 18;
+  bool focused = 19;
+  bytes raw = 20;
+  string windows_text = 21; // all committed UTF-16 units from Windows translation
+  uint64 frame_sequence = 22; // kind 7: successfully presented frame credit
+  PresentationViewport viewport = 23; // kind 8: fenced resize/scroll/visibility
+  bool has_cell_position = 24;
+  uint32 cell_column = 25;
+  uint32 cell_row = 26;
+}
+
+message PresentationViewport {
+  uint64 revision = 1;
+  uint32 cols = 2;
+  uint32 rows = 3;
+  uint32 cell_width = 4;
+  uint32 cell_height = 5;
+  uint32 scroll_offset = 6;
+  bool visible = 7;
 }

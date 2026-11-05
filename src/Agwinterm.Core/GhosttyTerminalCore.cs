@@ -31,6 +31,8 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         _historyRow = new Cell[cols]; _vt.SetScrollbackLimit(_scrollbackMax);
     }
     public static bool TryLoad(string directory, out string? error) => GhosttyVt.TryLoad(directory, out error);
+    /// <summary>Called once by the legacy hosted adapter before consuming output.</summary>
+    public void MarkLegacyReplica() => _vt.MarkLegacyReplica();
     public ScreenBuffer Screen { get { EnsureScreen(); return _queryScreen; } }
     public int Cols => _cols;
     public int Rows => _rows;
@@ -109,10 +111,13 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         _screenDirty = false;
     }
     internal long TextVersion { get; private set; }
+    public long Generation => TextVersion;
     private void Invalidate() { _screenDirty = true; _historyIndex = -1; _marks = null; TextVersion++; }
     public void Feed(ReadOnlySpan<byte> bytes)
     {
+        long started = TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         _vt.Feed(bytes); Invalidate();
+        if (started != 0) TerminalLatencyTrace.Record(24, Math.Max(1, System.Diagnostics.Stopwatch.GetTimestamp() - started));
     }
     public void Resize(int cols, int rows)
     {
@@ -136,6 +141,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public bool BracketedPaste => Mode(5);
     public bool FocusReporting => Mode(6);
     public bool SynchronizedOutput => _vt.IsSynchronizedOutputHeld;
+    public long SynchronizedOutputDeadline => _vt.SynchronizedOutputDeadline;
     public bool Win32InputMode => _vt.Win32InputMode;
     public uint DynamicBg => _vt.HasBackgroundOverride ? 0xff000000u | _vt.Background : 0;
     public int CursorShape => _vt.CursorShape;
