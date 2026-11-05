@@ -1616,7 +1616,22 @@ internal partial class Program
         // ConPTY can reconstruct it. Key-DOWN only for now (the common case apps read); WM_CHAR for
         // this pane is swallowed since the character rides in the sequence's Uc field.
         if (ActiveSurface()?.S.Emulator.Win32InputMode == true)
-        { Send(Win32KeySeq(vk, true, ctrl, shift, alt), editing: !Keymap.IsModifierKey(vk)); _win32KeysDown.Add(vk); return true; }
+        {
+            string sequence;
+            if (_ghosttyKeyText is { } captured && captured.Vk == vk)
+            {
+                // Mixed-core broadcast uses this transitional path. Its key-down
+                // already contains text, just like the native-only path above.
+                _ghosttyKeyText = null;
+                if (captured.Chars < 0) return true;
+                sequence = Win32KeyTextSequence(vk, true, ctrl, shift, alt, captured.Unicode);
+                _ghosttyCharsToSkip += Math.Max(0, captured.Chars);
+            }
+            else sequence = Win32KeySeq(vk, true, ctrl, shift, alt);
+            Send(sequence, editing: !Keymap.IsModifierKey(vk));
+            _win32KeysDown.Add(vk);
+            return true;
+        }
 
         // Kitty keyboard protocol: when an app has enabled it, encode keys in CSI-u form.
         if ((ActiveSurface()?.S.Emulator.KeyboardFlags ?? 0) != 0 && KittyKeyEncode(vk, ctrl, alt, shift) is { } ku)

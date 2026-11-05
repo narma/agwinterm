@@ -334,3 +334,11 @@ assertion was added. hyperv-ghostty-input-server-fixed/results passed 58/58 GUI
 checks (including the server aggregate) and 32/32 server contracts. The 20 focused
 creation/output/lifetime tests also pass. This supersedes the failed combined
 suite status above; the IME/mixed-core acceptance scope limits still apply.
+
+Greptile follow-up: the transitional mixed-core Win32-input fallback now consumes
+its paired WM_CHAR exactly once, while unpaired committed text is still delivered.
+Real-key regressions cover both Managed and Rust recipients with an active Ghostty
+sender. hyperv-ghostty-input-mixed/results passed 66/66 GUI checks and 32/32 server
+contracts. This adds mixed-core Win32 broadcast acceptance; full per-recipient
+physical-key protocol handling for mixed modes and installed IME candidate UI
+remain outside this step. The earlier doubled-input finding is fixed.

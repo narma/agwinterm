@@ -160,6 +160,32 @@ try {
         $null=Rpc 'session.close' @{} $secondSession
         $null=Rpc 'session.select' @{} $inputSession
     }
+    foreach($legacyCore in @('managed','rust')) {
+        $legacyLog=Join-Path $artifact ("ghostty-input-"+$legacyCore+'.txt')
+        $null=Rpc 'config.set' @{key='emulator-core';value=$legacyCore}
+        $legacySession=$null
+        try {
+            $legacySession=[string](Rpc 'session.new' @{name=('input-'+$legacyCore);command=$inputCommand.Replace($inputLog,$legacyLog);'command-mode'='direct'})
+            $legacyReady=$false
+            for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $legacySession)).Contains('INPUT-SINK-READY')){$legacyReady=$true;break};Start-Sleep -Milliseconds 100}
+            if(-not $legacyReady){throw "Legacy input sink did not start: $legacyCore"}
+            $null=Rpc 'session.write' @{text=($esc+'[?9001h')} $legacySession
+            $null=Rpc 'session.write' @{text=($esc+'[?9001h')} $inputSession
+            $null=Rpc 'session.select' @{} $inputSession
+            $null=Rpc 'broadcast' @{op='on'}
+            InputCheck "Mixed $legacyCore broadcast sends physical key once to Ghostty" 'a' { [GhosttyInputFixture]::Tap(0x41) }
+            Check "Mixed $legacyCore broadcast sends physical key once to legacy recipient" ((InputBytes $legacyLog)-ceq '61')
+            InputCheck "Mixed $legacyCore broadcast keeps unpaired committed text" '漢' {
+                [void][GhosttyInputFixture]::SendMessageW($hwnd,0x102,[IntPtr][int][char]'漢',[IntPtr]1)
+            }
+            Check "Mixed $legacyCore broadcast delivers committed text to legacy recipient" ((InputBytes $legacyLog)-ceq '61E6BCA2')
+        } finally {
+            $null=Rpc 'broadcast' @{op='off'}
+            $null=Rpc 'config.set' @{key='emulator-core';value='ghostty'}
+            if($legacySession){$null=Rpc 'session.close' @{} $legacySession}
+            $null=Rpc 'session.select' @{} $inputSession
+        }
+    }
 } finally {
     foreach($key in @(0xA0,0xA1,0xA2,0xA3,0xA4,0xA5)){[GhosttyInputFixture]::Key($key,$true)}
     InputLayout '00000409'
