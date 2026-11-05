@@ -174,6 +174,16 @@ public sealed unsafe class GhosttyVt : IDisposable
         if (changed) { ThemeVersion++; RefreshInfo(); }
     }
     public string Title { get; private set; } = "";
+    private Func<string, bool>? _titleFilter;
+    public void SetTitleFilter(Func<string, bool> filter)
+    {
+        _titleFilter = filter;
+        if (filter(Title)) Title = "";
+    }
+    private void ApplyTitle(string title)
+    {
+        if (_titleFilter?.Invoke(title) != true) Title = title;
+    }
     public string Cwd { get; private set; } = "";
     private string _notificationTitle = "";
     private long _holdDeadline;
@@ -232,7 +242,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             {
                 case 1: Host?.Respond(Encoding.UTF8.GetString(effect.Data)); break;
                 case 2: Host?.Bell(); break;
-                case 3: Title = ReadText(0); break;
+                case 3: ApplyTitle(Encoding.UTF8.GetString(effect.Data)); break;
                 case 4: Cwd = ReadText(1); break;
                 case 5: _notificationTitle = Encoding.UTF8.GetString(effect.Data); break;
                 case 6: Host?.Notify(_notificationTitle, Encoding.UTF8.GetString(effect.Data)); break;
@@ -332,7 +342,7 @@ public sealed unsafe class GhosttyVt : IDisposable
         fixed (byte* data = snapshot.Slice(56 + windowsLength, nativeLength))
             GhosttyNative.Check(GhosttyNative.Restore(_handle, data, (nuint)nativeLength));
         RestoreVersion++;
-        _windows = windows; _hostColors = null; _hostPalette = null; _hostCursor = null; Volatile.Write(ref _holdDeadline, 0); RefreshInfo(); Title = ReadText(0); Cwd = ReadText(1);
+        _windows = windows; _hostColors = null; _hostPalette = null; _hostCursor = null; Volatile.Write(ref _holdDeadline, 0); RefreshInfo(); ApplyTitle(ReadText(0)); Cwd = ReadText(1);
     }
     public void BeginCapture(int scrollOffset = 0)
     {

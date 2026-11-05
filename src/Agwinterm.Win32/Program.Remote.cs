@@ -151,7 +151,7 @@ internal partial class Program
             }).ConfigureAwait(false);
             if (!pane.LiveRecovery.IsCurrent(generation)) return;
             string[] argv = AgtermRemoteOperations.AttachmentArgs(binding, nonce, pane.LiveClaim);
-            if (pane.S is not ServerSession server) throw new IOException("Remote transport requires the Rust host");
+            if (pane.S is not ServerSession server) throw new IOException("Remote transport requires a PTY host");
             await server.StartCheckpointedAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs,
                 ticket => LiveUiAsync(() =>
                 {

@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 3;
+    oldAbi["abi"] = 4;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous search ABI is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous title-event ABI is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -36,6 +36,21 @@ finally
     Directory.Delete(mismatchDirectory);
 }
 if (!GhosttyVt.TryLoad(args[0], out string? error)) throw new InvalidOperationException(error);
+
+using (var vt = new GhosttyVt(20, 5))
+{
+    var roles = new List<string>();
+    vt.SetTitleFilter(title => { if (!title.StartsWith("zmx-role;")) return false; roles.Add(title); return true; });
+    vt.Feed("\u001b]2;first\a\u001b]2;zmx-role;n:leader:1\a\u001b]2;second\a\u001b]2;zmx-role;n:follower:2\a"u8);
+    Check(roles.SequenceEqual(new[] { "zmx-role;n:leader:1", "zmx-role;n:follower:2" }),
+        "every live-role title survives a multi-title native feed in order");
+    Check(vt.Title == "second", "consumed role titles do not replace the visible title");
+    var snapshot = vt.CaptureSnapshot();
+    vt.RestoreSnapshot(snapshot);
+    Check(vt.Title == "second" && roles.Count == 3, "restored native title passes through the live-role filter");
+    vt.Feed("\u001b]2;\a"u8);
+    Check(vt.Title == "", "empty native title events still clear the visible title");
+}
 
 using (var core = new GhosttyTerminalCore(20, 6, CursorStyle.Bar, false))
 {

@@ -290,7 +290,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 4;
+    return 5;
 }
 const char* agwvt_revision(void) { return "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
@@ -304,8 +304,10 @@ static void bell(GhosttyTerminal terminal, void* context) {
     if (vt->event) vt->event(vt->context, 2, NULL, 0);
 }
 static void title_changed(GhosttyTerminal terminal, void* context) {
-    (void)terminal; AgwVt* vt = context;
-    if (vt->event) vt->event(vt->context, 3, NULL, 0);
+    AgwVt* vt = context;
+    GhosttyString value;
+    if (vt->event && ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_TITLE, &value) == GHOSTTY_SUCCESS)
+        vt->event(vt->context, 3, (const uint8_t*)value.ptr, value.len);
 }
 static void pwd_changed(GhosttyTerminal terminal, void* context) {
     (void)terminal; AgwVt* vt = context;

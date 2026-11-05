@@ -535,6 +535,13 @@ public sealed class ServerSession : ISession
     public void Dispose()
     {
         DisposeReplica();
+        Stop();
+    }
+
+    /// <summary>Close the transport while retaining the replica for a visible terminal/error surface.</summary>
+    public void Stop()
+    {
+        MarkInputClosed();
         if (_startFence.Close(kill: true)) KillHosted();
         CancelRead();
     }

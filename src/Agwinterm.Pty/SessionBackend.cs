@@ -42,7 +42,7 @@ public static class SessionBackends
         // Always explicit: a pty-host started without the flag keeps the inbox conhost.
         string conptyArg = conpty is null ? "" : conpty == "inbox" ? " --conpty inbox" : " --conpty bundled";
         if (string.Equals(configured, "server", StringComparison.OrdinalIgnoreCase))
-            return new ServerSessionBackend(appId, exePath, $"--pty-host --pipe \"{appId}\"{conptyArg}");
+            return new ServerSessionBackend(appId, exePath, $"--pty-host --pipe \"{appId}\"{conptyArg}", replicaCore: replicaCore);
         if (string.Equals(configured, "server-rust", StringComparison.OrdinalIgnoreCase))
         {
             string rustAppId = appId + "-rust";
@@ -52,12 +52,11 @@ public static class SessionBackends
         return InProcessSessionBackend.Instance;
     }
 
-    // The Rust transport does not negotiate Ghostty snapshots. Keep its existing
-    // managed live replica (including role-title filtering) when the ordinary
-    // default becomes Ghostty; an explicitly chosen legacy core is preserved.
+    // Native live sessions use the snapshot-capable host too. Legacy bindings
+    // can still be adopted from the Rust namespace before any new attachment.
     public static ServerSessionBackend ResolveLive(Agwinterm.Core.TerminalConfig config, string appId, string? exePath)
-        => (ServerSessionBackend)Resolve("server-rust", appId, exePath, config.Conpty,
-            config.EmulatorCore == "ghostty" ? "managed" : config.EmulatorCore);
+        => (ServerSessionBackend)Resolve(config.EmulatorCore == "ghostty" ? "server" : "server-rust",
+            appId, exePath, config.Conpty, config.EmulatorCore);
 
     /// <summary>Locate agwinterm-ptyhost.exe next to the app exe (the installer ships it there).</summary>
     private static string? FindRustHost(string? exePath)

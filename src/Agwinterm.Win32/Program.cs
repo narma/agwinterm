@@ -722,12 +722,21 @@ internal partial class Program : ISessionHost, IWindowHost
         {
             string host = sb.Name == "server-rust" ? "the Rust pty-host binary" : "the pty-host process";
             front!.Post(() => front.ShowToast($"session-host = {sb.Name} (experimental) — sessions live in {host}", 6000));
+        }
+        if (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null || _legacyRestoreBackend is not null)
+        {
             // All restore handles have already claimed their hosted IDs in the backend. New
             // handles claim before async creation too, not after publication in the UI tree.
+            // Sweep both namespaces: an upgrade can leave old Rust attachments alongside
+            // native-hosted sessions, including an orphan with no saved pane to adopt.
+            string hostNamespace = _argPipe ?? _appId;
             _ = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(30));
-                sb.ReapUnclaimedStartupSessions();
+                using var nativeHost = new ServerSessionBackend(hostNamespace, null);
+                using var rustHost = new ServerSessionBackend(hostNamespace + "-rust", null);
+                nativeHost.ReapUnclaimedStartupSessions();
+                rustHost.ReapUnclaimedStartupSessions();
             });
         }
 

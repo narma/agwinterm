@@ -18,6 +18,7 @@ namespace Agwinterm.Win32;
 internal partial class Program
 {
     private static ServerSessionBackend? _legacyRestoreBackend;
+    private static ServerSessionBackend? _legacyLiveRestoreBackend;
     private static ServerSessionBackend? _liveSessionBackend;
     private static (string Core, string Conpty)? _liveBackendConfig;
     private static bool RustLiveHostEnabled => _config.ConfiguredSessionHost == "server-rust";
@@ -37,16 +38,18 @@ internal partial class Program
 
     // A new default must not orphan shells created before the upgrade. This
     // backend has no executable: recovery may attach, but never start a Rust host.
-    private static ServerSession? TryRestoreRustSession(string id, int cols, int rows)
+    private static ServerSession? TryRestoreRustSession(string id, int cols, int rows, string? liveTicket = null, bool cancelUnattached = false)
     {
         string hostId = (_argPipe ?? _appId) + "-rust";
         if (!PtyHostClient.IsRunning(hostId)) return null;
-        _legacyRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust");
+        var backend = liveTicket is null
+            ? _legacyRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust")
+            : _legacyLiveRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust", replicaCore: "managed");
         ServerSession? candidate = null;
         try
         {
-            candidate = (ServerSession)_legacyRestoreBackend.Create(id, cols, rows);
-            if (candidate.TryAdopt()) return candidate;
+            candidate = (ServerSession)backend.Create(id, cols, rows);
+            if (candidate.TryAdopt(liveTicket, cancelUnattached)) return candidate;
         }
         catch { /* The ordinary restore path remains available if the host is gone. */ }
         candidate?.Dispose();
@@ -143,6 +146,14 @@ internal partial class Program
                     : liveBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
                     && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
+                if (!adopted && liveBackend.Name != "server-rust"
+                    && (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } oldTicket
+                    && TryRestoreRustSession(paneId, cols, rows, oldTicket, cancelUnattached: restoredRemote is not null) is { } previous)
+                {
+                    session.Dispose();
+                    session = previous;
+                    adopted = true;
+                }
             }
             catch (Exception ex)
             {

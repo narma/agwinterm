@@ -189,6 +189,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     }
     public IReadOnlyList<TerminalEmulator.ShellMark> Marks => _marks ??= _vt.ReadMarks();
     public string Title => _vt.Title;
+    public void SetTitleFilter(Func<string, bool> filter) => _vt.SetTitleFilter(filter);
     public string Cwd => _vt.Cwd;
     public IHostActions? Host { get => _vt.Host; set => _vt.Host = value; }
     public IReadOnlyDictionary<int, KittyImage> Images => _hostImages;

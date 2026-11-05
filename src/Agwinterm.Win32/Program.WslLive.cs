@@ -208,7 +208,9 @@ internal partial class Program : IWslLiveHost
                 if (outcome != "terminated") throw new WslRecoveryException("uncertain", "Termination is not confirmed");
                 return InvokeOnUiQueued<object>(() =>
                 {
-                    p.S.Dispose();
+                    // The pane remains visible (and resizable) after termination. Its native
+                    // replica must live until the pane itself is replaced or closed.
+                    if (p.S is ServerSession transport) transport.Stop();
                     p.LiveBinding = JsonSerializer.SerializeToElement(binding with { Recovery = "missing", TransportTicket = null });
                     p.LiveClosing = false;
                     p.LiveRecovery.Reopen();
@@ -355,15 +357,18 @@ internal partial class Program : IWslLiveHost
         lock (pane.S.SyncRoot)
         {
             pane.LiveRole = new ZmxRoleState(nonce ?? Guid.NewGuid().ToString("N"));
-            if (pane.S.Emulator is not TerminalEmulator terminal) return;
             bool Consume(string title)
             {
                 if (!title.StartsWith("zmx-role;", StringComparison.Ordinal)) return false;
                 if (ZmxRoleNotice.Parse(title) is { } notice) pane.LiveRole.Apply(notice);
                 return true;
             }
-            if (Consume(terminal.Title)) terminal.OscDispatch(2, "");
-            terminal.TitleFilter = Consume;
+            if (pane.S.Emulator is TerminalEmulator terminal)
+            {
+                if (Consume(terminal.Title)) terminal.OscDispatch(2, "");
+                terminal.TitleFilter = Consume;
+            }
+            else if (pane.S.Emulator is GhosttyTerminalCore ghostty) ghostty.SetTitleFilter(Consume);
         }
     }
 
@@ -405,7 +410,7 @@ internal partial class Program : IWslLiveHost
                 verbatimCommandLine: true).ConfigureAwait(false);
             if (!pane.LiveRecovery.IsCurrent(generation)) return;
             if (pane.S is not ServerSession server || server.HasExited || string.IsNullOrEmpty(server.CreationTicket))
-                throw new InvalidOperationException("Rust WSL attachment could not start");
+                throw new InvalidOperationException("WSL attachment could not start");
             await LiveUiAsync(() =>
             {
                 if (!pane.LiveRecovery.IsCurrent(generation)) return;
