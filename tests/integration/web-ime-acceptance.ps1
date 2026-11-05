@@ -1,4 +1,5 @@
-param([string]$Exe, [string]$Ctl, [Parameter(Mandatory)][string]$LanguageSource)
+param([string]$Exe, [string]$Ctl, [Parameter(Mandatory)][string]$LanguageSource,
+    [ValidateSet('Ghostty')][string]$TerminalCore)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebImeAcceptance -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 if ($env:AGWINTERM_HYPERV_UI -ne '1' -or -not (& "$PSScriptRoot/hyperv-ui-context.ps1")) { throw 'IME setup requires a disposable Hyper-V guest' }
@@ -86,6 +87,7 @@ public static class ImeKeys {
     $identity='agwinterm-ime-'+[guid]::NewGuid().ToString('N')
     $data=Join-Path $env:LOCALAPPDATA $identity
     $null=New-Item -ItemType Directory -Path $data
+    if ($TerminalCore) { "emulator-core = $($TerminalCore.ToLowerInvariant())" | Set-Content (Join-Path $data 'agwinterm.conf') }
     @{default='Test';profiles=@(@{name='Test';command='cmd.exe';args=@('/d','/q','/k','echo AW_IME_READY');cwd=($env:SystemDrive+'\')})} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $data 'profiles.json')
     'map f10 = action_palette' | Set-Content (Join-Path $data 'keymap.conf')
     $source=Join-Path $data 'ime.html'
@@ -240,6 +242,7 @@ public static class ImeKeys {
     $null=Call @('session','overlay','close','--pane','left','--target',$owner)
     Require ((Call @('session','text','--target',$paneIds[0])).result -ceq $leftBefore) 'pane IME input does not reach its terminal'
     Require ((Call @('session','text','--target',$paneIds[1])).result -ceq $rightBefore) 'pane IME input does not reach the other pane'
+    if ($TerminalCore) { . "$PSScriptRoot/ghostty-ime-ui-cases.ps1" }
     $report.outcome='PASS'
 } catch { $report.error=$_.ToString();throw }
 finally {

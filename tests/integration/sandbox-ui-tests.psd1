@@ -22,5 +22,5 @@
     WslZmxIdentity = @{ Path='tests/integration/wsl-zmx-identity.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
     WebStartupBaseline = @{ Path='tools/web-startup-baseline.ps1'; Exe=$true; Options=@('Runs'); OptionalInputs=@('Installer','Portable'); Outputs=@('Output') }
     WebReleaseAcceptance = @{ Path='tests/integration/web-release-acceptance.ps1'; Python=$true; Options=@('Mode','Runtime'); OptionalInputs=@('Installer','Portable') }
-    WebImeAcceptance = @{ Path='tests/integration/web-ime-acceptance.ps1'; Exe=$true; Ctl=$true; Options=@(); Inputs=@('LanguageSource') }
+    WebImeAcceptance = @{ Path='tests/integration/web-ime-acceptance.ps1'; Exe=$true; Ctl=$true; Options=@('TerminalCore'); Inputs=@('LanguageSource') }
 }
