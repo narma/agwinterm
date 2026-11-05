@@ -19,6 +19,8 @@ jobs:
   ghostty-contract:
     name: Ghostty Windows native contract
     runs-on: windows-latest
+    env:
+      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/artifacts/ghostty-zig-global
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -29,6 +31,28 @@ jobs:
         with:
           path: artifacts/toolchains
           key: ghostty-zig-windows-${{ hashFiles('native/ghostty-vt/pin.json') }}
+      # Clone before restoring the local Zig cache into that directory: git clone
+      # refuses a destination that contains only restored cache files.
+      - name: Prepare pinned Ghostty source
+        shell: pwsh
+        run: ./native/ghostty-vt/build.ps1 -PrepareOnly
+      - name: Cache Ghostty packages and compiler outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            artifacts/ghostty-source/.zig-cache
+            artifacts/ghostty-source/zig-pkg
+            artifacts/ghostty-zig-global
+          key: ghostty-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json') }}-${{ hashFiles('native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**') }}
+          restore-keys: |
+            ghostty-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json') }}-
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
       - name: Build pinned Ghostty and adapter
         shell: pwsh
         run: ./native/ghostty-vt/build.ps1 -TestSearch

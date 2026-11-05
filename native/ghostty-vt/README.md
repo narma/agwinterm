@@ -80,3 +80,18 @@ The Windows CI contract job builds the pinned source and runs the host-free
 harness. Local desktop checks must use the existing Hyper-V worker. License
 copies emitted here cover Ghostty and Zig; release packaging still needs the
 complete third-party notice inventory before distributing this integration.
+
+CI caches the pinned Zig toolchain, Ghostty's local compiler cache and downloaded
+packages, and an explicit global Zig cache under artifacts/ghostty-zig-global.
+The compiler cache key includes the runner platform, pin, and native build inputs;
+changes within the same pin can reuse dependency outputs through a restore prefix.
+Source preparation runs before cache restoration so a restored cache directory
+does not prevent a fresh git clone. Generated DLLs are rebuilt and the C# native
+contract harness runs on every job; there is no cache-hit skip of verification.
+
+With -TestSearch, both builds use library-only mode. The Debug C API test binary
+includes the Zig module tests (as documented in upstream build.zig), so it is
+compiled once via test-lib-vt-build and executed directly on every invocation.
+This avoids application-only dependencies, duplicate module test builds, and
+reuse of cached test-run results. Build summaries and phase timings distinguish
+compilation from actual test execution in CI logs.

@@ -57,11 +57,23 @@ try {
     [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_search.zig`").unicodeNeedle, .{ .name = `"agwinterm_ghostty_search_unicode`" }); }`n")
     [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_search.zig`").tick, .{ .name = `"agwinterm_ghostty_search_tick`" }); }`n")
     [IO.File]::AppendAllText($libraryPath, "`ncomptime { if (@import(`"terminal_options`").c_abi) @export(&@import(`"terminal/c/agwinterm_search.zig`").matches, .{ .name = `"agwinterm_ghostty_search_matches`" }); }`n")
-    & $zig build -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" --prefix $output -j4
+    $phaseTimer = [Diagnostics.Stopwatch]::StartNew()
+    & $zig build -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" --prefix $output -j4 --summary all
     CheckExit 'Ghostty build'
+    Write-Output ("Ghostty ReleaseFast build: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
     if ($TestSearch) {
-        & $zig build test-lib-vt -Dtest-filter=search -Doptimize=Debug "-Dtarget=$($pin.target)" -j1
+        $phaseTimer.Restart()
+        $searchOutput = Join-Path $output 'search-tests'
+        # Upstream's C API test binary includes all Zig module tests too. Build it
+        # once in library-only mode, avoiding app dependencies and duplicate builds.
+        & $zig build test-lib-vt-build -Demit-lib-vt=true -Demit-test-exe=true -Dtest-filter=search -Doptimize=Debug "-Dtarget=$($pin.target)" --prefix $searchOutput -j1 --summary all
+        CheckExit 'Ghostty search test build'
+        Write-Output ("Ghostty Debug search test build: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
+        $phaseTimer.Restart()
+        # Run directly: a restored compiler cache must not reuse a test-run result.
+        & (Join-Path $searchOutput 'bin/ghostty-vt-c-test.exe')
         CheckExit 'Ghostty search tests'
+        Write-Output ("Ghostty Debug search test execution: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
     }
 } finally {
     [IO.File]::WriteAllBytes($libraryPath, $librarySource)
@@ -74,10 +86,12 @@ try {
 $bin = Join-Path $output 'bin'
 # The shim uses Zig's bundled MinGW headers and Windows' inbox CRT, avoiding
 # a Visual Studio/VC redistributable installation. Both DLLs expose the x64 C ABI.
+$phaseTimer.Restart()
 & $zig cc -target x86_64-windows-gnu -O2 -Wall -Wextra -Werror -shared `
     -I (Join-Path $source 'include') (Join-Path $PSScriptRoot 'agwvt.c') `
     (Join-Path $output 'lib/ghostty-vt.lib') -lole32 -lwindowscodecs -luuid -o (Join-Path $bin 'agwinterm_ghostty.dll')
 CheckExit 'Ghostty adapter build'
+Write-Output ("Ghostty C adapter build: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
 $licenses = Join-Path $output 'licenses'
 New-Item -ItemType Directory -Force $licenses | Out-Null
 Copy-Item (Join-Path $source 'LICENSE') (Join-Path $licenses 'ghostty.txt')
