@@ -324,3 +324,13 @@ broadcast. The optional server aggregate failed at the unchanged Rust initial
 output assertion (58 total assertions, 1 failure). This is not a fully green
 combined suite and does not mark the migration ready to merge. Release preview:
 artifacts/ghostty-input-preview/Start-Preview.cmd.
+
+Server follow-up resolves the timeout above: initial ServerSession attachment
+also requests a legacy viewport repaint, and both initial/adopted replicas restore
+legacy history and modes through the same publication path. A fast child could
+otherwise finish its visible output before the raw-output tap was registered;
+the native Ghostty snapshot already covered that interval. No retry or relaxed
+assertion was added. hyperv-ghostty-input-server-fixed/results passed 58/58 GUI
+checks (including the server aggregate) and 32/32 server contracts. The 20 focused
+creation/output/lifetime tests also pass. This supersedes the failed combined
+suite status above; the IME/mixed-core acceptance scope limits still apply.

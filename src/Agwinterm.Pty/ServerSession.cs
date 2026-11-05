@@ -234,7 +234,9 @@ public sealed class ServerSession : ISession
                         emulatorCore: TerminalSession.CoreName(Emulator));
                     if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
                     if (_startFence.IsClosed) return;
-                    if (PublishAttachment(client.Attach(_id, creationTicket: _creationTicket, nativeSnapshot: true)) && (Cols != cols || Rows != rows))
+                    // Even the first attachment can follow output from a fast child.
+                    // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
+                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -269,6 +271,15 @@ public sealed class ServerSession : ISession
                 {
                     if (Emulator is not GhosttyTerminalCore native) throw new IOException("Native snapshot requires Ghostty.");
                     native.RestoreSnapshot(snapshot);
+                }
+                else
+                {
+                    if (att.ScrollbackBlob is { Length: > 0 } blob
+                        && BufferPersist.TryParse(blob, out var pbuf))
+                        BufferPersist.Restore(Emulator, pbuf);
+                    else
+                        Emulator.SeedScrollback(att.Scrollback);
+                    Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(att.Modes));
                 }
             }
             catch { att.Dispose(); throw; }
@@ -372,18 +383,6 @@ public sealed class ServerSession : ISession
         lock (_sync)
         {
             if (_disposed) { att.Dispose(); return false; }
-            try { PrepareReplica(att); }
-            catch { att.Dispose(); throw; }
-            if (att.NativeSnapshot is null)
-            {
-                // Transitional support for hosts without native snapshots.
-                if (att.ScrollbackBlob is { Length: > 0 } blob
-                    && BufferPersist.TryParse(blob, out var pbuf))
-                    BufferPersist.Restore(Emulator, pbuf);
-                else
-                    Emulator.SeedScrollback(att.Scrollback);
-                Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(att.Modes));
-            }
         }
         if (_startFence.Created()) KillHosted();
         if (!PublishAttachment(att)) return false;
