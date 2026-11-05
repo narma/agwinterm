@@ -1,6 +1,7 @@
 # Ghostty VT Windows adapter
 
-This is an experimental opt-in integration, not the default terminal core.
+Ghostty is the default for configurations without an explicit terminal core.
+Explicit Managed/Rust choices remain supported while this backend matures.
 The upstream source is pinned by `pin.json`. The build adds the narrow
 `history.zig` embedding export to prepend existing native pages; it does not
 replace upstream parsing, reflow or page ownership. The source checkout is
@@ -78,8 +79,12 @@ backend. See the migration audit for the complete contract map.
 
 The Windows CI contract job builds the pinned source and runs the host-free
 harness. Local desktop checks must use the existing Hyper-V worker. License
-copies emitted here cover Ghostty and Zig; release packaging still needs the
-complete third-party notice inventory before distributing this integration.
+copies emitted by `build.ps1` cover Ghostty and Zig. Release entry points use
+`stage.ps1`, which collects the actual linked-package licenses, pinned uucode
+notices excluded by Zig package filtering, and the toolchain runtime notices.
+Installer and portable outputs include `ghostty-NOTICES.txt`. The portable
+toolset also embeds the DLL pair, provenance and bundled ConPTY; its content-
+addressed extraction is shared by the GUI and the .NET session host.
 
 CI caches the pinned Zig toolchain, Ghostty's local compiler cache and downloaded
 packages, and an explicit global Zig cache under artifacts/ghostty-zig-global.

@@ -378,3 +378,30 @@ while retaining Managed/Rust choices in this PR. Config and template now agree;
 portable extraction also carries bundled ConPTY. Runtime acceptance follows.
 
 Default-core VM acceptance passed: artifacts/hyperv-ghostty-default/results (absent emulator-core setting, keyboard and server contracts). The standalone portable extraction check also passed for the 89 MiB package; checks compare Ghostty, provenance, notices and ConPTY against staged inputs.
+
+### Stabilization acceptance (2026-11-05)
+
+Managed and Rust remain available in this PR. An absent emulator-core selects
+Ghostty; explicit legacy choices remain intact. New Ghostty hosted sessions use
+the .NET host, while restore also probes the already-running Rust host for old
+pane IDs without launching another Rust host. This avoids abandoning live shells
+when the default changes. Full heterogeneous physical-key broadcast is deferred.
+
+Installed Pinyin now anchors composition and candidates to the terminal caret.
+The bare single-file portable passed the complete browser/terminal IME acceptance
+in artifacts/hyperv-ghostty-portable-ime/results, including native Unicode
+case-fold proof (no Managed fallback), exact committed bytes, cancellation,
+resize and refocus. The subsequent DPI correction converts the hidden caret and
+IMM forms from DIPs to client pixels.
+
+The expanded native harness passes 216 checks, including relative image placement,
+parent deletion, snapshot restore and Unicode placeholders. The worker-owned GUI
+run artifacts/hyperv-ghostty-reflow-fixed/results passes 78 checks and 32 server
+contracts. It covers actual pixels for relative/virtual images and deletion, plus
+mouse selection across soft wraps and four width changes. Ghostty selection
+anchors now survive the GUI resize path; placeholder glyphs no longer overpaint
+their native image. Virtual placements preserve aspect ratio, unlike fixed ones.
+
+Release packages include the Windows target's compiler-runtime notices as well
+as the linked Ghostty dependency notices. The local upstream-feedback document
+remains untracked and no upstream issue has been opened.

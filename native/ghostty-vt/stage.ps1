@@ -60,6 +60,12 @@ foreach ($package in $inventory.packages | Where-Object { $_.linked_paths.Count 
 # from the same pinned upstream archive, including its Unicode data license.
 Get-ChildItem "$PSScriptRoot/notices" -File | Where-Object Name -Like 'uucode-*' | ForEach-Object { [void]$files.Add($_.FullName) }
 [void]$files.Add((Join-Path (Split-Path $zig) 'LICENSE'))
+# The GNU Windows target links runtime code distributed with Zig as well.
+foreach ($runtime in @('lib/libc/mingw','lib/libcxx','lib/libcxxabi','lib/libunwind')) {
+    Get-ChildItem -LiteralPath (Join-Path (Split-Path $zig) $runtime) -Recurse -File |
+        Where-Object Name -Match '^(LICENSE|COPYING|NOTICE|AUTHORS)' |
+        ForEach-Object { [void]$files.Add($_.FullName) }
+}
 foreach ($file in $files | Sort-Object) {
     [void]$notice.AppendLine("`n--- $([IO.Path]::GetRelativePath($repo,$file)) ---")
     [void]$notice.AppendLine([IO.File]::ReadAllText($file))
