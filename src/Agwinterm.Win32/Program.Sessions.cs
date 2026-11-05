@@ -219,6 +219,8 @@ internal partial class Program
             ["FORCE_HYPERLINK"] = Environment.GetEnvironmentVariable("FORCE_HYPERLINK") ?? "1",
             // The theme a pty-host answers OSC 10/11 with while no UI is attached (#339).
             [ThemeColors.EnvVar] = ThemeColors.Format(_theme.DefaultForeground, _theme.DefaultBackground),
+            [ThemeColors.PaletteEnvVar] = ThemeColors.FormatPalette(_theme.Palette),
+            [ThemeColors.CursorEnvVar] = ThemeColors.FormatColor(_theme.Cursor),
         };
         if (extraEnv is not null) foreach (var kv in extraEnv) env[kv.Key] = kv.Value; // custom-command $AGW_* context
         if (liveRequested)

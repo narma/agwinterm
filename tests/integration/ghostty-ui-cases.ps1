@@ -90,6 +90,29 @@ foreach ($character in 'ghostty'.ToCharArray()) {
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)
 Check 'Settings dropdown selects and persists Ghostty' ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]27,[IntPtr]1)
+function Check-PalettePixels([string]$label, [int]$red, [int]$green, [int]$blue) {
+    Start-Sleep -Milliseconds 350
+    $rect = [HudOwnedJob+RECT]::new(); [void][HudOwnedJob]::GetClientRect($hwnd, [ref]$rect)
+    $image = [Drawing.Bitmap]::new($rect.right, $rect.bottom); $g = [Drawing.Graphics]::FromImage($image)
+    try {
+        $dc = $g.GetHdc()
+        try { [void][HudOwnedJob]::PrintWindow($hwnd, $dc, 3) } finally { $g.ReleaseHdc($dc) }
+        $image.Save((Join-Path $artifact ($label+'.png')))
+        $count = 0
+        for ($y=0;$y -lt $image.Height;$y+=2) { for ($x=0;$x -lt $image.Width;$x+=2) {
+            $p=$image.GetPixel($x,$y)
+            if ($p.R -eq $red -and $p.G -eq $green -and $p.B -eq $blue) { $count++ }
+        } }
+        Check $label ($count -gt 200) "color samples=$count"
+    } finally { $g.Dispose(); $image.Dispose() }
+}
+$null = Rpc 'session.write' @{text=($esc+']4;1;#0c2238'+[char]7+$esc+'[12;1H'+$esc+'[41m'+(' '*30)+$esc+'[0m')} $session
+Check-PalettePixels 'Ghostty OSC palette reaches actual pixels' 12 34 56
+$null = Rpc 'config.set' @{key='theme';value='Nord'}
+Check-PalettePixels 'Ghostty OSC palette survives live theme change' 12 34 56
+$null = Rpc 'session.write' @{text=($esc+']104;1'+[char]7)} $session
+Check-PalettePixels 'Ghostty palette reset uses new theme' 191 97 106
+$null = Rpc 'config.set' @{key='theme';value='default'}
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='
 $images = $esc+'[5;5H'+$esc+'_Ga=T,f=100,i=101,c=8,r=4,C=1;'+$png+$esc+'\'+
     $esc+'[5;17H'+$esc+'_Ga=T,f=32,s=1,v=1,i=102,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'

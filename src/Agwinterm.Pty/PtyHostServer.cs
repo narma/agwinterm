@@ -61,6 +61,8 @@ public sealed class PtyHostServer : IDisposable
         public List<string> Take() { var taken = _pending; _pending = new(); return taken; }
         public void Respond(string reply) => _pending.Add(reply);
         public (Color Foreground, Color Background)? DefaultColors { get; set; }
+        public IReadOnlyList<Color>? DefaultPalette { get; set; }
+        public Color? DefaultCursorColor { get; set; }
         public ShellCompletion? Completion { get; set; }
         public void Notify(string title, string body) { }
         public void Progress(int state, int value) { }
@@ -209,6 +211,8 @@ public sealed class PtyHostServer : IDisposable
             session = new TerminalSession(cols, rows, c.EmulatorCore) { Conpty = _conpty };
             hosted = new Hosted { Id = id, S = session, Creation = creation };
             hosted.Replies.DefaultColors = ThemeColors.Parse(env?.GetValueOrDefault(ThemeColors.EnvVar));
+            hosted.Replies.DefaultPalette = ThemeColors.ParsePalette(env?.GetValueOrDefault(ThemeColors.PaletteEnvVar));
+            hosted.Replies.DefaultCursorColor = ThemeColors.ParseColor(env?.GetValueOrDefault(ThemeColors.CursorEnvVar));
             if (env?.GetValueOrDefault("AGWINTERM_PROMPT_TOKEN") is { } token && ShellCompletion.ValidToken(token)
                 && env.GetValueOrDefault("AGWINTERM_COMPLETION_FILE") is { Length: > 0 } completionFile)
                 hosted.Replies.Completion = new ShellCompletion(token, completionFile);

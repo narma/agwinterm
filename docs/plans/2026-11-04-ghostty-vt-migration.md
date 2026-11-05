@@ -159,3 +159,28 @@ Full-window render timings include EndDraw on a 104x38 grid in the prepared two-
 Same-build managed-core control (`artifacts/ghostty-perf-managed-control/results`) also completed all six scenarios. With ligatures enabled/disabled its medians were ASCII 4.58/2.01 ms, sparse icons 5.13/4.26 ms and dense emoji/CJK 605.86/613.02 ms. This reproduces the dense-screen cost without Ghostty and does not indicate a Ghostty regression in these runs. Separate VM launches and legacy Unicode width behavior prevent treating the difference as a calibrated speedup. Next performance work should profile the common draw/EndDraw path and evaluate bounded raster reuse, with the existing pixel and cache-lifetime checks retained.
 
 The follow-up [emoji performance investigation](../performance-emoji-2026-11-05.md) compares Ghostty with the actual Rust core on one mixed Latin/Russian screen containing 0/4/16/64 emoji. It isolates the expensive color-font draw calls and adds bounded, device-bound raster reuse. Pixel checks and both engines' isolated rendering suites pass. Warm dense-frame cost drops from roughly 450–461 ms to a few milliseconds in this VM; the linked report records repeated measurements, transient-toast control and limitations. This resolves that specific warm-render hotspot, not the remaining end-to-end/WSL performance gates.
+
+## Stage 1: theme and live metadata integration (2026-11-05)
+
+Ghostty paint now uses native resolved colors instead of resolving indices a
+second time against the UI theme. The host provides palette/cursor defaults;
+OSC 4/10/11/12 overrides remain native-owned and resets use the latest defaults.
+Theme changes refresh explicit screen/history reads even without new output.
+In-flight paints retain their captured palette and cursor colors. New .NET
+hosted sessions receive the initial palette and cursor in their environment,
+including before a UI attaches. Live changes to a surviving host's query-reply
+theme still need a protocol update; UI replicas already repaint with the new theme.
+
+The narrow pinned-source extension exposes live cursor shape/blinking, vertical
+scroll margins and explicit background-override presence. No parser, reflow or
+color policy was added to the extension. Non-paint consumers no longer receive
+cursor/margin placeholders; explicit black matching the default is retained.
+Adapter ABI is now 2, with matching provenance/layout checks rejecting old pairs.
+
+177 native contracts pass, including repeated selection and command-boundary
+reflow at widths 20/8/40/5/80, metadata after snapshot restore, OSC reset and
+in-flight color ownership. Core tests pass 648/648. Hyper-V Ghostty passes 23/23,
+including actual OSC palette pixels, live theme switching and reset to the new
+palette. Evidence: artifacts/hyperv-ghostty-stage1/results and
+artifacts/ghostty-stage1-contract.log. This does not claim stages 2/3 or full
+Windows/WSL/agterm parity, and does not remove legacy engines.

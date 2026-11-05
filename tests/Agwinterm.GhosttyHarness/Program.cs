@@ -73,6 +73,14 @@ using (var core = new GhosttyTerminalCore(20, 5))
     core.BeginPaint(); frame = core.CompletePaint();
     Check(frame[0, 0].Foreground == host.Palette[1] && frame[0, 1].Foreground == new Color(4, 5, 6) && core.PaintCursorColor == host.Cursor,
         "OSC resets use the latest theme defaults");
+    core.BeginPaint();
+    core.Feed("\u001b]4;1;#112233\a\u001b]12;#223344\a"u8);
+    frame = core.CompletePaint();
+    Check(frame[0, 0].Foreground == host.Palette[1] && core.PaintCursorColor == host.Cursor,
+        "in-flight paint retains captured palette and cursor color");
+    core.BeginPaint(); frame = core.CompletePaint();
+    Check(frame[0, 0].Foreground == new Color(0x11, 0x22, 0x33) && core.PaintCursorColor == new Color(0x22, 0x33, 0x44),
+        "next paint observes updated palette and cursor color");
 }
 using (var vt = new GhosttyVt(20, 5))
 {
@@ -553,6 +561,24 @@ using (var vt = new GhosttyVt(8, 4))
     Check(vt.Search("END").Count == 1, "native search restores primary results");
     var saved = vt.CaptureSnapshot(); vt.RestoreSnapshot(saved);
     Check(vt.Search("END").Count == 1, "snapshot replacement rebuilds native search ownership");
+}
+using (var core = new GhosttyTerminalCore(80, 20))
+{
+    core.Feed("\u001b]133;A\aPROMPT>\u001b]133;B\acommand-long-text\r\n\u001b]133;C\aOUTPUT-abcdefghijklmnopqrstuvwxyz\r\n\u001b]133;D;9\a"u8);
+    using var selected = core.CreateSelection(0, 0, 1, 32, false);
+    string original = selected.Text;
+    foreach (int width in new[] { 20, 8, 40, 5, 80 })
+    {
+        core.Resize(width, 20);
+        Check(selected.TryLocate(out _, out _, out _, out _) && selected.Text == original,
+            $"selection survives repeated width change to {width}");
+        var mark = core.Marks.Single();
+        var prompt = core.Search("PROMPT>").Single();
+        var command = core.Search("command-long-text").Single();
+        var output = core.Search("OUTPUT-").Single();
+        Check(mark.PromptLine == prompt.Line && mark.CommandLine == command.Line && mark.OutputLine == output.Line && mark.ExitCode == 9,
+            $"command boundaries track reflow at width {width}");
+    }
 }
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
