@@ -86,6 +86,10 @@ static BOOL CALLBACK initialize_system(PINIT_ONCE once, PVOID parameter, PVOID* 
 typedef struct { GhosttyTrackedGridRef refs[4]; int32_t exit_code, has_exit_code; } TrackedMark;
 typedef struct LinkEntry { struct LinkEntry* next; size_t index, length; uint8_t uri[]; } LinkEntry;
 typedef struct AgwAnchor { struct AgwAnchor* next; AgwVt* owner; GhosttyTrackedGridRef ref; } AgwAnchor;
+typedef struct AgwSearch { struct AgwSearch* next; AgwVt* owner; GhosttySearch search; } AgwSearch;
+extern int agwinterm_ghostty_search_unicode(GhosttySearch, const uint8_t*, size_t);
+extern int agwinterm_ghostty_search_tick(GhosttySearch, uint32_t*);
+extern int agwinterm_ghostty_search_matches(GhosttySearch, size_t, GhosttySelection*, size_t, size_t*);
 typedef struct ImagePixels {
     struct ImagePixels* next;
     _Atomic uint32_t references;
@@ -113,6 +117,7 @@ struct AgwVt {
     SRWLOCK capture_guard;
     SRWLOCK anchor_guard;
     AgwAnchor* released_anchors;
+    AgwSearch* released_searches;
     GhosttyRenderStateRowIterator rows;
     GhosttyRenderStateRowCells cells;
     AgwVtEvent event;
@@ -226,11 +231,17 @@ static int capture_images(AgwVt* vt, GhosttyRenderState state, ImageEntry** out)
 static void flush_anchors(AgwVt* vt) {
     AcquireSRWLockExclusive(&vt->anchor_guard);
     AgwAnchor* anchor = vt->released_anchors; vt->released_anchors = NULL;
+    AgwSearch* search = vt->released_searches; vt->released_searches = NULL;
     ReleaseSRWLockExclusive(&vt->anchor_guard);
     while (anchor) {
         AgwAnchor* next = anchor->next;
         ghostty_tracked_grid_ref_free(anchor->ref);
         budget_free(vt, anchor, sizeof(*anchor), 0, 0); anchor = next;
+    }
+    while (search) {
+        AgwSearch* next = search->next;
+        ghostty_search_free(search->search);
+        budget_free(vt, search, sizeof(*search), 0, 0); search = next;
     }
 }
 static void free_links(AgwVt* vt, LinkEntry* links) {
@@ -279,7 +290,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 2;
+    return 3;
 }
 const char* agwvt_revision(void) { return "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
@@ -904,6 +915,54 @@ int agwvt_search(AgwVt* vt, const uint8_t* text, size_t length, uint32_t* output
     }
     ghostty_free(&vt->allocator, (uint8_t*)selections, bytes);
     return result;
+}
+int agwvt_search_new(AgwVt* vt, const uint8_t* text, size_t length, void** out) {
+    if (!vt || !out || (!text && length) || length > 65536) return GHOSTTY_INVALID_VALUE;
+    *out = NULL; flush_anchors(vt);
+    AgwSearch* s = budget_alloc(vt, sizeof(*s), 0, 0);
+    if (!s) return GHOSTTY_OUT_OF_MEMORY;
+    *s = (AgwSearch){ .owner = vt };
+    int result = ghostty_search_new(&vt->allocator, &s->search, vt->terminal);
+    if (!result) result = agwinterm_ghostty_search_unicode(s->search, text, length);
+    if (result) { ghostty_search_free(s->search); budget_free(vt, s, sizeof(*s), 0, 0); return result; }
+    *out = s; return GHOSTTY_SUCCESS;
+}
+void agwvt_search_free(void* search) {
+    AgwSearch* s = search; if (!s) return;
+    AcquireSRWLockExclusive(&s->owner->anchor_guard);
+    s->next = s->owner->released_searches; s->owner->released_searches = s;
+    ReleaseSRWLockExclusive(&s->owner->anchor_guard);
+}
+int agwvt_search_feed(void* search, uint32_t* status) {
+    AgwSearch* s = search; if (!s || !status) return GHOSTTY_INVALID_VALUE;
+    TRY(ghostty_search_feed(s->search));
+    return ghostty_search_get(s->search, GHOSTTY_SEARCH_DATA_STATUS, status);
+}
+int agwvt_search_tick(void* search, uint32_t* status, size_t* count) {
+    AgwSearch* s = search; if (!s || !status || !count) return GHOSTTY_INVALID_VALUE;
+    TRY(agwinterm_ghostty_search_tick(s->search, status));
+    return ghostty_search_get(s->search, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, count);
+}
+int agwvt_search_matches(void* search, uint32_t* output, size_t capacity, size_t* count) {
+    AgwSearch* s = search; if (!s || (!output && capacity) || !count || capacity > 100000) return GHOSTTY_INVALID_VALUE;
+    GhosttySelection selections[128];
+    TRY(agwinterm_ghostty_search_matches(s->search, 0, selections, 0, count));
+    size_t limit = *count < capacity ? *count : capacity;
+    for (size_t offset = 0; offset < limit; offset += 128) {
+        size_t batch = limit - offset < 128 ? limit - offset : 128;
+        TRY(agwinterm_ghostty_search_matches(s->search, offset, selections, batch, count));
+        for (size_t i = 0; i < batch; i++) {
+            GhosttyPointCoordinate start, end; GhosttyCell cell; GhosttyCellWide wide;
+            TRY(ghostty_terminal_point_from_grid_ref(s->owner->terminal, &selections[i].start, GHOSTTY_POINT_TAG_SCREEN, &start));
+            TRY(ghostty_terminal_point_from_grid_ref(s->owner->terminal, &selections[i].end, GHOSTTY_POINT_TAG_SCREEN, &end));
+            TRY(ghostty_grid_ref_cell(&selections[i].end, &cell));
+            TRY(ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide));
+            size_t j = (offset + i) * 4;
+            output[j] = start.y; output[j+1] = start.x; output[j+2] = end.y;
+            output[j+3] = end.x + (wide == GHOSTTY_CELL_WIDE_WIDE ? 1 : 0);
+        }
+    }
+    return GHOSTTY_SUCCESS;
 }
 int agwvt_mouse(AgwVt* vt, uint32_t action, uint32_t button, uint32_t mods,
     float x, float y, uint32_t cw, uint32_t ch, uint8_t* output, size_t capacity, size_t* length) {

@@ -1209,6 +1209,7 @@ internal partial class Program
     private bool _searchPending, _searchTruncated;
     private string? _searchError;
     private GhosttyAnchor? _searchAnchor;
+    private GhosttySearch? _nativeFind;
 
     private void CloseSearch()
     {
@@ -1216,22 +1217,19 @@ internal partial class Program
         _searchPending = false; _searchActive = false; _searchPane = null; _searchCore = null;
         _searchError = null; _searchTruncated = false;
         _searchAnchor?.Dispose(); _searchAnchor = null;
+        _nativeFind?.Dispose(); _nativeFind = null;
         _searchMatches.Clear(); RequestRedraw();
     }
 
     private async Task SearchGhosttyAsync(Pane pane, GhosttyTerminalCore core, string query,
-        CancellationTokenSource owner, bool preserveSelection)
+        CancellationTokenSource owner, bool preserveSelection, GhosttySearch search)
     {
         var cancellation = owner.Token;
         try
         {
             // Debounce typing and changing output without ever delaying the UI or ingestion.
-            GhosttyTerminalCore.SearchResult? result;
-            do
-            {
-                await Task.Delay(100, cancellation).ConfigureAwait(false);
-                result = await core.SearchAsync(query, pane.S.SyncRoot, cancellation).ConfigureAwait(false);
-            } while (result is null);
+            await Task.Delay(preserveSelection ? 10 : 100, cancellation).ConfigureAwait(false);
+            var result = await search.RunAsync(pane.S.SyncRoot, cancellation).ConfigureAwait(false);
             Post(() =>
             {
                 if (!ReferenceEquals(_searchCancellation, owner) || !_searchActive) return;
@@ -1301,6 +1299,7 @@ internal partial class Program
         _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
         _searchPending = false; _searchTruncated = false; _searchError = null;
         if (!preserveSelection) { _searchAnchor?.Dispose(); _searchAnchor = null; _searchCur = 0; }
+        if (!preserveSelection) { _nativeFind?.Dispose(); _nativeFind = null; }
         _searchMatches.Clear();
         var ap = ActiveSurface();
         _searchPane = ap;
@@ -1310,8 +1309,9 @@ internal partial class Program
         if (em is GhosttyTerminalCore ghostty)
         {
             _searchPending = true;
+            _nativeFind ??= ghostty.CreateSearch(_searchQuery);
             _searchCancellation = CancellationTokenSource.CreateLinkedTokenSource(_uiGone.Token);
-            _ = SearchGhosttyAsync(ap, ghostty, _searchQuery, _searchCancellation, preserveSelection);
+            _ = SearchGhosttyAsync(ap, ghostty, _searchQuery, _searchCancellation, preserveSelection, _nativeFind);
             return;
         }
         string q = _searchQuery.ToLowerInvariant();

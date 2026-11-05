@@ -26,7 +26,7 @@ internal static unsafe partial class GhosttyNative
                 // revision alone cannot detect an accidentally replaced upstream DLL.
                 using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.provenance.json")));
                 var provenance = manifest.RootElement;
-                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 2)
+                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 3)
                     throw new InvalidOperationException("Ghostty build provenance does not match the expected revision/ABI.");
                 foreach (string filename in new[] { "ghostty-vt.dll", "agwinterm_ghostty.dll" })
                 {
@@ -42,7 +42,7 @@ internal static unsafe partial class GhosttyNative
                 var abi = (delegate* unmanaged[Cdecl]<uint*, uint*, uint>)NativeLibrary.GetExport(library, "agwvt_abi");
                 var revision = (delegate* unmanaged[Cdecl]<byte*>)NativeLibrary.GetExport(library, "agwvt_revision");
                 uint cellSize, infoSize;
-                if (abi(&cellSize, &infoSize) != 2 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
+                if (abi(&cellSize, &infoSize) != 3 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
                     Marshal.PtrToStringUTF8((nint)revision()) != Revision)
                     throw new InvalidOperationException("Ghostty adapter ABI, layout or upstream revision mismatch; rebuild both DLLs together.");
                 foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore", "images", "image_pixels" })
@@ -53,6 +53,8 @@ internal static unsafe partial class GhosttyNative
                 _ = NativeLibrary.GetExport(library, "agwvt_paste");
                 _ = NativeLibrary.GetExport(library, "agwvt_begin_viewport");
                 _ = NativeLibrary.GetExport(library, "agwvt_search");
+                foreach (string suffix in new[] { "new", "free", "feed", "tick", "matches" })
+                    _ = NativeLibrary.GetExport(library, "agwvt_search_" + suffix);
                 _ = NativeLibrary.GetExport(library, "agwvt_prepend_history");
                 if (!_resolverInstalled)
                 {
@@ -134,6 +136,35 @@ internal static unsafe partial class GhosttyNative
             return true;
         }
     }
+    internal sealed class SearchHandle : SafeHandleZeroOrMinusOneIsInvalid
+    {
+        private readonly Handle _owner;
+        private SearchHandle(Handle owner, nint pointer) : base(true) { _owner = owner; SetHandle(pointer); }
+        internal static SearchHandle Create(Handle owner, string query)
+        {
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(query);
+            if (bytes.Length > 65536) throw new ArgumentOutOfRangeException(nameof(query));
+            bool retained = false; nint pointer = 0;
+            try
+            {
+                owner.DangerousAddRef(ref retained);
+                fixed (byte* text = bytes) Check(SearchNew(owner, text, (nuint)bytes.Length, out pointer));
+                return new SearchHandle(owner, pointer);
+            }
+            catch
+            {
+                if (pointer != 0) SearchFree(pointer);
+                if (retained) owner.DangerousRelease();
+                throw;
+            }
+        }
+        protected override bool ReleaseHandle()
+        {
+            // Like anchors, finalizers only queue destruction. The allocator owner
+            // stays retained until the queued search can be freed safely.
+            SearchFree(handle); _owner.DangerousRelease(); return true;
+        }
+    }
     internal sealed class Handle : SafeHandleZeroOrMinusOneIsInvalid
     {
         private GCHandle _events;
@@ -202,6 +233,21 @@ internal static unsafe partial class GhosttyNative
     [LibraryImport(Library, EntryPoint = "agwvt_search")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int Search(Handle handle, byte* needle, nuint length, uint* matches, nuint capacity, out nuint count);
+    [LibraryImport(Library, EntryPoint = "agwvt_search_new")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int SearchNew(Handle handle, byte* needle, nuint length, out nint search);
+    [LibraryImport(Library, EntryPoint = "agwvt_search_free")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial void SearchFree(nint search);
+    [LibraryImport(Library, EntryPoint = "agwvt_search_feed")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int SearchFeed(SearchHandle search, out uint status);
+    [LibraryImport(Library, EntryPoint = "agwvt_search_tick")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int SearchTick(SearchHandle search, out uint status, out nuint count);
+    [LibraryImport(Library, EntryPoint = "agwvt_search_matches")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int SearchMatches(SearchHandle search, uint* matches, nuint capacity, out nuint count);
     [LibraryImport(Library, EntryPoint = "agwvt_end")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int End(Handle handle);

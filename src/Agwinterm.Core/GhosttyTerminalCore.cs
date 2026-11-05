@@ -65,56 +65,20 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public byte[] EncodeMouse(uint action, uint button, uint modifiers, float x, float y, uint cw, uint ch)
         => _vt.EncodeMouse(action, button, modifiers, x, y, cw, ch);
     public byte[] EncodePaste(string text) => _vt.EncodePaste(text);
+    public GhosttySearch CreateSearch(string query) => new(this, _vt, query);
+    internal void CheckSearchAlive() => ObjectDisposedException.ThrowIf(_disposed, this);
     public IReadOnlyList<(int Line, int Col0, int EndLine, int Col1)> Search(string query)
     {
-        if (query.Length == 0) return [];
-        var search = new TerminalTextSearch(query);
-        var row = new Cell[_cols];
-        int history = HistoryCount;
-        for (int line = IsAltScreen ? history : 0; line < history + _rows && !search.Truncated; line++)
-        {
-            int wrap = _vt.ReadRow(line < history ? line : line - history, line < history, row);
-            search.AddRow(line, row, wrap);
-        }
-        return search.Matches;
+        using var search = CreateSearch(query);
+        return search.Run(new object(), CancellationToken.None).Matches;
     }
-
     public sealed record SearchResult(long Version,
         IReadOnlyList<(int Line, int Col0, int EndLine, int Col1)> Matches, bool Truncated);
-
-    /// <summary>Copy one native row at a time under the session lock, match outside it.
-    /// A mutation invalidates the entire scan rather than mixing coordinates from different grids.
-    /// Null means the caller should retry after output settles. Never call while holding syncRoot.</summary>
-    public Task<SearchResult?> SearchAsync(string query, object syncRoot, CancellationToken cancellation)
-        => Task.Run(() =>
-        {
-            var search = new TerminalTextSearch(query);
-            long version; int history, rows, cols, first;
-            lock (syncRoot)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                version = TextVersion; history = HistoryCount; rows = _rows; cols = _cols;
-                first = IsAltScreen ? history : 0;
-            }
-            var row = new Cell[cols];
-            for (int line = first; line < history + rows && !search.Truncated; line++)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                int wrap;
-                lock (syncRoot)
-                {
-                    ObjectDisposedException.ThrowIf(_disposed, this);
-                    if (version != TextVersion) return null;
-                    wrap = _vt.ReadRow(line < history ? line : line - history, line < history, row);
-                }
-                search.AddRow(line, row, wrap, cancellation);
-                if ((line & 15) == 0) Thread.Yield();
-            }
-            lock (syncRoot)
-                return !_disposed && version == TextVersion
-                    ? new SearchResult(version, search.Matches, search.Truncated) : null;
-        }, cancellation);
+    public async Task<SearchResult> SearchAsync(string query, object syncRoot, CancellationToken cancellation)
+    {
+        using var search = CreateSearch(query);
+        return await search.RunAsync(syncRoot, cancellation).ConfigureAwait(false);
+    }
     /// <summary>UI-thread-only read of the last captured paint frame, including a synchronized hold.</summary>
     public ScreenBuffer LastPaintFrame => _vt.Frame;
     public void SetCursorDefault(CursorStyle style, bool blink)

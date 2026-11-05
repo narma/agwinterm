@@ -57,6 +57,11 @@ public sealed unsafe class GhosttyVt : IDisposable
         }
     }
     private readonly object _lifetime = new();
+    internal long RestoreVersion { get; private set; }
+    internal GhosttyNative.SearchHandle CreateSearch(string query)
+    {
+        CheckAlive(); return GhosttyNative.SearchHandle.Create(_handle, query);
+    }
     public IReadOnlyList<(int Line, int Col0, int EndLine, int Col1)> Search(string query)
     {
         CheckAlive();
@@ -326,6 +331,7 @@ public sealed unsafe class GhosttyVt : IDisposable
         var windows = new Win32InputModeObserver(); windows.Restore(snapshot.Slice(56, windowsLength).ToArray());
         fixed (byte* data = snapshot.Slice(56 + windowsLength, nativeLength))
             GhosttyNative.Check(GhosttyNative.Restore(_handle, data, (nuint)nativeLength));
+        RestoreVersion++;
         _windows = windows; _hostColors = null; _hostPalette = null; _hostCursor = null; Volatile.Write(ref _holdDeadline, 0); RefreshInfo(); Title = ReadText(0); Cwd = ReadText(1);
     }
     public void BeginCapture(int scrollOffset = 0)

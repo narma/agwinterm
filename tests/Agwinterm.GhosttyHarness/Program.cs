@@ -621,20 +621,53 @@ using (var core = new GhosttyTerminalCore(80, 24))
     Check(result is not null && result.Matches.Count == 20000, "large-history background Unicode search finds all rows");
     Check(probes > 1, "large-history search releases session lock during scan");
     Console.WriteLine($"SEARCH BENCH: rows={core.HistoryCount + core.Rows}, elapsedMs={watch.Elapsed.TotalMilliseconds:F2}, lockProbeMaxMs={maxWaitMs:F2}, probes={probes}");
-    var changing = core.SearchAsync("history", gate, CancellationToken.None);
+    using var incremental = core.CreateSearch("history");
+    var changing = incremental.RunAsync(gate, CancellationToken.None);
     for (int i = 0; i < 20 && !changing.IsCompleted; i++)
     {
         Thread.Sleep(1);
         lock (gate) core.Resize(i % 2 == 0 ? 79 : 80, 24);
     }
-    var stale = changing.GetAwaiter().GetResult();
-    Check(stale is null, "resize invalidates in-progress search instead of publishing mixed coordinates");
+    _ = changing.GetAwaiter().GetResult();
+    var refreshed = incremental.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult();
+    Check(refreshed.Matches.SequenceEqual(core.Search("history")), "native search reconciles reflow without stale coordinates");
     using var cancellation = new CancellationTokenSource();
     var cancelTask = core.SearchAsync("absent", gate, cancellation.Token);
     cancellation.Cancel();
     bool observed = false;
     try { cancelTask.GetAwaiter().GetResult(); } catch (OperationCanceledException) { observed = true; }
     Check(observed, "large-history search stops after cancellation");
+}
+using (var core = new GhosttyTerminalCore(16, 8))
+{
+    core.Feed(Encoding.UTF8.GetBytes("\x1b[?2027hStraße ẞ ﬃ K İ\r\nSTRASSE\r\n"));
+    Check(core.Search("strasse").Count == 2, "native Unicode search expands sharp-s");
+    Check(core.Search("ß").Count == 3, "native Unicode search folds query and text symmetrically");
+    var ligature = core.Search("FFI").Single();
+    Check(ligature.Col0 == ligature.Col1, "folded ligature retains original cell endpoints");
+    Check(core.Search("k").Count == 1 && core.Search("i\u0307").Count == 1,
+        "native Unicode search handles Kelvin and dotted-I expansions");
+    Check(core.Search("s").Distinct().Count() == core.Search("s").Count,
+        "expanded offsets do not duplicate a highlighted cell");
+    using var persistent = core.CreateSearch("strasse");
+    var gate = new object();
+    Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.Count == 2,
+        "persistent native search initializes");
+    core.Feed("\x1b[?1049hALT STRASSE"u8);
+    Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.Count == 1,
+        "persistent native search follows alternate screen");
+    core.Feed("\x1b[?1049l"u8);
+    Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.Count == 2,
+        "persistent native search recovers primary results");
+    var saved = core.CaptureSnapshot(); core.RestoreSnapshot(saved);
+    Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.Count == 2,
+        "persistent search recreates detached native ownership after restore");
+    core.SeedScrollback(["older STRASSE"]);
+    Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.Count == 3,
+        "native search discovers prepended history after completion");
+    core.ScrollbackMax = 0;
+    Check(persistent.RunAsync(gate, CancellationToken.None).GetAwaiter().GetResult().Matches.SequenceEqual(core.Search("strasse")),
+        "native search reconciles pruned history");
 }
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
