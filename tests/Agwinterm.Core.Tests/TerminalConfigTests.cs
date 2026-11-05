@@ -10,7 +10,7 @@ public class TerminalConfigTests
         var recognized = new HashSet<string>(StringComparer.Ordinal);
         var config = TerminalConfig.Parse("bell = none\nconpty = inbox\nfont-size = invalid\nunknown-option = true", recognized);
         Assert.Equal("none", config.Bell);
-        Assert.Equal("inbox", config.Conpty);
+        Assert.Equal("bundled", config.Conpty);
         Assert.Equal(new[] { "bell", "conpty", "font-size" }, recognized.OrderBy(k => k));
         Assert.Equal(new TerminalConfig().FontSize, config.FontSize);
     }
@@ -26,6 +26,8 @@ public class TerminalConfigTests
         Assert.Equal(530, c.CursorBlinkMs);
         Assert.True(c.PasteProtection);   // WT/Ghostty default: warn on risky pastes
         Assert.True(c.ClipboardWrite);    // OSC 52 writes allowed by default
+        Assert.Equal("ghostty", c.EmulatorCore);
+        Assert.Equal("ghostty", TerminalConfig.Parse(TerminalConfig.DefaultText).EmulatorCore);
     }
 
     [Fact]
@@ -92,13 +94,20 @@ public class TerminalConfigTests
     }
 
     [Fact]
-    public void Conpty_DefaultsToInbox_ParsesBundled_RejectsUnknown()
+    public void Conpty_DefaultsToBundledForGhostty_PreservesLegacyChoices()
     {
-        Assert.Equal("inbox", TerminalConfig.Parse("").Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse("").Conpty);
         Assert.Equal("bundled", TerminalConfig.Parse("conpty = bundled").Conpty);
-        Assert.Equal("inbox", TerminalConfig.Parse("conpty = inbox").Conpty);
-        Assert.Equal("inbox", TerminalConfig.Parse("conpty = bogus").Conpty);
-        Assert.Equal("inbox", TerminalConfig.Parse(TerminalConfig.DefaultText).Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse("conpty = inbox").Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse(TerminalConfig.DefaultText).Conpty);
+        foreach (var core in new[] { "managed", "rust" })
+        {
+            var config = TerminalConfig.Parse($"emulator-core = {core}\nconpty = inbox");
+            Assert.Equal(core, config.EmulatorCore);
+            Assert.Equal("inbox", config.Conpty);
+            Assert.Equal("inbox", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bogus").Conpty);
+            Assert.Equal("bundled", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bundled").Conpty);
+        }
     }
 
     [Fact]

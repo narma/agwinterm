@@ -639,10 +639,11 @@ internal partial class Program : ISessionHost, IWindowHost
             if (_config.EmulatorCore == "ghostty")
             {
                 ResolveEmulatorCore();
-                if (Agwinterm.Pty.TerminalSession.CoreFactory is null)
-                    throw new InvalidOperationException(_emulatorCoreNote);
+                // The UI may have fallen back to managed because the native package
+                // is unavailable. Its explicit create request must still be accepted.
+                // Explicit Ghostty requests remain fail-closed in CreateCore.
             }
-            ConPtyApi.Select(_argConpty == "bundled");   // no flag = inbox, as for the Rust host
+            ConPtyApi.Select(_argConpty == "bundled" || _argConpty is null && _config.Conpty == "bundled");
             using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId);
             ptyHost.Completion.Wait();
             return;
@@ -884,7 +885,7 @@ internal partial class Program : ISessionHost, IWindowHost
     {
         if (_config.EmulatorCore == "ghostty")
         {
-            if (GhosttyTerminalCore.TryLoad(AppContext.BaseDirectory, out string? error))
+            if (GhosttyTerminalCore.TryLoad(CliInstaller.CliDir(), out string? error))
             {
                 Agwinterm.Pty.TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows, _config.CursorStyle, _config.CursorBlink);
                 _emulatorCoreNote = "emulator-core = ghostty (EXPERIMENTAL) — new sessions use libghostty-vt";

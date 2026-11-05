@@ -84,7 +84,7 @@ public sealed class TerminalSession : ISession
         if (core == "managed") return new TerminalEmulator(cols, rows);
         if (core == "ghostty")
         {
-            if (!GhosttyTerminalCore.TryLoad(AppContext.BaseDirectory, out var error)) throw new InvalidOperationException(error);
+            if (!GhosttyTerminalCore.TryLoad(PortableTools.DirectoryPath, out var error)) throw new InvalidOperationException(error);
             return new GhosttyTerminalCore(cols, rows);
         }
         if (core == "rust")

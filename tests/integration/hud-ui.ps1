@@ -139,7 +139,8 @@ public sealed class HudOwnedJob {
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
     @('session-host = in-process','claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
     $selectedCore = if ($Suite -eq 'Ghostty') { 'ghostty' } else { $EmulatorCore }
-    "emulator-core = $selectedCore" | Add-Content (Join-Path $appDir 'agwinterm.conf')
+    # Ghostty acceptance also exercises the absent-setting rollout path.
+    if ($Suite -ne 'Ghostty') { "emulator-core = $selectedCore" | Add-Content (Join-Path $appDir 'agwinterm.conf') }
     if ($Suite -in 'TerminalRendering','TerminalPerformance') {
         # A missing-default-font toast can disappear between pixel comparisons.
         'font-family = Consolas' | Add-Content (Join-Path $appDir 'agwinterm.conf')

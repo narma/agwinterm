@@ -19,7 +19,8 @@ try {
     $directories = @(Get-ChildItem -LiteralPath $destination -Directory)
     if ($directories.Count -ne 1) { throw 'Expected exactly one extracted toolset' }
     $tools = $directories[0].FullName
-    foreach ($name in @('agwintermctl.exe', 'agwinterm-hook.exe', 'agwinterm-hook-linux-x64', 'agwinterm-hook-linux-arm64')) {
+    foreach ($name in @('agwintermctl.exe', 'agwinterm-hook.exe', 'agwinterm-hook-linux-x64', 'agwinterm-hook-linux-arm64',
+        'ghostty-vt.dll', 'agwinterm_ghostty.dll', 'ghostty-vt.provenance.json', 'ghostty-NOTICES.txt', 'conpty.dll', 'OpenConsole.exe')) {
         $actual = (Get-FileHash -LiteralPath (Join-Path $tools $name)).Hash
         $expected = (Get-FileHash -LiteralPath (Join-Path $repo "installer/stage-portable/tools/$name")).Hash
         if ($actual -ne $expected) { throw "Portable tool differs from build input: $name" }

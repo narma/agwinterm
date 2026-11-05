@@ -23,6 +23,14 @@ New-Item -ItemType Directory -Force $stage, $outDir | Out-Null
 
 $tools = Join-Path $stage 'tools'
 New-Item -ItemType Directory -Path $tools | Out-Null
+& (Join-Path $root 'native/ghostty-vt/stage.ps1') -Destination $tools
+# Resolve the application's pinned ConPTY package using MSBuild, not a separately
+# hard-coded NuGet version. Its host must remain beside the extracted DLL.
+$nativePayload = Join-Path $stage 'native-payload'
+& $dotnet publish (Join-Path $root 'src/Agwinterm.Win32/Agwinterm.Win32.csproj') -c Release -r win-x64 --self-contained false -o $nativePayload
+if ($LASTEXITCODE -ne 0) { throw 'portable native payload publish failed' }
+Copy-Item (Join-Path $nativePayload 'conpty.dll') $tools
+Copy-Item (Join-Path $nativePayload 'x64/OpenConsole.exe') $tools
 & $dotnet publish (Join-Path $root 'src/Agwinterm.Ctl/Agwinterm.Ctl.csproj') `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true `
   -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=$ver -o $tools
@@ -31,7 +39,8 @@ if ($LASTEXITCODE -ne 0) { throw 'portable CLI publish failed' }
 if ($LASTEXITCODE -ne 0) { throw 'portable Windows hook build failed' }
 & (Join-Path $root 'tools/stage-wsl-hooks.ps1') -Destination $tools
 $archive = Join-Path $stage 'tools.zip'
-$toolFiles = @('agwintermctl.exe', 'agwinterm-hook.exe', 'agwinterm-hook-linux-x64', 'agwinterm-hook-linux-arm64') |
+$toolFiles = @('agwintermctl.exe', 'agwinterm-hook.exe', 'agwinterm-hook-linux-x64', 'agwinterm-hook-linux-arm64',
+  'ghostty-vt.dll', 'agwinterm_ghostty.dll', 'ghostty-vt.provenance.json', 'ghostty-NOTICES.txt', 'conpty.dll', 'OpenConsole.exe') |
   ForEach-Object { Join-Path $tools $_ }
 Compress-Archive -LiteralPath $toolFiles -DestinationPath $archive
 

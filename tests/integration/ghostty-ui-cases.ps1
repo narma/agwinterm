@@ -1,5 +1,6 @@
 # Runs only inside the existing owned Hyper-V/Sandbox HUD fixture.
 $esc = [string][char]27
+Check 'Absent core setting defaults to Ghostty' ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
 function Find-GhosttyText([string]$Query) {
     $status = Rpc 'session.search' @{query=$Query} $session
     for ($poll = 0; $poll -lt 100 -and $status -eq 'searching…'; $poll++) {

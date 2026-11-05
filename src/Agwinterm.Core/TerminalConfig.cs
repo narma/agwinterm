@@ -103,12 +103,9 @@ public sealed class TerminalConfig
         set => _conpty = value;
     }
 
-    /// <summary>Which terminal core new sessions run on: "managed" (default — the C#
-    /// TerminalEmulator) or "rust" (EXPERIMENTAL — the oracle-validated agwinterm-core crate
-    /// behind the ITerminalCore seam; falls back to managed with a toast when the native dll
-    /// is missing). kitty/sixel images (ABI v8) and OSC host actions (ABI v9 — clipboard,
-    /// notifications, progress, kitty-keyboard query replies) are both surfaced now.</summary>
-    public string EmulatorCore { get; set; } = "managed";
+    /// <summary>Core for new sessions: Ghostty by default. Explicit managed/Rust choices
+    /// remain supported during rollout; unavailable native libraries use the startup fallback.</summary>
+    public string EmulatorCore { get; set; } = "ghostty";
 
     /// <summary>Rebuild each new session's environment from the registry at spawn (WT's
     /// reloadEnvironmentVariables analog): software installed while agwinterm runs — a JDK, a new
@@ -321,12 +318,10 @@ public sealed class TerminalConfig
         # LAUNCHED agwinterm do not reach tabs (same trade-off as Windows Terminal's default).
         fresh-env = true
 
-        # Terminal core for NEW sessions: "managed" (default) or "rust" (EXPERIMENTAL - the
-        # Rust agwinterm-core crate, differentially validated against the managed emulator).
-        # Applies to sessions created after the change; falls back to managed with a toast if
-        # the native dll is missing. kitty/sixel images and OSC host actions (clipboard writes,
-        # desktop notifications, progress, kitty-keyboard query replies) are both surfaced now.
-        emulator-core = managed
+        # Terminal core for NEW sessions: "ghostty" (default), "managed" or "rust".
+        # Existing explicit choices are preserved. Ghostty uses bundled ConPTY.
+        # If native libraries cannot load, the UI reports the error and uses managed.
+        emulator-core = ghostty
 
         # Blocked sound: play a sound whenever a session enters the "blocked" agent status (needs
         # your attention). Empty / off / none = silent. Accepts a system-sound name (beep, asterisk,

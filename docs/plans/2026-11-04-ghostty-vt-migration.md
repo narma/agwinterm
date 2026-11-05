@@ -1,6 +1,26 @@
 # Ghostty VT migration: initial audit and implementation decisions
 
-Status: reproducible Windows build, native adapter, opt-in renderer integration and executable contract tests. **Not a complete replacement backend or rollout acceptance.** No production default changes. Tracking: [#34](https://github.com/narma/agwinterm/issues/34).
+Status: reproducible Windows build, native adapter, renderer integration and executable contract tests. **Not complete replacement acceptance.** Ghostty is the default for configurations without an explicit core; legacy choices remain supported. Tracking: [#34](https://github.com/narma/agwinterm/issues/34).
+
+## Current PR acceptance scope (2026-11-05)
+
+The user explicitly keeps Managed and Rust in PR #35 while Ghostty matures.
+Following the user's correction, Ghostty is the default only when no backend is
+explicitly configured. Preserve explicit Managed/Rust choices and existing live
+sessions; do not remove legacy engines in this PR.
+Do not expand mixed-core physical-key broadcast compatibility further; retain
+the existing fixes while focusing acceptance on Ghostty. Remaining immediate work
+is installed IME composition/candidates, then graphics placement and mouse
+selection across reflow/history restoration. Full replacement remains a later
+decision, with Windows/WSL/agterm and end-to-end performance evidence required.
+
+CI native compilation now uses an exact-input bundle cache, while both Debug
+search execution and the current managed contract harness always run. Verified
+job 127169491514 restored the bundle and skipped source/toolchain preparation
+and compilation: 6m11s total versus the earlier successful baseline of 22m44s.
+It passed 132 upstream tests (3 existing skips) and 212 native contracts. The
+first bundle-producing job took 12m58s; runner timings vary, and this is not a
+guarantee for every run. Commits: 4d44b93 and 49a7674.
 
 ## Destination and scope
 
@@ -342,3 +362,19 @@ sender. hyperv-ghostty-input-mixed/results passed 66/66 GUI checks and 32/32 ser
 contracts. This adds mixed-core Win32 broadcast acceptance; full per-recipient
 physical-key protocol handling for mixed modes and installed IME candidate UI
 remain outside this step. The earlier doubled-input finding is fixed.
+
+### Current acceptance and rollout correction (2026-11-05)
+
+Installed Chinese Pinyin acceptance passed in a disposable Hyper-V guest:
+artifacts/hyperv-ghostty-ime-fullctl/results. Native scan-code input selected a
+candidate exactly once; preedit/cancellation emitted no child bytes. Composition
+also survived resize and session refocus. The existing browser/pane isolation
+checks passed in the same run. Candidate-window positioning is not yet accepted:
+the captured IME UI appears at the desktop origin and needs a follow-up.
+
+The user then requested Ghostty as the default when no core is explicitly set,
+while retaining Managed/Rust choices in this PR. Config and template now agree;
+650 Core checks pass. Release packaging includes Ghostty/provenance/notices and
+portable extraction also carries bundled ConPTY. Runtime acceptance follows.
+
+Default-core VM acceptance passed: artifacts/hyperv-ghostty-default/results (absent emulator-core setting, keyboard and server contracts). The standalone portable extraction check also passed for the 89 MiB package; checks compare Ghostty, provenance, notices and ConPTY against staged inputs.

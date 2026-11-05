@@ -119,7 +119,7 @@ internal partial class Program
             new[] { "in-process", "server", "server-rust" });
         // Core changes apply to newly created sessions; live native state is never switched.
         Drop(0, "emulator-core", "Terminal core (new sessions)",
-            new[] { "Managed (default)", "Rust (experimental)", "Ghostty (experimental)" },
+            new[] { "Managed", "Rust (experimental)", "Ghostty (default)" },
             new[] { "managed", "rust", "ghostty" });
         Sec(0, "Shell");
         Tog(0, "shell-integration", "Shell integration (live cwd)");

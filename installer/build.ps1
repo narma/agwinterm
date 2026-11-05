@@ -35,6 +35,7 @@ $ver = $Matches[1]
 $common = @("-c","Release","-r","win-x64","--self-contained","true","-p:PublishSingleFile=false","-p:PublishReadyToRun=true","-p:Version=$ver","-o",$stage)
 
 Write-Host "== publish Agwinterm.Win32 (app) ==" -ForegroundColor Cyan
+& (Join-Path $root 'native/ghostty-vt/stage.ps1') -Destination $stage
 & $dotnet publish (Join-Path $root "src\Agwinterm.Win32\Agwinterm.Win32.csproj") @common
 if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
 
