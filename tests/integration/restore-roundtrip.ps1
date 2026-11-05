@@ -769,6 +769,8 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
 }
 }
 
+. "$PSScriptRoot/ghostty-remote-restore-cases.ps1"
+
 if ($fail) { "restore round-trip: $fail FAILED"; exit 1 }
 "restore round-trip: all passed"
 exit 0
