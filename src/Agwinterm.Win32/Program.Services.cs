@@ -648,7 +648,8 @@ internal partial class Program
         // Wrapped inside the content area: a reload's toast carries every note of the keys it applied
         // (a refused hotkey, a backend switch), and a single unbounded line ran off both edges.
         float maxW = Math.Max(120f, (cw - _sidebarW) - 32f);
-        using var layout = _dwrite.CreateTextLayout(_toastText, _uiFont, Math.Max(1f, maxW - 32f), Math.Max(1f, ch - 48f));
+        string displayText = _setOpen ? _toastText + "\nCtrl+C to copy" : _toastText;
+        using var layout = _dwrite.CreateTextLayout(displayText, _uiFont, Math.Max(1f, maxW - 32f), Math.Max(1f, ch - 48f));
         layout.WordWrapping = WordWrapping.Wrap;
         float tw = Math.Min(maxW, layout.Metrics.Width + 32f), th = Math.Max(34f, layout.Metrics.Height + 16f);
         layout.MaxWidth = Math.Max(1f, tw - 32f); layout.MaxHeight = th;
@@ -1105,7 +1106,7 @@ internal partial class Program
         "notification-flash" => _config.NotificationFlash,
         "claude-update-check" => _config.ClaudeUpdateCheck ? "true" : "false",
         "update-check" => _config.UpdateCheck ? "true" : "false",
-        "session-host" => _config.SessionHost,
+        "session-host" => _config.ConfiguredSessionHost,
         "fresh-env" => _config.FreshEnv ? "true" : "false",
         "emulator-core" => _config.EmulatorCore,
         "paste-protection" => _config.PasteProtection ? "true" : "false",
@@ -1205,7 +1206,9 @@ internal partial class Program
             // Live switch (#105 2d): NEW sessions use the chosen backend immediately; existing panes
             // keep the one they were born with (both kinds coexist fine) and converge on restart.
             _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
-            Note(_config.SessionHost switch
+            Note(_config.ConfiguredSessionHost == "server-rust" && _config.EmulatorCore == "ghostty"
+                ? "Rust server preference saved. Ghostty sessions use the compatible PTY server; existing sessions keep their host."
+                : _config.SessionHost switch
             {
                 "server" => "server mode ON (experimental) — new sessions survive UI restarts; restart agwinterm to move existing ones",
                 "server-rust" => "Rust server mode ON (experimental) — new sessions live in the Rust pty-host; restart agwinterm to move existing ones",

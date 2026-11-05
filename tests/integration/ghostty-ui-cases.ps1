@@ -266,7 +266,7 @@ try {
 }
 
 $null = Rpc 'config.set' @{key='session-host';value='server-rust'}
-Check 'Ghostty redirects legacy Rust-host preference to native-capable server' ((Rpc 'config.get' @{key='session-host'}) -eq 'server')
+Check 'Ghostty retains the selected Rust-host preference' ((Rpc 'config.get' @{key='session-host'}) -eq 'server-rust')
 $serverSession = [string](Rpc 'session.new' @{name='ghostty-server';'no-select'=$true})
 try {
     $serverReady = $false
@@ -286,6 +286,30 @@ try {
 # Real keyboard acceptance runs only on the owned guest desktop.
 . "$PSScriptRoot/ghostty-selection-ui-cases.ps1"
 . "$PSScriptRoot/ghostty-input-ui-cases.ps1"
+
+# The configured host must stay selected even when Ghostty uses its compatible
+# host internally. Copy the actual settings message using the real keyboard.
+$null = Rpc 'settings.open' @{}
+Start-Sleep -Milliseconds 150
+$hostControl = @($uiaRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name.StartsWith('Session host (shells survive restarts),') })
+Check 'Settings exposes the session-host dropdown' ($hostControl.Count -eq 1)
+if ($hostControl.Count -ne 1) { throw 'No unique session-host setting' }
+$hostControl[0].SetFocus()
+$hostControl[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+foreach ($character in 'rust'.ToCharArray()) { [void][HudOwnedJob]::SendMessageW($hwnd,0x102,[IntPtr][int]$character,[IntPtr]1) }
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)
+Check 'Settings Rust host choice round-trips while Ghostty remains selected' ((Rpc 'config.get' @{key='session-host'}) -eq 'server-rust' -and (Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
+Check 'Settings keeps Rust server visibly selected' ($hostControl[0].Current.Name -like '*Rust*') $hostControl[0].Current.Name
+Set-Clipboard -Value 'settings-copy-sentinel'
+[void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
+[GhosttyInputFixture]::Key(0x11,$false)
+try { [GhosttyInputFixture]::Tap(0x43) } finally { [GhosttyInputFixture]::Key(0x11,$true) }
+Start-Sleep -Milliseconds 200
+$copiedMessage = Get-Clipboard -Raw
+Check 'Ctrl+C copies the settings message without a false rejection' ($copiedMessage -like '*Rust server preference saved*' -and $copiedMessage -notlike '*rejected by parser*') $copiedMessage
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]27,[IntPtr]1)
+$null = Rpc 'config.set' @{key='session-host';value='in-process'}
 
 # Optional self-contained server contract payload, staged only for this test run.
 $serverHarness = Join-Path $nativeDirectory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe'

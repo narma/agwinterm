@@ -671,6 +671,12 @@ internal partial class Program
     /// <summary>Panel key handling; returns true if the key was consumed.</summary>
     private bool SettingsKey(int vk)
     {
+        if (vk == 'C' && KeyDown(VK_CONTROL) && !KeyDown(VK_MENU) && _toastText is { } message)
+        {
+            ClipboardSet(message);
+            _uia.Announce("Settings message copied");
+            return true;
+        }
         if (_ddRow is not null)
         {
             switch (vk)

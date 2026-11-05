@@ -756,12 +756,13 @@ internal partial class Program
         }
         if (!_isQuickWindow) { DrawSidebar(rt, brush); DrawTitleBar(rt, brush); }
         DrawSearchBar(rt, brush);
-        DrawToast(rt, brush);
+        if (!_setOpen) DrawToast(rt, brush);
         DrawButtonTip(rt, brush);
         DrawHelp(rt, brush);   // topmost overlay
         DrawLeaderHint(rt, brush);
         DrawPalette(rt, brush);
         DrawSettingsPanel(rt, brush);
+        if (_setOpen) DrawToast(rt, brush); // settings diagnostics and copy hint stay above the panel
         DrawSwitcher(rt, brush);
     }
 
