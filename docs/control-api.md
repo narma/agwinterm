@@ -30,6 +30,7 @@ the session lock and tick searches those copies outside it. Resize, screen chang
 history eviction and snapshot restoration reconcile or recreate native state.
 Results are published only for the corresponding terminal version; input and
 painting remain available while a refresh is pending.
+
 ## Opt-in WSL live sessions (development)
 
 Rust remains the Windows PTY host. The local ZMX daemon runs only inside the
