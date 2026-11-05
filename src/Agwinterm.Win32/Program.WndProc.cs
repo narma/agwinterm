@@ -178,11 +178,23 @@ internal partial class Program
                 EndPaint(hwnd, ref ps);
                 return IntPtr.Zero;
 
+            case WM_IME_STARTCOMPOSITION:
+                _imeComposing = !_chromeFocus;
+                _imePosition = null;
+                EnsureCaret();
+                UpdateCaretPos();
+                break; // DefWindowProc still owns composition and committed WM_CHAR.
+            case WM_IME_ENDCOMPOSITION:
+                _imeComposing = false;
+                _imePosition = null;
+                break;
             case WM_SETFOCUS:
                 EnsureCaret();
                 return IntPtr.Zero;
 
             case WM_KILLFOCUS:
+                _imeComposing = false;
+                _imePosition = null;
                 foreach (int key in _ghosttyKeysDown.Keys.ToArray()) GhosttyKeyUp(key);
                 _ghosttyCharsToSkip = 0; _ghosttyHighSurrogate = '\0';
                 if (_isQuickWindow) ReleaseQuickKeys();

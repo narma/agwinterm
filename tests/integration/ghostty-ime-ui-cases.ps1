@@ -14,7 +14,7 @@ public static class ImeSink {
  public static void Run(string log) {
   Console.OutputEncoding=new System.Text.UTF8Encoding(false);
   if(!SetConsoleMode(GetStdHandle(-10),0x200)||!SetConsoleMode(GetStdHandle(-11),7))throw new Exception("Console mode");
-  Console.Write("\x1b[?9001lTERMINAL-IME-READY\r\n");
+  Console.Write("\x1b[?9001lTERMINAL-IME-READY Straße\r\n");
   var chars=new char[4096];var bytes=new byte[16384];var encoder=System.Text.Encoding.UTF8.GetEncoder();
   for(;;){if(!ReadConsoleW(GetStdHandle(-10),chars,(uint)chars.Length,out uint count,IntPtr.Zero))throw new Exception("ReadConsoleW");
    int n=encoder.GetBytes(chars,0,(int)count,bytes,0,false);System.IO.File.AppendAllText(log,Convert.ToHexString(bytes,0,n));}
@@ -38,6 +38,15 @@ for($i=0;$i -lt 100;$i++) {
     Start-Sleep -Milliseconds 100
 }
 Require ((Call @('session','text','--target',$terminal)).result -match 'TERMINAL-IME-READY') 'terminal IME sink is ready'
+# Full Unicode case expansion is implemented by our native feed/tick extension;
+# neither legacy matcher can satisfy this probe after a managed loading fallback.
+$search=(Call @('session','search','STRASSE','--target',$terminal)).result
+for($i=0;$i -lt 100 -and $search -eq 'searching…';$i++) {
+    Start-Sleep -Milliseconds 50
+    $search=(Call @('session','search','--target',$terminal)).result
+}
+Require ($search -eq '1 of 1') 'IME sink uses native Ghostty Unicode search, not managed fallback'
+$null=Call @('session','search','--close','--target',$terminal)
 [ImeKeys]::Focus($handle)
 [ImeKeys]::Chinese($handle)
 function TerminalCompose([string]$label) {
@@ -45,6 +54,13 @@ function TerminalCompose([string]$label) {
     foreach($key in 'NIHAO'.ToCharArray()){[ImeKeys]::Key([byte][char]$key)}
     Start-Sleep -Milliseconds 500
     Require ((TerminalBytes) -ceq $before) "${label}: preedit is not sent to terminal"
+    $report["terminal-candidate-windows-$label"]=[ImeKeys]::CandidateWindows()
+    $composition=@($report["terminal-candidate-windows-$label"] | Where-Object { $_ -match '^MSCTFIME Composition:' })
+    Require ($composition.Count -eq 1) "${label}: real Pinyin composition window is visible"
+    $bounds=@(($composition[0] -split ':')[1] -split ',' | ForEach-Object {[int]$_})
+    $caret=[ImeKeys]::CaretPosition($handle)
+    $metrics=(Call @('session','metrics','--target',$terminal)).result
+    Require ([Math]::Abs($bounds[0]-$caret[0]) -le $metrics.cellWidth -and [Math]::Abs($bounds[1]-$caret[1]) -le $metrics.cellHeight) "${label}: Pinyin composition is anchored to terminal caret"
     $capture=[Drawing.Bitmap]::new([ImeKeys]::GetSystemMetrics(0),[ImeKeys]::GetSystemMetrics(1))
     $graphics=[Drawing.Graphics]::FromImage($capture)
     try {$graphics.CopyFromScreen(0,0,0,0,$capture.Size);$capture.Save((Join-Path $output ("terminal-candidates-$label.png")))} finally {$graphics.Dispose();$capture.Dispose()}

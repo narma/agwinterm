@@ -1382,6 +1382,8 @@ internal partial class Program : ISessionHost, IWindowHost
     // We render our own cursor, so the system caret is created HIDDEN — it exists only so assistive
     // tech can read the text-cursor position (via GetCaretPos / the caret's location-change events).
     private bool _caretOwned;
+    private bool _imeComposing;
+    private (int X, int Y, int Height)? _imePosition;
 
     private void EnsureCaret()
     {
@@ -1411,7 +1413,22 @@ internal partial class Program : ISessionHost, IWindowHost
         if (p is null) return;
         int col, row;
         lock (p.S.SyncRoot) { col = p.S.Emulator.CursorCol; row = p.S.Emulator.CursorRow; }
-        SetCaretPos((int)(ox + col * cw), (int)(oy + row * ch));
+        int x = (int)(ox + col * cw), y = (int)(oy + row * ch), height = Math.Max(1, (int)ch);
+        SetCaretPos(x, y);
+        if (!_imeComposing || _imePosition == (x, y, height)) return;
+        nint context = ImmGetContext(_hwnd);
+        if (context == 0) return;
+        try
+        {
+            // IMM coordinates are client-relative; the system keeps the candidate
+            // list outside this caret cell. A hidden caret alone does not anchor Pinyin.
+            var composition = new COMPOSITIONFORM { style = 2, position = new POINT { x = x, y = y } }; // CFS_POINT
+            var candidate = new CANDIDATEFORM { style = 0x80, position = new POINT { x = x, y = y },
+                area = new RECT { left = x, top = y, right = x + Math.Max(1, (int)cw), bottom = y + height } }; // CFS_EXCLUDE
+            if (ImmSetCompositionWindow(context, in composition) && ImmSetCandidateWindow(context, in candidate))
+                _imePosition = (x, y, height);
+        }
+        finally { ImmReleaseContext(_hwnd, context); }
     }
 
     /// <summary>Apply a font-family / default-font-size change live: rebuild the base format, dispose and

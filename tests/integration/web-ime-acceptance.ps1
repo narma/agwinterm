@@ -63,6 +63,24 @@ public static class ImeKeys {
  [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint id,ref GuiInfo info);
  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int size,bool repaint);
  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+ [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
+ [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect r);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+ [StructLayout(LayoutKind.Sequential)] struct Point { public int X,Y; }
+ [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h,ref Point p);
+ public static int[] CaretPosition(IntPtr h) {
+   var info=new GuiInfo{Size=Marshal.SizeOf<GuiInfo>()};
+   if(!GetGUIThreadInfo(GetWindowThreadProcessId(h,out _),ref info)||info.Caret==IntPtr.Zero)throw new Exception("No terminal system caret");
+   var point=new Point{X=info.Left,Y=info.Top};if(!ClientToScreen(info.Caret,ref point))throw new Exception("Caret mapping failed");
+   return new[]{point.X,point.Y};
+ }
+ public static string[] CandidateWindows() {
+   var windows=new System.Collections.Generic.List<string>();
+   EnumWindows((h,p)=>{var c=new StringBuilder(256);GetClassName(h,c,256);string name=c.ToString();
+     if(IsWindowVisible(h) && (name.Contains("IME",StringComparison.OrdinalIgnoreCase)||name.Contains("Candidate",StringComparison.OrdinalIgnoreCase)) && GetWindowRect(h,out var r))
+       windows.Add(name+":"+r.Left+","+r.Top+","+r.Right+","+r.Bottom);
+     return true;},IntPtr.Zero);return windows.ToArray();
+ }
  public static IntPtr Find(int pid) { IntPtr found=IntPtr.Zero; EnumWindows((h,p)=>{GetWindowThreadProcessId(h,out uint id);var s=new StringBuilder(256);GetClassName(h,s,256);var title=new StringBuilder(256);GetWindowText(h,title,256);if(id==pid && s.ToString()=="AgwintermWin32" && title.ToString()!="agwinterm quick terminal"){found=h;return false;}return true;},IntPtr.Zero);return found; }
  public static void Focus(IntPtr h) { SetForegroundWindow(h);for(int i=0;i<50 && GetForegroundWindow()!=h;i++)System.Threading.Thread.Sleep(20);if(GetForegroundWindow()!=h)throw new Exception("Owned IME window is not foreground"); }
  public static void Key(byte k) { Send(k,false);System.Threading.Thread.Sleep(40);Send(k,true);System.Threading.Thread.Sleep(80); }
