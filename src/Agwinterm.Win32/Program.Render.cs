@@ -591,6 +591,9 @@ internal partial class Program
                 while (c < cols)  // Pass 2: coalesced same-colour, same-style text runs
                 {
                     Cell cell = CellAt(r, c);
+                    // Native placements already resolve these cells; the private-use
+                    // glyph and its diacritics must not be painted over the image.
+                    if (nativePaint is not null && cell.Rune == 0x10EEEE) { c++; continue; }
                     bool startBlank = cell.Grapheme is null && (cell.Rune == ' ' || cell.Rune == '\0');
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.

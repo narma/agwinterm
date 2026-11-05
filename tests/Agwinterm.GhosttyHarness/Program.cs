@@ -416,6 +416,27 @@ using (var vt = new GhosttyVt(20, 5))
     vt.RestoreSnapshot(imageSnapshot); Capture(vt);
     Check(vt.FrameImages.Single().Image.Pixels.Span.SequenceEqual(new byte[] { 0, 255, 0, 255 }), "native snapshot restores graphics and pixels");
 }
+using (var vt = new GhosttyVt(20, 8))
+{
+    vt.Resize(20, 8, 8, 16);
+    vt.Feed("\u001b[2;3H\u001b_Ga=T,f=32,s=1,v=1,i=71,p=1,c=2,r=2,C=1;/wAA/w==\u001b\\"u8);
+    vt.Feed("\u001b_Ga=T,f=32,s=1,v=1,i=72,p=2,P=71,Q=1,H=3,V=1,c=1,r=1,C=1;AP8A/w==\u001b\\"u8);
+    Capture(vt);
+    var child = vt.FrameImages.Single(image => image.Id == 72);
+    Check(child.Col == 5 && child.Row == 2 && child.Width == 8 && child.Height == 16,
+        "relative Kitty placement resolves its parent and cell offsets natively");
+    byte[] snapshot = vt.CaptureSnapshot();
+    vt.RestoreSnapshot(snapshot); Capture(vt);
+    Check(vt.FrameImages.Any(image => image.Id == 72 && image.Col == 5 && image.Row == 2),
+        "relative Kitty placement survives native snapshot restore");
+    vt.Feed("\u001b_Ga=d,d=I,i=71;\u001b\\"u8); Capture(vt);
+    Check(vt.FrameImages.Count == 0, "deleting a parent removes orphan relative placements");
+    vt.Feed("\u001b_Ga=t,f=32,s=1,v=1,i=73;AAD//w==\u001b\\\u001b_Ga=p,i=73,U=1,c=1,r=1;\u001b\\"u8);
+    vt.Feed(Encoding.UTF8.GetBytes("\u001b[4;6H\u001b[38;2;0;0;73m\U0010eeee\u0305\u0305\u001b[0m"));
+    Capture(vt);
+    Check(vt.FrameImages.Any(image => image.Id == 73 && image.Col == 5 && image.Row == 3),
+        "Unicode Kitty placeholder exports the virtual image at the grapheme cell");
+}
 using (var vt = new GhosttyVt(20, 5))
 {
     vt.Resize(20, 5, 8, 16);

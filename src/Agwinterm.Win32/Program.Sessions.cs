@@ -17,6 +17,25 @@ namespace Agwinterm.Win32;
 /// <summary>Session/workspace management: panes, MRU, covers, overlays, splits, reopen-closed, watermarks.</summary>
 internal partial class Program
 {
+    private static ServerSessionBackend? _legacyRestoreBackend;
+
+    // A new default must not orphan shells created before the upgrade. This
+    // backend has no executable: recovery may attach, but never start a Rust host.
+    private static ServerSession? TryRestoreRustSession(string id, int cols, int rows)
+    {
+        string hostId = (_argPipe ?? _appId) + "-rust";
+        if (!PtyHostClient.IsRunning(hostId)) return null;
+        _legacyRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust");
+        ServerSession? candidate = null;
+        try
+        {
+            candidate = (ServerSession)_legacyRestoreBackend.Create(id, cols, rows);
+            if (candidate.TryAdopt()) return candidate;
+        }
+        catch { /* The ordinary restore path remains available if the host is gone. */ }
+        candidate?.Dispose();
+        return null;
+    }
     private void ScheduleSyncRedraw(Pane pane)
     {
         if (Interlocked.CompareExchange(ref pane.SyncRedrawPending, 1, 0) != 0) return;
@@ -129,6 +148,14 @@ internal partial class Program
                 session = InProcessSessionBackend.Instance.Create(paneId, cols, rows);
                 ShowToast("pty-host unavailable (" + ex.Message + ") — session created in-process", 5000);
             }
+        if (_restoring && !adopted && !liveRequested && handoff is null && !_isQuickWindow
+            && _sessionBackend.Name != "server-rust" && _config.EmulatorCore == "ghostty"
+            && TryRestoreRustSession(paneId, cols, rows) is { } surviving)
+        {
+            session.Dispose(); // provisional handle has not started a child
+            session = surviving;
+            adopted = true;
+        }
         // Under the session lock: with the Rust core this setter now crosses into native code and
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
@@ -745,7 +772,9 @@ internal partial class Program
         // than the window). Leave this PTY alone rather than telling it it's 1x1.
         if (w < cw || h < ch) return;
         int cols = Math.Max(1, (int)(w / cw)), rows = Math.Max(1, (int)(h / ch));
-        if (term.S.Cols != cols) term.ClearSel(); // restored history can reflow into different physical rows
+        // Ghostty tracks both endpoints through native reflow. Legacy selections
+        // still use physical row coordinates and must be discarded on width changes.
+        if (term.S.Cols != cols && term.SelNative is null) term.ClearSel();
         if (term.S.Cols != cols || term.S.Rows != rows) term.S.Resize(cols, rows);
         term.ScrollOffset = Math.Clamp(term.ScrollOffset, 0, term.S.Emulator.HistoryCount);
     }

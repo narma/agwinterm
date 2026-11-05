@@ -689,9 +689,9 @@ Cell -Name 'agent-slow-prompt' -KillHostAfterClose -Conf @('session-host = serve
     } finally { [IO.File]::WriteAllText($ctx.ProfilePath, $ctx.ProfileText) }
 }
 
-foreach ($reflowCase in @('managed', 'rust', 'rust-host')) {
-$reflowCore = if ($reflowCase -eq 'managed') { 'managed' } else { 'rust' }
-$reflowHost = if ($reflowCase -eq 'rust-host') { 'server-rust' } else { 'in-process' }
+foreach ($reflowCase in @('managed', 'rust', 'rust-host', 'ghostty', 'ghostty-upgrade')) {
+$reflowCore = if ($reflowCase -in @('rust-host','ghostty-upgrade')) { 'rust' } else { $reflowCase }
+$reflowHost = if ($reflowCase -in @('rust-host','ghostty-upgrade')) { 'server-rust' } else { 'in-process' }
 $reflowName = if ($reflowCase -eq 'managed') { 'buffer-reflow' } else { 'buffer-reflow-' + $reflowCase }
 Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowHost", "emulator-core = $reflowCore") -Setup {
     param($s)
@@ -709,6 +709,11 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
         Check 'buffer-reflow-rust: native core DLL loaded (no managed fallback)' $loaded
         if (-not $loaded) { throw 'Rust core did not load' }
     }
+    if ($reflowCore -eq 'ghostty') {
+        $loaded = @((Get-Process -Id $s.Proc.Id).Modules | Where-Object ModuleName -eq 'agwinterm_ghostty.dll').Count -eq 1
+        Check 'buffer-reflow-ghostty: native adapter loaded' $loaded
+        if (-not $loaded) { throw 'Ghostty adapter did not load' }
+    }
     # The command itself does not contain the complete marker, so echo cannot satisfy the assertion.
     $command = "Write-Host ('REFLOW_BEGIN_' + ('0123456789' * 4) + '_REFLOW_END'); 1..60 | ForEach-Object { Write-Host ('after_' + `$_) }"
     Send-Ctl $s @('session', 'type', ($command + [char]13), '--target', $sid) | Out-Null
@@ -722,10 +727,26 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
         if ($hosts.Count -ne 1) { throw 'Expected one isolated Rust PTY host' }
         $hostPid = $hosts[0].ProcessId
     }
-    return @{ Sid = $sid; HostPid = $hostPid }
+    $shellPid = $null
+    if ($reflowCase -eq 'ghostty-upgrade') {
+        # An in-memory marker proves adoption of the SAME shell, not history replay.
+        Send-Ctl $s @('session','type',('$global:GhosttyUpgradeProof = $PID' + [char]13),'--target',$sid) | Out-Null
+        Start-Sleep -Milliseconds 500
+        $shellPid = (Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $hostPid -and $_.Name -match 'pwsh|powershell' } | Select-Object -First 1).ProcessId
+        # Simulate upgrading a previously implicit backend to the new Ghostty default.
+        @('restore-buffer = true','session-host = server-rust') | Set-Content (Join-Path $s.AppDir 'agwinterm.conf') -Encoding UTF8
+    }
+    return @{ Sid = $sid; HostPid = $hostPid; ShellPid = $shellPid }
 } -Assert {
     param($s, $ctx)
     Start-Sleep -Seconds 2
+    if ($reflowCase -eq 'ghostty-upgrade') {
+        $core = Reply $s @('config','get','emulator-core')
+        Check 'Ghostty upgrade uses the new default' ($core.result -eq 'ghostty')
+        Send-Ctl $s @('session','type',("Write-Host ('UPGRADE_' + `$global:GhosttyUpgradeProof + '_LIVE')" + [char]13),'--target',$ctx.Sid) | Out-Null
+        Start-Sleep -Seconds 1
+        Check 'Ghostty upgrade adopts the old shell with its memory intact' ((PaneText $s $ctx.Sid) -match 'UPGRADE_\d+_LIVE')
+    }
     if ($ctx.HostPid) {
         $hosts = @(Get-TestRustHost $s)
         Check 'buffer-reflow-rust-host: same host survived UI restart' ($hosts.Count -eq 1 -and $hosts[0].ProcessId -eq $ctx.HostPid) `

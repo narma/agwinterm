@@ -1389,7 +1389,7 @@ internal partial class Program : ISessionHost, IWindowHost
     {
         if (_caretOwned || _hwnd == IntPtr.Zero) return;
         var (_, _, cw, ch) = ActivePaneView();
-        if (CreateCaret(_hwnd, IntPtr.Zero, Math.Max(1, (int)cw), Math.Max(1, (int)ch)))
+        if (CreateCaret(_hwnd, IntPtr.Zero, Math.Max(1, ToDevice(cw)), Math.Max(1, ToDevice(ch))))
         {
             _caretOwned = true;
             HideCaret(_hwnd);   // don't double-draw over our rendered cursor
@@ -1413,7 +1413,7 @@ internal partial class Program : ISessionHost, IWindowHost
         if (p is null) return;
         int col, row;
         lock (p.S.SyncRoot) { col = p.S.Emulator.CursorCol; row = p.S.Emulator.CursorRow; }
-        int x = (int)(ox + col * cw), y = (int)(oy + row * ch), height = Math.Max(1, (int)ch);
+        int x = ToDevice(ox + col * cw), y = ToDevice(oy + row * ch), height = Math.Max(1, ToDevice(ch));
         SetCaretPos(x, y);
         if (!_imeComposing || _imePosition == (x, y, height)) return;
         nint context = ImmGetContext(_hwnd);
@@ -1424,7 +1424,7 @@ internal partial class Program : ISessionHost, IWindowHost
             // list outside this caret cell. A hidden caret alone does not anchor Pinyin.
             var composition = new COMPOSITIONFORM { style = 2, position = new POINT { x = x, y = y } }; // CFS_POINT
             var candidate = new CANDIDATEFORM { style = 0x80, position = new POINT { x = x, y = y },
-                area = new RECT { left = x, top = y, right = x + Math.Max(1, (int)cw), bottom = y + height } }; // CFS_EXCLUDE
+                area = new RECT { left = x, top = y, right = x + Math.Max(1, ToDevice(cw)), bottom = y + height } }; // CFS_EXCLUDE
             if (ImmSetCompositionWindow(context, in composition) && ImmSetCandidateWindow(context, in candidate))
                 _imePosition = (x, y, height);
         }

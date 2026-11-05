@@ -119,7 +119,8 @@ foreach ($character in 'ghostty'.ToCharArray()) {
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)
 Check 'Settings dropdown selects and persists Ghostty' ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]27,[IntPtr]1)
-function Check-PalettePixels([string]$label, [int]$red, [int]$green, [int]$blue) {
+function Check-PalettePixels([string]$label, [int]$red, [int]$green, [int]$blue,
+    [int]$minimum=200, [int]$maximum=[int]::MaxValue) {
     Start-Sleep -Milliseconds 350
     $rect = [HudOwnedJob+RECT]::new(); [void][HudOwnedJob]::GetClientRect($hwnd, [ref]$rect)
     $image = [Drawing.Bitmap]::new($rect.right, $rect.bottom); $g = [Drawing.Graphics]::FromImage($image)
@@ -132,7 +133,7 @@ function Check-PalettePixels([string]$label, [int]$red, [int]$green, [int]$blue)
             $p=$image.GetPixel($x,$y)
             if ($p.R -eq $red -and $p.G -eq $green -and $p.B -eq $blue) { $count++ }
         } }
-        Check $label ($count -gt 200) "color samples=$count"
+        Check $label ($count -ge $minimum -and $count -le $maximum) "color samples=$count"
     } finally { $g.Dispose(); $image.Dispose() }
 }
 $null = Rpc 'session.write' @{text=($esc+']4;1;#0c2238'+[char]7+$esc+'[12;1H'+$esc+'[41m'+(' '*30)+$esc+'[0m')} $session
@@ -165,6 +166,28 @@ try {
     Check 'Ghostty native PNG reaches Direct2D' ($red -gt 300) "red samples=$red"
     Check 'Ghostty native RGBA reaches Direct2D' ($green -gt 300) "green samples=$green"
 } finally { $graphics.Dispose(); $bitmap.Dispose() }
+# Relative placement follows a native parent; deleting that parent must remove
+# the child from the next rendered frame, including the Direct2D texture path.
+$relative=$esc+'[12;5H'+$esc+'_Ga=T,f=32,s=1,v=1,i=103,p=1,c=2,r=2,C=1;/wAA/w=='+$esc+'\'+
+    $esc+'_Ga=T,f=32,s=1,v=1,i=104,p=2,P=103,Q=1,H=3,V=1,c=4,r=2,C=1;ZIzw/w=='+$esc+'\'
+$null=Rpc 'session.write' @{text=$relative} $session
+Check-PalettePixels 'Ghostty relative image reaches actual pixels' 100 140 240
+$null=Rpc 'session.write' @{text=($esc+'_Ga=d,d=I,i=103;'+$esc+'\')} $session
+Check-PalettePixels 'Ghostty parent deletion removes relative image pixels' 100 140 240 0 0
+$placeholder=[char]::ConvertFromUtf32(0x10EEEE)
+$virtualPixels=[Convert]::ToBase64String([byte[]](100,140,240,255,100,140,240,255,100,140,240,255,100,140,240,255))
+$virtual=$esc+'_Ga=t,f=32,s=2,v=2,i=105;'+$virtualPixels+$esc+'\'+
+    $esc+'_Ga=p,i=105,U=1,c=2,r=2;'+$esc+'\'+$esc+'[12;20H'+$esc+'[38;2;0;0;105m'+
+    $placeholder+[char]0x0305+[char]0x0305+$placeholder+[char]0x0305+[char]0x030D+
+    $esc+'[13;20H'+$placeholder+[char]0x030D+[char]0x0305+$placeholder+[char]0x030D+[char]0x030D+$esc+'[0m'
+$null=Rpc 'session.write' @{text=$virtual} $session
+$virtualMetrics=Rpc 'session.metrics' @{} $session
+# Virtual placements preserve aspect ratio: this square fits the two-cell width,
+# centered vertically. The sampler visits one quarter of its pixels.
+$virtualMinimum=[int][Math]::Floor([Math]::Pow([Math]::Min($virtualMetrics.cellWidth,$virtualMetrics.cellHeight),2)*0.7)
+Check-PalettePixels 'Ghostty Unicode placeholders render native virtual image' 100 140 240 $virtualMinimum
+$null=Rpc 'session.write' @{text=($esc+'_Ga=d,d=I,i=105;'+$esc+'\')} $session
+Check-PalettePixels 'Ghostty virtual image deletion clears cached pixels' 100 140 240 0 0
 $null = Rpc 'session.write' @{text=($esc+'[?1049l')} $session
 $text = [string](Rpc 'session.text' @{} $session)
 Check 'Ghostty returns to primary shell screen' ($text.Contains('GHOSTTY_CONPTY_READY'))
@@ -242,7 +265,8 @@ try {
     $null = Rpc 'config.set' @{key='emulator-core';value='ghostty'}
 }
 
-$null = Rpc 'config.set' @{key='session-host';value='server'}
+$null = Rpc 'config.set' @{key='session-host';value='server-rust'}
+Check 'Ghostty redirects legacy Rust-host preference to native-capable server' ((Rpc 'config.get' @{key='session-host'}) -eq 'server')
 $serverSession = [string](Rpc 'session.new' @{name='ghostty-server';'no-select'=$true})
 try {
     $serverReady = $false
@@ -260,6 +284,7 @@ try {
 }
 
 # Real keyboard acceptance runs only on the owned guest desktop.
+. "$PSScriptRoot/ghostty-selection-ui-cases.ps1"
 . "$PSScriptRoot/ghostty-input-ui-cases.ps1"
 
 # Optional self-contained server contract payload, staged only for this test run.
