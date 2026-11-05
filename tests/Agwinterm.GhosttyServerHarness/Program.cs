@@ -3,6 +3,7 @@ using Agwinterm.Core;
 using Agwinterm.Pty;
 
 // Run inside the owned Windows VM; no UI, global configuration or user sessions are touched.
+if(args is [var journalDirectory,"--journal-only"]) { await JournalChecks.Run(journalDirectory); return; }
 if (args.Length != 1) throw new ArgumentException("Pass the application directory (Ghostty and bundled ConPTY).");
 Environment.SetEnvironmentVariable("AGWINTERM_GHOSTTY_COUNTERS", "1");
 if (!GhosttyVt.TryLoad(args[0], out string? error)) throw new InvalidOperationException(error);

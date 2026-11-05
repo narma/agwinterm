@@ -76,6 +76,9 @@ pub struct Create {
     /// presentation_revision >= 1; requires Ghostty, no raw-stream fallback
     #[prost(bool, tag = "13")]
     pub single_owner: bool,
+    /// journal_revision >= 1; parser lives with UI
+    #[prost(bool, tag = "14")]
+    pub journal_owner: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Attach {
@@ -91,6 +94,8 @@ pub struct Attach {
     pub native_snapshot: bool,
     #[prost(uint32, tag = "5")]
     pub presentation_revision: u32,
+    #[prost(uint32, tag = "6")]
+    pub journal_revision: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionRef {
@@ -199,6 +204,9 @@ pub struct HelloReply {
     /// 1 = bounded viewport channel plus ordered semantic input
     #[prost(uint32, tag = "6")]
     pub presentation_revision: u32,
+    /// 1 = parser-free broker and UI owner
+    #[prost(uint32, tag = "7")]
+    pub journal_revision: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CreateReply {
@@ -249,6 +257,8 @@ pub struct AttachReply {
     pub input_pipe: ::prost::alloc::string::String,
     #[prost(uint64, tag = "15")]
     pub attachment_epoch: u64,
+    #[prost(uint32, tag = "16")]
+    pub journal_revision: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionInfo {

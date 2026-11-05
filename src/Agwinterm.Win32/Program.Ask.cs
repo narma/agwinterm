@@ -138,6 +138,7 @@ internal partial class Program : IAskHost
 
     private void CloseLibraryWindow()
     {
+        if(ParkJournalOwnerWindow()) return;
         // Owned windows are destroyed before the owner's WM_DESTROY notification.
         CloseWindowQuestion();
         DestroyWindow(_hwnd);

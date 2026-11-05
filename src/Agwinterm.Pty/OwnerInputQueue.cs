@@ -16,12 +16,13 @@ internal sealed class OwnerInputQueue : IDisposable
     private readonly object _gate = new();
     private readonly object _writerGate = new();
     private readonly TerminalSession _session;
+    private readonly Action<TerminalInput>? _journalOperation;
     private int _bytes;
     private bool _closed;
     public Task Completion { get; }
-    public OwnerInputQueue(TerminalSession session)
+    public OwnerInputQueue(TerminalSession session,Action<TerminalInput>? journalOperation=null)
     {
-        _session = session;
+        _session = session; _journalOperation=journalOperation;
         Completion = Task.Factory.StartNew(Run,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
     }
 
@@ -37,11 +38,13 @@ internal sealed class OwnerInputQueue : IDisposable
             mouse.CellWidth is < 1 or > 65535 || mouse.CellHeight is < 1 or > 65535 ||
             mouse.Column is < -1 or >= 10000 || mouse.Row is < -1 or >= 10000 || (mouse.Column < 0) != (mouse.Row < 0)))
             throw new ArgumentException("Invalid owner mouse input.",nameof(input));
-        if(input is not (TerminalInput.Key or TerminalInput.Mouse or TerminalInput.Text or TerminalInput.Paste or TerminalInput.Focus or TerminalInput.Raw))
+        if(input is not (TerminalInput.Key or TerminalInput.Mouse or TerminalInput.Text or TerminalInput.Paste or TerminalInput.Focus or TerminalInput.Raw) &&
+            !(_journalOperation is not null && input is TerminalInput.JournalResize or TerminalInput.JournalInject))
             throw new ArgumentException("Unsupported owner input.",nameof(input));
         int size = input switch
         {
             TerminalInput.Raw raw => raw.Bytes.Length,
+            TerminalInput.JournalInject inject => inject.Bytes.Length,
             TerminalInput.Text text => checked(text.Value.Length*2+64),
             TerminalInput.Paste paste => checked(paste.Value.Length*2+64),
             TerminalInput.Key key => checked((key.TextValue.Length+key.WindowsText.Length)*2+128),
@@ -53,6 +56,7 @@ internal sealed class OwnerInputQueue : IDisposable
             if (size > MaximumBytes-_bytes) return Overflow();
             // The caller may reuse raw storage immediately after acceptance.
             if (input is TerminalInput.Raw raw) input = new TerminalInput.Raw(raw.Bytes.ToArray());
+            if (input is TerminalInput.JournalInject inject) input = new TerminalInput.JournalInject(inject.Bytes.ToArray());
             if (!_queue.Writer.TryWrite(new(input,size,TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0))) return Overflow();
             _bytes += size;
             return TerminalInputAcceptance.Accepted;
@@ -89,7 +93,7 @@ internal sealed class OwnerInputQueue : IDisposable
             while (_queue.Reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult())
                 lock(_writerGate) Drain();
         }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
         { _session.MarkInputClosed(); }
         finally
         {
@@ -102,6 +106,12 @@ internal sealed class OwnerInputQueue : IDisposable
     {
             while (_queue.Reader.TryRead(out var item))
             {
+                if(item.Input is TerminalInput.JournalResize or TerminalInput.JournalInject)
+                {
+                    lock(_gate) _bytes-=item.Bytes;
+                    if(!_session.InputClosed) _journalOperation!(item.Input);
+                    continue;
+                }
                 _batch.Clear();
                 long waiting=TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 lock (_session.SyncRoot)
@@ -113,12 +123,14 @@ internal sealed class OwnerInputQueue : IDisposable
                         lock (_gate) _bytes -= item.Bytes;
                         if (_session.InputClosed) break;
                         if (item.Enqueued != 0) TerminalLatencyTrace.Record(40,Math.Max(1,System.Diagnostics.Stopwatch.GetTimestamp()-item.Enqueued));
-                        byte[] bytes=Encode((GhosttyTerminalCore)_session.Emulator,item.Input);
+                        byte[] bytes=item.Input is TerminalInput.Raw raw ? raw.Bytes.ToArray()
+                            : Encode((GhosttyTerminalCore)_session.Emulator,item.Input);
                         bytes.CopyTo(_batch.GetSpan(bytes.Length)); _batch.Advance(bytes.Length);
                         count++;
                         // Drain only input already available. Never wait or add a coalescing
                         // timer, and keep a bounded encode turn before releasing the feed lock.
-                    } while(count < 32 && _batch.WrittenCount < 4096 && _queue.Reader.TryRead(out item));
+                    } while(count < 32 && _batch.WrittenCount < 4096 && _queue.Reader.TryPeek(out var next) &&
+                        next.Input is not (TerminalInput.JournalResize or TerminalInput.JournalInject) && _queue.Reader.TryRead(out item));
                 }
                 if (_batch.WrittenCount != 0) _session.WriteOwner(_batch.WrittenSpan);
                 if (_batch.Capacity > 65536) _batch=new(256);

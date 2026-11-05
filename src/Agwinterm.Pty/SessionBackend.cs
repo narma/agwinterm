@@ -49,6 +49,11 @@ public static class SessionBackends
         string conptyArg = conpty is null ? "" : conpty == "inbox" ? " --conpty inbox" : " --conpty bundled";
         if (string.Equals(configured, "server", StringComparison.OrdinalIgnoreCase))
         {
+            if(replicaCore == "ghostty" && Environment.GetEnvironmentVariable("AGWINTERM_JOURNAL_OWNER") == "1")
+            {
+                string journalId=appId+"-journal-v1";
+                return new ServerSessionBackend(journalId,exePath,$"--pty-host --pipe \"{journalId}\"{conptyArg}",replicaCore:replicaCore,journalOwner:true);
+            }
             bool singleOwner = replicaCore == "ghostty" && Environment.GetEnvironmentVariable("AGWINTERM_SINGLE_OWNER") == "1";
             string serverId = singleOwner ? appId + "-presentation-v1" : appId;
             return new ServerSessionBackend(serverId, exePath, $"--pty-host --pipe \"{serverId}\"{conptyArg}", replicaCore: replicaCore, singleOwner: singleOwner);

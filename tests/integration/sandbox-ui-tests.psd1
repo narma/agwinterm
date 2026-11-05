@@ -1,7 +1,9 @@
 @{
-    SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation') }
-    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern') }
-    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner') }
+    JournalContracts = @{ Path='tests/integration/journal-contracts.ps1'; Exe=$true; Strict=$false; Options=@() }
+    JournalMeasurements = @{ Path='tests/integration/journal-measurements-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples') }
+    SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation','LatencyCandidate') }
+    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','JournalCheckpoints') }
+    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner','JournalCheckpoints') }
     Win32Control = @{ Path='tests/integration/win32-control.ps1'; Exe=$true; Strict=$true; Options=@() }
     Conformance = @{ Path='tests/conformance/conformance.ps1'; Exe=$true; Strict=$true; Options=@(); OptionalInputs=@('Spec') }
     RestoreRoundtrip = @{ Path='tests/integration/restore-roundtrip.ps1'; Exe=$true; Strict=$true; Options=@('Only') }

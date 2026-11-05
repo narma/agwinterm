@@ -8,7 +8,7 @@ using Agwinterm.Pty;
 // Compiled fixture; launched only inside the routed VM by the latency suite.
 if (args is ["--shutdown-host", var pipe])
 {
-    if (!System.Text.RegularExpressions.Regex.IsMatch(pipe, "^p13-[0-9a-f]{32}(-presentation-v1)?$"))
+    if (!System.Text.RegularExpressions.Regex.IsMatch(pipe, "^p13-[0-9a-f]{32}(-presentation-v1|-journal-v1)?$"))
         throw new ArgumentException("Only an isolated latency fixture namespace can be shut down.");
     if (!PtyHostClient.IsRunning(pipe)) return;
     using var client = PtyHostClient.Connect(pipe);

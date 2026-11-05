@@ -19,6 +19,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     private readonly string _name;
     internal string? ReplicaCore { get; }
     internal bool SingleOwner { get; }
+    internal bool JournalOwner { get; }
     private readonly object _lock = new();
     private PtyHostClient? _client;
     private bool _disposed;
@@ -30,7 +31,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     /// <param name="spawnArgs">Argument string for the host exe. The C# host is the app itself
     /// (<c>--pty-host --pipe ...</c>); the Rust host is a standalone binary (<c>--pipe ...</c>).</param>
     /// <param name="name">Diagnostics name ("server" or "server-rust").</param>
-    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null, bool singleOwner = false)
+    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null, bool singleOwner = false, bool journalOwner = false)
     {
         _appId = appId;
         _startupClaims = StartupHostClaims.ForNamespace(appId);
@@ -39,6 +40,8 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
         _name = name;
         ReplicaCore = replicaCore;
         SingleOwner = singleOwner;
+        if(singleOwner && journalOwner) throw new ArgumentException("Select one ownership transport.");
+        JournalOwner=journalOwner;
     }
 
     public string Name => _name;
@@ -120,9 +123,10 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
 /// <see cref="Detach"/> releases it alive (app quit) for a later <see cref="TryAdopt"/> — that
 /// split is what lets shells survive UI restarts, updates, and crashes (#105, Phase 2c).
 /// </summary>
-public sealed class ServerSession : ISession
+public sealed partial class ServerSession : ISession
 {
     public bool UsesPresentation => _backend.SingleOwner;
+    public bool UsesJournal => _backend.JournalOwner;
     public ISessionPresentation? Presentation { get; }
     private ulong _viewportRevision;
     private int _viewportScroll, _viewportCellWidth=8, _viewportCellHeight=18;
@@ -175,7 +179,8 @@ public sealed class ServerSession : ISession
         Rows = rows;
         Emulator = backend.SingleOwner ? new PresentedTerminalView(cols,rows) : TerminalSession.CreateCore(cols, rows, backend.ReplicaCore);
         if(backend.SingleOwner) Presentation=new RemoteSessionPresentation(this);
-        if (Emulator is GhosttyTerminalCore ghostty) ghostty.MarkLegacyReplica();
+        if (Emulator is GhosttyTerminalCore ghostty && !UsesJournal) ghostty.MarkLegacyReplica();
+        if(UsesJournal) Emulator.Host=new JournalOwnerActions(this);
     }
 
     /// <summary>True when this handle reconnected to a SURVIVING hosted session instead of spawning
@@ -256,12 +261,12 @@ public sealed class ServerSession : ISession
                     int cols = Cols, rows = Rows;
                     client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
                         verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket,
-                        emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation);
+                        emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation,journalOwner:UsesJournal);
                     if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
                     if (_startFence.IsClosed) return;
                     // Even the first attachment can follow output from a fast child.
                     // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
-                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0)) && (Cols != cols || Rows != rows))
+                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0,journalRevision:UsesJournal ? 1u : 0)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -298,7 +303,14 @@ public sealed class ServerSession : ISession
             if (_disposed) { att.Dispose(); return false; }
             try
             {
-                if (UsesPresentation)
+                if(UsesJournal)
+                {
+                    if(att.JournalRevision != 1 || att.Input is null || att.AttachmentEpoch == 0) throw new IOException("Missing journal transport.");
+                    _attachmentEpoch=att.AttachmentEpoch;
+                    _journalCheckpointPipe=att.JournalCheckpointPipe;
+                    Emulator.Resize(att.Cols,att.Rows);
+                }
+                else if (UsesPresentation)
                 {
                     if (att.PresentationRevision != 1 || att.Input is null || att.AttachmentEpoch == 0)
                         throw new IOException("Missing negotiated presentation transport.");
@@ -329,12 +341,13 @@ public sealed class ServerSession : ISession
         {
             _data = att.Data; _childPid = att.ChildPid;
             if (UsesPresentation) _presentationInput = new(att.Input!,att.CreationTicket,att.AttachmentEpoch);
+            if(UsesJournal) _presentationInput=new(att.Input!,att.CreationTicket,att.AttachmentEpoch,EncodeJournalInput);
             _started = true; // from here the reader alone owns disposal, even if close cancels it now
             _ = Task.Factory.StartNew(ReadLoop, CancellationToken.None,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default);
         });
         if (!published) att.Dispose(); // no read was ever issued
-        if (published && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
+        if (published && !UsesJournal && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
         if (published) UpdateTheme();
         return published;
     }
@@ -407,7 +420,7 @@ public sealed class ServerSession : ISession
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0,journalRevision:UsesJournal ? 1u : 0); _creationHostPid = client.HostPid; }
         catch
         {
             // Recovery may find a checkpoint written before Create reached publication.
@@ -448,6 +461,7 @@ public sealed class ServerSession : ISession
     /// operation is ever in flight at close (that race is a native AV in the IOCP poller).</summary>
     private void ReadLoop()
     {
+        if(UsesJournal) { ReadJournalLoop(); return; }
         if (UsesPresentation) { ReadPresentationLoop(); return; }
         var data = _data!;
         var buffer = new byte[64 * 1024];
@@ -497,6 +511,17 @@ public sealed class ServerSession : ISession
 
     public void Inject(ReadOnlySpan<byte> bytes)
     {
+        if(UsesJournal && _started)
+        {
+            while(!bytes.IsEmpty)
+            {
+                int count=Math.Min(bytes.Length,TerminalJournal.MaximumOutputBytes);
+                if(SubmitInput(new TerminalInput.JournalInject(bytes[..count].ToArray())) != TerminalInputAcceptance.Accepted)
+                    throw new IOException("Journal injection was not accepted.");
+                bytes=bytes[count..];
+            }
+            return;
+        }
         lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Feed(bytes); }
         OutputReceived?.Invoke();
     }
@@ -509,6 +534,11 @@ public sealed class ServerSession : ISession
 
     public void Write(ReadOnlySpan<byte> bytes)
     {
+        if(UsesJournal)
+        {
+            if(SubmitJournalInput(bytes) != TerminalInputAcceptance.Accepted) throw new IOException("Journal input was not accepted.");
+            return;
+        }
         if (UsesPresentation)
         {
             var acceptance = SubmitInput(new TerminalInput.Raw(bytes.ToArray()));
@@ -525,6 +555,19 @@ public sealed class ServerSession : ISession
     public void Resize(int cols, int rows)
     {
         if (cols <= 0 || rows <= 0) return;
+        if(UsesJournal)
+        {
+            lock(_sync)
+            {
+                ObjectDisposedException.ThrowIf(_disposed,this);
+                if(cols > 10000 || rows > 10000 || (long)cols*rows > TerminalFrame.MaximumCells) throw new ArgumentOutOfRangeException(nameof(cols));
+                if(Cols == cols && Rows == rows) return;
+                Cols=cols; Rows=rows;
+                if(_started && !HasExited && SubmitInput(new TerminalInput.JournalResize(cols,rows)) != TerminalInputAcceptance.Accepted)
+                    throw new IOException("Journal resize was not accepted.");
+            }
+            return;
+        }
         if(UsesPresentation)
         {
             lock(_sync)
@@ -549,6 +592,7 @@ public sealed class ServerSession : ISession
     /// <summary>Coalesce live theme changes off the UI thread. Never replay VT or resize a child.</summary>
     public void UpdateTheme()
     {
+        if(UsesJournal) return; // the UI owner already supplies native theme answers
         string colors, palette, cursor, ticket;
         long sequence;
         lock (_sync)

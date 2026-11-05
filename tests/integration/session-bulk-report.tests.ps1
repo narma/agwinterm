@@ -25,6 +25,22 @@ try {
     $memory=$report.comparisons|Where-Object metric -eq 'privateBytesRatio'
     if($cpu.outcome -ne 'pass' -or [Math]::Abs($cpu.ratio.mean-.8) -gt 1e-8 -or
         $throughput.outcome -ne 'pass' -or $memory.outcome -ne 'informational'){throw 'Incorrect fixed-work gate calculation'}
+    foreach($path in $files | Where-Object {$_ -like '*single-owner*'}){
+        $data=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $data.cpuLowerMs=90; $data.cpuUpperMs=120
+        $data | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $path
+    }
+    $null=& "$PSScriptRoot/../../tools/session-bulk-report.ps1" -Directory $temporary -Output $output
+    $report=Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
+    if(@($report.comparisons | Where-Object {$_.metric -like 'cpu*' -and $_.outcome -ne 'inconclusive'}).Count){throw 'A wide CPU sampling interval proved a false result'}
+    foreach($path in $files | Where-Object {$_ -like '*single-owner*'}){
+        $data=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $data.cpuLowerMs=119; $data.cpuUpperMs=120
+        $data | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $path
+    }
+    $null=& "$PSScriptRoot/../../tools/session-bulk-report.ps1" -Directory $temporary -Output $output
+    $report=Get-Content -LiteralPath $output -Raw | ConvertFrom-Json
+    if(($report.comparisons | Where-Object metric -eq 'cpuLowerRatio').outcome -ne 'fail'){throw 'A proven CPU regression was missed'}
     Remove-Item -LiteralPath $files[0]
     $rejected=$false
     try{$null=& "$PSScriptRoot/../../tools/session-bulk-report.ps1" -Directory $temporary -Output $output}catch{$rejected=$true}

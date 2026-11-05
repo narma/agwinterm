@@ -481,6 +481,7 @@ internal partial class Program
         => RequestRedraw(false);
     private void RequestRedraw(bool urgent)
     {
+        if(_journalWindowParked) return;
         if(urgent) Interlocked.Exchange(ref _urgentRedrawPending,1);
         if (System.Threading.Interlocked.Exchange(ref _redrawPending, 1) == 0)
             PostMessageW(_hwnd, WM_APP_REDRAW, IntPtr.Zero, IntPtr.Zero);

@@ -12,6 +12,9 @@ public abstract record TerminalInput
         int Column=-1,int Row=-1) : TerminalInput;
     public sealed record Focus(bool Focused) : TerminalInput;
     public sealed record Raw(ReadOnlyMemory<byte> Bytes) : TerminalInput;
+    internal sealed record JournalResize(int Columns,int Rows) : TerminalInput;
+    internal sealed record JournalInject(ReadOnlyMemory<byte> Bytes) : TerminalInput;
+    internal sealed record JournalResponse(long EventSequence,int Index,ReadOnlyMemory<byte> Bytes) : TerminalInput;
     public sealed record FramePresented(ulong Sequence) : TerminalInput;
     public sealed record Viewport(ulong Revision, int Columns, int Rows, int CellWidth, int CellHeight,
         int ScrollOffset, bool Visible) : TerminalInput;

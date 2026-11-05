@@ -110,7 +110,9 @@ public sealed unsafe class GhosttyVt : IDisposable
         }
         return output;
     }
-    private bool _capturing, _disposed;
+    private volatile bool _capturing;
+    private bool _disposed;
+    public bool SnapshotCaptureAvailable => !_capturing && !_disposed;
     private volatile bool _disposeRequested;
     private GhosttyNative.Info _info;
     private Win32InputModeObserver _windows = new();

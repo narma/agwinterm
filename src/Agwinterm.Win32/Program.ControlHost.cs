@@ -77,7 +77,7 @@ internal partial class Program
     {
         var p = ResolveOpen(selector);
         if (p is null) return false;
-        LiveWindow().PostVerb(() => { if (IsIconic(p._hwnd)) ShowWindow(p._hwnd, SW_RESTORE); SetForegroundWindow(p._hwnd); });
+        LiveWindow().PostVerb(() => { if (p._journalWindowParked || IsIconic(p._hwnd)) ShowWindow(p._hwnd, SW_RESTORE); SetForegroundWindow(p._hwnd); });
         return true;
     }
 

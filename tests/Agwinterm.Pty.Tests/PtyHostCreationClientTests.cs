@@ -9,6 +9,28 @@ public class PtyHostCreationClientTests
     private const string Ticket = "0123456789abcdef0123456789abcdef";
 
     [Fact]
+    public void JournalCapabilityRefusesOldHostWithoutSendingNewOperations()
+    {
+        using var stream = new ExchangeStream(_ => throw new InvalidOperationException("Unexpected request"));
+        using var client = new PtyHostClient(stream);
+        Assert.Throws<NotSupportedException>(() => client.Create("pane",80,24,"cmd.exe",[],emulatorCore:"ghostty",journalOwner:true));
+        Assert.Throws<NotSupportedException>(() => client.Attach("pane",journalRevision:1));
+        Assert.Empty(stream.Requests);
+    }
+
+    [Fact]
+    public void LegacyCreateOmitsExperimentalOwnershipFields()
+    {
+        using var stream = new ExchangeStream(_ => Frame(new Reply { Ok=true, Create=new CreateReply { Id="pane" } }));
+        using var client = new PtyHostClient(stream);
+        client.Create("pane",80,24,"cmd.exe",[]);
+        var create=Assert.Single(stream.Requests).Create;
+        Assert.False(create.JournalOwner); Assert.False(create.SingleOwner);
+        var expected=new Create { Id="pane",Cols=80,Rows=24,App="cmd.exe" };
+        Assert.Equal(expected.ToByteArray(),create.ToByteArray());
+    }
+
+    [Fact]
     public void LiveThemeDoesNotSendUnknownCommandsToLegacyHosts()
     {
         using var stream = new ExchangeStream(_ => throw new InvalidOperationException("Unexpected request"));

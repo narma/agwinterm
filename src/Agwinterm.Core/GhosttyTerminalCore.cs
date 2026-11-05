@@ -56,6 +56,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public IReadOnlyList<GhosttyImagePlacement> PaintImages => _vt.FrameImages;
     public long NextAnimationDeadline => _vt.NextAnimationDeadline;
     public byte[] CaptureSnapshot() => _vt.CaptureSnapshot();
+    public bool SnapshotCaptureAvailable => _vt.SnapshotCaptureAvailable;
     public void RestoreSnapshot(ReadOnlySpan<byte> snapshot)
     {
         _vt.RestoreSnapshot(snapshot);

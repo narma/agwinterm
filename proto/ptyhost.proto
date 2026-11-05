@@ -52,6 +52,7 @@ message Create {
   string creation_ticket = 11;  // creation_revision >= 1: host-issued, single-use spawn authority
   string emulator_core = 12;   // core_selection_revision >= 1: managed/rust/ghostty; empty = host default
   bool single_owner = 13;      // presentation_revision >= 1; requires Ghostty, no raw-stream fallback
+  bool journal_owner = 14;     // journal_revision >= 1; parser lives with UI
 }
 
 message Attach {
@@ -60,6 +61,7 @@ message Attach {
   string creation_ticket = 3;   // optional expected incarnation; mismatch refuses
   bool native_snapshot = 4;    // accept length-prefixed Ghostty snapshot before raw PTY bytes
   uint32 presentation_revision = 5;
+  uint32 journal_revision = 6;
 }
 
 message SessionRef {
@@ -117,6 +119,7 @@ message HelloReply {
   uint32 core_selection_revision = 4; // 1 = per-session core selection and authoritative attach core
   uint32 theme_revision = 5; // 1 = update live query defaults without injecting VT
   uint32 presentation_revision = 6; // 1 = bounded viewport channel plus ordered semantic input
+  uint32 journal_revision = 7; // 1 = parser-free broker and UI owner
 }
 
 message CreateReply {
@@ -144,6 +147,7 @@ message AttachReply {
   uint32 presentation_revision = 13;
   string input_pipe = 14;
   uint64 attachment_epoch = 15;
+  uint32 journal_revision = 16;
 }
 
 message SessionInfo {

@@ -8,6 +8,14 @@ namespace Agwinterm.Win32;
 internal partial class Program
 {
     private static bool HasOwnerInput(ISession session) => session.Emulator is GhosttyTerminalCore or PresentedTerminalView;
+    private static bool WriteOwnerUiBytes(Pane pane,ReadOnlySpan<byte> bytes,bool repaintHint=true)
+    {
+        if(pane.S is not ServerSession { UsesJournal:true } journal) return SessionInput.TryWrite(pane.S,bytes);
+        if(repaintHint) Interlocked.Exchange(ref pane.InputFramePending,1);
+        bool accepted=journal.SubmitJournalInput(bytes,persistentUiThread:true) == TerminalInputAcceptance.Accepted;
+        if(!accepted && repaintHint) Interlocked.Exchange(ref pane.InputFramePending,0);
+        return accepted;
+    }
     private static bool HasSemanticInput(ISession session) => session.Presentation is not null || session is ServerSession { UsesPresentation: true };
     private static TerminalInputAcceptance SubmitOwnerInput(ISession session, TerminalInput input)
         => session is ServerSession { UsesPresentation: true } remote ? remote.SubmitInput(input,persistentUiThread:true)
@@ -98,7 +106,7 @@ internal partial class Program
             lock (pane.S.SyncRoot)
                 bytes = pane.S.Emulator is GhosttyTerminalCore core
                     ? core.EncodeKey(0, 1, 0, text, (uint)rune.Value) : Encoding.UTF8.GetBytes(text);
-            if (bytes.Length != 0 && SessionInput.TryWrite(pane.S, bytes))
+            if (bytes.Length != 0 && WriteOwnerUiBytes(pane, bytes))
             { pane.ScrollOffset = 0; pane.ClearSel(); }
         }
         return true;
@@ -152,7 +160,7 @@ internal partial class Program
             }
             if (bytes.Length > 0)
             {
-                if (!SessionInput.TryWrite(pane.S, bytes)) continue;
+                if (!WriteOwnerUiBytes(pane, bytes)) continue;
                 if (!Keymap.IsModifierKey(vk)) { pane.ScrollOffset = 0; pane.ClearSel(); }
             }
             sent.Add(new(pane, text, unshifted, consumed, keyText.AltGr, keyText.Unicode));
@@ -188,7 +196,7 @@ internal partial class Program
                         ctrl && !target.AltGr, shift, alt && !target.AltGr, target.Unicode))
                         : core.EncodeKey((uint)vk, 0, target.AltGr ? mods & ~6u : mods, target.Text, target.Unshifted, target.Consumed);
                 }
-                if (bytes.Length > 0) SessionInput.TryWrite(target.Session, bytes);
+                if (bytes.Length > 0) WriteOwnerUiBytes(target.Pane, bytes,repaintHint:false);
             }
             catch (ObjectDisposedException) { } // the originating pane closed while the key was held
         }

@@ -93,6 +93,7 @@ foreach ($name in 'Agwinterm.Win32.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll'
 }
 @{hostMode=$LatencyHost;workload=$LatencyWorkload;count=$samples.Count;warmupSamples=[Math]::Min(50,[int]($samples.Count/10));
     presentation=$LatencyPresentation;inputPattern=$LatencyInputPattern;
+    journalCheckpoints=$JournalCheckpoints;
     producerBytesPerEvent=$(if ($LatencyWorkload -eq 'fixed-output') {262144} else {0});
     binaryHashes=$binaryHashes;grid=(Rpc 'session.metrics' @{} $session);uiPid=$job.Pid;utc=[DateTime]::UtcNow.ToString('O');
     frequency=$frequencies[0];endpoint='EndDraw, not physical display';samples=$samples} |

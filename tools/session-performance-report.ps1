@@ -3,6 +3,8 @@ param(
     [string]$CandidateDirectory,
     [switch]$NoiseStudy,
     [switch]$MixedPairs,
+    [string]$BaselineVariant,
+    [string]$CandidateVariant,
     [Parameter(Mandatory)][string]$Output
 )
 $ErrorActionPreference = 'Stop'
@@ -80,7 +82,7 @@ function ReadRuns([string]$Directory) {
         $workBytes = [double]$data.producerBytesPerEvent * $samples.Count
         $activeSeconds = ($samples | ForEach-Object { ([long]$_.ticks[5]-[long]$_.ticks[4])/[double]$data.frequency } | Measure-Object -Sum).Sum
         [pscustomobject]@{path=$file.FullName;utc=$data.utc;key="$($data.hostMode)/$($data.workload)/$inputPattern";inputPattern=$inputPattern;
-            mode=$data.hostMode;workload=$data.workload;presentation=$data.presentation;count=$samples.Count;hashes=$data.binaryHashes;grid=$data.grid;
+            mode=$data.hostMode;workload=$data.workload;presentation=$data.presentation;journalCheckpoints=$data.journalCheckpoints;count=$samples.Count;hashes=$data.binaryHashes;grid=$data.grid;
             latencies=$latencies;metricsComplete=$metricsComplete;combinedCpuMs=$cpuMs;combinedCpuUpperMs=$cpuUpperMs;combinedPrivateBytes=$privateBytes;
             fixedWorkBytes=$workBytes;activeOutputBytesPerSecond=$(if ($workBytes -gt 0 -and $activeSeconds -gt 0) {$workBytes/$activeSeconds} else {0});
             nativeCurrentBytes=$nativeBytes;nativePageResidentBytes=$pageBytes;nativeImageBytes=$imageBytes;pageMetricsComplete=$pageMetricsComplete;
@@ -90,8 +92,16 @@ function ReadRuns([string]$Directory) {
 $beforeRuns = @(ReadRuns $BaselineDirectory | Sort-Object utc)
 $afterRuns = if ($NoiseStudy -or $MixedPairs) { @() } else { @(ReadRuns $CandidateDirectory | Sort-Object utc) }
 if ($MixedPairs) {
-    $afterRuns=@($beforeRuns | Where-Object presentation -eq 'single-owner')
-    $beforeRuns=@($beforeRuns | Where-Object presentation -eq 'legacy')
+    if($BaselineVariant -or $CandidateVariant){
+        if(-not $BaselineVariant -or -not $CandidateVariant){throw 'Specify both comparison variants'}
+        function Variant($run){if($run.presentation -eq 'ui-owner-journal'){"$($run.presentation)/$($run.journalCheckpoints)"}else{$run.presentation}}
+        $allRuns=$beforeRuns
+        $afterRuns=@($allRuns | Where-Object {(Variant $_) -eq $CandidateVariant})
+        $beforeRuns=@($allRuns | Where-Object {(Variant $_) -eq $BaselineVariant})
+    }else{
+        $afterRuns=@($beforeRuns | Where-Object presentation -ne 'legacy')
+        $beforeRuns=@($beforeRuns | Where-Object presentation -eq 'legacy')
+    }
 }
 $comparisons = @()
 $resourceComparisons = @()

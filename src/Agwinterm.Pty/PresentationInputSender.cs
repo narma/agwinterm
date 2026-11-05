@@ -12,16 +12,18 @@ internal sealed class PresentationInputSender : IDisposable
     private readonly PresentationPipeIo? _direct;
     private readonly string _incarnation;
     private readonly ulong _epoch;
+    private readonly Func<TerminalInput,ulong,byte[]>? _encode;
     private readonly CancellationTokenSource _cancel=new();
     private int _bytes;
     private ulong _sequence;
     private long _latencyEnter;
     private bool _closed, _completed, _writing;
     public Task Completion { get; }
+    public ulong SubmittedSequence { get { lock(_gate) return _sequence; } }
     internal Exception? Failure { get; private set; }
-    public PresentationInputSender(Stream pipe,string incarnation,ulong epoch)
+    public PresentationInputSender(Stream pipe,string incarnation,ulong epoch,Func<TerminalInput,ulong,byte[]>? encode=null)
     {
-        _pipe=pipe; _incarnation=incarnation; _epoch=epoch;
+        _pipe=pipe; _incarnation=incarnation; _epoch=epoch; _encode=encode;
         if(pipe is System.IO.Pipes.PipeStream native) _direct=new(native,_cancel.Token);
         Completion=Task.Factory.StartNew(Run,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
     }
@@ -33,7 +35,7 @@ internal sealed class PresentationInputSender : IDisposable
             if (Agwinterm.Core.TerminalLatencyTrace.Enabled && input is TerminalInput.Key { VirtualKey:13, Action: > 0 })
                 Agwinterm.Core.TerminalLatencyTrace.Record(9,++_latencyEnter);
             byte[] bytes;
-            try { bytes=PresentationInputCodec.Encode(input,_incarnation,_epoch,checked(_sequence+1)); }
+            try { bytes=_encode is null ? PresentationInputCodec.Encode(input,_incarnation,_epoch,checked(_sequence+1)) : _encode(input,checked(_sequence+1)); }
             catch(InvalidDataException) { CloseLocked(); return TerminalInputAcceptance.Overflow; }
             if(bytes.Length > OwnerInputQueue.MaximumBytes-_bytes)
             { CloseLocked(); return TerminalInputAcceptance.Overflow; }

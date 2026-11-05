@@ -343,6 +343,7 @@ internal partial class Program
 
     private void Render()
     {
+        if(_journalWindowParked) return;
         UpdateWebPresentation();
         if (_rt is null || _brush is null) return;
         long tStart = Stopwatch.GetTimestamp();

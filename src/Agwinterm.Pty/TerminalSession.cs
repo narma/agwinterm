@@ -94,6 +94,7 @@ public sealed class TerminalSession : ISession
     {
         if (string.IsNullOrEmpty(core)) return CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
         if (core == "managed") return new TerminalEmulator(cols, rows);
+        if (core == "journal-broker") return new JournalBrokerCore();
         if (core == "ghostty")
         {
             if (!GhosttyTerminalCore.TryLoad(PortableTools.DirectoryPath, out var error)) throw new InvalidOperationException(error);
@@ -108,7 +109,7 @@ public sealed class TerminalSession : ISession
         throw new ArgumentException("Unknown terminal core: " + core, nameof(core));
     }
     internal static string CoreName(ITerminalCore core) => core switch
-    { GhosttyTerminalCore => "ghostty", RustTerminalCore => "rust", _ => "managed" };
+    { GhosttyTerminalCore => "ghostty", JournalBrokerCore => "journal-broker", RustTerminalCore => "rust", _ => "managed" };
 
     public TerminalSession(int cols, int rows) : this(cols, rows, null) { }
 
@@ -124,7 +125,7 @@ public sealed class TerminalSession : ISession
     public ConPtyApi? Conpty { get; init; }
 
     private ConPtyApi SessionConpty => ConPtyApi.ForCore(Conpty ?? ConPtyApi.Current,
-        Emulator is GhosttyTerminalCore);
+        Emulator is GhosttyTerminalCore or JournalBrokerCore);
 
     /// <summary>True once the session runs on the shipped ConPTY, which passes output through and so
     /// does not repaint the viewport on a resize.</summary>
@@ -429,7 +430,7 @@ public sealed class TerminalSession : ISession
                     {
                         if (DumpPath is not null) System.IO.File.AppendAllBytes(DumpPath, buffer.AsSpan(0, n).ToArray());
                         Emulator.Feed(buffer.AsSpan(0, n));
-                        _latencyOutput?.Output(buffer.AsSpan(0, n));
+                        if(Emulator is not JournalBrokerCore) _latencyOutput?.Output(buffer.AsSpan(0, n));
                         if (RawOutput is { } tap) tap(buffer[..n]);
                         Interlocked.Add(ref _pumpBytes, n); // after feed and tap
                         consumed += n;

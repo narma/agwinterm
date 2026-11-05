@@ -24,7 +24,7 @@ $comparisons=@()
 $groups=$runs|Group-Object {if($Comparison -eq 'ownership'){"$($_.hostMode)/$($_.traceMode)"}else{"$($_.hostMode)/$($_.presentation)"}}
 foreach($group in $groups) {
     $before=@($group.Group|Where-Object {if($Comparison -eq 'ownership'){$_.presentation -eq 'legacy'}else{$_.traceMode -eq 'off'}})
-    $variants=if($Comparison -eq 'ownership'){@('single-owner')}else{@('counters','full')}
+    $variants=if($Comparison -eq 'ownership'){@($group.Group.presentation | Where-Object {$_ -ne 'legacy'} | Sort-Object -Unique)}else{@('counters','full')}
     foreach($variant in $variants) {
         $after=@($group.Group|Where-Object {if($Comparison -eq 'ownership'){$_.presentation -eq $variant}else{$_.traceMode -eq $variant}})
         if($before.Count -eq 0 -or $before.Count -ne $after.Count){throw "Unpaired bulk runs: $($group.Name)/$variant"}
@@ -38,10 +38,11 @@ foreach($group in $groups) {
             if($run.bytes -ne $before[0].bytes -or $run.grid.cols -ne $before[0].grid.cols -or $run.grid.rows -ne $before[0].grid.rows -or
                 $run.grid.cellWidth -ne $before[0].grid.cellWidth -or $run.grid.cellHeight -ne $before[0].grid.cellHeight){throw 'Bulk workload or grid changed'}
         }
-        foreach($metric in 'cpuUpperRatio','throughputRatio','privateBytesRatio') {
+        foreach($metric in 'cpuUpperRatio','cpuLowerRatio','throughputRatio','privateBytesRatio') {
             $ratios=@(for($i=0;$i -lt $before.Count;$i++) {
                 switch($metric) {
                     cpuUpperRatio {$after[$i].cpuUpperMs/$before[$i].cpuLowerMs}
+                    cpuLowerRatio {$after[$i].cpuLowerMs/$before[$i].cpuUpperMs}
                     throughputRatio {$after[$i].bytesPerSecond/$before[$i].bytesPerSecond}
                     privateBytesRatio {$after[$i].meanPrivateBytes/$before[$i].meanPrivateBytes}
                 }
@@ -49,7 +50,8 @@ foreach($group in $groups) {
             $ci=Confidence $ratios
             $outcome=if($Comparison -eq 'trace' -or $metric -eq 'privateBytesRatio'){'informational'}
                 elseif($null -eq $ci){'inconclusive'}
-                elseif($metric -eq 'cpuUpperRatio'){if($ci.upper -le 1.05){'pass'}elseif($ci.lower -gt 1.05){'fail'}else{'inconclusive'}}
+                elseif($metric -eq 'cpuUpperRatio'){if($ci.upper -le 1.05){'pass'}else{'inconclusive'}}
+                elseif($metric -eq 'cpuLowerRatio'){if($ci.lower -gt 1.05){'fail'}else{'inconclusive'}}
                 else{if($ci.lower -ge .95){'pass'}elseif($ci.upper -lt .95){'fail'}else{'inconclusive'}}
             $comparisons+=@{group=$group.Name;variant=$variant;metric=$metric;ratio=$ci;perPair=$ratios;outcome=$outcome}
         }

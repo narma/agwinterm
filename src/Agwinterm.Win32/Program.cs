@@ -653,6 +653,7 @@ internal partial class Program : ISessionHost, IWindowHost
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         // Process-global setup (config/themes/keymap + window class + shared D2D/DWrite objects).
         _config = LoadOrCreateConfig();
+        if(ActivateExistingJournalOwner()) return;
         ConPtyApi.Select(_config.Conpty != "inbox");
         _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
         ResolveEmulatorCore();

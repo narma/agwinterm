@@ -10,7 +10,7 @@ namespace Agwinterm.Pty;
 public sealed record PtyHostAttachment(
     Stream Data, int Cols, int Rows, int? ChildPid, bool HasExited, int? ExitCode,
     string Modes, IReadOnlyList<string> Scrollback, byte[]? ScrollbackBlob = null, string CreationTicket = "", byte[]? NativeSnapshot = null,
-    string EmulatorCore = "", Stream? Input = null, uint PresentationRevision = 0, ulong AttachmentEpoch = 0) : IDisposable
+    string EmulatorCore = "", Stream? Input = null, uint PresentationRevision = 0, ulong AttachmentEpoch = 0, uint JournalRevision = 0, string JournalCheckpointPipe = "") : IDisposable
 {
     public void Dispose() { Data.Dispose(); Input?.Dispose(); }
 }
@@ -26,6 +26,7 @@ public sealed record PtyHostSessionInfo(
 /// </summary>
 public sealed class PtyHostClient : IDisposable
 {
+    public uint JournalRevision { get; private set; }
     private readonly Stream _pipe;
     private readonly object _io = new();
     private bool _unusable;
@@ -78,6 +79,7 @@ public sealed class PtyHostClient : IDisposable
             client.CoreSelectionRevision = reply.Hello.CoreSelectionRevision;
             client.ThemeRevision = reply.Hello.ThemeRevision;
             client.PresentationRevision = reply.Hello.PresentationRevision;
+            client.JournalRevision = reply.Hello.JournalRevision;
             client.HostPid = reply.Hello.Pid;
             return client;
         }
@@ -90,9 +92,10 @@ public sealed class PtyHostClient : IDisposable
     /// a new ticket or infer non-execution from a missing reply. Empty tickets use legacy behavior.</summary>
     public string Create(string id, int cols, int rows, string app, string[] args,
         string? cwd = null, IReadOnlyDictionary<string, string>? env = null, bool verbatim = false, bool deElevate = false,
-        bool freshEnv = true, string creationTicket = "", string emulatorCore = "", bool singleOwner = false)
+        bool freshEnv = true, string creationTicket = "", string emulatorCore = "", bool singleOwner = false, bool journalOwner = false)
     {
         if (singleOwner && PresentationRevision != 1) throw new NotSupportedException("Host does not support single-owner presentation revision 1");
+        if(journalOwner && (JournalRevision != 1 || singleOwner)) throw new NotSupportedException("Host does not support requested journal ownership");
         if (cols < 0 || rows < 0 || cols > 10000 || rows > 10000)
             throw new ArgumentOutOfRangeException(nameof(cols), "create cols/rows must be in 0..10000 (zero selects defaults)");
         var create = new Create
@@ -108,6 +111,7 @@ public sealed class PtyHostClient : IDisposable
             CreationTicket = creationTicket,
             EmulatorCore = CoreSelectionRevision >= 1 ? emulatorCore : "",
             SingleOwner = singleOwner,
+            JournalOwner = journalOwner,
         };
         create.Args.AddRange(args);
         if (env is not null) foreach (var kv in env) create.Env[kv.Key] = kv.Value;
@@ -146,11 +150,14 @@ public sealed class PtyHostClient : IDisposable
     /// (write = child stdin, read = raw ConPTY output; EOF = child exited or superseded).
     /// <paramref name="repaint"/> asks the host for the ConPTY resize-jiggle — pass true when
     /// reattaching an existing view, false right after <see cref="Create"/>.</summary>
-    public PtyHostAttachment Attach(string id, bool repaint = false, int timeoutMs = 5000, string creationTicket = "", bool nativeSnapshot = false, uint presentationRevision = 0)
+    public PtyHostAttachment Attach(string id, bool repaint = false, int timeoutMs = 5000, string creationTicket = "", bool nativeSnapshot = false, uint presentationRevision = 0, uint journalRevision = 0)
     {
         if (presentationRevision != 0 && (presentationRevision != 1 || PresentationRevision != 1))
             throw new NotSupportedException("Host does not support requested presentation revision");
-        var reply = Request(new Request { Attach = new Attach { Id = id, Repaint = repaint, CreationTicket = creationTicket, NativeSnapshot = nativeSnapshot, PresentationRevision = presentationRevision } }).Attach;
+        if(journalRevision != 0 && (journalRevision != 1 || JournalRevision != 1 || presentationRevision != 0)) throw new NotSupportedException("Host does not support requested journal ownership");
+        var reply = Request(new Request { Attach = new Attach { Id = id, Repaint = repaint, CreationTicket = creationTicket, NativeSnapshot = nativeSnapshot, PresentationRevision = presentationRevision, JournalRevision=journalRevision } }).Attach;
+        if(reply.JournalRevision != journalRevision || journalRevision != 0 && (reply.AttachmentEpoch == 0 || reply.InputPipe.Length == 0 || reply.NativeSnapshot || reply.CreationTicket.Length == 0))
+            throw new IOException("pty-host returned incompatible journal attachment");
         if (creationTicket.Length > 0 && reply.CreationTicket != creationTicket) throw new IOException("pty-host attachment incarnation changed");
         if (reply.PresentationRevision != presentationRevision || presentationRevision != 0 &&
             (reply.AttachmentEpoch == 0 || reply.InputPipe.Length == 0 || reply.NativeSnapshot || reply.CreationTicket.Length == 0))
@@ -159,13 +166,13 @@ public sealed class PtyHostClient : IDisposable
         // mid-read via cancellation — a SYNC handle can't be unblocked by closing our own end
         // (SafeHandle ref-counting keeps the OS handle open under a blocked read). The #118 rule
         // still applies: cancel the pending read FIRST, and only the reader disposes the pipe.
-        var data = new NamedPipeClientStream(".", reply.Pipe, presentationRevision == 0 ? PipeDirection.InOut : PipeDirection.In, PipeOptions.Asynchronous);
+        var data = new NamedPipeClientStream(".", reply.Pipe, presentationRevision == 0 && journalRevision == 0 ? PipeDirection.InOut : PipeDirection.In, PipeOptions.Asynchronous);
         NamedPipeClientStream? input = null;
         byte[]? snapshot = null;
         try
         {
             data.Connect(timeoutMs);
-            if (presentationRevision != 0)
+            if (presentationRevision != 0 || journalRevision != 0)
             {
                 input = new NamedPipeClientStream(".",reply.InputPipe,PipeDirection.Out,PipeOptions.Asynchronous);
                 input.Connect(timeoutMs);
@@ -190,7 +197,8 @@ public sealed class PtyHostClient : IDisposable
             reply.HasExited ? reply.ExitCode : null,
             reply.Modes, reply.Scrollback,
             reply.ScrollbackBlob.IsEmpty ? null : reply.ScrollbackBlob.ToByteArray(), reply.CreationTicket, snapshot, reply.EmulatorCore,
-            input, reply.PresentationRevision, reply.AttachmentEpoch);
+            input, reply.PresentationRevision, reply.AttachmentEpoch,reply.JournalRevision,
+            journalRevision == 1 ? reply.InputPipe+"-checkpoint" : "");
     }
 
     public void Resize(string id, int cols, int rows, string creationTicket = "")
