@@ -1214,6 +1214,7 @@ internal partial class Program
     {
         _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
         _searchPending = false; _searchActive = false; _searchPane = null; _searchCore = null;
+        _searchError = null; _searchTruncated = false;
         _searchAnchor?.Dispose(); _searchAnchor = null;
         _searchMatches.Clear(); RequestRedraw();
     }
@@ -1305,7 +1306,6 @@ internal partial class Program
         _searchPane = ap;
         _searchCore = ap?.S.Emulator;
         if (ap is null || _searchQuery.Length == 0) return;
-        string q = _searchQuery.ToLowerInvariant();
         var em = ap.S.Emulator;
         if (em is GhosttyTerminalCore ghostty)
         {
@@ -1314,6 +1314,7 @@ internal partial class Program
             _ = SearchGhosttyAsync(ap, ghostty, _searchQuery, _searchCancellation, preserveSelection);
             return;
         }
+        string q = _searchQuery.ToLowerInvariant();
         lock (ap.S.SyncRoot)
         {
             int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;

@@ -227,7 +227,6 @@ try {
     $null = Rpc 'session.search' @{action='close'} $legacySearch
     $null = Rpc 'session.close' @{} $legacySearch
     $null = Rpc 'config.set' @{key='emulator-core';value='ghostty'}
-    $null = Rpc 'session.focus' @{} $session
 }
 
 $null = Rpc 'config.set' @{key='session-host';value='server'}
