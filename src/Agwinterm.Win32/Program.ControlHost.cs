@@ -933,9 +933,8 @@ internal partial class Program
         return SessionPastes.Reply(payload);
     });
 
-    // Search operates on the active pane's find bar (a UI-thread concept); run it synchronously
-    // on the UI thread and return the "N of M" status. (target is accepted for API shape; v1
-    // searches the active session.)
+    // The find bar belongs to the UI; Ghostty scans run in the background. A status request
+    // (no query/action) polls the current scan without restarting it.
     public string SessionSearch(string? target, string? query, string? action) => InvokeOnUi(() =>
     {
         if (PaneForTarget(target) is null || ActiveSurface() is null)
@@ -945,7 +944,7 @@ internal partial class Program
         if (!string.IsNullOrEmpty(query)) { _searchQuery = query!; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); }
         else if (action == "next") SearchStep(1);
         else if (action == "prev") SearchStep(-1);
-        else { RecomputeSearch(); ScrollToMatch(); }
+        else if (ActiveSurface() is { } pane) RefreshSearch(pane);
         RequestRedraw();
         return SearchStatus();
     });

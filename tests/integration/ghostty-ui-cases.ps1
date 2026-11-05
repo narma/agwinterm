@@ -1,5 +1,13 @@
 # Runs only inside the existing owned Hyper-V/Sandbox HUD fixture.
 $esc = [string][char]27
+function Find-GhosttyText([string]$Query) {
+    $status = Rpc 'session.search' @{query=$Query} $session
+    for ($poll = 0; $poll -lt 100 -and $status -eq 'searching…'; $poll++) {
+        Start-Sleep -Milliseconds 50
+        $status = Rpc 'session.search' @{} $session
+    }
+    return $status
+}
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -50,8 +58,17 @@ Check 'Ghostty active screen readback' ($text.Contains('Ghostty native VT'))
 Check 'Ghostty combining cluster survives application text API' ($text.Contains($cluster))
 Check 'Ghostty emoji cluster survives application text API' ($text.Contains('👩🏽‍💻'))
 Check 'Ghostty hyperlink text survives application text API' ($text.Contains('LINK'))
-Check 'Ghostty find locates the complete emoji cluster' ((Rpc 'session.search' @{query='👩🏽‍💻'} $session) -eq '1 of 1')
-Check 'Ghostty find locates combining text' ((Rpc 'session.search' @{query=$cluster} $session) -eq '1 of 1')
+Check 'Ghostty find locates the complete emoji cluster' ((Find-GhosttyText '👩🏽‍💻') -eq '1 of 1')
+Check 'Ghostty find locates combining text' ((Find-GhosttyText $cluster) -eq '1 of 1')
+$null = Rpc 'session.write' @{text=($esc+'[5;1HПРИВЕТ σ ς 𐐀')} $session
+Check 'Ghostty find folds Cyrillic case' ((Find-GhosttyText 'привет') -eq '1 of 1')
+Check 'Ghostty find folds Greek final sigma' ((Find-GhosttyText 'Σ') -eq '1 of 2')
+Check 'Ghostty find folds astral Unicode case' ((Find-GhosttyText '𐐨') -eq '1 of 1')
+$null = Rpc 'session.search' @{query='missing old query'} $session
+Check 'Ghostty newer query supersedes pending scan' ((Find-GhosttyText 'привет') -eq '1 of 1')
+$null = Rpc 'session.search' @{query='missing cancelled query'} $session
+$null = Rpc 'session.search' @{action='close'} $session
+Check 'Ghostty reopen does not publish cancelled results' ((Find-GhosttyText 'привет') -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session
 $uiaHome = if ($PSVersionTable.PSEdition -eq 'Core') { $PSHOME } else { "$env:WINDIR/Microsoft.NET/Framework64/v4.0.30319/WPF" }
 Add-Type -Path "$uiaHome/UIAutomationTypes.dll"
@@ -146,7 +163,7 @@ $historyScene = $esc+'[2J'+$esc+'[H'+$esc+'[5;5H'+'GHOSTTY_HISTORY_IMAGE'+
     $esc+'[6;5H'+$esc+'_Ga=T,f=32,s=1,v=1,i=901,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'+
     $esc+'[20;1H'+("history padding`r`n" * 100)
 $null = Rpc 'session.write' @{text=$historyScene} $session
-$found = Rpc 'session.search' @{query='GHOSTTY_HISTORY_IMAGE'} $session
+$found = Find-GhosttyText 'GHOSTTY_HISTORY_IMAGE'
 Start-Sleep -Milliseconds 1200
 $bitmap = [Drawing.Bitmap]::new($rc.right, $rc.bottom); $graphics = [Drawing.Graphics]::FromImage($bitmap)
 try {
@@ -163,6 +180,21 @@ try {
     }
     Check 'Ghostty history image reaches Direct2D after search scroll' ($green -gt 300) "green samples=$green; search=$found"
 } finally { $graphics.Dispose(); $bitmap.Dispose() }
+$null = Rpc 'session.search' @{action='close'} $session
+
+$null = Rpc 'session.write' @{text=("Latin русский 😀 search fixture`r`n" * 5000)} $session
+$timer = [Diagnostics.Stopwatch]::StartNew()
+$pendingStatus = Rpc 'session.search' @{query='РУССКИЙ'} $session
+$timer.Stop()
+Check 'Ghostty large-history search returns pending without a UI scan' ($pendingStatus -eq 'searching…') "status=$pendingStatus; requestMs=$($timer.ElapsedMilliseconds)"
+$largeStatus = $pendingStatus
+for ($poll = 0; $poll -lt 200 -and $largeStatus -eq 'searching…'; $poll++) {
+    Start-Sleep -Milliseconds 50
+    $largeStatus = Rpc 'session.search' @{} $session
+}
+Check 'Ghostty large-history Unicode results reach the find bar' ($largeStatus -eq '1 of 5000') "status=$largeStatus"
+$null = Rpc 'session.write' @{text="freshuniquehistorymarker`r`n"} $session
+Check 'Ghostty search sees output after a completed scan' ((Find-GhosttyText 'FRESHUNIQUEHISTORYMARKER') -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session
 
 $null = Rpc 'config.set' @{key='session-host';value='server'}

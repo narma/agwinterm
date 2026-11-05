@@ -516,6 +516,7 @@ internal partial class Program
         {
             var snap = _cellSnap;
             Cell CellAt(int r, int c) => snap[r * cols + c];
+            if (selPane is not null) RefreshSearch(selPane);
             bool searchHere = _searchActive && selPane is not null && ReferenceEquals(selPane, ActiveSurface());
             for (int r = 0; r < rows; r++)
             {
@@ -559,9 +560,18 @@ internal partial class Program
                 }
                 if (searchHere)  // search-match highlight (amber; current match brighter)
                 {
-                    for (int mi = 0; mi < _searchMatches.Count; mi++)
+                    // Matches are ordered by both endpoints. Skip off-screen history in
+                    // logarithmic time rather than walking every result for every row.
+                    int lo = 0, hi = _searchMatches.Count;
+                    while (lo < hi)
+                    {
+                        int mid = lo + (hi - lo) / 2;
+                        if (_searchMatches[mid].EndLine < abs) lo = mid + 1; else hi = mid;
+                    }
+                    for (int mi = lo; mi < _searchMatches.Count; mi++)
                     {
                         var m = _searchMatches[mi];
+                        if (m.Line > abs) break;
                         if (abs < m.Line || abs > m.EndLine) continue;
                         int from = Math.Clamp(abs == m.Line ? m.Col0 : 0, 0, cols - 1);
                         int to = Math.Clamp(abs == m.EndLine ? m.Col1 : cols - 1, 0, cols - 1);

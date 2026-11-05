@@ -11,6 +11,23 @@ Related pages: [launching a session command](session-commands.md), [session HUD]
 [native picker](native-picker.md), [`image frameshm`](specs/image-frameshm.md). The subset agliteterm
 shares is canonical in [`tests/conformance/control-api.json`](../tests/conformance/control-api.json).
 
+## Terminal search
+
+`session.search` with `args.query` starts the active pane's find operation. Ghostty
+searches in the background and replies `searching…` while a scan is pending.
+Poll `session.search` with empty args to read its status without restarting it.
+Completed replies are `N of M` or `no matches`; `N of 100000+` means the result
+limit was reached. `search unavailable` indicates that the scan could not finish.
+Actions `next`, `prev` and `close` retain their existing meaning. A replacement
+query or closing the bar cancels the previous scan.
+
+Ghostty search uses invariant Unicode simple casing, includes complete grapheme
+cell coordinates and crosses soft wraps, but not hard newlines. It does not apply
+canonical normalization or multi-character case expansion (`ß` is not `ss`).
+Output, resize, screen changes or history eviction invalidate coordinates and
+restart the search. During sustained output, the status can remain `searching…`
+until a consistent scan completes; input and painting remain available.
+
 ## Opt-in WSL live sessions (development)
 
 Rust remains the Windows PTY host. The local ZMX daemon runs only inside the

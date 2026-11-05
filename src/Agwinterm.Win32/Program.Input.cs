@@ -1202,24 +1202,90 @@ internal partial class Program
         RequestRedraw();
     }
 
-    private void CloseSearch() { _searchActive = false; _searchMatches.Clear(); RequestRedraw(); }
+    private CancellationTokenSource? _searchCancellation;
+    private Pane? _searchPane;
+    private long _searchVersion = -1;
+    private bool _searchPending, _searchTruncated;
+    private string? _searchError;
+
+    private void CloseSearch()
+    {
+        _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
+        _searchPending = false; _searchActive = false; _searchPane = null;
+        _searchMatches.Clear(); RequestRedraw();
+    }
+
+    private async Task SearchGhosttyAsync(Pane pane, GhosttyTerminalCore core, string query,
+        CancellationTokenSource owner)
+    {
+        var cancellation = owner.Token;
+        try
+        {
+            // Debounce typing and changing output without ever delaying the UI or ingestion.
+            GhosttyTerminalCore.SearchResult? result;
+            do
+            {
+                await Task.Delay(100, cancellation).ConfigureAwait(false);
+                result = await core.SearchAsync(query, pane.S.SyncRoot, cancellation).ConfigureAwait(false);
+            } while (result is null);
+            Post(() =>
+            {
+                if (!ReferenceEquals(_searchCancellation, owner) || !_searchActive) return;
+                if (!ReferenceEquals(ActiveSurface(), pane)) { RecomputeSearch(); return; }
+                lock (pane.S.SyncRoot)
+                {
+                    if (core.TextVersion != result.Version) { RecomputeSearch(); return; }
+                    _searchVersion = result.Version;
+                }
+                _searchPending = false; _searchTruncated = result.Truncated;
+                _searchMatches.AddRange(result.Matches); _searchCur = 0;
+                ScrollToMatch(); RequestRedraw();
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or ArgumentException)
+        {
+            Post(() =>
+            {
+                if (!ReferenceEquals(_searchCancellation, owner)) return;
+                _searchPending = false; _searchError = "search unavailable"; RequestRedraw();
+            });
+        }
+
+    }
+
+    private void RefreshSearch(Pane pane)
+    {
+        if (!_searchActive || _searchQuery.Length == 0 || !ReferenceEquals(pane, ActiveSurface())) return;
+        if (!ReferenceEquals(_searchPane, pane)) { RecomputeSearch(); return; }
+        if (!_searchPending && _searchError is null && pane.S.Emulator is GhosttyTerminalCore core)
+        {
+            bool changed;
+            lock (pane.S.SyncRoot) changed = core.TextVersion != _searchVersion;
+            if (changed) RecomputeSearch();
+        }
+    }
 
     /// <summary>Recompute all case-insensitive matches for _searchQuery over the active pane's history + live grid.</summary>
     private void RecomputeSearch()
     {
+        _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
+        _searchPending = false; _searchTruncated = false; _searchError = null;
         _searchMatches.Clear();
         var ap = ActiveSurface();
+        _searchPane = ap;
         if (ap is null || _searchQuery.Length == 0) return;
         string q = _searchQuery.ToLowerInvariant();
         var em = ap.S.Emulator;
+        if (em is GhosttyTerminalCore ghostty)
+        {
+            _searchPending = true;
+            _searchCancellation = CancellationTokenSource.CreateLinkedTokenSource(_uiGone.Token);
+            _ = SearchGhosttyAsync(ap, ghostty, _searchQuery, _searchCancellation);
+            return;
+        }
         lock (ap.S.SyncRoot)
         {
-            if (em is GhosttyTerminalCore native)
-            {
-                _searchMatches.AddRange(native.Search(_searchQuery));
-                if (_searchCur >= _searchMatches.Count) _searchCur = 0;
-                return;
-            }
             int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
             var sb = new StringBuilder(cols);
             // On the alt screen the pane shows only the live grid: matches below `hist` belong to the
@@ -1248,6 +1314,7 @@ internal partial class Program
 
     private void SearchStep(int dir)
     {
+        if (ActiveSurface() is { } pane) RefreshSearch(pane);
         if (_searchMatches.Count == 0) return;
         int n = _searchMatches.Count;
         _searchCur = ((_searchCur + dir) % n + n) % n;
@@ -1267,8 +1334,9 @@ internal partial class Program
     }
 
     private string SearchStatus()
-        => _searchMatches.Count == 0 ? (_searchQuery.Length == 0 ? "" : "no matches")
-           : $"{_searchCur + 1} of {_searchMatches.Count}";
+        => _searchPending ? "searching…" : _searchError ?? (_searchMatches.Count == 0
+            ? (_searchQuery.Length == 0 ? "" : "no matches")
+            : $"{_searchCur + 1} of {_searchMatches.Count}{(_searchTruncated ? "+" : "")}");
 
     private bool SearchKeyDown(int vk)
     {

@@ -580,6 +580,62 @@ using (var core = new GhosttyTerminalCore(80, 20))
             $"command boundaries track reflow at width {width}");
     }
 }
+using (var core = new GhosttyTerminalCore(12, 8))
+{
+    core.Feed(Encoding.UTF8.GetBytes("\x1b[?2027hПРИВЕТ мир\r\nΣ σ ς\r\n𐐀 é 👩🏽‍💻\r\nАБВГДЕЖЗИЙКЛМНОП"));
+    Check(core.Search("привет").Count == 1, "Unicode Cyrillic case-insensitive search");
+    Check(core.Search("σ").Count == 3, "Unicode Greek final sigma search");
+    Check(core.Search("𐐨").Count == 1, "Unicode astral case-insensitive search");
+    Check(core.Search("клмн").Single().Line != core.Search("клмн").Single().EndLine,
+        "Unicode case-insensitive match crosses native soft wrap");
+    var gate = new object();
+    var result = core.SearchAsync("👩🏽‍💻", gate, CancellationToken.None).GetAwaiter().GetResult();
+    Check(result is not null && result.Matches.SequenceEqual(core.Search("👩🏽‍💻")),
+        "background search preserves native cluster coordinates");
+    core.Feed("\x1b[?1049hALT"u8);
+    result = core.SearchAsync("привет", gate, CancellationToken.None).GetAwaiter().GetResult();
+    Check(result is not null && result.Matches.Count == 0, "background search isolates alternate screen");
+    using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+    bool observed = false;
+    try { core.SearchAsync("ALT", gate, cancelled.Token).GetAwaiter().GetResult(); }
+    catch (OperationCanceledException) { observed = true; }
+    Check(observed, "background search cancellation is observable");
+}
+using (var core = new GhosttyTerminalCore(80, 24))
+{
+    core.ScrollbackMax = 30000;
+    byte[] batch = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("Latin русский 😀 history line\r\n", 500)));
+    for (int i = 0; i < 40; i++) core.Feed(batch);
+    var gate = new object();
+    var watch = System.Diagnostics.Stopwatch.StartNew();
+    var search = core.SearchAsync("РУССКИЙ", gate, CancellationToken.None);
+    double maxWaitMs = 0; int probes = 0;
+    while (!search.IsCompleted)
+    {
+        var probe = System.Diagnostics.Stopwatch.StartNew();
+        lock (gate) { _ = core.CursorRow; }
+        maxWaitMs = Math.Max(maxWaitMs, probe.Elapsed.TotalMilliseconds); probes++;
+        Thread.Sleep(1);
+    }
+    var result = search.GetAwaiter().GetResult();
+    Check(result is not null && result.Matches.Count == 20000, "large-history background Unicode search finds all rows");
+    Check(probes > 1, "large-history search releases session lock during scan");
+    Console.WriteLine($"SEARCH BENCH: rows={core.HistoryCount + core.Rows}, elapsedMs={watch.Elapsed.TotalMilliseconds:F2}, lockProbeMaxMs={maxWaitMs:F2}, probes={probes}");
+    var changing = core.SearchAsync("history", gate, CancellationToken.None);
+    for (int i = 0; i < 20 && !changing.IsCompleted; i++)
+    {
+        Thread.Sleep(1);
+        lock (gate) core.Resize(i % 2 == 0 ? 79 : 80, 24);
+    }
+    var stale = changing.GetAwaiter().GetResult();
+    Check(stale is null, "resize invalidates in-progress search instead of publishing mixed coordinates");
+    using var cancellation = new CancellationTokenSource();
+    var cancelTask = core.SearchAsync("absent", gate, cancellation.Token);
+    cancellation.Cancel();
+    bool observed = false;
+    try { cancelTask.GetAwaiter().GetResult(); } catch (OperationCanceledException) { observed = true; }
+    Check(observed, "large-history search stops after cancellation");
+}
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 
 [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

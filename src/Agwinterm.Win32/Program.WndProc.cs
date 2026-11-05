@@ -711,6 +711,7 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_DESTROY:
+                _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
                 DisposeGhosttyRendering();
                 _soloBitmaps.Dispose();
                 _soloGlyphs.Dispose();
