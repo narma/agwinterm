@@ -1,4 +1,4 @@
-param([switch]$SkipDownload, [string]$SourceDirectory, [switch]$PrepareOnly, [switch]$TestSearch)
+param([switch]$SkipDownload, [string]$SourceDirectory, [switch]$PrepareOnly, [switch]$TestSearch, [switch]$BuildSearchTests)
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $pin = Get-Content (Join-Path $PSScriptRoot 'pin.json') -Raw | ConvertFrom-Json
@@ -61,7 +61,7 @@ try {
     & $zig build -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$($pin.target)" --prefix $output -j4 --summary all
     CheckExit 'Ghostty build'
     Write-Output ("Ghostty ReleaseFast build: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
-    if ($TestSearch) {
+    if ($TestSearch -or $BuildSearchTests) {
         $phaseTimer.Restart()
         $searchOutput = Join-Path $output 'search-tests'
         # Upstream's C API test binary includes all Zig module tests too. Build it
@@ -69,11 +69,13 @@ try {
         & $zig build test-lib-vt-build -Demit-lib-vt=true -Demit-test-exe=true -Dtest-filter=search -Doptimize=Debug "-Dtarget=$($pin.target)" --prefix $searchOutput -j1 --summary all
         CheckExit 'Ghostty search test build'
         Write-Output ("Ghostty Debug search test build: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
-        $phaseTimer.Restart()
-        # Run directly: a restored compiler cache must not reuse a test-run result.
-        & (Join-Path $searchOutput 'bin/ghostty-vt-c-test.exe')
-        CheckExit 'Ghostty search tests'
-        Write-Output ("Ghostty Debug search test execution: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
+        if ($TestSearch) {
+            $phaseTimer.Restart()
+            # Run directly: a restored compiler cache must not reuse a test-run result.
+            & (Join-Path $searchOutput 'bin/ghostty-vt-c-test.exe')
+            CheckExit 'Ghostty search tests'
+            Write-Output ("Ghostty Debug search test execution: {0:N2}s" -f $phaseTimer.Elapsed.TotalSeconds)
+        }
     }
 } finally {
     [IO.File]::WriteAllBytes($libraryPath, $librarySource)

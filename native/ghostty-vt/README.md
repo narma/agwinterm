@@ -85,9 +85,17 @@ CI caches the pinned Zig toolchain, Ghostty's local compiler cache and downloade
 packages, and an explicit global Zig cache under artifacts/ghostty-zig-global.
 The compiler cache key includes the runner platform, pin, and native build inputs;
 changes within the same pin can reuse dependency outputs through a restore prefix.
-Source preparation runs before cache restoration so a restored cache directory
-does not prevent a fresh git clone. Generated DLLs are rebuilt and the C# native
-contract harness runs on every job; there is no cache-hit skip of verification.
+Source preparation runs before compiler-cache restoration so a restored cache
+directory does not prevent a fresh git clone. Compiler caches are best-effort:
+Windows runner changes can still make Zig recompile restored outputs.
+
+An exact-input native bundle cache therefore also stores the DLLs, provenance,
+licenses, and Debug search test executable. Its key includes platform, pin, native
+sources/headers, extensions/patches, build scripts and workflow configuration,
+with no fallback prefix. An exact hit skips only native compilation. Debug search
+tests and the current C# native contract harness always execute; test success is
+never cached. On a miss, CI uses -BuildSearchTests to produce the executable and
+then runs it in the same unconditional test step as a cache hit.
 
 With -TestSearch, both builds use library-only mode. The Debug C API test binary
 includes the Zig module tests (as documented in upstream build.zig), so it is
