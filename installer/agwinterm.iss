@@ -5,9 +5,9 @@
 #define AppVersion "0.20.19"
 #define AppExe     "Agwinterm.Win32.exe"
 #define AppPublisher "Boris Kudriashov"
-; The main app defaults new sessions to the Rust pty-host as a first-run seed only (it never
+; The main app defaults new sessions to the Ghostty-capable .NET pty-host as a first-run seed only (it never
 ; overrides an existing config). Lite ships from its own installer (agwinterm-lite.iss).
-#define RustHostArg "--default-session-host server-rust"
+#define DefaultHostArg "--default-session-host server"
 
 [Setup]
 AppId={{A7E3F1C2-5B9D-4E6A-8C21-3F0D9B4A7E15}
@@ -49,14 +49,14 @@ Type: files; Name: "{autoprograms}\{#AppName} lite.lnk"
 Type: files; Name: "{autodesktop}\{#AppName} lite.lnk"
 
 [Icons]
-; Main terminal — its shortcut seeds server-rust on a first run (harmless once configured).
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "{#RustHostArg}"; IconFilename: "{app}\assets\agwinterm.ico"
-Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; Parameters: "{#RustHostArg}"; IconFilename: "{app}\assets\agwinterm.ico"; Tasks: desktopicon
+; Main terminal — its shortcut seeds server on a first run (harmless once configured).
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "{#DefaultHostArg}"; IconFilename: "{app}\assets\agwinterm.ico"
+Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; Parameters: "{#DefaultHostArg}"; IconFilename: "{app}\assets\agwinterm.ico"; Tasks: desktopicon
 
 [Run]
 ; Launch-on-finish checkbox (interactive installs only) — passes the seed so the very first run
 ; (typically this launch) defaults the main app to the Rust pty-host.
-Filename: "{app}\{#AppExe}"; Parameters: "{#RustHostArg}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Parameters: "{#DefaultHostArg}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

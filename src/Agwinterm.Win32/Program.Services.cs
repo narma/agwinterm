@@ -2159,7 +2159,7 @@ internal partial class Program
     }
 
     // The first-run config template. Honors --default-session-host (the installer passes
-    // "server-rust" so a fresh install defaults new sessions to the Rust pty-host) without
+    // "server" so a fresh install uses the Ghostty-capable .NET pty-host) without
     // touching the compiled global default — existing configs are never rewritten, and the
     // Settings UI stays authoritative from then on. Unknown values leave the template as-is.
     private static string SeedConfigText()

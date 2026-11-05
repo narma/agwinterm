@@ -89,7 +89,14 @@ public sealed class TerminalConfig
     /// "server-rust" (EXPERIMENTAL — the standalone Rust pty-host binary; same protocol, but
     /// blocking-threaded so the .NET 10 IOCP crash class is absent). Both server modes let sessions
     /// survive UI updates/crashes; server-rust falls back to in-process if the binary is missing.</summary>
-    public string SessionHost { get; set; } = "in-process";
+    private string _sessionHost = "in-process";
+    public string SessionHost
+    {
+        // The Rust host cannot own Ghostty snapshots/reflow. Retain the requested
+        // host so switching back to an explicit legacy core restores that choice.
+        get => EmulatorCore == "ghostty" && _sessionHost == "server-rust" ? "server" : _sessionHost;
+        set => _sessionHost = value;
+    }
 
     /// <summary>Which ConPTY sessions run on: "inbox" (default, the conhost built into Windows) or
     /// "bundled" (#339 — the conpty.dll + OpenConsole.exe shipped beside the exe, which forwards an

@@ -94,6 +94,22 @@ public class TerminalConfigTests
     }
 
     [Fact]
+    public void GhosttyUsesNativeCapableServerWithoutErasingLegacyHostPreference()
+    {
+        var config = TerminalConfig.Parse("session-host = server-rust");
+        Assert.Equal("ghostty", config.EmulatorCore);
+        Assert.Equal("server", config.SessionHost);
+        foreach (var core in new[] { "managed", "rust" })
+        {
+            config.EmulatorCore = core;
+            Assert.Equal("server-rust", config.SessionHost);
+            Assert.Equal("server-rust", TerminalConfig.Parse($"emulator-core = {core}\nsession-host = server-rust").SessionHost);
+        }
+        config.EmulatorCore = "ghostty";
+        Assert.Equal("server", config.SessionHost);
+    }
+
+    [Fact]
     public void Conpty_DefaultsToBundledForGhostty_PreservesLegacyChoices()
     {
         Assert.Equal("bundled", TerminalConfig.Parse("").Conpty);
