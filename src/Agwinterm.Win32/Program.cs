@@ -1345,7 +1345,7 @@ internal partial class Program : ISessionHost, IWindowHost
     }
 
     /// <summary>Keyboard handling while the sidebar zone has focus (F6). Up/Down walk sessions, Enter/Space
-    /// opens one, Escape/F6 returns to the terminal. Swallows everything else so it can't reach the shell.</summary>
+    /// opens one, F2 renames it, Escape/F6 returns to the terminal. Swallows everything else so it can't reach the shell.</summary>
     private bool SidebarZoneKey(int vk)
     {
         var list = AllSessions();
@@ -1358,6 +1358,7 @@ internal partial class Program : ISessionHost, IWindowHost
             case VK_UP: _focusRow = list[Math.Max(idx - 1, 0)]; AnnounceFocusRow(); RequestRedraw(); return true;
             case VK_HOME: _focusRow = list[0]; AnnounceFocusRow(); RequestRedraw(); return true;
             case VK_END: _focusRow = list[^1]; AnnounceFocusRow(); RequestRedraw(); return true;
+            case 0x71 /* F2 */: StartRename(list[idx]); return true;
             case VK_RETURN:
             case VK_SPACE:
                 if (_focusRow is not null) SetActive(_focusRow);

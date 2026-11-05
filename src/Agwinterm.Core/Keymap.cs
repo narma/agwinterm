@@ -45,7 +45,6 @@ public static class Keymap
         ("ctrl+shift+o", "custom_palette"),
         ("ctrl+alt+up", "previous_attention"),
         ("ctrl+alt+down", "next_attention"),
-        ("f2", "rename_session"),
         ("ctrl+f", "toggle_search"),
         ("ctrl+j", "toggle_scratch"),
         ("ctrl+shift+f", "toggle_flag"),
