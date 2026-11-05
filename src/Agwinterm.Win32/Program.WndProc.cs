@@ -712,6 +712,7 @@ internal partial class Program
 
             case WM_DESTROY:
                 _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
+                _searchAnchor?.Dispose(); _searchAnchor = null;
                 DisposeGhosttyRendering();
                 _soloBitmaps.Dispose();
                 _soloGlyphs.Dispose();

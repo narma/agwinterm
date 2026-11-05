@@ -944,7 +944,11 @@ internal partial class Program
         if (!string.IsNullOrEmpty(query)) { _searchQuery = query!; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); }
         else if (action == "next") SearchStep(1);
         else if (action == "prev") SearchStep(-1);
-        else if (ActiveSurface() is { } pane) RefreshSearch(pane);
+        else if (ActiveSurface() is { } pane)
+        {
+            if (pane.S.Emulator is GhosttyTerminalCore) RefreshSearch(pane);
+            else { RecomputeSearch(); ScrollToMatch(); }
+        }
         RequestRedraw();
         return SearchStatus();
     });

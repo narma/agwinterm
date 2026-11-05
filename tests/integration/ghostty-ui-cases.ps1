@@ -63,6 +63,14 @@ Check 'Ghostty find locates combining text' ((Find-GhosttyText $cluster) -eq '1 
 $null = Rpc 'session.write' @{text=($esc+'[5;1HПРИВЕТ σ ς 𐐀')} $session
 Check 'Ghostty find folds Cyrillic case' ((Find-GhosttyText 'привет') -eq '1 of 1')
 Check 'Ghostty find folds Greek final sigma' ((Find-GhosttyText 'Σ') -eq '1 of 2')
+$selectedBefore = Rpc 'session.search' @{action='next'} $session
+$null = Rpc 'session.write' @{text=($esc+'[6;1Hunrelated status update')} $session
+$selectedAfter = Rpc 'session.search' @{} $session
+for ($poll = 0; $poll -lt 100 -and $selectedAfter -eq 'searching…'; $poll++) {
+    Start-Sleep -Milliseconds 50
+    $selectedAfter = Rpc 'session.search' @{} $session
+}
+Check 'Ghostty automatic refresh keeps the selected match' ($selectedBefore -eq '2 of 2' -and $selectedAfter -eq '2 of 2') "before=$selectedBefore; after=$selectedAfter"
 Check 'Ghostty find folds astral Unicode case' ((Find-GhosttyText '𐐨') -eq '1 of 1')
 $null = Rpc 'session.search' @{query='missing old query'} $session
 Check 'Ghostty newer query supersedes pending scan' ((Find-GhosttyText 'привет') -eq '1 of 1')
@@ -192,7 +200,9 @@ for ($poll = 0; $poll -lt 200 -and $largeStatus -eq 'searching…'; $poll++) {
     Start-Sleep -Milliseconds 50
     $largeStatus = Rpc 'session.search' @{} $session
 }
-Check 'Ghostty large-history Unicode results reach the find bar' ($largeStatus -eq '1 of 5000') "status=$largeStatus"
+$retainedText = [string](Rpc 'session.text' @{all=$true} $session)
+$retainedMatches = [regex]::Matches($retainedText, 'русский').Count
+Check 'Ghostty large-history Unicode results match retained native history' ($retainedMatches -ge 4000 -and $largeStatus -eq "1 of $retainedMatches") "status=$largeStatus; retained=$retainedMatches; emitted=5000"
 $null = Rpc 'session.write' @{text="freshuniquehistorymarker`r`n"} $session
 Check 'Ghostty search sees output after a completed scan' ((Find-GhosttyText 'FRESHUNIQUEHISTORYMARKER') -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session

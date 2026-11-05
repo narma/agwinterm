@@ -1207,16 +1207,18 @@ internal partial class Program
     private long _searchVersion = -1;
     private bool _searchPending, _searchTruncated;
     private string? _searchError;
+    private GhosttyAnchor? _searchAnchor;
 
     private void CloseSearch()
     {
         _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
         _searchPending = false; _searchActive = false; _searchPane = null;
+        _searchAnchor?.Dispose(); _searchAnchor = null;
         _searchMatches.Clear(); RequestRedraw();
     }
 
     private async Task SearchGhosttyAsync(Pane pane, GhosttyTerminalCore core, string query,
-        CancellationTokenSource owner)
+        CancellationTokenSource owner, bool preserveSelection)
     {
         var cancellation = owner.Token;
         try
@@ -1234,12 +1236,33 @@ internal partial class Program
                 if (!ReferenceEquals(ActiveSurface(), pane)) { RecomputeSearch(); return; }
                 lock (pane.S.SyncRoot)
                 {
-                    if (core.TextVersion != result.Version) { RecomputeSearch(); return; }
+                    if (core.TextVersion != result.Version) { RecomputeSearch(preserveSelection); return; }
                     _searchVersion = result.Version;
+                    _searchCur = preserveSelection ? Math.Clamp(_searchCur, 0, Math.Max(0, result.Matches.Count - 1)) : 0;
+                    if (preserveSelection && _searchAnchor is { } anchor && anchor.TryLocate(out int line, out int col))
+                    {
+                        int lo = 0, hi = result.Matches.Count;
+                        while (lo < hi)
+                        {
+                            int mid = lo + (hi - lo) / 2;
+                            var match = result.Matches[mid];
+                            if (match.Line < line || (match.Line == line && match.Col0 < col)) lo = mid + 1;
+                            else hi = mid;
+                        }
+                        if (lo < result.Matches.Count && result.Matches[lo].Line == line && result.Matches[lo].Col0 == col)
+                            _searchCur = lo;
+                    }
+                    _searchAnchor?.Dispose(); _searchAnchor = null;
+                    if (result.Matches.Count > 0)
+                    {
+                        var selected = result.Matches[_searchCur];
+                        _searchAnchor = core.TrackPoint(selected.Line, selected.Col0);
+                    }
                 }
                 _searchPending = false; _searchTruncated = result.Truncated;
-                _searchMatches.AddRange(result.Matches); _searchCur = 0;
-                ScrollToMatch(); RequestRedraw();
+                _searchMatches.AddRange(result.Matches);
+                if (!preserveSelection) ScrollToMatch();
+                RequestRedraw();
             });
         }
         catch (OperationCanceledException) { }
@@ -1262,15 +1285,16 @@ internal partial class Program
         {
             bool changed;
             lock (pane.S.SyncRoot) changed = core.TextVersion != _searchVersion;
-            if (changed) RecomputeSearch();
+            if (changed) RecomputeSearch(preserveSelection: true);
         }
     }
 
     /// <summary>Recompute all case-insensitive matches for _searchQuery over the active pane's history + live grid.</summary>
-    private void RecomputeSearch()
+    private void RecomputeSearch(bool preserveSelection = false)
     {
         _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
         _searchPending = false; _searchTruncated = false; _searchError = null;
+        if (!preserveSelection) { _searchAnchor?.Dispose(); _searchAnchor = null; _searchCur = 0; }
         _searchMatches.Clear();
         var ap = ActiveSurface();
         _searchPane = ap;
@@ -1281,7 +1305,7 @@ internal partial class Program
         {
             _searchPending = true;
             _searchCancellation = CancellationTokenSource.CreateLinkedTokenSource(_uiGone.Token);
-            _ = SearchGhosttyAsync(ap, ghostty, _searchQuery, _searchCancellation);
+            _ = SearchGhosttyAsync(ap, ghostty, _searchQuery, _searchCancellation, preserveSelection);
             return;
         }
         lock (ap.S.SyncRoot)
@@ -1318,6 +1342,16 @@ internal partial class Program
         if (_searchMatches.Count == 0) return;
         int n = _searchMatches.Count;
         _searchCur = ((_searchCur + dir) % n + n) % n;
+        if (_searchPane is { } selectedPane && selectedPane.S.Emulator is GhosttyTerminalCore core)
+        {
+            lock (selectedPane.S.SyncRoot)
+            {
+                if (core.TextVersion != _searchVersion) { RecomputeSearch(preserveSelection: true); return; }
+                _searchAnchor?.Dispose();
+                var selected = _searchMatches[_searchCur];
+                _searchAnchor = core.TrackPoint(selected.Line, selected.Col0);
+            }
+        }
         ScrollToMatch(); RequestRedraw();
     }
 
