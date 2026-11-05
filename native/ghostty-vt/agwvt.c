@@ -290,7 +290,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 3;
+    return 4;
 }
 const char* agwvt_revision(void) { return "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {

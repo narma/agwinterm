@@ -18,6 +18,12 @@ try
 {
     string manifest = Path.Combine(mismatchDirectory, "ghostty-vt.provenance.json");
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
+    string currentManifest = File.ReadAllText(manifest);
+    var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
+    oldAbi["abi"] = 3;
+    File.WriteAllText(manifest, oldAbi.ToJsonString());
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous search ABI is rejected before loading");
+    File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
         "mismatched upstream DLL is rejected before loading");

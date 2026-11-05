@@ -246,7 +246,7 @@ switch/removal of legacy engines are not part of this increment.
 ### Stage 2 follow-up: native Unicode search (2026-11-05)
 
 Supersedes the managed fallback and its limitations described above. Adapter ABI
-3 adds a Unicode search entry point to the pinned Ghostty search pipeline. Full
+4 adds a Unicode search entry point to the pinned Ghostty search pipeline. Full
 Unicode folding uses the already bundled uucode tables, with original cell maps
 retained through expansions. Normalization and locale-specific casing remain out
 of scope. The C# text matcher and its implementation-specific tests are removed.
@@ -284,3 +284,7 @@ artifacts/ghostty-unicode-preview/Start-Preview.cmd. An additional completion gu
 continues scanning if validation prunes a previously capped result set below its
 limit; the 208 native contracts still pass. Current host samples are exploratory,
 not a calibrated Rust comparison or latency guarantee.
+
+ABI 4 distinguishes the final feed(status, count) signature from the intermediate
+ABI 3 build; the loader rejects the earlier manifest before native calls. The
+additional rejection contract brings the native harness to 209 checks.
