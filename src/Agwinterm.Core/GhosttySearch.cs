@@ -54,12 +54,18 @@ public sealed class GhosttySearch : IDisposable
                     if (_status == 2 || _limited)
                     {
                         GhosttyNative.Check(GhosttyNative.SearchMatches(handle, null, 0, out nuint count));
-                        truncated = count > MatchLimit;
-                        int take = (int)Math.Min(count, (nuint)MatchLimit);
-                        coordinates = new uint[take * 4];
-                        fixed (uint* output = coordinates)
-                            GhosttyNative.Check(GhosttyNative.SearchMatches(handle, output, (nuint)take, out count));
-                        version = _version;
+                        _limited = count > MatchLimit;
+                        // Export prunes evicted references. If that drops us below
+                        // the cap, finish scanning before publishing a full result.
+                        if (_status == 2 || _limited)
+                        {
+                            truncated = _limited;
+                            int take = (int)Math.Min(count, (nuint)MatchLimit);
+                            coordinates = new uint[take * 4];
+                            fixed (uint* output = coordinates)
+                                GhosttyNative.Check(GhosttyNative.SearchMatches(handle, output, (nuint)take, out count));
+                            version = _version;
+                        }
                     }
                 }
                 if (coordinates is not null)
@@ -68,8 +74,8 @@ public sealed class GhosttySearch : IDisposable
                     for (int i = 0; i < matches.Length; i++)
                         matches[i] = ((int)coordinates[i*4], (int)coordinates[i*4+1], (int)coordinates[i*4+2], (int)coordinates[i*4+3]);
                     Array.Sort(matches);
-                    // Expansions can produce multiple folded offsets in the same
-                    // original cell (e.g. either s in sharp-s). Highlight it once.
+                    // Keep the UI list unique defensively; folded-offset
+                    // duplicates are already removed inside native search.
                     int unique = 0;
                     foreach (var match in matches)
                         if (unique == 0 || matches[unique - 1] != match) matches[unique++] = match;

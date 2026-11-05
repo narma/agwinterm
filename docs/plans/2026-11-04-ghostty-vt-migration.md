@@ -275,3 +275,12 @@ allocation/cloning and its finalization API. Moving the same implementation into
 an internal PageList patch adds maintenance without improving current behavior.
 Persistent search discovers prepended history in the new regression contract.
 No upstream issue was opened; feedback remains local and uncommitted.
+
+Native Unicode acceptance: upstream C/Zig search tests passed with Debug runtime
+checks; the source checkout was restored after building. Hyper-V passed 38/38
+GUI checks and 32/32 server checks in artifacts/hyperv-ghostty-unicode/results,
+including full-fold queries and refresh during continuing output. Release preview:
+artifacts/ghostty-unicode-preview/Start-Preview.cmd. An additional completion guard
+continues scanning if validation prunes a previously capped result set below its
+limit; the 208 native contracts still pass. Current host samples are exploratory,
+not a calibrated Rust comparison or latency guarantee.
