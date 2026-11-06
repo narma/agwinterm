@@ -106,8 +106,9 @@ public static class ImeKeys {
     $identity='agwinterm-ime-'+[guid]::NewGuid().ToString('N')
     $data=Join-Path $env:LOCALAPPDATA $identity
     $null=New-Item -ItemType Directory -Path $data
+    "session-host = $SessionHost" | Set-Content (Join-Path $data 'agwinterm.conf')
     if ($TerminalCore) {
-        @("emulator-core = $($TerminalCore.ToLowerInvariant())","session-host = $SessionHost") | Set-Content (Join-Path $data 'agwinterm.conf')
+        "emulator-core = $($TerminalCore.ToLowerInvariant())" | Add-Content (Join-Path $data 'agwinterm.conf')
     }
     @{default='Test';profiles=@(@{name='Test';command='cmd.exe';args=@('/d','/q','/k','echo AW_IME_READY');cwd=($env:SystemDrive+'\')})} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $data 'profiles.json')
     'map f10 = action_palette' | Set-Content (Join-Path $data 'keymap.conf')

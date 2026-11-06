@@ -8,7 +8,12 @@ internal sealed class HostEffectChannel
 {
     private const int MaximumBytes=1024*1024;
     private readonly object _gate=new();
-    private readonly Channel<PresentationEffect> _queue=Channel.CreateBounded<PresentationEffect>(256);
+    private const int MaximumReliableRecords=256;
+    // One reserved slot holds the latest title and directory. A slow effect
+    // reader must not turn normal title churn into an attachment failure.
+    private readonly Channel<PresentationEffect> _queue=Channel.CreateBounded<PresentationEffect>(MaximumReliableRecords+1);
+    private PresentationEffect? _pendingMetadata;
+    private int _reliableRecords;
     private readonly string _incarnation;
     private readonly ulong _epoch;
     private readonly Action _overflow;
@@ -25,12 +30,20 @@ internal sealed class HostEffectChannel
         {
             if(_closed) return;
             int bytes=checked((effect.Title.Length+effect.Text.Length)*2+128);
-            if(bytes > MaximumBytes-_bytes) overflow=true;
+            bool metadata=effect.Kind == 7;
+            if(metadata && bytes <= MaximumBytes && _pendingMetadata is { } pending)
+            {
+                pending.Title=effect.Title;
+                pending.Text=effect.Text;
+                return;
+            }
+            if(bytes > MaximumBytes || !metadata && (bytes > MaximumBytes-_bytes || _reliableRecords >= MaximumReliableRecords)) overflow=true;
             else
             {
                 effect=effect.Clone(); effect.Incarnation=_incarnation; effect.AttachmentEpoch=_epoch; effect.Sequence=++_sequence;
                 if(!_queue.Writer.TryWrite(effect)) overflow=true;
-                else _bytes+=bytes;
+                else if(metadata) _pendingMetadata=effect;
+                else { _bytes+=bytes; _reliableRecords++; }
             }
             if(overflow) { _closed=true; _queue.Writer.TryComplete(new IOException("Owner effect queue overflow.")); }
         }
@@ -47,8 +60,15 @@ internal sealed class HostEffectChannel
         await pipe.WaitForConnectionAsync(connect.Token).ConfigureAwait(false);
         await foreach(var effect in _queue.Reader.ReadAllAsync(cancellation).ConfigureAwait(false))
         {
+            if(effect.Kind == 7)
+            {
+                // Freeze the record before serialization. Further changes get
+                // a new slot, even if this pipe write is still in flight.
+                lock(_gate) _pendingMetadata=null;
+            }
             await PresentationQueryWire.WriteAsync(pipe,effect,cancellation).ConfigureAwait(false);
-            lock(_gate) _bytes-=(effect.Title.Length+effect.Text.Length)*2+128;
+            if(effect.Kind != 7)
+                lock(_gate) { _bytes-=(effect.Title.Length+effect.Text.Length)*2+128; _reliableRecords--; }
         }
         await PresentationQueryWire.WriteAsync(pipe,new PresentationEffect { Incarnation=_incarnation,
             AttachmentEpoch=_epoch,Sequence=++_sequence,Kind=0 },cancellation).ConfigureAwait(false);

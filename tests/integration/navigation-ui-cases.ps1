@@ -144,7 +144,13 @@ $wheelEncoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($wheel
 $null=Rpc 'session.type' @{text="powershell.exe -NoLogo -NoProfile -EncodedCommand $wheelEncoded`r"} $wheelPane
 for($i=0;$i-lt 300 -and -not (Test-Path $wheelReady);$i++){Start-Sleep -Milliseconds 100}
 if(-not (Test-Path $wheelReady)){throw 'Owned raw-input mouse reader was not ready'}
-$null=Rpc 'session.write' @{text=($esc+'[?1000h'+$esc+'[?1006h'+$lines)} $wheelPane
+$reportLines=$lines.Replace('WHEEL-LINE-85','WHEEL-REPORT-ARMED')
+$null=Rpc 'session.write' @{text=($esc+'[?1000h'+$esc+'[?1006h'+$reportLines)} $wheelPane
+# The control write is queued. Fence the cached generation containing both
+# mode changes before sending the wheel to the window.
+Check 'reporting viewport has reached the armed generation' (NavWait {
+    ([string](Rpc 'session.text' @{} $wheelPane)) -match 'WHEEL-REPORT-ARMED'
+})
 $reportBefore=NavPixels 'wheel-report-before'
 [void][HudOwnedJob]::SendMessageW($hwnd,0x20a,[IntPtr](120-shl 16),$wheelPosition)
 Check 'wheel report reaches the unfocused raw-input reader' (NavWait {(Test-Path $wheelBytes) -and (Get-Content $wheelBytes -Raw)-match '^\x1b\[<64;[0-9]+;[0-9]+M$'})

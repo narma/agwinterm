@@ -276,6 +276,18 @@ try
                 "single-owner viewport preserves restored cursor metadata");
         }
         int? singlePid=single.ChildProcessId;
+        // The title effect fences owner feed independently of frame credit.
+        // A synchronized batch must keep its pixels private until release.
+        single.Inject("\u001b7\u001b[7;1HBEFORE_SYNC\u001b8"u8);
+        Check(Wait(()=>Present(single).Contains("BEFORE_SYNC")),"synchronized batch starts from a known hosted viewport");
+        single.Inject("\u001b[?2026h\u001b7\u001b[7;1HAFTER_SYNC!\u001b8\u001b]2;SYNC_FED\u0007"u8);
+        Check(Wait(()=>{lock(single.SyncRoot) return single.Emulator.Title == "SYNC_FED";}),
+            "owner accepts the held batch while paint is suspended");
+        Check(Present(single).Contains("BEFORE_SYNC"),"hosted client retains previous pixels during synchronized output");
+        single.Inject("\u001b[?2026l"u8);
+        Check(Wait(()=>Present(single).Contains("AFTER_SYNC!")),"hosted synchronized release publishes the complete new viewport");
+        single.Inject("\u001b[?2026h\u001b7\u001b[7;1HTIMEOUT_SYNC\u001b8"u8);
+        Check(Wait(()=>Present(single).Contains("TIMEOUT_SYNC")),"hosted synchronized deadline publishes without more child output");
         (ulong sequence,ulong revision,ulong generation) Animation(bool acknowledge)
         {
             lock(single.SyncRoot)
