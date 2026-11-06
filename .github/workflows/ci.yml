@@ -253,6 +253,22 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Hosted Ghostty presentation and reconnect contracts
+        if: matrix.suite == 'host'
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          . ./tests/ui/lib.ps1
+          $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
+          if (-not $exe) { throw 'Built app not found' }
+          $harness = Join-Path $pwd 'artifacts/host-owner-ci-contracts'
+          dotnet publish tests/Agwinterm.GhosttyServerHarness -c Release --no-self-contained -o $harness
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # Only the contract harness loads the legacy parity oracle.
+          Copy-Item -LiteralPath native/target/release/agwinterm_core.dll -Destination $harness
+          & (Join-Path $harness 'Agwinterm.GhosttyServerHarness.exe') (Split-Path $exe)
+          exit $LASTEXITCODE
+
       # The control API is a cross-product contract now: agliteterm ships from its own repository
       # promising to speak this dialect, and its CI runs THIS spec against its own client. Running
       # it here too is what makes "same control API" a gate rather than a claim — a verb reshaped

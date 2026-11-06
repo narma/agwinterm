@@ -354,6 +354,29 @@ try
                 return frame is not null && frame.Images.Count == 0; } }),"owner image clear removes transported placements");
         }
         finally { File.Delete(pngPath); }
+        // Larger than one image reply. Dispose the producer before reattach:
+        // the new client can only reconstruct this image from owner storage.
+        byte[] expectedPixels;
+        using(var pixels=new Agwinterm.Pty.Tests.ShmTestProducer(width:528,height:512))
+        using(var control=new ControlServer(single))
+        {
+            long seq=pixels.Publish(79);
+            expectedPixels=Agwinterm.Pty.Tests.ShmTestProducer.Packed(79,528,512);
+            string command=System.Text.Json.JsonSerializer.Serialize(new { cmd="image.frameshm",
+                args=new { images=new[] { new { name=pixels.Name,id=98,slot=pixels.Slot,seq,row=3,col=0,cols=2,rows=2 } } } });
+            using var response=System.Text.Json.JsonDocument.Parse(control.Dispatch(command));
+            Check(response.RootElement.GetProperty("ok").GetBoolean(),"owner accepts multi-chunk shared-memory image");
+            Check(Wait(()=>HasPixels(single)),"initial attachment receives the complete multi-chunk image");
+        }
+        bool HasPixels(ServerSession session)
+        {
+            Present(session);
+            lock(session.SyncRoot)
+            {
+                using var frame=((PresentedTerminalView)session.Emulator).AcquireFrame();
+                return frame?.Images.Any(p=>p.Id == 98 && p.Image.Pixels.Span.SequenceEqual(expectedPixels)) == true;
+            }
+        }
         single.Inject("\u001b]52;c;Y2xpcGJvYXJk\a\a\u001b]9;4;2;25\a"u8);
         Check(Wait(()=>effects.Events.Contains("clipboard:clipboard") && effects.Events.Contains("bell") && effects.Events.Contains("progress:2:25")),
             "owner forwards clipboard bell and progress on its ordered reliable channel");
@@ -366,6 +389,20 @@ try
         Check(Wait(()=>{lock(reattached.SyncRoot) return reattached.Emulator.Title == "HIDDEN_OWNER_TITLE" && reattached.Emulator.Cwd.EndsWith("/owner-cwd");}),
             "new attachment receives the current title and cwd");
         Check(Wait(()=>Present(reattached).Contains("ALTRED DETACHED")),"reattach sends latest viewport without a history replica");
+        Check(Wait(()=>HasPixels(reattached)),"fresh attachment refetches every image chunk after producer disposal");
+        TerminalFrameIdentity altIdentity;
+        lock(reattached.SyncRoot)
+        {
+            using var frame=((PresentedTerminalView)reattached.Emulator).AcquireFrame()!;
+            altIdentity=frame.Identity;
+        }
+        var altRequest=new TerminalSelectionRequest(Guid.NewGuid().ToString("N"),0,0,0,0,false,All:true,AlternateScreen:true);
+        var altQuery=new TerminalQuery(altIdentity.Incarnation,altIdentity.AttachmentEpoch,altIdentity.TerminalGeneration,
+            "selection-create",Text:System.Text.Json.JsonSerializer.Serialize(altRequest));
+        var altSelected=await reattached.Presentation!.QueryAsync(altQuery,default);
+        var altText=altSelected.Rows.Count == 1 ? System.Text.Json.JsonSerializer.Deserialize<TerminalSelectionResult>(altSelected.Rows[0])?.Text : null;
+        Check(altSelected.Status == "ok" && altText?.Contains("ALTRED DETACHED") == true && !altText.Contains("HISTORY"),
+            "select-all on the alternate screen excludes retained primary history");
         Check(Wait(()=>restoredEffects.Events.Contains("progress:2:25")) && !restoredEffects.Events.Contains("bell") &&
             !restoredEffects.Events.Any(e=>e.StartsWith("clipboard:")),"reattach restores durable progress without replaying ephemeral effects");
         gate.Set(); Check(ready.WaitOne(15000),"presentation child restores primary screen");
@@ -493,6 +530,12 @@ try
         reattached.Inject("\r\nPRESS_ENTER_TO_CLOSE"u8);
         Check(Wait(()=>Present(reattached).Contains("PRESS_ENTER_TO_CLOSE")),
             "exit prompt is injected at the owner after child exit");
+        reattached.Inject("\r\n\u001b]133;A\aPROMPT_CMD\r\n\u001b]133;C\aMARKED_FIRST\r\nMARKED_SECOND\r\n\u001b]133;D;0\a\u001b]133;A\aNEXT_PROMPT"u8);
+        Check(Wait(()=>Present(reattached).Contains("NEXT_PROMPT")),"command boundaries reached the owner");
+        var lastOutput=await reattached.Presentation.QueryAsync(ownerQuery with {Operation="last-output",Generation=0},default);
+        Check(lastOutput.Status == "ok" && lastOutput.Rows.Count == 1 &&
+            lastOutput.Rows[0].Split("\r\n").Select(line=>line.TrimEnd()).SequenceEqual(["MARKED_FIRST","MARKED_SECOND"]),
+            "control readback returns exactly the completed command output across its OSC boundaries");
         var dense=new StringBuilder("\r\n");
         for(int row=0;row<40;row++)
         {
