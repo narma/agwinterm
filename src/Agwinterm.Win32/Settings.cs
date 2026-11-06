@@ -138,8 +138,7 @@ internal partial class Program
 
         // Appearance
         Sec(1, "Terminal");
-        string[] fonts = { "Default", "MesloLGSDZ Nerd Font", "Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", "Hack", "Source Code Pro", "Courier New", "Lucida Console" };
-        Drop(1, "font-family", "Font", fonts);
+        Drop(1, "font-family", "Font", Array.Empty<string>());
         Sld(1, "font-size", "Font size", 8, 32);
         Drop(1, "theme", "Theme", _allThemes.Select(t => t.Name).ToArray());
         Tog(1, "theme-follow-system", "Follow Windows light/dark");
@@ -469,6 +468,7 @@ internal partial class Program
 
     private string CurrentDropdownText(SetRow r)
     {
+        if (r.Key == "font-family") return _terminalFontFamily;
         string v = ConfigValue(r.Key);
         if (r.Kind == SW.Sound) v = SoundDisplayName(v);
         int idx = Array.FindIndex(r.Vals, o => string.Equals(o, v, StringComparison.OrdinalIgnoreCase));
@@ -492,12 +492,32 @@ internal partial class Program
 
     // ---- dropdown popup ----
 
+    private static string[] InstalledMonospaceFontFamilies()
+    {
+        using var collection = _dwrite.GetSystemFontCollection(true);
+        var families = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (uint i = 0; i < collection.FontFamilyCount; i++)
+        {
+            using var family = collection.GetFontFamily(i);
+            using var regular = family.GetFirstMatchingFont(FontWeight.Normal, FontStretch.Normal, FontStyle.Normal);
+            using var font = regular.QueryInterface<IDWriteFont1>();
+            if (!font.IsMonospacedFont) continue;
+            using var names = family.FamilyNames;
+            if (names.Count == 0) continue;
+            uint index = names.FindLocaleName("en-us", out uint english) ? english : 0;
+            families.Add(names.GetString(index));
+        }
+        return families.ToArray();
+    }
+
     private void OpenDropdown(SetRow r)
     {
+        if (r.Key == "font-family") r.Opts = r.Vals = InstalledMonospaceFontFamilies();
         _ddRow = r; _ddQuery = ""; _ddSel = 0;
         FilterDropdown();
         // select the current value
         string cur = r.Kind == SW.Sound ? SoundDisplayName(ConfigValue(r.Key)) : ConfigValue(r.Key);
+        if (r.Key == "font-family") cur = _terminalFontFamily;
         int at = _ddFiltered.FindIndex(i => string.Equals(r.Vals[i], cur, StringComparison.OrdinalIgnoreCase));
         if (at >= 0) _ddSel = at;
         RequestRedraw();
@@ -505,12 +525,12 @@ internal partial class Program
 
     private void FilterDropdown()
     {
+        _ddSel = 0;
         _ddFiltered.Clear();
         if (_ddRow is null) return;
         string q = _ddQuery.ToLowerInvariant();
         for (int i = 0; i < _ddRow.Opts.Length; i++)
             if (q.Length == 0 || _ddRow.Opts[i].ToLowerInvariant().Contains(q)) _ddFiltered.Add(i);
-        if (_ddSel >= _ddFiltered.Count) _ddSel = Math.Max(0, _ddFiltered.Count - 1);
     }
 
     private void DrawDropdown(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush)
@@ -519,9 +539,9 @@ internal partial class Program
         _ddRows.Clear();
         const float rowH = 30f, qh = 30f;
         int maxRows = 12;
-        float w = MathF.Max(220f, r.Hx1 - r.Hx0);
+        float w = MathF.Min(ClientW() - 16f, MathF.Max(r.Key == "font-family" ? 340f : 220f, r.Hx1 - r.Hx0));
         float x = MathF.Min(r.Hx0, ClientW() - w - 8f);
-        bool filterable = r.Opts.Length > 12;
+        bool filterable = r.Key == "font-family" || r.Opts.Length > 12;
         int shown = Math.Min(_ddFiltered.Count, maxRows);
         float h = (filterable ? qh : 0f) + Math.Max(1, shown) * rowH + 8f;
         float y = r.Hy1 + 2f;
@@ -542,6 +562,11 @@ internal partial class Program
             rt.DrawLine(new System.Numerics.Vector2(x + 6f, top + qh - 4f), new System.Numerics.Vector2(x + w - 6f, top + qh - 4f), brush, 1f);
             top += qh;
         }
+        if (shown == 0)
+        {
+            brush.Color = ChromeDim;
+            rt.DrawText("No matches", _uiSmall, new Rect(x + 12f, top, w - 20f, rowH), brush);
+        }
         int start = _ddSel >= maxRows ? _ddSel - maxRows + 1 : 0;
         rt.PushAxisAlignedClip(new Rect(x, top, w, shown * rowH + 2f), AntialiasMode.Aliased);
         for (int i = 0; i < shown; i++)
@@ -551,7 +576,8 @@ internal partial class Program
             float ry = top + i * rowH;
             if (fi == _ddSel) { brush.Color = PalSel; rt.FillRectangle(new Rect(x + 4f, ry, w - 8f, rowH), brush); }
             brush.Color = fi == _ddSel ? SbActiveText : ChromeText;
-            rt.DrawText(r.Opts[oi], _uiSmall, new Rect(x + 12f, ry, w - 20f, rowH), brush);
+            using var preview = r.Key == "font-family" ? NewChromeFormat(r.Opts[oi], _uiSmall.FontSize, false) : null;
+            rt.DrawText(r.Opts[oi], preview ?? _uiSmall, new Rect(x + 12f, ry, w - 20f, rowH), brush);
             _ddRows.Add((ry, ry + rowH, fi));
         }
         rt.PopAxisAlignedClip();
