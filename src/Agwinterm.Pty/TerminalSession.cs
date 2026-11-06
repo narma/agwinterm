@@ -126,12 +126,18 @@ public sealed class TerminalSession : ISession
     /// <summary>True once the session runs on the shipped ConPTY, which passes output through and so
     /// does not repaint the viewport on a resize.</summary>
     public bool OnBundledConpty { get; private set; }
+    internal bool PreservesViewportOnResize => OnBundledConpty || _connection is WslPtyConnection;
 
     /// <summary>Porta.Pty binds CreatePseudoConsole to kernel32, so a session on the shipped ConPTY
     /// (<see cref="ConPtyApi"/>, #339) is created by <see cref="ConPtyConnection"/> instead. The inbox
     /// path stays on Porta.Pty.</summary>
-    private Task<IPtyConnection> SpawnAsync(PtyOptions options, CancellationToken ct)
+    private Task<IPtyConnection> SpawnAsync(PtyOptions options, CancellationToken ct, bool deElevate = false)
     {
+        if (WslIntegration.IsWsl(options.App))
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult<IPtyConnection>(WslPtyConnection.Spawn(options, deElevate));
+        }
         var api = SessionConpty;
         if (!api.Bundled) return PtyProvider.SpawnAsync(options, ct);
         OnBundledConpty = true;
@@ -176,8 +182,11 @@ public sealed class TerminalSession : ISession
         MarkInputClosed();
 
         // Let the reader drain output already buffered in the pipe, then stop it.
-        await Task.Delay(250, ct).ConfigureAwait(false);
-        await readerCts.CancelAsync().ConfigureAwait(false);
+        if (connection is not WslPtyConnection)
+        {
+            await Task.Delay(250, ct).ConfigureAwait(false);
+            await readerCts.CancelAsync().ConfigureAwait(false);
+        }
         try { await readerTask.ConfigureAwait(false); } catch { /* reader cancelled */ }
 
         return connection.ExitCode;
@@ -259,7 +268,7 @@ public sealed class TerminalSession : ISession
             if (extraEnv is not null) foreach (var kv in extraEnv) env[kv.Key] = kv.Value;
         }
 
-        if (deElevate)
+        if (deElevate && !WslIntegration.IsWsl(app))
         {
             // Manual pseudoconsole with the interactive user's token (Porta.Pty can't drop integrity).
             string cmd = CommandLineOf(app, commandLine, verbatimCommandLine);
@@ -309,7 +318,7 @@ public sealed class TerminalSession : ISession
         if (env is not null) options.Environment = env;
 
         IPtyConnection conn;
-        try { conn = await SpawnAsync(options, ct).ConfigureAwait(false); }
+        try { conn = await SpawnAsync(options, ct, deElevate).ConfigureAwait(false); }
         catch (Exception ex) when (paintFailure && ex is not OperationCanceledException)
         {
             // Same shape as the de-elevate branch above and ServerSession.StartAsync: a spawn that
@@ -325,7 +334,7 @@ public sealed class TerminalSession : ISession
             return;
         }
         PublishConnection(conn);
-        _ = StartPump(conn.ReaderStream);
+        var pump = StartPump(conn.ReaderStream);
         // Watch for the child exiting so overlays (and anyone else) get the real ConPTY exit code,
         // reliably even for programs that finish faster than a PID poll could catch them.
         _ = Task.Run(() =>
@@ -333,7 +342,8 @@ public sealed class TerminalSession : ISession
             try { conn.WaitForExit(Timeout.Infinite); } catch { }
             MarkInputClosed();
             int code = 0; try { code = conn.ExitCode; } catch { }
-            SettleOutput();
+            if (conn is WslPtyConnection) pump.GetAwaiter().GetResult();
+            else SettleOutput();
             ExitCode = code; HasExited = true;
             try { Exited?.Invoke(code); } catch { }
         }, ct);

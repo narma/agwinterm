@@ -14,7 +14,7 @@ public static class WslIntegration
     private static bool UserVariable(string key) => !key.StartsWith("AGWINTERM", StringComparison.OrdinalIgnoreCase)
         && !key.Equals("WSLENV", StringComparison.OrdinalIgnoreCase);
 
-    private static int CommandIndex(IReadOnlyList<string> args)
+    internal static int CommandIndex(IReadOnlyList<string> args)
     {
         for (int i = 0; i < args.Count; i++)
         {

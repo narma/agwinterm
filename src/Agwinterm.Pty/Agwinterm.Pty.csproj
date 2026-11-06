@@ -15,5 +15,6 @@
     <InternalsVisibleTo Include="Agwinterm.Pty.Tests" />
     <InternalsVisibleTo Include="Agwinterm.GhosttyServerHarness" />
     <EmbeddedResource Include="Wsl/*" />
+    <None Include="../../artifacts/wsl-hook/agwinterm-hook-linux-*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
   </ItemGroup>
 </Project>

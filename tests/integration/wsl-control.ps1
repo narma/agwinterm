@@ -19,6 +19,7 @@ if ($LinuxUser) { $selectors += @('-u', $LinuxUser) }
 $process = $null
 function Ctl([string[]]$Arguments) {
     $raw = (& $ctl @Arguments --pipe $id --json) -join "`n"
+    if (-not $raw) { throw "CLI $Arguments returned no response (exit $LASTEXITCODE)" }
     try { $reply = $raw | ConvertFrom-Json } catch { throw "CLI $Arguments returned: $raw" }
     if (-not $reply.ok) { throw ($reply | ConvertTo-Json -Compress) }
     return $reply.result
@@ -311,7 +312,7 @@ try {
         if (($capture | ConvertTo-Json -Depth 10).Contains('sleep 15')) { break }
     }
     Check (($capture | ConvertTo-Json -Depth 10).Contains('sleep 15')) 'App restart replays the captured Linux command'
-    # Let the restored child finish; a raw Ctrl+C through ConPTY is not reliable.
+    # Let the restored child finish before checking the shell's directory.
     Start-Sleep -Seconds 16
     $null = Ctl @('session', 'type', ('printf "RESTORED_%s=%s\n" "CWD" "$PWD"' + [char]13), '--target', $copy)
     Start-Sleep -Seconds 1
