@@ -1,5 +1,7 @@
 # Web cookbook compatibility fixtures
 
+The [cookbook coverage table](../../../docs/cookbook-parity.md) maps the upstream recipes to the fork’s CLI, native controls and WebView2 overlays.
+
 Source baseline: [umputun/agterm at 714ec616c81add35627a1f8c3d5cb50ab9e030a1](https://github.com/umputun/agterm/tree/714ec616c81add35627a1f8c3d5cb50ab9e030a1/cookbook).
 Copied templates and review adapter retain the MIT license in `LICENSE.agterm`.
 The original `html-doc-overlay/assets/{editorial,brief,classic,custom}.html`,

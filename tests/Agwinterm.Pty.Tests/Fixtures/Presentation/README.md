@@ -1,5 +1,7 @@
 # Stage-4 wire capture
 
+Use these captures for protocol checks. The [bidirectional presentation report](../../../../docs/agterm-presentation-development.md) records which interactions were also verified against live peers.
+
 Captured on 2026-11-02 from an isolated macOS arm64 agterm application and its own bundled CLI at `c63e5158e637662ded7ba3a12eac4881b24caef1`. Final signed binary hashes are in `provenance.json`; ZMX is the unchanged stage-2 existing-only patched pair. The installed application was not replaced.
 
 `pinned-frames.json` records actual origin output and viewer input accepted by `zmx present` and `session overlay page-serve`. The question answer elicited `ask.dismiss`; the file resource produced head/chunk/end. Program and URL requests were explicitly refused by the fixture without executing a program or navigating a URL. The capture is protocol evidence, not full Agwinterm interoperability acceptance.

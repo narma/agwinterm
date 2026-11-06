@@ -1,5 +1,7 @@
 # VT adapter baseline
 
+Build the [pinned adapter](../../native/ghostty-vt/README.md) first. For measurements that include the host, GUI and a real terminal workload, see the [htop report](../../docs/performance-htop-2026-11-05.md).
+
 Run from the repository root (no UI, VM or PTY required):
 
 ```powershell

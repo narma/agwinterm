@@ -1,5 +1,7 @@
 # agwinterm installers
 
+Download published builds from [narma/agwinterm releases](https://github.com/narma/agwinterm/releases). Standard assets use .NET 10. The separate `agwinterm-net11-` assets use .NET 11. Personal local installs use .NET 11 with ReadyToRun and `runtime-async=on` for the GUI, host and CLI.
+
 Builds **per-user** Windows installers — end users need **no** .NET runtime installed:
 
 - **`agwinterm-setup-<ver>.exe`** — the full `agwinterm` (.NET) terminal + `agwintermctl`, from a
@@ -40,7 +42,7 @@ Prereqs:
 `build-portable.ps1` independently builds a self-contained CLI and Windows hook, then embeds them and both Linux hooks in the single-file application. It does not require Inno Setup or a prior installer build. Tools are extracted lazily into `%LOCALAPPDATA%\agwinterm\portable-tools\<payload-hash>`, keeping installed wrappers valid across app updates. For headless extraction without changing PATH, run the portable exe with `--extract-tools <directory>`; this creates a content-addressed subdirectory. `tests/integration/portable-tools.ps1` verifies the shipped exe in isolation from build-stage sidecars.
 
 `build.ps1`:
-1. publishes `Agwinterm.Win32` (the app) and `Agwinterm.Ctl` (`agwintermctl`) as **self-contained win-x64**
+1. publishes `Agwinterm.Win32` (the app), `Agwinterm.Host` (under `host/`) and `Agwinterm.Ctl` (`agwintermctl`) as **self-contained win-x64**
    (a folder, not single-file — robust for the Vortice native libs and the on-disk `themes\`/`assets\`)
    into `installer\stage`,
 2. stages the verified Ghostty runtime and Windows/Linux integration helpers,

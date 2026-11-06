@@ -1,8 +1,6 @@
 # agliteterm ↔ agwinterm parity tracker
 
-**Goal: the two products expose the same features.** agliteterm is a separate product with its own
-repository, not a cut-down build — so a gap here is a gap, not a design decision, unless this file
-says otherwise and gives the reason.
+This tracker records the September 2026 comparison between the original Windows agwinterm and agliteterm. The version numbers, CI links and references to `main` below belong to that comparison. The narma fork maintains its own [control API](control-api.md), uses Ghostty for Windows terminal state and retains the [shared conformance cases](../tests/conformance/control-api.json). See the [fork comparison](fork.md) for its current scope.
 
 - agwinterm **0.17.7** released (main ahead), agliteterm **0.17.13** released.
 - Verb lists below were **extracted from both dispatchers** on 2026-09-02, not written from memory:

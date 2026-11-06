@@ -1,3 +1,5 @@
+For the Ghostty revision and the build that includes these notices, see the [Windows adapter](../README.md).
+
 These uucode notices are copied verbatim from the archive pinned by Ghostty:
 
 - Commit: `ea62149739404a73c202b48a33bf6dd2af4bd9b0`

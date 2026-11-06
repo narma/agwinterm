@@ -28,7 +28,7 @@ pwsh -NoProfile -File tests/integration/win32-control.ps1 -Strict
 pwsh -NoProfile -File tests/conformance/conformance.ps1 -Strict
 ```
 
-These commands now run inside background Sandbox automatically. Parameters such
+Set `$env:AGWINTERM_UI_BACKEND = "Sandbox"` before running these commands to use background Sandbox. Parameters such
 as `-Dpi 144`, `-Only replay`, `-CookbookOnly` and explicit `-Exe`/`-Ctl` paths are
 forwarded as data; host paths for binaries are replaced by their staged guest paths.
 Tests supporting strict mode always run strictly. The clipboard recovery operation

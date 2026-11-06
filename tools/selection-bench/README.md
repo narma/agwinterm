@@ -1,5 +1,7 @@
 # Selection microbenchmark
 
+See [selection performance](../../docs/selection-performance.md) for the measured workloads and [the owner contract](../../docs/single-owner-contracts.md) for the path used by hosted terminals.
+
 Run `./tools/selection-bench/run.ps1` from PowerShell. It extracts the pre-optimization selection
 implementation from commit `8924812` into ignored `obj/`, then compares it with the current core
 in the same Release process. No native library, window, clipboard or external benchmark package

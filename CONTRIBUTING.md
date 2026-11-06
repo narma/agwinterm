@@ -1,8 +1,10 @@
 # Contributing to agwinterm
 
+Target the `narma` branch of [narma/agwinterm](https://github.com/narma/agwinterm). Run local checks, address Greptile feedback on the current commit and use squash merge. See the [fork developer guide](docs/fork.md).
+
 ## Before you start
 
-If this is your first pull request to agwinterm, open an [issue](https://github.com/yeroo/agwinterm/issues) describing what you plan to build and why, then wait for a reply before writing code. Some ideas do not fit the project's direction, and finding that out early costs less than finding it out after a finished PR.
+If this is your first pull request to agwinterm, open an [issue](https://github.com/narma/agwinterm/issues) describing what you plan to build and why, then wait for a reply before writing code. Some ideas do not fit the project's direction, and finding that out early costs less than finding it out after a finished PR.
 
 Check that what you want does not already exist: agwinterm carries a broad control API, custom commands you bind yourself in `keymap.conf`, and a Settings dialog, so a lot is reachable without new code. Look at `agwintermctl --help`, the [README](README.md), the [user guide](docs/user-guide.md), the [control API](docs/control-api.md), and the bundled agent skill (`agwintermctl install skill`, source in `src/Agwinterm.Pty/AgentSkill.cs`) before proposing anything.
 
@@ -13,13 +15,13 @@ Issues are for concrete bugs and for features; a feature issue says what problem
 Weigh what a feature adds against the code it brings with it.
 
 - **Does it help most users, or one setup?** A feature covering a handful of edge cases rarely pays for its maintenance cost.
-- **Does it belong in agwinterm?** agwinterm is a from-scratch terminal: the emulator, key handling, rendering and the control API are all here, so those bugs are ours. What is not ours: the shell (PowerShell, PSReadLine, cmd, bash), ConPTY, and Windows itself. A PR working around a shell or ConPTY bug inside the terminal will be asked to show that the bug is really the terminal's.
-- **Does it change what agwinterm is?** It is a terminal with a two-level workspace to session sidebar and a control API, following [umputun's agterm](https://github.com/umputun/agterm) on Windows. It is not a multiplexer, not a session manager for other tools, not an IDE. PRs pulling it in those directions will be closed. Where agterm already has a model for something (a menu, a verb, a keymap rule), agwinterm follows that model unless there is a Windows reason not to; say so in the PR when you diverge.
+- **Which component owns the behavior?** Ghostty interprets terminal output, the session host owns hosted shells, and the GUI renders frames and routes input. Reproduce the defect at the closest boundary before changing shell integration or rendering.
+- **Can a script observe the result?** Keep UI actions and CLI verbs consistent. When matching agterm behavior, identify the peer revision and exercise the operation on supported platforms.
 - **Is the code proportional to the value?** Several hundred lines for something a `keymap.conf` custom command already covers is a hard sell. Keep it small.
 
 ## Development setup
 
-Building needs Windows x64 and the **.NET 10 SDK** (the exact version is pinned in [`global.json`](global.json)). Nothing else is required for a working terminal: the managed emulator is the default (`emulator-core = managed`).
+Building needs Windows x64 and the **.NET 10 SDK** (the exact version is pinned in [`global.json`](global.json)). Prepare the [pinned Ghostty adapter](native/ghostty-vt/README.md) before launching a development build.
 
 ```powershell
 dotnet build Agwinterm.slnx -c Release
@@ -51,15 +53,7 @@ Build and the unit tests must be green before you send a PR. `Agwinterm.Core` tr
 
 They run under **PowerShell 7** (`pwsh -NoProfile -File ...`), never Windows PowerShell 5.1. Each one starts a private instance (`--app-id` and `--pipe` with throwaway names, `--no-restore`) and drives it only by posting messages to that instance's own windows: no `keybd_event`, no `SendInput`, no global mouse. Keep to that when you add a case. Private instance data does not isolate a window from real desktop mouse and focus events.
 
-**Local UI tests use background Windows Sandbox.** After `dotnet build Agwinterm.slnx -c Release`, use an entry point or select a runner explicitly:
-
-| Mode | Command | Desktop interaction |
-|---|---|---|
-| Local entry point (auto-routed) | `pwsh -NoProfile -File tests/integration/hud-ui.ps1 -Suite Navigation -Strict` | Automatically uses background Sandbox before any UI work. |
-| Windows Sandbox | `pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation` | Continue working on the host; leave the guest desktop untouched. |
-| Background Windows Sandbox | `pwsh -NoProfile -File tests/integration/sandbox-ui.ps1 -Suite Navigation -Background` | Keep the viewer on a private host desktop without interrupting host focus; requires the modern client. |
-
-Local UI entry points, including `win32-control.ps1`, conformance, restore, CLI/events, split, program/web overlays and profiling tools, automatically route to background Sandbox. The wrapper accepts `-Test Win32Control` and other named runners in addition to HUD suites. It stages shared UI code, fixtures and optional offline WebView2/Python dependencies, and exports guest evidence. `CI=true` alone is not a host-desktop bypass. WSL-dependent scripts refuse locally because Sandbox does not inherit host distributions. See [local UI testing](docs/sandbox-ui-tests.md) for the registry, prerequisites and results. Core/Pty unit tests and fixture checks do not require Sandbox.
+**Local Windows UI tests use Hyper-V.** Run `./tests/integration/hud-ui.ps1 -Suite Navigation -Strict` from an ordinary PowerShell 7 session. The installed worker stages the build and drives a dedicated VM. Two concurrent VMs share an 8 GiB budget. WSL suites use the host distribution and a private Windows desktop. Host-free unit and fixture tests run directly. See [Hyper-V setup](docs/hyperv-ui-tests.md) and the [explicit Sandbox alternative](docs/sandbox-ui-tests.md).
 
 **CI runs UI suites directly** on the runner desktop, without Windows Sandbox. The core job also checks the Sandbox wrapper with fixtures that require no VM.
 
@@ -166,8 +160,8 @@ A PR with no problem statement will be closed. If the problem is hard to articul
 
 PRs here merge on evidence: the description carries the test output, and for a UI change a screenshot or the transcript of the interactive case that shows it. CI runs on every PR; the first PR from a new fork waits for a maintainer to approve the workflow run, which happens once the review is under way.
 
-Releases are the maintainer's: a `v*` tag on `main` builds the installer, the portable exe and the CLI, publishes them with provenance attestations, and submits to winget and Chocolatey. Do not bump `installer/agwinterm.iss` in a feature PR.
+The maintainer tags releases from the fork. The release workflow publishes standard and .NET 11 assets to [fork releases](https://github.com/narma/agwinterm/releases). Keep version bumps separate from feature PRs.
 
 ## The contract with agliteterm
 
-`tests/conformance/control-api.json` is the canonical spec for the control-API subset [agliteterm](https://github.com/yeroo/agliteterm) shares, and **both repositories run it in CI**. Release 0.30.1 retires the separate Windows Rust core, host and ABI manifest. Consumers of those assets can pin an earlier release.
+The fork runs [conformance cases](tests/conformance/control-api.json) for the control-API subset shared with [agliteterm](https://github.com/yeroo/agliteterm). Coordinate changes to that subset with the other project's maintainers. Release 0.30.1 retires the separate Windows Rust core, host and ABI manifest. Consumers of those assets can pin an earlier release.

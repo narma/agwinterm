@@ -1,5 +1,7 @@
 # WSL
 
+Start with a WSL shell profile to use Linux tools and agent hooks inside the distribution. To keep a Linux process across detach and reconnect, configure an opt-in ZMX profile with a compatible executable. For remote work, Windows can attach to an existing agterm terminal over WSL SSH, or expose an owned WSL terminal to an agterm viewer through an explicitly provisioned endpoint. See the [CLI and profile reference](control-api.md), [outbound attach procedure](agterm-remote-development.md) and [inbound endpoint setup](wsl-origin-export-development.md).
+
 `command run ... --target <pane-id>` uses the addressed session's WSL distribution/user and the
 addressed pane's Linux cwd, even with a Windows session selected. `send`, `new`, `overlay` and
 `detached` all expand `{AGW_*}` from that target; launched processes also receive its `AGW_*`
