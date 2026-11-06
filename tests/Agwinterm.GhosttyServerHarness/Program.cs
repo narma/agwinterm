@@ -5,6 +5,16 @@ System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceLis
 System.Diagnostics.Trace.AutoFlush=true;
 
 // Run inside the owned Windows VM; no UI, global configuration or user sessions are touched.
+if(args is ["--check-window-history",var stateFile,var paneId,var marker])
+{
+    if(!RestoreState.TryDeserialize(File.ReadAllText(stateFile),out var state) || state is null)
+        throw new InvalidDataException("Closing window has no saved state");
+    var pane=state.Workspaces.SelectMany(w=>w.Sessions).SelectMany(s=>s.Panes).Single(p=>p.Id == paneId);
+    if(pane.BufferBlob is null || !BufferPersist.TryParse(Convert.FromBase64String(pane.BufferBlob),out var saved) ||
+        !saved.Rows.Any(row=>string.Concat(row.Cells.Select(c=>char.ConvertFromUtf32(c.Rune))).Contains(marker,StringComparison.Ordinal)))
+        throw new InvalidDataException("Closing window did not persist recent owner history.");
+    return;
+}
 if (args is ["--soak",var appDirectory,var count,var minutes,var report])
 {
     await OwnerSoak.Run(appDirectory,int.Parse(count),int.Parse(minutes),report);
@@ -252,6 +262,42 @@ try
                 "single-owner viewport preserves restored cursor metadata");
         }
         int? singlePid=single.ChildProcessId;
+        (ulong sequence,ulong revision,ulong generation) Animation(bool acknowledge)
+        {
+            lock(single.SyncRoot)
+            {
+                using var f=((PresentedTerminalView)single.Emulator).AcquireFrame();
+                if(f is null) return default;
+                if(acknowledge) single.AcknowledgeFrame(f.Identity.Sequence);
+                return (f.Identity.Sequence,f.Identity.ViewportRevision,
+                    f.Images.FirstOrDefault(p=>p.Id == 97)?.Image.Generation ?? 0);
+            }
+        }
+        single.Inject(Encoding.ASCII.GetBytes("\u001b7\u001b_Ga=T,f=32,i=97,s=1,v=1,q=2,C=1;/wAA/w==\u001b\\"+
+            "\u001b_Ga=f,f=32,i=97,s=1,v=1,z=40,q=2;AAD//w==\u001b\\"+
+            "\u001b_Ga=a,i=97,r=1,z=30,q=2\u001b\\\u001b_Ga=a,i=97,s=3,q=2\u001b\\\u001b8"));
+        Check(Wait(()=>Animation(true).generation != 0),"animated image reaches the hosted viewport");
+        var initialAnimation=Animation(true);
+        Check(Wait(()=>Animation(true).generation != initialAnimation.generation),"owner advances animation without child output");
+        // Let one more frame arrive but withhold its credit. No later frame
+        // may supersede that unacknowledged viewport.
+        var beforeStall=Animation(true);
+        Check(Wait(()=>Animation(false).sequence > beforeStall.sequence),"animated viewport awaits presentation credit");
+        var stalled=Animation(false);
+        Thread.Sleep(160);
+        Check(Animation(false).sequence == stalled.sequence,"stalled reader retains just one animated viewport");
+        single.Presentation!.Execute(new TerminalCommand.Viewport(0,false,stalled.revision+1));
+        single.AcknowledgeFrame(stalled.sequence);
+        Thread.Sleep(120);
+        var hidden=Animation(false);
+        Thread.Sleep(120);
+        Check(Animation(false).sequence == hidden.sequence,"hidden animation does not continuously publish");
+        single.Presentation.Execute(new TerminalCommand.Viewport(0,true,stalled.revision+2));
+        Check(Wait(()=>Animation(true).revision >= stalled.revision+2),"visible animation resumes with a fresh viewport");
+        single.Inject("\u001b_Ga=a,i=97,s=1,q=2\u001b\\"u8);
+        Thread.Sleep(150); Animation(true); Thread.Sleep(150);
+        var stopped=Animation(true); Thread.Sleep(160);
+        Check(Animation(false).sequence == stopped.sequence,"stopped hosted animation needs no periodic publication");
         string pngPath=Path.Combine(Path.GetTempPath(),appId+".png");
         try
         {
@@ -385,7 +431,11 @@ try
         Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("LEGACY_STATE_IMPORT [31m"),
             "legacy saved escape sequences remain inert history text");
         gate.Set();
-        Check(Wait(()=>{ Present(reattached); return reattached.HasExited; }) && reattached.ExitCode == 7,
+        Check(Wait(()=>{
+            Present(reattached);
+            if(!reattached.HasExited) reattached.SubmitInput(new TerminalInput.Raw(" "u8.ToArray()));
+            return reattached.HasExited;
+        }) && reattached.ExitCode == 7,
             "presentation exposes exit only after its final viewport");
         Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("LEGACY_STATE_IMPORT"),
             "exited session keeps owner history readable");
@@ -397,6 +447,20 @@ try
         reattached.Inject("\r\nPRESS_ENTER_TO_CLOSE"u8);
         Check(Wait(()=>Present(reattached).Contains("PRESS_ENTER_TO_CLOSE")),
             "exit prompt is injected at the owner after child exit");
+        var dense=new StringBuilder("\r\n");
+        for(int row=0;row<40;row++)
+        {
+            for(int col=0;col<50;col++) dense.Append(col%2 == 0 ? "\u001b[31m§" : "\u001b[32m§");
+            dense.Append("\u001b[0m\r\n");
+        }
+        dense.Append("DENSE_END");
+        reattached.Inject(Encoding.UTF8.GetBytes(dense.ToString()));
+        Check(Wait(()=>Present(reattached).Contains("DENSE_END")),"dense history fixture completed");
+        using var styles=System.Text.Json.JsonDocument.Parse(SurfaceText.DumpStyled(reattached,new(true,0)));
+        int styledCells=styles.RootElement.GetProperty("rows").EnumerateArray()
+            .SelectMany(row=>row.GetProperty("runs").EnumerateArray())
+            .Count(run=>run.GetProperty("text").GetString() == "§" && run.GetProperty("fg").GetString() is "idx:1" or "idx:2");
+        Check(styledCells == 2000,"colored history pages preserve every alternating style beyond the default JSON budget");
     }
     Console.WriteLine($"{checks} server checks passed.");
 }

@@ -29,7 +29,7 @@ The existing render benchmark measures Render/EndDraw, not key-to-visible-echo. 
 
 **Goals:** one live Ghostty terminal for each new session in either mode; reusable session semantics without local IPC overhead; reduced duplicated history and parsing; lower expected hosted input latency with measured non-regression in both modes; preserve existing user-visible terminal and lifecycle behavior.
 
-**Non-Goals:** moving fonts/Direct2D to host, pixel streaming, shared native pointers between processes, Rust host rewrite, removing legacy cores, changing Linux/remote daemon ownership, simultaneous multiple attached viewers, or claiming survival of serverless sessions after UI exit. Temporary immutable search/capture objects are allowed; a second continuously fed terminal is not.
+**Non-Goals:** moving fonts/Direct2D to host, pixel streaming, shared native pointers between processes, Rust host rewrite, changing Linux/remote daemon ownership, simultaneous multiple attached viewers, or claiming survival of serverless sessions after UI exit. Temporary immutable search/capture objects are allowed; a second continuously fed terminal is not.
 
 ## Decisions
 
@@ -53,7 +53,7 @@ This is a change to state ownership, independent of the host implementation lang
 
 ### 2. Versioned, bounded presentation transport
 
-Extend protobuf capability negotiation with an explicitly versioned presentation contract. Preserve v2 raw-stream handling for old peers; never reinterpret raw VT as framed messages. New hosted sessions require the negotiated path and must not silently fall back to a replica on error. Legacy host upgrades use a separate namespace/protocol endpoint when necessary so new and surviving old hosts can coexist.
+Extend protobuf capability negotiation with an explicitly versioned presentation contract. Keep v2 raw-stream coverage in protocol tests; never reinterpret raw VT as framed messages. New hosted sessions require the negotiated path and must not silently fall back to a replica on error. New hosts use a distinct namespace. Upgrade checkpoints and closes the old installation before starting the new version.
 
 Every message includes session incarnation/creation ticket, attachment epoch and appropriate request/frame sequence. Frame metadata includes viewport revision, dimensions, terminal generation, base frame sequence, cursor and visibility/style, alternate-screen state, palette/default colors, grapheme-aware cells, links, scroll/history metadata, stable position handles and image placements. Full *viewport* frames are recovery units; they are not native full-history snapshots.
 
@@ -114,11 +114,11 @@ Proposed acceptance tolerances, fixed before candidate measurements:
 | Memory | Report combined host+UI private bytes at matched contents, absolute/relative overhead, history savings and transient peaks. Per the user's explicit priority update on 2026-11-05, modest bounded memory growth is an acceptable tradeoff for latency and overall performance; the original +5% cutoff is no longer a rollout blocker. Leaks and unbounded growth remain blockers. No replacement numeric allowance has been invented. |
 | Long run | >=60 minutes sustained output with bounded history, resize/search/attach churn; no persistent growth beyond documented caches, no input loss or stalled ingestion |
 
-These are engineering tolerances, not a claim that sub-millisecond regressions are literally zero. Change tolerances only with explicit review of baseline noise, never retrospectively to pass a slow candidate. If the improvement target is missed, retain the feature behind an explicit experimental switch until the bottleneck and result are reviewed; do not advertise faster input. Zero idle baselines use absolute CPU time with baseline noise bounds rather than division by zero. Measure private committed bytes/native allocations; summed working sets can double-count shared DLL pages. Keep instrumentation off for a paired overhead check and record trace loss, allocations, GC pauses, owner lock holds, queue age/depth, IPC bytes and skipped/resynced frames.
+These are engineering tolerances, not a claim that sub-millisecond regressions are literally zero. Change tolerances only with explicit review of baseline noise, never retrospectively to pass a slow candidate. If the improvement target is missed, keep the rollout in draft until the bottleneck and result are reviewed; do not advertise faster input. Zero idle baselines use absolute CPU time with baseline noise bounds rather than division by zero. Measure private committed bytes/native allocations; summed working sets can double-count shared DLL pages. Keep instrumentation off for a paired overhead check and record trace loss, allocations, GC pauses, owner lock holds, queue age/depth, IPC bytes and skipped/resynced frames.
 
 ### 6. Compatibility and validation
 
-New path requires a capable host. Existing .NET/Rust sessions remain attachable via an isolated legacy adapter, including replicas only for those old sessions. Diagnostics explicitly identify this exception; never count it as single-owner acceptance. New session creation uses the new host endpoint after rollout. Old clients attaching to a new host must negotiate a supported legacy stream or receive an explicit incompatibility error; no wire ambiguity. Drain old processes naturally without replay or forced termination. Removing that adapter is a later versioned migration.
+The shipped host accepts only Ghostty ownership requests. The installer checkpoints the previous UI, verifies a backup and closes its Windows processes before replacing binaries. History is imported only if the previous installation saved it. Exact adoption remains available between compatible new hosts and clients; Linux daemon ownership and recovery identities are unchanged.
 
 Validate native instance counts and feed counters, including startup failures, reconnect, UI crash, teardown, search and snapshot captures. Tests distinguish one live terminal from short-lived read-only captures. Serverless tests assert no host launch and no named-pipe session traffic, including default-terminal handoff.
 
@@ -131,7 +131,7 @@ Run host-free protocol/fixture tests directly. Windows lifecycle, ConPTY, visual
 - Render-state APIs may expose mutable native lifetimes -> immutable owned frame contract, one capture consumer and concurrency tests; never share pointers across processes.
 - Scroll/search/UIA become asynchronous -> versioned requests, bounded prefetch, cancellation and local viewport reads; explicit unavailable results.
 - Slow UI can back up events or images -> separate bounded channels, replaceable frames, explicit disconnect on reliable-queue exhaustion.
-- Current spec mentions Rust-only recovery -> preserve verified PR #35 dual-host behavior and record the existing documentation discrepancy; do not force host migration during recovery.
+- WSL/remote recovery must not confuse a replacement Windows transport with a replacement Linux workload; verify incarnation and no replay after host loss.
 - .NET pipe lifetime bug class remains relevant -> preserve cancellation-before-disposal ownership rules, stress detach/write/exit races; Ghostty ownership alone does not fix transport bugs.
 - Common adapter regresses serverless speed -> direct calls, no serialization/extra worker hop solely for abstraction, independent baseline gate.
 
@@ -144,7 +144,7 @@ Run host-free protocol/fixture tests directly. Windows lifecycle, ConPTY, visual
 5. Run correctness, fault injection, paired performance matrix and soak; inspect Greptile for the final implementation commit alongside local/CI checks.
 6. Enable the new path for new .NET-hosted Ghostty sessions only after gates pass and the improvement result is reviewed. Retain serverless mode. Update effective-transport diagnostics and upgrade documentation.
 
-Rollback selects the previous path for future sessions and uses the retained compatible client path for existing owners where negotiated. Never kill/recreate live shells to roll back. A binary downgrade that cannot attach must explicitly report incompatibility; use the compatible build to finish/drain those sessions. Baseline binaries and benchmark artifacts are retained for comparison.
+Rollback uses the previous installer and the verified pre-upgrade state backup. A downgrade does not adopt a live host of the newer version or resume terminated programs. Keep baseline binaries and measurement artifacts for comparison.
 
 ## Open Questions
 

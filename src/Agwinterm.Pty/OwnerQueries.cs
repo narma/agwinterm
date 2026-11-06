@@ -14,7 +14,8 @@ internal sealed partial class OwnerQueries(TerminalSession session, string incar
             bool truncated = false, IReadOnlyList<TerminalSearchMatch>? matches = null)
             => new(incarnation,epoch,generation,status,rows ?? [],truncated,matches);
         if (query.Incarnation != incarnation || query.AttachmentEpoch != epoch) return Result("stale");
-        if (query.Generation < 0 || query.ResultLimit is < 1 or > 100000 || query.Text.Length > 4096 ||
+        int maximum=query.Operation == "styled-buffer" && query.RowCount == 1 ? PresentationQueryWire.MaximumBytes-1024 : 100000;
+        if (query.Generation < 0 || query.ResultLimit < 1 || query.ResultLimit > maximum || query.Text.Length > 4096 ||
             query.StartRow < 0 || query.RowCount is < 0 or > 32) return Result("invalid");
         var core = (GhosttyTerminalCore)session.Emulator;
         try

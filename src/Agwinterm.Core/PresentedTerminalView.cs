@@ -17,6 +17,7 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     public long AppliedTicks { get; private set; }
     public int Columns=>State.Columns;
     public int Rows=>State.Rows;
+    public int ViewportOffset=>State.ScrollOffset;
     public TerminalFrame.Lease? AcquireFrame() => _frame?.Retain();
     public void Publish(TerminalFrame frame)
     {
@@ -86,9 +87,13 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     public long ScrollGeneration=>State.ScrollGeneration;
     public Cell GetCachedCell(int absoluteRow,int column)
     {
+        return TryGetCachedCell(absoluteRow,column,out var cell) ? cell : throw OwnerOperation();
+    }
+    public bool TryGetCachedCell(int absoluteRow,int column,out Cell cell)
+    {
         int row=absoluteRow-(State.HistoryRows-State.ScrollOffset);
-        if(_frame is null || (uint)row >= State.Rows || (uint)column >= State.Columns) throw OwnerOperation();
-        return _frame[row,column];
+        if(_frame is null || (uint)row >= State.Rows || (uint)column >= State.Columns){cell=Cell.Empty;return false;}
+        cell=_frame[row,column];return true;
     }
     public Cell GetHistoryCell(int row,int col)=>GetCachedCell(row,col);
     public int GetRowWrapLength(int line)

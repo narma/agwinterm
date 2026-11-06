@@ -4,7 +4,7 @@
     HostOwnerUpgrade = @{ Path='tests/integration/host-owner-upgrade.ps1'; Exe=$true; Strict=$false; Options=@('Contracts','Preview') }
     HostOwnerContracts = @{ Path='tests/integration/host-owner-contracts.ps1'; Exe=$true; Strict=$false; Options=@() }
     SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation','LatencyCandidate','AllCandidates','RevisionComparison') }
-    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','AllCandidates','RevisionComparison') }
+    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','PairOffset','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','AllCandidates','RevisionComparison') }
     Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','SessionHost','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyVariant','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner') }
     Win32Control = @{ Path='tests/integration/win32-control.ps1'; Exe=$true; Strict=$true; Options=@() }
     Conformance = @{ Path='tests/conformance/conformance.ps1'; Exe=$true; Strict=$true; Options=@(); OptionalInputs=@('Spec') }

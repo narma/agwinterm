@@ -92,6 +92,22 @@ estimate 5.94 → 6.22 s, mean peak private bytes 80.00 → 84.40 MiB.
 The CPU and throughput gates are inconclusive; the measured throughput
 decrease and CPU increase require final comparison, not a speedup claim.
 
+The v21 architecture comparison uses the original pinned legacy binaries and
+the same echo fixture for both variants. Five alternating 128 MiB pairs per
+mode, no tracing, 91×32 grid. Reports:
+`host-completion-v21-bulk-server/report.json` and
+`host-completion-v21-bulk-in-process/report.json`. Values are run means.
+
+| Mode | Throughput, MiB/s | CPU upper estimate, s | Mean peak private memory, MiB |
+| --- | ---: | ---: | ---: |
+| Hosted legacy → host-owner | 5.30 → 12.78 | 31.50 → 6.23 | 99.82 → 83.13 |
+| Direct legacy → local adapter | 9.65 → 10.38 | 10.01 → 9.09 | 64.04 → 65.83 |
+
+The throughput and CPU non-regression gates passed in both modes. The
+hosted paired throughput ratio has a wide 95% interval (1.08–4.32);
+the ratio of the arithmetic means is 2.41. Memory is informational.
+This measurement predates the multi-window and dense-history review fixes.
+
 ## Prototype separation
 
 The complete UI-owner journal experiment is retained on

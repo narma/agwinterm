@@ -193,7 +193,7 @@ internal sealed class HostPresentationChannel
         }
         void SubmitInputs(bool waitForWriter=false)
         {
-            if(inputs.Count == 0 && _session.HasExited) return;
+            if(inputs.Count == 0 && _session.InputClosed) return;
             lock(_acceptanceGate)
             {
                 _cancel.Token.ThrowIfCancellationRequested();
@@ -202,8 +202,12 @@ internal sealed class HostPresentationChannel
                     // A key already in the pipe may arrive just after child
                     // exit. It cannot reach a child and must not tear down the
                     // still-readable terminal view or its history queries.
-                    if(_session.HasExited && input is not TerminalInput.Command) continue;
+                    // ConPTY closes input before the final-output settle period.
+                    // A last key during that interval must not revoke the query
+                    // pipe before the final frame can be delivered.
+                    if(_session.InputClosed && input is not TerminalInput.Command) continue;
                     var accepted=_input.Submit(input);
+                    if(accepted == TerminalInputAcceptance.Closed && _session.InputClosed && input is not TerminalInput.Command) continue;
                     if(accepted != TerminalInputAcceptance.Accepted) throw new IOException("Owner rejected input: "+accepted);
                 }
             }

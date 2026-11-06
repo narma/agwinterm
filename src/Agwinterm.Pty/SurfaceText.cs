@@ -65,22 +65,33 @@ public static class SurfaceText
             int first=FirstRow(state.Rows,state.HistoryRows,args),end=checked(state.HistoryRows+state.Rows);
             int pageSize=Math.Clamp(100000/state.Columns,1,32);
             var result=new StringBuilder(); var styledRows=new List<StyledRow>(); bool stale=false;
+            int totalCharacters=0;
             for(int row=first;row<end;)
             {
                 int count=Math.Min(pageSize,end-row);
-                var page=await session.Presentation!.QueryAsync(new(frame.Identity.Incarnation,
-                    frame.Identity.AttachmentEpoch,frame.Identity.TerminalGeneration,styled ? "styled-buffer" : "buffer",row,count),deadline.Token).ConfigureAwait(false);
+                var query=new TerminalQuery(frame.Identity.Incarnation,frame.Identity.AttachmentEpoch,frame.Identity.TerminalGeneration,
+                    styled ? "styled-buffer" : "buffer",row,count);
+                var page=await session.Presentation!.QueryAsync(query,deadline.Token).ConfigureAwait(false);
+                if(styled && page.Status == "ok" && page.Truncated && page.Rows.Count == 0)
+                {
+                    // One densely styled row can exceed the normal page budget.
+                    // Try just that row, still bounded by the transport record.
+                    count=1;
+                    page=await session.Presentation.QueryAsync(query with {RowCount=1,ResultLimit=PresentationQueryWire.MaximumBytes-1024},deadline.Token).ConfigureAwait(false);
+                }
                 if(page.Status == "stale") { stale=true; break; }
-                if(page.Status != "ok" || page.Truncated || page.Rows.Count != count || page.Generation != frame.Identity.TerminalGeneration)
+                if(page.Status != "ok" || page.Rows.Count == 0 || page.Rows.Count > count ||
+                    !page.Truncated && page.Rows.Count != count || page.Generation != frame.Identity.TerminalGeneration)
                     throw new IOException("Owner buffer query failed: "+page.Status);
                 foreach(string line in page.Rows)
                 {
-                    if(result.Length+line.Length > 16*1024*1024) throw new IOException("Terminal text exceeds the readback limit.");
-                    result.Append(line).Append('\n');
+                    totalCharacters=checked(totalCharacters+line.Length+1);
+                    if(totalCharacters > 16*1024*1024) throw new IOException("Terminal text exceeds the readback limit.");
                     if(styled) styledRows.Add(JsonSerializer.Deserialize<StyledRow>(line,StyledJson)
                         ?? throw new InvalidDataException("Empty styled owner row."));
+                    else result.Append(line).Append('\n');
                 }
-                row+=count;
+                row+=page.Rows.Count;
             }
             if(!stale)
             {

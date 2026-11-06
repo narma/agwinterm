@@ -1704,8 +1704,8 @@ internal partial class Program
     /// one slot, one reader, so a `restore capture` checkpoint survives the ordinary saves in between (P3).
     /// With <paramref name="sync"/> — the last window out, or an update-quit — it is written before
     /// returning: the process goes right after, and a snapshot still queued is older and fenced out.
-    /// Closing one window of several enqueues like any other save: a synchronous write there would
-    /// stall the UI thread every window shares.</summary>
+    /// Closing one of several windows normally enqueues the save. When an owner
+    /// holds its history, finish the export before close disposes that owner.</summary>
     private bool SaveState(bool captureCommands = false, bool sync = false)
     {
         foreach (var session in AllSessions()) ObserveLayout(session);
@@ -1713,7 +1713,7 @@ internal partial class Program
         if (json is null) return false;
         var ownerSessions=CaptureOwnerBufferSessions();
         long stamp=_stateWriter.Reserve();
-        if (sync)
+        if (sync || (captureCommands && ownerSessions.Count != 0))
         {
             try { json=CompleteOwnerBuffers(json,ownerSessions).GetAwaiter().GetResult(); }
             catch(Exception ex) { Trace.WriteLine("Final owner checkpoint failed: "+ex.Message); return false; }

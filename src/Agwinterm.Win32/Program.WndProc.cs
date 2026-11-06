@@ -753,9 +753,8 @@ internal partial class Program
                 RemoveTrayIcon();                 // drop the shell tray balloon icon
                 bool quitting;
                 lock (_windowIndex) quitting = _updateQuitting || _byId.Count <= 1;
-                // Persist this window's tree before tearing down its sessions — written NOW only when
-                // the process is about to go; a window closing beside others enqueues, because a
-                // synchronous write here would stall the UI thread every window shares (#294).
+                // Persist before teardown; even with other windows open, an
+                // owner-backed history export must finish before its session closes.
                 SaveState(captureCommands: true, sync: quitting);
                 // App-quit (last window, or an update-quit closing all of them) DETACHES panes —
                 // server-hosted sessions keep running and the next start adopts them (#105 2c).

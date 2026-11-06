@@ -60,6 +60,7 @@ public static class OwnerUpgradePipe {
         }
         if(-not $pipe){$pipe=$appId}
         if(-not $groups.ContainsKey($pipe)) {$groups[$pipe]=@{AppId=$appId;Pids=@();Windows=@()}}
+        if($groups[$pipe].AppId -ne $appId){throw 'Multiple state directories claim one UI control pipe; upgrade refused.'}
         $groups[$pipe].Pids+= [uint32]$process.ProcessId
     }
     function Request($group,[string]$pipe,[hashtable]$request) {
@@ -69,8 +70,10 @@ public static class OwnerUpgradePipe {
     }
     # A second, headless application identity must not be terminated merely
     # because it happens to use binaries from the same installation.
-    $coveredHosts=@($groups.Values | ForEach-Object {
-        $_.AppId; ($_.AppId+'-rust'); ($_.AppId+'-presentation-v1'); ($_.AppId+'-owner-v1')
+    $coveredHosts=@($groups.Keys | ForEach-Object {
+        # Released versions derive the host namespace from --pipe when set.
+        # --app-id independently names the state directory to back up.
+        $_; ($_+'-rust'); ($_+'-presentation-v1'); ($_+'-owner-v1')
     })
     foreach($hostProcess in $hosts) {
         $hostIdentity=$null
@@ -128,6 +131,11 @@ public static class OwnerUpgradePipe {
     }
     @{schema=1;installation=$InstallDir;processes=@($initial|Select-Object ProcessId,ExecutablePath,CreationDate);status='checkpointed'} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $backupRoot 'upgrade.json') -Encoding UTF8
+    foreach($group in $groups.Values){
+        if($group.Windows.Count -gt 1 -and -not(Test-Path -LiteralPath (Join-Path $backupRoot ($group.AppId+'/windows.json')))){
+            throw 'Cannot preserve open windows without a backed up window index; old installation remains open.'
+        }
+    }
     foreach($pipe in $groups.Keys) {
         $group=$groups[$pipe]
         foreach($window in $group.Windows) { $null=Request $group $pipe @{cmd='window.close';target=$window.id} }
@@ -152,6 +160,20 @@ public static class OwnerUpgradePipe {
         } finally { $handle.Dispose() }
     }
     if(@(InstalledProcesses).Count){throw 'Old host is still running; installation refused.'}
+    # Old releases only expose ordinary window.close via their control pipe.
+    # Each close except the last marks that window closed in the library index.
+    # Restore the checkpointed index after the old process has stopped writing.
+    foreach($group in $groups.Values){
+        if($group.Windows.Count -lt 2){continue}
+        $index=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) ($group.AppId+'/windows.json')
+        $savedIndex=Join-Path $backupRoot ($group.AppId+'/windows.json')
+        if(-not(Test-Path -LiteralPath $savedIndex)){throw "Missing checkpointed window index. Backup: $backupRoot"}
+        $temp=$index+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+        try {
+            Copy-Item -LiteralPath $savedIndex -Destination $temp
+            if([IO.File]::Exists($index)){[IO.File]::Replace($temp,$index,[System.Management.Automation.Language.NullString]::Value)}else{[IO.File]::Move($temp,$index)}
+        } finally {if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp}}
+    }
     if($ReportPath){"State saved and old sessions closed. Backup: $backupRoot"|Set-Content -LiteralPath $ReportPath -Encoding UTF8}
     Write-Output "State backup: $backupRoot"
     exit 0

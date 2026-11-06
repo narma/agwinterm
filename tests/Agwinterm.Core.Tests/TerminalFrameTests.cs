@@ -14,6 +14,10 @@ public sealed class TerminalFrameTests
                 Cell.Empty with {Rune='C'},Cell.Empty with {Rune='D'}});
         using var view=new PresentedTerminalView(2,2); view.Publish(frame);
         Assert.Equal("AB\r\nCD",TerminalSelectionText.Read(view,1,0,2,1,false));
+        Assert.Equal(1,view.ViewportOffset);
+        Assert.False(view.TryGetCachedCell(0,0,out _));
+        Assert.True(view.TryGetCachedCell(1,0,out var visible));
+        Assert.Equal('A',visible.Rune);
         Assert.Throws<NotSupportedException>(()=>view.GetCachedCell(0,0));
     }
 

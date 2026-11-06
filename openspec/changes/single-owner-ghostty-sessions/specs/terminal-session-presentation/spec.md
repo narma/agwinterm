@@ -82,7 +82,10 @@ Removing legacy Windows terminal backends SHALL preserve the bundled Rust Linux 
 ### Requirement: Performance acceptance covers both operating modes
 Release acceptance SHALL compare hosted and serverless modes separately against their pinned baselines using repeatable input-to-echo, input-to-present, throughput, CPU and memory measurements. Results SHALL include tail latency and instrumentation limits. A reproducible regression beyond the predeclared measurement tolerances SHALL block rollout; latency improvement SHALL require evidence rather than inference from fewer terminal instances.
 
-Latency, CPU and throughput SHALL take priority over modest bounded memory overhead, as explicitly requested by the user on 2026-11-05. Memory overhead SHALL still be measured and disclosed; leaks and unbounded memory growth SHALL block rollout. The former fixed +5% memory limit SHALL NOT independently reject an otherwise acceptable candidate.
+#### Scenario: Memory trade-off
+- **WHEN** comparing a candidate against its pinned baseline
+- **THEN** report memory overhead and prioritize latency, CPU and throughput over modest bounded memory growth
+- **AND** block rollout on leaks or unbounded memory growth. Growth above 5% alone does not fail acceptance.
 
 #### Scenario: Faster parsing but slower visible echo
 - **WHEN** terminal CPU falls but measured input-to-present tail latency exceeds the accepted baseline tolerance

@@ -631,11 +631,12 @@ internal partial class Program
         string? url = null; Pane? pane = null; int line = 0, c0 = 0, c1 = 0;
         if (PaneAt(mx, my) is { } h)
         {
-            var (ln, col) = CellAtPx(h.pane, h.ox, h.oy, h.cw, h.ch, mx, my);
             var em = h.pane.S.Emulator;
             var sb = new StringBuilder();
+            int ln,col;
             lock (h.pane.S.SyncRoot)
             {
+                (ln,col)=CellAtPx(h.pane,h.ox,h.oy,h.cw,h.ch,mx,my);
                 int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
                 if (CellAbs(em, hist, rows, cols, ln, col).Hyperlink is { } target)
                 {
@@ -777,12 +778,15 @@ internal partial class Program
     private (int line, int col) CellAtPx(Pane pane, float ox, float oy, float cw, float ch, int px, int py)
     {
         var em = pane.S.Emulator;
-        int cols, rows, hist; bool alt;
-        lock (pane.S.SyncRoot) { cols = em.Screen.Cols; rows = em.Screen.Rows; hist = em.HistoryCount; alt = em.IsAltScreen; }
+        int cols,rows,hist,off;
+        lock(pane.S.SyncRoot)
+        {
+            cols=em.Screen.Cols; rows=em.Screen.Rows; hist=em.HistoryCount;
+            off=em.IsAltScreen ? 0 : em is PresentedTerminalView view ? view.ViewportOffset : Math.Clamp(pane.ScrollOffset,0,hist);
+        }
         // The alt screen shows no history, so the renderer pins its offset to 0 (Program.Render.cs)
         // and so must this: mapping a click through a stale offset would name history rows that are
         // not on screen — a selection nothing highlights, which Ctrl+C would then copy.
-        int off = alt ? 0 : Math.Clamp(pane.ScrollOffset, 0, hist);
         int vr = Math.Clamp((int)((py - oy) / ch), 0, rows - 1);
         int col = Math.Clamp((int)((px - ox) / cw), 0, cols - 1);
         int line = Math.Clamp(hist - off + vr, 0, hist + rows - 1);
@@ -792,7 +796,7 @@ internal partial class Program
     private static Cell CellAbs(ITerminalCore em, int hist, int rows, int cols, int line, int col)
     {
         col = Math.Clamp(col, 0, cols - 1);
-        if (em is PresentedTerminalView presented) return presented.GetCachedCell(line,col);
+        if (em is PresentedTerminalView presented) return presented.TryGetCachedCell(line,col,out var cell) ? cell : Cell.Empty;
         if (line < hist) return em.GetHistoryCell(line, col);
         int live = line - hist;
         return (live >= 0 && live < rows) ? em.Screen[live, col] : Cell.Empty;
