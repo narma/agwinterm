@@ -1,7 +1,7 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('managed','rust','ghostty')][string]$EmulatorCore='managed',
+      [ValidateSet('managed','rust','ghostty')][string]$EmulatorCore='ghostty',
       [ValidateSet('in-process','server')][string]$LatencyHost='in-process',
       [ValidateSet('in-process','server')][string]$SessionHost='in-process',
       [ValidateRange(1,100000)][int]$LatencySamples=100,

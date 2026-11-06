@@ -91,16 +91,20 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
                 if (!allowEmptyHostRestart) return _client = ConnectExisting(); // no ordinary replay/spawn
                 _client = null;
             }
-            if (!PtyHostClient.IsRunning(_appId))
+            // Use the initial connection for the handshake. A throwaway probe consumes
+            // the only listening pipe until the host schedules its next accept.
+            try { return _client = PtyHostClient.Connect(_appId, timeoutMs: 200); }
+            catch (TimeoutException) when (_exePath is null || !File.Exists(_exePath))
             {
-                if (_exePath is null || !File.Exists(_exePath))
-                    throw new InvalidOperationException("no pty-host is running and no exe to spawn one");
-                var psi = new ProcessStartInfo(_exePath, _spawnArgs)
-                { UseShellExecute = false, CreateNoWindow = true };
-                Process.Start(psi);
-                for (int i = 0; i < 50 && !PtyHostClient.IsRunning(_appId); i++) Thread.Sleep(100);
+                throw new InvalidOperationException("no pty-host is running and no exe to spawn one");
             }
-            return _client = PtyHostClient.Connect(_appId);
+            catch (TimeoutException)
+            {
+                var psi = new ProcessStartInfo(_exePath!, _spawnArgs)
+                { UseShellExecute = false, CreateNoWindow = true };
+                using var process = Process.Start(psi);
+                return _client = PtyHostClient.Connect(_appId, timeoutMs: 15000);
+            }
         }
     }
 

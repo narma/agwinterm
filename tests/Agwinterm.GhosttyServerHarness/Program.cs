@@ -75,6 +75,9 @@ using (var local=new TerminalSession(20,4))
 {
     var before=GhosttyDiagnostics.Snapshot();
     var presentation=local.EnablePresentation();
+    Check(presentation.Submit(new TerminalInput.Paste(new string('a', 600_000))) == TerminalInputAcceptance.Rejected &&
+        presentation.Submit(new TerminalInput.Focus(false)) == TerminalInputAcceptance.Accepted,
+        "oversized local paste leaves the input queue open");
     local.Inject("LOCAL é界"u8);
     using var frame=presentation.Capture(0,9,19)!;
     Check(!presentation.IsRemote && local.Presentation == presentation && local.ChildProcessId is null &&
@@ -132,6 +135,9 @@ try
         await single.StartAsync("powershell.exe",["-NoProfile","-ExecutionPolicy","Bypass","-File",script]);
         Check(ready.WaitOne(15000),"single owner child reaches split CSI");
         Check(Wait(()=>Present(single).Contains("ALT")),"first presentation is a current viewport without VT replay");
+        Check(single.SubmitInput(new TerminalInput.Paste(new string('a', 600_000))) == TerminalInputAcceptance.Rejected &&
+            single.SubmitInput(new TerminalInput.Focus(false)) == TerminalInputAcceptance.Accepted,
+            "oversized hosted paste leaves the input channel open");
         var live=GhosttyDiagnostics.Snapshot();
         Check(live.Owners == countsBefore.Owners+1 && live.LegacyReplicas == countsBefore.LegacyReplicas,
             "hosted presentation adds exactly one owner and zero replicas");
@@ -322,8 +328,9 @@ try
                 return frame is not null && frame.Identity.ViewportRevision > 0 && frame.State.ScrollOffset == 5;
             }
         }),"semantic viewport update publishes scroll state in a new generation");
-        Check(SurfaceText.Dump(reattached, OverlayTextArgs.Screen) == liveText &&
-            SurfaceText.DumpStyled(reattached, OverlayTextArgs.Screen) == liveStyles,
+        string scrolledText = SurfaceText.Dump(reattached, OverlayTextArgs.Screen);
+        string scrolledStyles = SurfaceText.DumpStyled(reattached, OverlayTextArgs.Screen);
+        Check(scrolledText == liveText && scrolledStyles == liveStyles,
             "scrolled owner view preserves live plain and styled control reads");
         ulong beforeResize;
         lock(reattached.SyncRoot)

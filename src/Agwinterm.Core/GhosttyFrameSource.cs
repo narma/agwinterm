@@ -50,7 +50,8 @@ public sealed class GhosttyFrameSource : IDisposable
                 generation = _core.Generation;
                 marks=_core.Marks.TakeLast(4096).Select(m=>new TerminalCommandMark(m.PromptLine,m.CommandLine,m.OutputLine,m.EndLine,m.ExitCode)).ToArray();
                 state = new(_core.Cols, _core.Rows, _core.HistoryCount, scrollOffset, _core.ScrollGeneration,
-                    0, 0, false, 0, _core.IsAltScreen, false, default, default,
+                    Math.Clamp(_core.CursorCol, 0, _core.Cols - 1), Math.Clamp(_core.CursorRow, 0, _core.Rows - 1),
+                    false, 0, _core.IsAltScreen, false, default, default,
                     _core.Title, _core.Cwd, modes, (uint)_core.KeyboardFlags, _core.ScrollTop, _core.ScrollBottom);
                 _core.BeginPaint(scrollOffset);
                 controlImages = scrollOffset == 0 ? _core.Placements
@@ -59,7 +60,7 @@ public sealed class GhosttyFrameSource : IDisposable
             var screen = _core.CompletePaint();
             var cursor = _core.PaintCursor;
             state = state with { Columns = screen.Cols, Rows = screen.Rows,
-                CursorColumn = Math.Clamp(cursor.Col, 0, screen.Cols-1), CursorRow = Math.Clamp(cursor.Row, 0, screen.Rows-1),
+                // Cursor coordinates address the live screen, including while the viewport is scrolled.
                 CursorVisible = cursor.Visible, CursorShape = _core.PaintCursorShape,
                 Background = _core.PaintBackground, CursorColor = _core.PaintCursorColor };
             int length = checked(screen.Cols * screen.Rows);

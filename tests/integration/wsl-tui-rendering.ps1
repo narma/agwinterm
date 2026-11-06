@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][string]$AppDirectory,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('ghostty','rust','managed')][string]$Core = 'ghostty',
-    [ValidateSet('bundled','inbox')][string]$Conpty = 'inbox',
+    [ValidateSet('bundled','inbox')][string]$Conpty = 'bundled',
     [ValidateSet('htop','resize')][string]$Scenario = 'htop',
     [ValidateRange(5,120)][int]$Seconds = 20
 )

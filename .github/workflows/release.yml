@@ -269,6 +269,11 @@ jobs:
           global-json-file: global.json
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
+      - name: Cache Ghostty release package
+        uses: actions/cache/restore@v5
+        with:
+          path: artifacts/ghostty-release-native
+          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
       - name: Build experimental .NET 11 assets
         shell: pwsh
         env:
