@@ -5,7 +5,7 @@ using Porta.Pty;
 namespace Agwinterm.Pty;
 
 /// <summary>
-/// Wires a ConPTY-backed child process to a headless <see cref="TerminalEmulator"/>:
+/// Wires a ConPTY-backed child process to a headless <see cref="GhosttyTerminalCore"/>:
 /// spawns the process, pumps its output into the emulator on a reader loop, and
 /// exposes a thread-safe view of the resulting grid.
 /// </summary>
@@ -88,27 +88,24 @@ public sealed class TerminalSession : ISession
     public object SyncRoot => _sync;
 
     /// <summary>When set by the UI process, new sessions build their configured native
-    /// terminal core through this instead of the managed <see cref="TerminalEmulator"/>.</summary>
+    /// terminal core through this with the configured <see cref="GhosttyTerminalCore"/>.</summary>
     public static Func<int, int, ITerminalCore>? CoreFactory;
     internal static ITerminalCore CreateCore(int cols, int rows, string? core = null)
     {
-        if (string.IsNullOrEmpty(core)) return CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
-        if (core == "managed") return new TerminalEmulator(cols, rows);
+        if (string.IsNullOrEmpty(core) || core == "managed")
+        {
+            if (CoreFactory is { } factory) return factory(cols, rows);
+            core = "ghostty";
+        }
         if (core == "ghostty")
         {
             if (!GhosttyTerminalCore.TryLoad(PortableTools.DirectoryPath, out var error)) throw new InvalidOperationException(error);
             return new GhosttyTerminalCore(cols, rows);
         }
-        if (core == "rust")
-        {
-            if (!RustEmulatorCore.TryLoad(Path.Combine(AppContext.BaseDirectory, "agwinterm_core.dll"), out var error))
-                throw new InvalidOperationException(error);
-            return new RustTerminalCore(cols, rows);
-        }
         throw new ArgumentException("Unknown terminal core: " + core, nameof(core));
     }
     internal static string CoreName(ITerminalCore core) => core switch
-    { GhosttyTerminalCore => "ghostty", RustTerminalCore => "rust", _ => "managed" };
+    { GhosttyTerminalCore => "ghostty", _ => "managed" };
 
     public TerminalSession(int cols, int rows) : this(cols, rows, null) { }
 

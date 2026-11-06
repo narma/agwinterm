@@ -101,7 +101,9 @@ public sealed class PtyHostServer : IDisposable
     }
 
     /// <param name="conpty">The ConPTY sessions are created on; null = <see cref="ConPtyApi.Current"/>.</param>
-    public PtyHostServer(string appId, ConPtyApi? conpty = null, bool ghosttyOnly = false)
+    public PtyHostServer(string appId, ConPtyApi? conpty = null) : this(appId, conpty, true) { }
+
+    internal PtyHostServer(string appId, ConPtyApi? conpty, bool ghosttyOnly)
     {
         _appId = appId;
         _ghosttyOnly=ghosttyOnly;
@@ -475,12 +477,7 @@ public sealed class PtyHostServer : IDisposable
                     }
                     if (!reply.NativeSnapshot && repaint && hosted.S.OnBundledConpty)
                     {
-                        string screen = hosted.S.Emulator switch
-                        {
-                            TerminalEmulator managed => managed.DumpScreen(),
-                            RustTerminalCore rust => rust.DumpScreen(),
-                            _ => throw new InvalidOperationException("Missing screen transfer for hosted core")
-                        };
+                        string screen = hosted.S.Emulator.DumpScreen();
                         try { ch.Pipe.Write(System.Text.Encoding.UTF8.GetBytes(screen)); ch.Pipe.Flush(); } catch { }
                     }
                     hosted.Data = ch;

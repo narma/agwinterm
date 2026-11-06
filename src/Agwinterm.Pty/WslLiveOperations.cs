@@ -27,7 +27,7 @@ public sealed class WslLiveOperations
         string? cwd, IReadOnlyDictionary<string, string> environment,
         Func<WslLiveBinding, Task> persistReservation, CancellationToken ct = default)
     {
-        var error = WslLiveProfiles.Validate(profile, "server-rust", WslLiveSurface.Ordinary);
+        var error = WslLiveProfiles.Validate(profile, "server", WslLiveSurface.Ordinary);
         if (error is not null || profile.Zmx is not { Enabled: true })
             throw new InvalidOperationException(error ?? "Live creation requires explicit opt-in");
         var location = await _client.PrepareAsync(profile, appId, cwd, ct).ConfigureAwait(false);

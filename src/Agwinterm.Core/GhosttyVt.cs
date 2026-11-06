@@ -191,13 +191,13 @@ public sealed unsafe class GhosttyVt : IDisposable
     private long _holdDeadline;
     public bool IsSynchronizedOutputHeld => Environment.TickCount64 < Volatile.Read(ref _holdDeadline);
     public long SynchronizedOutputDeadline => Volatile.Read(ref _holdDeadline);
-    public IReadOnlyList<TerminalEmulator.ShellMark> ReadMarks()
+    public IReadOnlyList<ShellMark> ReadMarks()
     {
         CheckAlive();
         Span<GhosttyNative.Mark> marks = stackalloc GhosttyNative.Mark[512];
         nuint count;
         fixed (GhosttyNative.Mark* ptr = marks) GhosttyNative.Check(GhosttyNative.Marks(_handle, ptr, 512, out count));
-        var result = new TerminalEmulator.ShellMark[(int)count];
+        var result = new ShellMark[(int)count];
         for (int i = 0; i < result.Length; i++)
             result[i] = new() { PromptLine = marks[i].Prompt, CommandLine = marks[i].Command,
                 OutputLine = marks[i].Output, EndLine = marks[i].End, ExitCode = marks[i].HasExitCode != 0 ? marks[i].ExitCode : null };

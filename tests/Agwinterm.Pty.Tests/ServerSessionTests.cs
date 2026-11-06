@@ -14,8 +14,8 @@ public class ServerSessionTests : IDisposable
 
     public ServerSessionTests()
     {
-        _server = new PtyHostServer(_appId);
-        _backend = new ServerSessionBackend(_appId, exePath: null);   // host already running (above)
+        _server = new PtyHostServer(_appId, null, ghosttyOnly: false);
+        _backend = new ServerSessionBackend(_appId, exePath: null, singleOwner: false);   // host already running (above)
     }
 
     public void Dispose() { _backend.Dispose(); _server.Dispose(); }

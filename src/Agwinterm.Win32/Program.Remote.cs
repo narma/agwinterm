@@ -62,7 +62,7 @@ internal partial class Program
             {
                 lock (_registry) if (!_registry.Values.Contains(this))
                     throw new InvalidOperationException("Selected local window closed");
-                if (_config.ConfiguredSessionHost is not ("server" or "server-rust") || _isQuickWindow)
+                if (_config.ConfiguredSessionHost != "server" || _isQuickWindow)
                     throw new InvalidOperationException("Remote import requires a hosted ordinary window");
                 var ws = ActiveWorkspace();
                 var id = Guid.NewGuid().ToString();

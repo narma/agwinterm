@@ -1,12 +1,6 @@
 namespace Agwinterm.Core;
 
-/// <summary>
-/// The emulator surface a pane consumes — extracted so the managed
-/// <see cref="TerminalEmulator"/> and the Rust-backed <see cref="RustTerminalCore"/>
-/// are interchangeable behind <c>emulator-core = managed | rust</c>. Member names
-/// deliberately mirror TerminalEmulator exactly, so existing consumers compile
-/// unchanged against the interface.
-/// </summary>
+/// <summary>The terminal state and operations consumed by a pane.</summary>
 public interface ITerminalCore
 {
     // ---- content ----
@@ -41,6 +35,8 @@ public interface ITerminalCore
     // ---- scrollback ----
     int ScrollbackMax { get; set; }
     int HistoryCount { get; }
+    int GetHistoryRowLength(int row) => Screen.Cols;
+    void RestoreHistory(Persist.PBuffer buffer) => throw new NotSupportedException();
     long ScrollGeneration { get; }
     Cell GetHistoryCell(int historyRow, int col);
     /// <summary>Automatic-wrap content length for a history + screen absolute row; -1 for a hard end.</summary>
@@ -48,16 +44,14 @@ public interface ITerminalCore
     void SeedScrollback(IReadOnlyList<string> lines);
 
     // ---- marks / identity ----
-    IReadOnlyList<TerminalEmulator.ShellMark> Marks { get; }
+    IReadOnlyList<ShellMark> Marks { get; }
     string Title { get; }
     string Cwd { get; }
 
-    // ---- host actions (notifications, clipboard, PTY responses). The Rust core
-    // does not invoke these yet (phase-2 gap; documented in the config text). ----
+    // ---- host actions ----
     IHostActions? Host { get; set; }
 
-    // ---- images. The Rust core reports none and ignores placement calls in the
-    // experimental phase (phase-2 gap; kitty/sixel panes need the managed core). ----
+    // ---- images ----
     IReadOnlyDictionary<int, KittyImage> Images { get; }
     IReadOnlyList<ImagePlacement> Placements { get; }
     void ClearPlacements();
@@ -74,4 +68,5 @@ public interface ITerminalCore
     string DumpHistoryRow(int index);
     IReadOnlyList<string> DumpBuffer();
     string DumpModes();
+    string DumpScreen() => throw new NotSupportedException();
 }

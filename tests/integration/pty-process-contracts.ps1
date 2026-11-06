@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test PtyProcessContracts -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $filter=@('ConPtyConnectionTests','FreshEnvironmentTests','PtyHostTests','ServerSessionTests',
-    'SettleOutputTests','SurfaceCursorTests','TerminalSessionStartFailureTests','RustPtyHostTests') |
+    'SettleOutputTests','SurfaceCursorTests','TerminalSessionStartFailureTests') |
     ForEach-Object {"FullyQualifiedName~$_"}
 $evidence=Join-Path $root '.revmux/pty-process'
 $null=New-Item -ItemType Directory $evidence -Force

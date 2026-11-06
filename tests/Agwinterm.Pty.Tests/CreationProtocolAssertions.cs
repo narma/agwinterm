@@ -11,10 +11,10 @@ internal static class CreationProtocolAssertions
 {
     internal static async Task StartupSweepKeepsPendingPane(string appId)
     {
-        using var backend = new ServerSessionBackend(appId, null);
+        using var backend = new ServerSessionBackend(appId, null, singleOwner: false);
         // The live config path resolves a new backend even when reapplying the same value.
         // The original instance still owns the delayed sweep; the replacement owns this pane.
-        using var replacement = new ServerSessionBackend(appId, null);
+        using var replacement = new ServerSessionBackend(appId, null, singleOwner: false);
         using var pendingPane = replacement.Create("not-yet-published", 80, 24);
         using var client = PtyHostClient.Connect(appId);
         string orphan = client.PrepareCreate("unclaimed-orphan");

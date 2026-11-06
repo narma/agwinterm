@@ -11,28 +11,14 @@ namespace Agwinterm.Core.Tests;
 /// </summary>
 public class SelectionScrollRegressionTests
 {
-    private static bool CoreAvailable(bool rust)
-    {
-        if (!rust) return true;
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Agwinterm.slnx"))) dir = dir.Parent;
-        string dll = Path.Combine(dir!.FullName, "native", "target", "release", "agwinterm_core.dll");
-        if (!File.Exists(dll)) return false;
-        Assert.True(RustEmulatorCore.TryLoad(dll, out var error), error);
-        return true;
-    }
-
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void CopyJoinsSoftWrapsButKeepsSpacesAndHardBreaks(bool rust, bool alt)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CopyJoinsSoftWrapsButKeepsSpacesAndHardBreaks(bool alt)
     {
-        if (!CoreAvailable(rust)) return;
         foreach (int cols in new[] { 5, 80 })
         {
-            using var f = new Fixture(alt, rust);
+            using var f = new Fixture(alt);
             f.Core.Resize(cols, 20);
             const string text = "abcd界xyz  abc de  fghijklmnop😀z\r\nsecond\r\n\r\nend";
             f.Feed("\x1b[2J\x1b[H" + text);
@@ -47,14 +33,11 @@ public class SelectionScrollRegressionTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void PartialReverseCopyJoinsWrapsAndExactWidthHardBreakStays(bool rust, bool alt)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PartialReverseCopyJoinsWrapsAndExactWidthHardBreakStays(bool alt)
     {
-        if (!CoreAvailable(rust)) return;
-        using var f = new Fixture(alt, rust);
+        using var f = new Fixture(alt);
         f.Core.Resize(5, 6);
         f.Feed("\x1b[2J\x1b[H0123456789abcdefghij");
         f.Select(1, 2, from: 2, to: 1);
@@ -66,13 +49,10 @@ public class SelectionScrollRegressionTests
         Assert.Equal("12345\r\n67890", f.Text());
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void CopyJoinsHistoryAndScreenAcrossWrapsAfterEviction(bool rust)
+    [Fact]
+    public void CopyJoinsHistoryAndScreenAcrossWrapsAfterEviction()
     {
-        if (!CoreAvailable(rust)) return;
-        using var f = new Fixture(false, rust);
+        using var f = new Fixture(false);
         f.Core.Resize(5, 3);
         f.Core.ScrollbackMax = 2;
         f.Feed("\x1b[2J\x1b[Hxxxxxabc defghijklmnop\r\nend");
@@ -86,14 +66,11 @@ public class SelectionScrollRegressionTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void RectangleCopyKeepsPhysicalRows(bool rust, bool alt)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RectangleCopyKeepsPhysicalRows(bool alt)
     {
-        if (!CoreAvailable(rust)) return;
-        using var f = new Fixture(alt, rust);
+        using var f = new Fixture(alt);
         f.Core.Resize(5, 6);
         f.Feed("\x1b[2J\x1b[Habcdefghij");
         f.Select(0, 1, to: 4, block: true);
@@ -110,19 +87,14 @@ public class SelectionScrollRegressionTests
         public readonly object Pane;
         public readonly ITerminalCore Core;
 
-        public Fixture(bool alt, bool rust = false)
+        public Fixture(bool alt)
         {
             var sessionType = Assembly.LoadFrom(Path.Combine(Path.GetDirectoryName(Ui.Location)!,
                 "Agwinterm.Pty.dll")).GetType("Agwinterm.Pty.TerminalSession", true)!;
+            Func<int, int, ITerminalCore> factory = (cols, rows) => new TerminalEmulator(cols, rows);
+            sessionType.GetField("CoreFactory")!.SetValue(null, factory);
             _session = (IDisposable)Activator.CreateInstance(sessionType, 30, 6)!;
             Core = (ITerminalCore)sessionType.GetProperty("Emulator")!.GetValue(_session)!;
-            if (rust)
-            {
-                Core = new RustTerminalCore(30, 6);
-                // Do not change the global CoreFactory while other tests create sessions.
-                sessionType.GetField("<Emulator>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                    .SetValue(_session, Core);
-            }
             Pane = RuntimeHelpers.GetUninitializedObject(PaneType);
             Set("S", _session);
             if (alt) Feed("\x1b[?1049h\x1b[?1000h\x1b[?1006h");
@@ -393,25 +365,4 @@ public class SelectionScrollRegressionTests
         Assert.Contains("MARKER05", f.Core.DumpRow(5));
     }
 
-    [Fact]
-    public void RustCoreTracksScrollRedrawAndOffscreenReturn()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Agwinterm.slnx"))) dir = dir.Parent;
-        Assert.NotNull(dir);
-        string dll = Path.Combine(dir!.FullName, "native", "target", "release", "agwinterm_core.dll");
-        // Same optional native build convention as RustEmulatorCoreTests.
-        if (!File.Exists(dll)) return;
-        Assert.True(RustEmulatorCore.TryLoad(dll, out var error), error);
-        using var f = new Fixture(alt: true, rust: true);
-        f.Feed("\x1b[S");
-        f.AssertSelection(1);
-        f.Paint(-1);
-        f.AssertSelection(3);
-        f.Paint(10);
-        Assert.Equal("MARKER02", f.Text());
-        Assert.False(f.Visible);
-        f.Paint(0);
-        f.AssertSelection(2);
-    }
 }

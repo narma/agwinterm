@@ -184,7 +184,7 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
         return (uint)col < (uint)row.Length ? row[col] : Cell.Empty;
     }
 
-    internal int GetHistoryRowLength(int row) => _history[row].Length;
+    public int GetHistoryRowLength(int row) => _history[row].Length;
 
     private void PushHistory()
     {
@@ -211,17 +211,6 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     }
 
     // ---- Shell-integration marks (FTCS / OSC 133): prompt + command-output boundaries ----
-
-    /// <summary>One prompt→command→output record from FTCS (OSC 133). Lines are buffer-absolute
-    /// (history + live row); they shift as history trims and drop off when trimmed away.</summary>
-    public sealed class ShellMark
-    {
-        public int PromptLine;        // 133;A — the prompt started on this line
-        public int CommandLine = -1;  // 133;B — command input line (where the user types)
-        public int OutputLine = -1;   // 133;C — command output starts here (optional)
-        public int EndLine = -1;      // 133;D — command finished (the next prompt's line)
-        public int? ExitCode;         // from 133;D;<code>
-    }
 
     private readonly List<ShellMark> _marks = new();
 
@@ -1287,6 +1276,18 @@ public sealed class TerminalEmulator : IParserPerformer, ITerminalCore
     /// <summary>Seed the scrollback with already-attributed rows (full colour/attributes) — the
     /// full-fidelity restore path (see <see cref="BufferPersist"/>). Rows are stored as given
     /// (trimmed to content by the caller); reads pad past the end with <see cref="Cell.Empty"/>.</summary>
+    public void RestoreHistory(Persist.PBuffer buffer)
+    {
+        var rows = new List<Cell[]>(buffer.Rows.Count);
+        foreach (var pr in buffer.Rows)
+        {
+            var row = new Cell[pr.Cells.Count];
+            for (int c = 0; c < pr.Cells.Count; c++) row[c] = BufferPersist.FromP(pr.Cells[c]);
+            rows.Add(row);
+        }
+        SeedScrollbackAttributed(rows, buffer.Rows.Select(pr => pr.SoftWrapped ? checked((int)Math.Min(pr.WrapLength, 32768u)) : -1).ToArray());
+    }
+
     public void SeedScrollbackAttributed(IReadOnlyList<Cell[]> rows, IReadOnlyList<int>? wraps = null)
     {
         int start = _history.Count;

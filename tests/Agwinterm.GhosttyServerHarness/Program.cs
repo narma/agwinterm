@@ -71,7 +71,6 @@ using (var encoder = new GhosttyTerminalCore(20, 4))
     Check(Encoding.UTF8.GetString(OwnerInputQueue.Encode(encoder,mouse)) == "\u001b[<0;31;47M",
         "same semantic pointer uses pixels after an owner mode change");
 }
-string Text(ISession session) { lock (session.SyncRoot) return string.Join("\n", session.Emulator.DumpBuffer()); }
 using (var local=new TerminalSession(20,4))
 {
     var before=GhosttyDiagnostics.Snapshot();
@@ -123,104 +122,7 @@ try
 {
     using var host = new PtyHostServer(appId, conpty);
     using var client = PtyHostClient.Connect(appId);
-    using var backend = new ServerSessionBackend(appId, exePath: null);
-    client.Create("native", 60, 10, "powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script]);
-    Check(ready.WaitOne(15000), "child reaches split CSI");
-    // Child notification precedes the ConPTY pump. Snapshot retries observe the actual VT state.
-    Check(Wait(() =>
-    {
-        using var attachment = client.Attach("native", nativeSnapshot: true);
-        using var core = new GhosttyTerminalCore(1, 1);
-        core.RestoreSnapshot(attachment.NativeSnapshot!);
-        return core.IsAltScreen && core.DumpRow(0).StartsWith("ALT");
-    }), "native snapshot includes alternate screen before first replica");
-    Check(client.ThemeRevision == 1 && client.UpdateTheme("native", "112233;445566",
-        ThemeColors.FormatPalette(Theme.DefaultPalette()), "778899"), "host accepts a live theme update");
-    using (var attachment = client.Attach("native", nativeSnapshot: true))
-    using (var themed = new GhosttyTerminalCore(1, 1))
-    {
-        themed.RestoreSnapshot(attachment.NativeSnapshot!);
-        themed.BeginPaint(); var frame = themed.CompletePaint();
-        Check(frame[0, 0].Foreground == new Color(0x11, 0x22, 0x33) && themed.PaintCursorColor == new Color(0x77, 0x88, 0x99),
-            "detached host snapshot carries new theme without PTY output");
-    }
-    bool invalidThemeRejected = false;
-    try { client.UpdateTheme("native", "invalid", ThemeColors.FormatPalette(Theme.DefaultPalette()), "778899"); }
-    catch (InvalidOperationException) { invalidThemeRejected = true; }
-    Check(invalidThemeRejected, "host rejects malformed theme without updating terminal state");
-    bool rejected = false;
-    try { using var legacy = client.Attach("native"); }
-    catch (InvalidOperationException ex) when (ex.Message.Contains("native snapshots")) { rejected = true; }
-    Check(rejected, "native host rejects a client lacking snapshot support");
-    TerminalSession.CoreFactory = null; // UI preference changed; the hosted shell is still Ghostty.
-    var first = (ServerSession)backend.Create("native", 60, 10);
-    Check(first.Emulator is TerminalEmulator, "replica starts with changed managed UI preference");
-    Check(first.TryAdopt(), "first replica adopts the native host");
-    Check(first.Emulator is GhosttyTerminalCore && first.Emulator.BracketedPaste, "replica uses Ghostty and restores input modes");
-    Check(GhosttyDiagnostics.Snapshot() is { Owners: 1, LegacyReplicas: 1 },
-        "real hosted session retains exactly one owner and one legacy replica");
-    gate.Set(); Check(ready.WaitOne(15000), "child finishes split CSI");
-    Check(Wait(() => Text(first).Contains("ALTRED")), "snapshot continuation joins live output exactly once");
-    lock (first.SyncRoot)
-        Check(first.Emulator.Screen[0, 3].FgSpec == ColorSpec.Indexed(1), "split CSI preserves red attributes");
-    int? pid = first.ChildProcessId;
-    first.Detach();
-    Check(GhosttyDiagnostics.Snapshot() is { Owners: 1, LegacyReplicas: 0 },
-        "detaching releases only the legacy replica");
-    Check(Wait(() => !client.List().Single().Attached), "detach closes its data channel without killing the child");
-    gate.Set(); Check(ready.WaitOne(15000), "child writes while detached");
-    // The legacy oracle belongs to the test harness, not the shipped app package.
-    string rustOracle=Path.Combine(AppContext.BaseDirectory,"agwinterm_core.dll");
-    if(!File.Exists(rustOracle)) rustOracle=Path.Combine(args[0],"agwinterm_core.dll");
-    Check(RustEmulatorCore.TryLoad(rustOracle, out _), "Rust comparison core loads");
-    TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
-    using var second = (ServerSession)backend.Create("native", 60, 10);
-    Check(second.Emulator is RustTerminalCore, "second replica starts with changed Rust UI preference");
-    Check(second.TryAdopt(), "second replica adopts the surviving process");
-    Check(second.Emulator is GhosttyTerminalCore, "attachment chooses the surviving core instead of the UI preference");
-    Check(second.ChildProcessId == pid, "reattach keeps the original child PID");
-    Check(Wait(() => Text(second).Contains("ALTRED DETACHED")), "reattach restores detached output without repaint");
-    Check(Wait(() => { lock (second.SyncRoot) return second.Emulator.Win32InputMode; }), "reattach restores Windows input mode");
-    gate.Set(); Check(ready.WaitOne(15000), "child restores primary screen");
-    Check(Wait(() => { lock (second.SyncRoot) return !second.Emulator.IsAltScreen && second.Emulator.HistoryCount > 0; }), "primary screen and history survive alternate-screen reattach");
-    second.Resize(72, 12);
-    Check(client.List().Single().Cols == 72, "resize reaches the authoritative host");
-    gate.Set();
-    Check(Wait(() => second.HasExited) && second.ExitCode == 7, "exit follows final output and preserves status");
-    Check(client.CoreSelectionRevision == 1, "host advertises per-session core negotiation");
-    TerminalSession.CoreFactory = null;
-    using (var managed = (ServerSession)backend.Create("managed-choice", 60, 10))
-    {
-        // Mimic a host whose startup preference is still Ghostty.
-        TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows);
-        await managed.StartAsync("cmd.exe", ["/d", "/k"]);
-        Check(managed.Emulator is TerminalEmulator && managed.ChildProcessId is not null && !managed.HasExited,
-            "new managed session overrides a surviving Ghostty host default");
-    }
-    using (var native = (ServerSession)backend.Create("ghostty-choice", 60, 10))
-    {
-        TerminalSession.CoreFactory = null; // inverse case: surviving host has a managed default.
-        await native.StartAsync("cmd.exe", ["/d", "/k"]);
-        Check(native.Emulator is GhosttyTerminalCore && native.ChildProcessId is not null && !native.HasExited,
-            "new Ghostty session overrides a surviving managed host default");
-    }
-    TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
-    var rustFirst = (ServerSession)backend.Create("rust-reconnect", 60, 10);
-    await rustFirst.StartAsync("cmd.exe", ["/d", "/q", "/k", "echo RUST_RECONNECT_SCREEN"]);
-    bool rustVisible = Wait(() => Text(rustFirst).Contains("RUST_RECONNECT_SCREEN"));
-    if (!rustVisible) Console.WriteLine($"Rust diagnostic: exited={rustFirst.HasExited}; pid={rustFirst.ChildProcessId}; text={Text(rustFirst)}");
-    Check(rustVisible, "Rust host receives visible output");
-    int? rustPid = rustFirst.ChildProcessId;
-    rustFirst.Detach();
-    Check(Wait(() => !client.List().Single(s => s.Id == "rust-reconnect").Attached), "Rust replica detaches without closing its shell");
-    TerminalSession.CoreFactory = null;
-    using (var rustSecond = (ServerSession)backend.Create("rust-reconnect", 60, 10))
-    {
-        Check(rustSecond.TryAdopt() && rustSecond.Emulator is RustTerminalCore, "Rust reattachment adopts the authoritative core");
-        Check(rustSecond.ChildProcessId == rustPid && Wait(() => Text(rustSecond).Contains("RUST_RECONNECT_SCREEN")),
-            "bundled ConPTY Rust reattachment restores the visible screen without child redraw");
-    }
-    using (var presentationBackend = new ServerSessionBackend(appId,exePath:null,replicaCore:"ghostty",singleOwner:true))
+    using (var presentationBackend = new ServerSessionBackend(appId, exePath: null))
     {
         var countsBefore=GhosttyDiagnostics.Snapshot();
         var single=(ServerSession)presentationBackend.Create("single-owner",60,10);

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Agwinterm.Core.Tests")]
+[assembly: InternalsVisibleTo("Agwinterm.Pty.Tests")]
 [assembly: InternalsVisibleTo("Agwinterm.Win32")]
 
 namespace Agwinterm.Core;

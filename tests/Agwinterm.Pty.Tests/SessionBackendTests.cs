@@ -14,10 +14,10 @@ public class SessionBackendTests
         var config = Agwinterm.Core.TerminalConfig.Parse("session-host = server-rust\n" + setting);
         using var live = SessionBackends.ResolveLive(config, "isolated-live", null);
         Assert.Equal("server", config.ConfiguredSessionHost);
-        Assert.Equal(expectedCore == "ghostty" ? "server" : "server-rust", live.Name);
+        Assert.Equal("server", live.Name);
         Assert.Equal(expectedCore, live.ReplicaCore);
-        Assert.Contains(expectedCore == "ghostty" ? "--pipe \"isolated-live-owner-v1\"" : "--pipe \"isolated-live-rust\"", live.SpawnArgs);
-        Assert.Equal(config.EmulatorCore == "ghostty" ? "server" : "server-rust",
+        Assert.Contains("--pipe \"isolated-live-owner-v1\"", live.SpawnArgs);
+        Assert.Equal("server",
             SessionBackends.Resolve(config.SessionHost, "isolated-live", null).Name);
     }
 
@@ -55,11 +55,11 @@ public class SessionBackendTests
     }
 
     [Fact]
-    public void Resolve_ServerRust_PicksServerRustBackend()
+    public void Resolve_ServerRust_MigratesToGhosttyHost()
     {
         var b = SessionBackends.Resolve("server-rust", "x", null);
         Assert.IsType<ServerSessionBackend>(b);
-        Assert.Equal("server", b.Name);   // distinct name drives the toast + reap pipe
+        Assert.Equal("server", b.Name);
         // Case-insensitive, like the other values.
         Assert.Equal("server", SessionBackends.Resolve("SERVER-RUST", "x", null).Name);
     }
@@ -77,7 +77,7 @@ public class SessionBackendTests
     public void ServerBackend_WithNoHostAndNoExe_FailsAtCreate()
     {
         // Failure surfaces at Create — the one place the UI can catch it and fall back in-process.
-        using var backend = new ServerSessionBackend("agwinterm-test-nohost-" + Guid.NewGuid().ToString("N")[..8], exePath: null);
+        using var backend = new ServerSessionBackend("agwinterm-test-nohost-" + Guid.NewGuid().ToString("N")[..8], exePath: null, singleOwner: false);
         Assert.Throws<InvalidOperationException>(() => backend.Create("t3", 80, 24));
     }
 

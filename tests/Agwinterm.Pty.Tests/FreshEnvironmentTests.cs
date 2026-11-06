@@ -111,8 +111,8 @@ public class FreshEnvironmentE2ETests : IDisposable
     public async Task PtyHost_FreshEnvCrossesTheWire()
     {
         string appId = "agwinterm-test-" + Guid.NewGuid().ToString("N")[..8];
-        using var server = new PtyHostServer(appId);
-        using var backend = new ServerSessionBackend(appId, exePath: null);
+        using var server = new PtyHostServer(appId, null, ghosttyOnly: false);
+        using var backend = new ServerSessionBackend(appId, exePath: null, singleOwner: false);
         using var s = backend.Create(Guid.NewGuid().ToString(), 100, 24);
         await s.StartAsync("cmd.exe", new[] { "/q" }, verbatimCommandLine: true);
         TypeLine(s, $"echo %{_name}%", _value);                      // host-side spawn rebuilt the env

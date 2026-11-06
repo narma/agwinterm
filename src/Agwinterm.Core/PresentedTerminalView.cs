@@ -103,8 +103,8 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
         return _frame is not null && (uint)row < State.Rows ? _frame.WrapLength(row) : throw OwnerOperation();
     }
     public void SeedScrollback(IReadOnlyList<string> lines) { if(lines.Count != 0) throw OwnerOperation(); }
-    private IReadOnlyList<TerminalEmulator.ShellMark>? _marks;
-    public IReadOnlyList<TerminalEmulator.ShellMark> Marks=>_marks ??= _frame?.Marks.Select(m=>new TerminalEmulator.ShellMark {
+    private IReadOnlyList<ShellMark>? _marks;
+    public IReadOnlyList<ShellMark> Marks=>_marks ??= _frame?.Marks.Select(m=>new ShellMark {
         PromptLine=m.PromptLine,CommandLine=m.CommandLine,OutputLine=m.OutputLine,EndLine=m.EndLine,ExitCode=m.ExitCode }).ToArray() ?? [];
     private (string Title,string Cwd)? _metadata;
     public string Title=>_metadata?.Title ?? State.Title;

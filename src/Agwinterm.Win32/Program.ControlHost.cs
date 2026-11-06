@@ -866,7 +866,7 @@ internal partial class Program
             var reply=presentation.QueryAsync(new(identity.Incarnation,identity.AttachmentEpoch,0,"last-output"),default).AsTask().GetAwaiter().GetResult();
             return reply.Status == "ok" && reply.Rows.Count == 1 ? reply.Rows[0] : ISessionHost.RefusePrefix+"Command output unavailable: "+reply.Status;
         }
-        TerminalEmulator.ShellMark? m;
+        ShellMark? m;
         lock (pane.S.SyncRoot) m = pane.S.Emulator.Marks.LastOrDefault(x => x.EndLine >= 0);
         if (m is null) return "no completed command marks (FTCS wrap not active?)";
         // Output begins after the command's input row: 133;C if the shell emits it, else the

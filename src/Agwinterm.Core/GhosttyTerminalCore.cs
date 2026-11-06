@@ -19,7 +19,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     private CursorStyle _cursorStyle;
     private bool _cursorBlink;
     private int _historyIndex = -1, _historyWrap;
-    private IReadOnlyList<TerminalEmulator.ShellMark>? _marks;
+    private IReadOnlyList<ShellMark>? _marks;
     private readonly Dictionary<int, KittyImage> _hostImages = new();
     private readonly List<ImagePlacement> _hostPlacements = new();
     public GhosttyTerminalCore(int cols, int rows, CursorStyle cursorStyle = CursorStyle.Bar, bool cursorBlink = true)
@@ -195,7 +195,7 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         _vt.PrependHistory(checked((int)buffer.Cols), encoded, _scrollbackMax);
         Invalidate();
     }
-    public IReadOnlyList<TerminalEmulator.ShellMark> Marks => _marks ??= _vt.ReadMarks();
+    public IReadOnlyList<ShellMark> Marks => _marks ??= _vt.ReadMarks();
     public string Title => _vt.Title;
     public void SetTitleFilter(Func<string, bool> filter) => _vt.SetTitleFilter(filter);
     public string Cwd => _vt.Cwd;

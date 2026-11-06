@@ -642,7 +642,7 @@ internal partial class Program : ISessionHost, IWindowHost
             _config = LoadOrCreateConfig();
             ResolveEmulatorCore();
             ConPtyApi.Select(_argConpty == "bundled" || _argConpty is null && _config.Conpty == "bundled");
-            using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId,ghosttyOnly:true);
+            using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId);
             ptyHost.Completion.Wait();
             return;
         }
@@ -714,19 +714,11 @@ internal partial class Program : ISessionHost, IWindowHost
             front!.Post(() => front.ShowToast(note, 6000));
         if (_fontFallbackNote is { } fontNote)
             front!.Post(() => front.ShowToast(fontNote, 8000));
-        // Server mode is experimental (#105) — say so once at startup, so a flipped knob is never
-        // a silent mystery ("why is there a second agwinterm process?").
-        if (_sessionBackend is ServerSessionBackend sb)
-        {
-            string host = sb.Name == "server-rust" ? "the Rust pty-host binary" : "the pty-host process";
-            front!.Post(() => front.ShowToast($"session-host = {sb.Name} (experimental) — sessions live in {host}", 6000));
-        }
         if (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null)
         {
             // All restore handles have already claimed their hosted IDs in the backend. New
             // handles claim before async creation too, not after publication in the UI tree.
-            // Sweep both namespaces: an upgrade can leave old Rust attachments alongside
-            // native-hosted sessions, including an orphan with no saved pane to adopt.
+            // Reap unclaimed sessions in the current owner namespace.
             string hostNamespace = (_argPipe ?? _appId)+"-owner-v1";
             _ = Task.Run(async () =>
             {

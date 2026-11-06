@@ -10,7 +10,7 @@ public class PtyHostTests : IDisposable
     private readonly string _appId = "agwinterm-test-" + Guid.NewGuid().ToString("N")[..8];
     private readonly PtyHostServer _server;
 
-    public PtyHostTests() => _server = new PtyHostServer(_appId);
+    public PtyHostTests() => _server = new PtyHostServer(_appId, null, ghosttyOnly: false);
     public void Dispose() => _server.Dispose();
 
     [Fact]
@@ -146,7 +146,7 @@ public class PtyHostTests : IDisposable
         // The inbox conhost repaints on the resize jiggle; on the bundled ConPTY the host sends its own
         // emulator's screen instead, since that ConPTY does not repaint (#339).
         string appId = "agwinterm-test-" + Guid.NewGuid().ToString("N")[..8];
-        using var server = new PtyHostServer(appId, ConPtyApi.Resolve(bundled, ConPtyConnectionTests.BundledDir));
+        using var server = new PtyHostServer(appId, ConPtyApi.Resolve(bundled, ConPtyConnectionTests.BundledDir), ghosttyOnly: false);
         using var client = PtyHostClient.Connect(appId);
         string id = client.Create(Guid.NewGuid().ToString(), 100, 24, "powershell.exe", ConPtyConnectionTests.BottomRowProbeArgs, verbatim: false);
         Thread.Sleep(5000);
@@ -167,7 +167,7 @@ public class PtyHostTests : IDisposable
         // The bundled ConPTY forwards the child's queries; with no client attached, the host answers them
         // (#339): the DSR always, the color with the theme from the pane's environment, else not at all.
         string appId = "agwinterm-test-" + Guid.NewGuid().ToString("N")[..8];
-        using var server = new PtyHostServer(appId, ConPtyApi.Resolve(bundled: true, ConPtyConnectionTests.BundledDir));
+        using var server = new PtyHostServer(appId, ConPtyApi.Resolve(bundled: true, ConPtyConnectionTests.BundledDir), ghosttyOnly: false);
         using var client = PtyHostClient.Connect(appId);
         string outFile = Path.Combine(Path.GetTempPath(), appId + "-dsr.txt");
         try
@@ -276,7 +276,7 @@ public class PtyHostTests : IDisposable
     [Fact]
     public async Task Shutdown_KillsSessionsAndCompletes()
     {
-        var server = new PtyHostServer(_appId + "-sd");
+        var server = new PtyHostServer(_appId + "-sd", null, ghosttyOnly: false);
         using var client = PtyHostClient.Connect(_appId + "-sd");
         client.Create(Guid.NewGuid().ToString(), 80, 24, "cmd.exe", new[] { "/q" }, verbatim: true);
         client.Shutdown();

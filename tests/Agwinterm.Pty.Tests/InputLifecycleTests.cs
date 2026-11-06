@@ -49,7 +49,7 @@ public class InputLifecycleTests
     public void HostedInputClosedStateRefusesWithoutClaimingChildExit()
     {
         // Constructor is cheap and never connects; no server or shared resource is started.
-        using var backend = new ServerSessionBackend("not-connected", null);
+        using var backend = new ServerSessionBackend("not-connected", null, singleOwner: false);
         var session = new ServerSession(backend, "pane", 80, 24);
         session.MarkInputClosed();
         Assert.True(session.InputClosed); Assert.False(session.HasExited);
@@ -62,7 +62,7 @@ public class InputLifecycleTests
     [Fact]
     public void StoppedTransportKeepsItsVisibleReplicaUntilPaneDisposal()
     {
-        using var backend = new ServerSessionBackend("not-connected", null);
+        using var backend = new ServerSessionBackend("not-connected", null, singleOwner: false);
         using var session = new ServerSession(backend, "pane", 80, 24);
         int exits = 0;
         session.Exited += _ => exits++;

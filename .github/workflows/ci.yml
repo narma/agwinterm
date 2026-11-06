@@ -215,30 +215,6 @@ jobs:
         if: matrix.suite == 'core'
         run: dotnet build tests/WebViewHost.Gate/WebViewHost.Gate.csproj -c Release
 
-      - name: Check agwinterm-core ABI agreement
-        if: matrix.suite == 'core'
-        # The C ABI is declared three times (Rust const, C# RequiredAbi, lite kRequiredAbi) and a
-        # drift is otherwise only caught at load, by whoever runs the mismatched pair. Cheap to
-        # check, and it becomes the cross-repo gate once agliteterm ships from its own repository.
-        shell: pwsh
-        run: ./tools/check-abi.ps1
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: native -> target
-          # New groups reuse the already warm dependency caches.
-          key: ${{ matrix.cache }}
-
-      - name: Build Rust core (arms the parity oracle)
-        # RustParityTests skip silently when the crate dll is absent; building it here makes
-        # the C#↔Rust differential oracles (wcwidth, screen, parser, emulator, images) a
-        # hard merge gate.
-        run: cargo build --locked --release --manifest-path native/Cargo.toml
-
-      - name: Host resize transaction regressions (no child processes)
-        if: matrix.suite == 'core'
-        run: cargo test --locked --manifest-path native/agwinterm-ptyhost/Cargo.toml resize::tests
 
       - name: Restored Ghostty history and remote transport adoption
         if: matrix.suite == 'host'
@@ -264,8 +240,6 @@ jobs:
           $harness = Join-Path $pwd 'artifacts/host-owner-ci-contracts'
           dotnet publish tests/Agwinterm.GhosttyServerHarness -c Release --no-self-contained -o $harness
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          # Only the contract harness loads the legacy parity oracle.
-          Copy-Item -LiteralPath native/target/release/agwinterm_core.dll -Destination $harness
           & (Join-Path $harness 'Agwinterm.GhosttyServerHarness.exe') (Split-Path $exe)
           exit $LASTEXITCODE
 

@@ -109,7 +109,7 @@ internal partial class Program : IWslLiveHost
             var sessions = _liveOperations.ListAsync(profile, _appId).GetAwaiter().GetResult();
             if (command == "zmx.list") return new { sessions = sessions.Select(s => new { daemon = s.Daemon, incarnation = s.Incarnation,
                 ownership = s.Ownership, attachments = s.Attachments, endpoint = s.Binding.Endpoint }),
-                readiness = "ready", provider = "wsl-zmx", host = "server-rust", remoteAttach = false, presentation = false };
+                readiness = "ready", provider = "wsl-zmx", host = "server", remoteAttach = false, presentation = false };
             var chosen = sessions.SingleOrDefault(s => s.Daemon == args.GetProperty("daemon").GetString()
                 && s.Incarnation == args.GetProperty("incarnation").GetString()) ?? throw new InvalidOperationException("Discovered incarnation no longer matches");
             var binding = _liveOperations.BorrowAsync(chosen.Binding).GetAwaiter().GetResult();
@@ -368,12 +368,7 @@ internal partial class Program : IWslLiveHost
                 if (ZmxRoleNotice.Parse(title) is { } notice) pane.LiveRole.Apply(notice);
                 return true;
             }
-            if (pane.S.Emulator is TerminalEmulator terminal)
-            {
-                if (Consume(terminal.Title)) terminal.OscDispatch(2, "");
-                terminal.TitleFilter = Consume;
-            }
-            else if (pane.S.Emulator is GhosttyTerminalCore ghostty) ghostty.SetTitleFilter(Consume);
+            if (pane.S.Emulator is GhosttyTerminalCore ghostty) ghostty.SetTitleFilter(Consume);
             else if (pane.S.Emulator is PresentedTerminalView presented) presented.SetTitleFilter(Consume);
         }
     }

@@ -208,13 +208,7 @@ try {
         }}
         foreach($name in ($files | Select-Object -Unique)){Copy-Item -LiteralPath (Join-Path $sdk $name) -Destination $runner}
         Copy-Directory (Join-Path $sdk 'Extensions') (Join-Path $runner 'Extensions')
-        # These binaries are test oracles for the old protocol, not app sidecars.
         Copy-Item -LiteralPath (Join-Path $repo 'Agwinterm.slnx') -Destination $payload
-        $native=Join-Path $payload 'native/target/release'
-        $null=New-Item -ItemType Directory -Path $native -Force
-        foreach($file in 'agwinterm-ptyhost.exe','agwinterm_core.dll'){
-            Copy-Item -LiteralPath (Join-Path $repo "native/target/release/$file") -Destination $native
-        }
     }
     foreach ($part in @('tests/ui','tests/fixtures','tests/conformance')) {
         $source = Join-Path $repo $part

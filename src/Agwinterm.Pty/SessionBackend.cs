@@ -42,7 +42,7 @@ public static class SessionBackends
             string.Equals(configured, "server-rust", StringComparison.OrdinalIgnoreCase))
         {
             string serverId = appId + "-owner-v1";
-            return new ServerSessionBackend(serverId, exePath, $"--pty-host --pipe \"{serverId}\"{conptyArg}", replicaCore:"ghostty", singleOwner:true);
+            return new ServerSessionBackend(serverId, exePath, $"--pty-host --pipe \"{serverId}\"{conptyArg}");
         }
         return InProcessSessionBackend.Instance;
     }

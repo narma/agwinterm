@@ -184,7 +184,7 @@ public class SurfaceTextStylesTests
     [Fact]
     public void ServerReplicaReturnsItsOwnStylesAndCursor()
     {
-        using var backend = new ServerSessionBackend("agwinterm-test-" + Guid.NewGuid().ToString("N"), exePath: null);
+        using var backend = new ServerSessionBackend("agwinterm-test-" + Guid.NewGuid().ToString("N"), exePath: null, singleOwner: false);
         using var session = new ServerSession(backend, "pane-1", 40, 4);
         using var server = new ControlServer(session);
         Feed(session, "> \u001b[2;38;5;244mhint\u001b[0m\r\u001b[2C");
@@ -269,37 +269,5 @@ public class SurfaceTextStylesTests
         try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
         finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
         return (process.ExitCode, await stdout, await stderr);
-    }
-
-    public sealed class NativeCoreFactAttribute : FactAttribute
-    {
-        public NativeCoreFactAttribute()
-        {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Agwinterm.slnx"))) dir = dir.Parent;
-            if (dir is null || !RustEmulatorCore.TryLoad(Path.Combine(dir.FullName, "native", "target", "release", "agwinterm_core.dll"), out _))
-                Skip = "Native Rust core is not built or available locally";
-        }
-    }
-
-    [NativeCoreFact]
-    public void RustBackendMatchesManagedStylesIncludingHistory()
-    {
-        const string input = "> \u001b[2;38;5;244mhint\u001b[0m\r\n界😀\r\n\u001b[1;3;4;7;9;48;2;1;2;3mlast\u001b[0m";
-        using var managed = new TerminalSession(40, 2);
-        using var managedServer = new ControlServer(managed);
-        Feed(managed, input);
-        var old = TerminalSession.CoreFactory;
-        try
-        {
-            TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
-            using var rust = new TerminalSession(40, 2);
-            using var rustServer = new ControlServer(rust);
-            Feed(rust, input);
-            var args = new { styles = true, all = true };
-            Assert.Equal(Read(managedServer, args).GetRawText(), Read(rustServer, args).GetRawText());
-            AssertPlainParity(rustServer, args, new { all = true });
-        }
-        finally { TerminalSession.CoreFactory = old; }
     }
 }

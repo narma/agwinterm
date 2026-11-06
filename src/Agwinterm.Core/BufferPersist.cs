@@ -49,7 +49,7 @@ public static class BufferPersist
         Grapheme = c.Grapheme ?? "",
     };
 
-    private static Cell FromP(PCell p) => new(
+    internal static Cell FromP(PCell p) => new(
         p.Rune, Unpack(p.Fg), Unpack(p.Bg), (CellAttributes)p.Attrs, (byte)p.Width,
         new ColorSpec((ColorSpecKind)p.FgKind, (byte)p.FgIndex, Unpack(p.FgRgb)),
         new ColorSpec((ColorSpecKind)p.BgKind, (byte)p.BgIndex, Unpack(p.BgRgb)),
@@ -65,7 +65,6 @@ public static class BufferPersist
     /// history should be seeded). Trailing empty cells per row are dropped; it round-trips exactly.</summary>
     public static byte[] Serialize(ITerminalCore core, int maxRows = 500, bool includeVisible = true)
     {
-        if (core is RustTerminalCore rust) return rust.SaveBuffer(maxRows, includeVisible);
         var emu = core;
         maxRows = Math.Clamp(maxRows, 0, 100000);
         var buf = new PBuffer { Version = Version, Cols = (uint)emu.Screen.Cols };
@@ -84,7 +83,7 @@ public static class BufferPersist
         for (int h = Math.Max(0, emu.HistoryCount - maxRows); h < emu.HistoryCount; h++)
         {
             int hi = h;
-            AddRow(emu is TerminalEmulator managed ? managed.GetHistoryRowLength(hi) : cols,
+            AddRow(emu.GetHistoryRowLength(hi),
                 emu.GetRowWrapLength(hi), c => emu.GetHistoryCell(hi, c));
         }
         if (includeVisible)
@@ -117,16 +116,6 @@ public static class BufferPersist
     /// in older blobs means a hard line boundary; guessing would merge unrelated output.</summary>
     public static void Restore(ITerminalCore core, PBuffer buffer)
     {
-        if (core is GhosttyTerminalCore ghostty) { ghostty.RestoreHistory(buffer); return; }
-        if (core is RustTerminalCore rust) { rust.RestoreBuffer(buffer.ToByteArray()); return; }
-        var emu = (TerminalEmulator)core;
-        var rows = new List<Cell[]>(buffer.Rows.Count);
-        foreach (var pr in buffer.Rows)
-        {
-            var row = new Cell[pr.Cells.Count];
-            for (int c = 0; c < pr.Cells.Count; c++) row[c] = FromP(pr.Cells[c]);
-            rows.Add(row);
-        }
-        emu.SeedScrollbackAttributed(rows, buffer.Rows.Select(pr => pr.SoftWrapped ? checked((int)Math.Min(pr.WrapLength, 32768u)) : -1).ToArray());
+        core.RestoreHistory(buffer);
     }
 }

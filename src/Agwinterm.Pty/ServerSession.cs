@@ -16,7 +16,6 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     private readonly string? _exePath;
     private readonly string _spawnArgs;
     internal string SpawnArgs => _spawnArgs;
-    private readonly string _name;
     internal string? ReplicaCore { get; }
     internal bool SingleOwner { get; }
     private readonly object _lock = new();
@@ -27,21 +26,21 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     /// <param name="appId">Instance id — names the host's control pipe.</param>
     /// <param name="exePath">The host exe to spawn when none is running; null = require an
     /// already-running host (tests).</param>
-    /// <param name="spawnArgs">Argument string for the host exe. The C# host is the app itself
-    /// (<c>--pty-host --pipe ...</c>); the Rust host is a standalone binary (<c>--pipe ...</c>).</param>
-    /// <param name="name">Diagnostics name ("server" or "server-rust").</param>
-    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null, bool singleOwner = false)
+    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null)
+        : this(appId, exePath, singleOwner: true, spawnArgs: spawnArgs, replicaCore: "ghostty") { }
+
+    internal ServerSessionBackend(string appId, string? exePath, bool singleOwner, string? spawnArgs = null,
+        string? replicaCore = null)
     {
         _appId = appId;
         _startupClaims = StartupHostClaims.ForNamespace(appId);
         _exePath = exePath;
         _spawnArgs = spawnArgs ?? $"--pty-host --pipe \"{appId}\"";
-        _name = name;
         ReplicaCore = replicaCore;
         SingleOwner = singleOwner;
     }
 
-    public string Name => _name;
+    public string Name => "server";
 
     public ISession Create(string id, int cols, int rows)
     {
