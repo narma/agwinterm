@@ -78,7 +78,7 @@ begin
   ReportPath := ExpandConstant('{tmp}\owner-upgrade-result.txt');
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
     '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\prepare-owner-upgrade.ps1') +
-    '" -InstallDir "' + ExpandConstant('{app}') + '" -ReportPath "' + ReportPath + '"',
+    '" -InstallDir "' + ExpandConstant('{app}') + '" -SetupPath "' + ExpandConstant('{srcexe}') + '" -ReportPath "' + ReportPath + '"',
     '', SW_HIDE, ewWaitUntilTerminated, ExitCode) or (ExitCode <> 0) then
   begin
     Result := 'Could not save and close the previous version. No application files were replaced.';

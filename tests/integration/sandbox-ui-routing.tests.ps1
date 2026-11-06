@@ -60,7 +60,7 @@ try {
         $path = Join-Path $temporary $definition.Path
         $null = New-Item -ItemType Directory -Path (Split-Path $path) -Force
         @'
-param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly,[string]$Mode,[string]$Runtime,[string]$LanguageSource)
+param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$OldSetup,[string]$NewSetup,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly,[string]$Mode,[string]$Runtime,[string]$LanguageSource)
 @{exe=$Exe;ctl=$Ctl;strict=[bool]$Strict;suite=$Suite;dpi=$Dpi;only=$Only;cookbook=[bool]$Cookbook;output=$Output;spec=$Spec;mode=$Mode;runtime=$Runtime;portable=$Portable;languageSource=$LanguageSource} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
 exit 0
 '@ | Set-Content -LiteralPath $path

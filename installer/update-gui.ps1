@@ -24,15 +24,29 @@ $run = Join-Path $root ('artifacts\gui-update\' + (Get-Date -Format 'yyyyMMdd-HH
 $stage = Join-Path $run 'publish'
 $backup = Join-Path $run 'backup'
 New-Item -ItemType Directory -Path $stage, $backup -Force | Out-Null
-Write-Host "Building GUI $version..." -ForegroundColor Cyan
-& $dotnet publish (Join-Path $root 'src\Agwinterm.Win32\Agwinterm.Win32.csproj') `
-    -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:SeparateHostPayload=true "-p:Version=$version" -o $stage
-if ($LASTEXITCODE -ne 0) { throw 'GUI publish failed; installed files were not changed.' }
-if ($IncludeCli) {
-    & $dotnet publish (Join-Path $root 'src\Agwinterm.Ctl\Agwinterm.Ctl.csproj') `
-        -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false "-p:Version=$version" -o $stage
-    if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed; installed files were not changed.' }
-}
+$framework = (Get-Content (Join-Path $InstallDir 'Agwinterm.Win32.runtimeconfig.json') -Raw | ConvertFrom-Json).runtimeOptions.tfm
+$publishArgs = @('-c','Release','-r','win-x64','--self-contained','true','-p:PublishSingleFile=false',
+    '-p:PublishReadyToRun=true', "-p:Version=$version", '-o',$stage)
+$sdkDir = $root
+if ($framework -eq 'net11.0') {
+    # Resolve the .NET 11 SDK independently of the repository's stable global.json.
+    $sdkDir = New-Item -ItemType Directory -Path (Join-Path $run 'sdk')
+    @{sdk=@{version='11.0.100-rc.3.26522.148';allowPrerelease=$true;rollForward='latestFeature'}} |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sdkDir 'global.json') -Encoding Ascii
+    $publishArgs += '-p:AgwintermNet11=true','-p:UseRuntimeAsync=true'
+} elseif ($framework -eq 'net10.0') {
+    $publishArgs += '-p:AgwintermNet11=false'
+} else { throw "Unknown installed GUI framework: $framework" }
+Write-Host "Building GUI $version ($framework)..." -ForegroundColor Cyan
+Push-Location -LiteralPath $sdkDir
+try {
+    & $dotnet publish (Join-Path $root 'src\Agwinterm.Win32\Agwinterm.Win32.csproj') @publishArgs -p:SeparateHostPayload=true
+    if ($LASTEXITCODE -ne 0) { throw 'GUI publish failed; installed files were not changed.' }
+    if ($IncludeCli) {
+        & $dotnet publish (Join-Path $root 'src\Agwinterm.Ctl\Agwinterm.Ctl.csproj') @publishArgs
+        if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed; installed files were not changed.' }
+    }
+} finally { Pop-Location }
 
 $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
     $_.Name -notlike 'agwinterm-hook*' -and ($IncludeCli -or $_.Name -notlike 'agwintermctl*')

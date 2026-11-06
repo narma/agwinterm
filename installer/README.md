@@ -87,11 +87,11 @@ For day-to-day GUI development, double-click `installer\update-gui.cmd`, or run:
 .\installer\update-gui.ps1 -IncludeCli
 ```
 
-The first upgrade from a version that runs the host inside the GUI requires the full installer. Finish active workloads before that one-time migration.
+For the one-time migration from 0.20.13–0.20.19 or a version that hosts sessions in the GUI executable, use the full installer. Finish active Windows workloads before switching hosts. The installer backs up the old profile and restores windows, panes and saved history on relaunch. When starting setup manually, keep the old GUI open so setup can checkpoint its sessions. The built-in updater saves the windows before starting setup.
 
 After migration, the updater checkpoints the windows, closes the GUI and replaces its files. The host runs from `host/Agwinterm.Host.exe` with its own runtime and native libraries. Hosted shells keep running and the GUI reconnects when reopened. In-process shells end when their window closes.
 
-The updater verifies replacements and stores backups under `artifacts/gui-update/`. Use `-IncludeCli` for CLI changes and the full installer for host, hook or registration changes.
+The updater uses the installed GUI's .NET version. For .NET 11 it publishes with ReadyToRun and `runtime-async=on` for the GUI and optional CLI. It verifies replacements and stores backups under `artifacts/gui-update/`. Use `-IncludeCli` for CLI changes and the full installer for host, hook or registration changes.
 
 ## Silent install / uninstall
 
