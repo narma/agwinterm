@@ -8,7 +8,7 @@ namespace Agwinterm.Pty;
 internal static class PortableTools
 {
     private static readonly string[] Files =
-        ["agwintermctl.exe", "agwinterm-hook.exe", "agwinterm-hook-linux-x64", "agwinterm-hook-linux-arm64",
+        ["Agwinterm.Host.exe", "agwintermctl.exe", "agwinterm-hook.exe", "agwinterm-hook-linux-x64", "agwinterm-hook-linux-arm64",
          "ghostty-vt.dll", "agwinterm_ghostty.dll", "ghostty-vt.provenance.json", "ghostty-NOTICES.txt",
          "conpty.dll", "OpenConsole.exe"];
     private static readonly Lazy<string> Location = new(Resolve);

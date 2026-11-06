@@ -146,7 +146,7 @@ function Stop-StrayChildren {
 # as the cell's failure rather than ending the suite.
 function Get-TestAgentHosts($s) {
     $pipePattern = '--pipe\s+"?' + [regex]::Escape($s.Pipe + '-owner-v1') + '"?(\s|$)'
-    Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe'" |
+    Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Host.exe'" |
         Where-Object { $_.CommandLine -match '--pty-host' -and $_.CommandLine -match $pipePattern }
 }
 function Cell {

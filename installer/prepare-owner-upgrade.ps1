@@ -4,6 +4,8 @@
 param(
     [Parameter(Mandatory)][string]$InstallDir,
     [string]$ReportPath,
+    [string]$SetupPath,
+    [switch]$GuiOnly,
     [ValidateRange(5,300)][int]$WaitSeconds=60
 )
 $ErrorActionPreference='Stop'
@@ -11,14 +13,31 @@ try {
     $InstallDir=[IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
     $gui=Join-Path $InstallDir 'Agwinterm.Win32.exe'
     $rust=Join-Path $InstallDir 'agwinterm-ptyhost.exe'
+    $sessionHost=Join-Path $InstallDir 'host\Agwinterm.Host.exe'
     function InstalledProcesses {
-        @(Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe' OR Name='agwinterm-ptyhost.exe'" |
-            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $gui -or $_.ExecutablePath -ieq $rust) })
+        @(Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe' OR Name='agwinterm-ptyhost.exe' OR Name='Agwinterm.Host.exe'" |
+            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $gui -or $_.ExecutablePath -ieq $rust -or
+                (-not $GuiOnly -and $_.ExecutablePath -ieq $sessionHost)) })
     }
     $initial=@(InstalledProcesses)
     $uis=@($initial | Where-Object { $_.ExecutablePath -ieq $gui -and $_.CommandLine -notmatch '(?:^|\s)--pty-host(?:\s|$)' })
     $hosts=@($initial | Where-Object { $_ -notin $uis })
-    if($hosts.Count -gt 0 -and $uis.Count -eq 0){throw 'An old session host is running without its UI. Open the installed version once, then retry the upgrade so it can save current state.'}
+    if($GuiOnly -and $hosts.Count){throw 'Legacy host detected. Finish its workloads and run the full installer once.'}
+    if($GuiOnly -and -not $initial.Count){exit 0}
+    # The released self-updater saves and exits all windows before executing
+    # its downloaded setup. Recover the identity from its app-specific updates
+    # directory. A separately downloaded setup still requires a live UI.
+    $detachedAppId=$null
+    if(-not $GuiOnly -and $hosts.Count -and -not $uis.Count -and $SetupPath){
+        $updates=[IO.FileInfo]::new($SetupPath).Directory
+        $local=[Environment]::GetFolderPath('LocalApplicationData')
+        if($updates.Name -ieq 'updates' -and $updates.Parent.Parent.FullName -ieq $local -and
+            $updates.Parent.Name -match '^[A-Za-z0-9_.-]+$' -and
+            $InstallDir -ieq (Join-Path $local 'Programs\agwinterm')){
+            $detachedAppId=$updates.Parent.Name
+        }
+    }
+    if($hosts.Count -and -not $uis.Count -and -not $detachedAppId){throw 'Open the installed version once, then retry the upgrade so it can save current state.'}
     Add-Type @'
 using System;
 using System.IO;
@@ -80,6 +99,14 @@ public static class OwnerUpgradePipe {
         if($hostProcess.CommandLine -match '(?:^|\s)--pipe\s+(?:"([^"]+)"|(\S+))') {
             $hostIdentity=if($Matches[1]){$Matches[1]}else{$Matches[2]}
         }
+        if($detachedAppId){
+            $expectedPipe=switch($hostProcess.ExecutablePath){
+                $rust { "$detachedAppId-rust" }
+                $sessionHost { "$detachedAppId-owner-v1" }
+                $gui { $detachedAppId; "$detachedAppId-owner-v1" }
+            }
+            if($hostIdentity -cin $expectedPipe){continue}
+        }
         if(-not $hostIdentity -or $hostIdentity -notin $coveredHosts) {
             throw 'An old host has no matching open UI to checkpoint. Open its application identity and retry the upgrade.'
         }
@@ -95,6 +122,13 @@ public static class OwnerUpgradePipe {
     function AssertNotRedirected($item) {
         if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Cannot safely back up redirected state: $($item.FullName)"}
     }
+    function BackupHash([string]$path) {
+        $stream=[IO.File]::OpenRead($path)
+        try {
+            $sha=[Security.Cryptography.SHA256]::Create()
+            try { [Convert]::ToBase64String($sha.ComputeHash($stream)) } finally { $sha.Dispose() }
+        } finally { $stream.Dispose() }
+    }
     function SavedFiles([IO.DirectoryInfo]$directory) {
         AssertNotRedirected $directory
         # Check each entry before descending; old Windows PowerShell can follow
@@ -108,7 +142,7 @@ public static class OwnerUpgradePipe {
     if(Test-Path -LiteralPath $backupParent){AssertNotRedirected (Get-Item -LiteralPath $backupParent)}
     $backupRoot=Join-Path $backupParent ([guid]::NewGuid().ToString('N'))
     $null=New-Item -ItemType Directory -Path $backupRoot
-    $appIds=@('agwinterm')+@($groups.Values|ForEach-Object AppId) | Select-Object -Unique
+    $appIds=@('agwinterm')+@($groups.Values|ForEach-Object AppId)+@($detachedAppId) | Where-Object {$_} | Select-Object -Unique
     foreach($appId in $appIds) {
         $data=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) $appId
         if(-not(Test-Path -LiteralPath $data)){continue}
@@ -126,7 +160,20 @@ public static class OwnerUpgradePipe {
             $destination=Join-Path $saved $file.FullName.Substring($data.Length+1)
             $null=New-Item -ItemType Directory -Path (Split-Path $destination) -Force
             Copy-Item -LiteralPath $file.FullName -Destination $destination
-            if((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath $destination).Hash){throw 'State backup verification failed'}
+            if((BackupHash $file.FullName) -cne (BackupHash $destination)){throw 'State backup verification failed'}
+        }
+    }
+    if($detachedAppId){
+        # Only stop the detached host once the backup contains a readable
+        # window tree for each window the released UI saved for relaunch.
+        $saved=Join-Path $backupRoot $detachedAppId
+        $index=Get-Content -LiteralPath (Join-Path $saved 'windows.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $open=@($index.Windows | Where-Object IsOpen)
+        if(-not $open.Count){throw 'No saved open windows for the detached host; reopen its UI and retry.'}
+        foreach($window in $open){
+            if($window.Id -notmatch '^[A-Za-z0-9_-]+$'){throw 'Invalid saved window ID'}
+            $tree=Get-Content -LiteralPath (Join-Path $saved ("windows/"+$window.Id+".json")) -Raw -Encoding UTF8 | ConvertFrom-Json
+            if($null -eq $tree.Workspaces){throw "Incomplete saved window: $($window.Id)"}
         }
     }
     @{schema=1;installation=$InstallDir;processes=@($initial|Select-Object ProcessId,ExecutablePath,CreationDate);status='checkpointed'} |
@@ -138,7 +185,8 @@ public static class OwnerUpgradePipe {
     }
     foreach($pipe in $groups.Keys) {
         $group=$groups[$pipe]
-        foreach($window in $group.Windows) { $null=Request $group $pipe @{cmd='window.close';target=$window.id} }
+        if($GuiOnly){$null=Request $group $pipe @{cmd='app.close-for-update'}}
+        else {foreach($window in $group.Windows) { $null=Request $group $pipe @{cmd='window.close';target=$window.id} }}
     }
     $deadline=[DateTime]::UtcNow.AddSeconds($WaitSeconds)
     do {
@@ -147,6 +195,11 @@ public static class OwnerUpgradePipe {
         Start-Sleep -Milliseconds 100
     } while([DateTime]::UtcNow -lt $deadline)
     if($remaining.Count){throw "Old UI did not close. Installation unchanged; backup: $backupRoot"}
+    if($GuiOnly){
+        if(@(InstalledProcesses).Count){throw 'Application restarted during GUI update; retry after closing it.'}
+        Write-Output "State backup: $backupRoot"
+        exit 0
+    }
     # Old Windows processes are intentionally ended on this upgrade. Exact path,
     # PID and creation time must still match the checkpointed inventory.
     foreach($process in @(InstalledProcesses)) {
@@ -178,6 +231,9 @@ public static class OwnerUpgradePipe {
     Write-Output "State backup: $backupRoot"
     exit 0
 } catch {
+    if($backupRoot -and (Test-Path -LiteralPath $backupRoot)){
+        $_.Exception.Message|Set-Content -LiteralPath (Join-Path $backupRoot 'upgrade-error.txt') -Encoding UTF8
+    }
     if($ReportPath){$_.Exception.Message|Set-Content -LiteralPath $ReportPath -Encoding UTF8}
     Write-Error $_
     exit 1

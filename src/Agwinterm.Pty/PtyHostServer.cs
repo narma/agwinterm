@@ -7,7 +7,7 @@ namespace Agwinterm.Pty;
 
 /// <summary>
 /// The pty-host: a headless server that OWNS terminal sessions so they survive UI restarts and
-/// crashes (#105, Phase 2a). Runs inside <c>Agwinterm.Win32.exe --pty-host</c> (or in-process for
+/// crashes (#105, Phase 2a). Runs inside <c>Agwinterm.Host.exe</c> (or in-process for
 /// tests — the pipes are real either way).
 ///
 /// Wire model, protocol v2 (protobuf; schema = proto/ptyhost.proto, shared by the C# host, the

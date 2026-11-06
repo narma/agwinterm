@@ -1398,6 +1398,7 @@ internal partial class Program
 
     public string UpdateClaude() => InvokeOnUi(() => UpdateClaudeCode());
 
+    public void CloseForUpdate() => Post(QuitAllWindowsForUpdate);
     public string UpdateApp() => InvokeOnUi(() => UpdateAgwinterm());
 
     public string SessionBackground(string? target, string action, string? path, int opacity, string? mode) => InvokeOnUi(() =>

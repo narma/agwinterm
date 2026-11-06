@@ -114,6 +114,16 @@ try {
         if(([string](Rpc 'session.text' @{} $closingPane $secondWindow)).Contains($closeMarker)){break}
         Start-Sleep -Milliseconds 25
     }
+    $probe=Join-Path $directory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe'
+    $liveShell=& $probe --upgrade-child ($controlPipe+'-owner-v1') $closingPane
+    Check 'second window owns a live shell before GUI replacement' ($liveShell -match '^\d+:.+')
+    & "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $prepare -InstallDir $directory -GuiOnly
+    Check 'GUI-only update closes the UI' ($LASTEXITCODE -eq 0 -and $s.Proc.WaitForExit(10000))
+    $file=[IO.File]::Open($Exe, 'Open', 'ReadWrite', 'None')
+    $file.Dispose()
+    Check 'GUI can restart while the host stays up' (Start-SandboxProcess $s @('--pipe',$controlPipe,'--app-id',$appId))
+    $survivor=& $probe --upgrade-child ($controlPipe+'-owner-v1') $closingPane
+    Check 'second window reconnects to the exact running shell' ($survivor -eq $liveShell -and (Rpc 'tree' @{} '' $secondWindow).workspaces[0].sessions[0].id -eq $closingPane)
     $null=Rpc 'window.close' @{} $secondWindow
     for($attempt=0;$attempt -lt 50 -and @((Rpc 'window.list').windows | Where-Object open).Count -gt 1;$attempt++){Start-Sleep -Milliseconds 100}
     & (Join-Path $directory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe') --check-window-history (Join-Path $appDir "windows/$secondWindow.json") $closingPane $closeMarker
@@ -155,8 +165,10 @@ try {
     } finally {
     # Graceful UI close deliberately leaves hosts alive. Clean only this fixture's
     # private namespaces in the guest, including a failed migration's old host.
-    foreach($process in @(Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe' OR Name='agwinterm-ptyhost.exe'")) {
+    foreach($process in @(Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe' OR Name='agwinterm-ptyhost.exe' OR Name='Agwinterm.Host.exe'")) {
         if($process.ExecutablePath -and ($process.ExecutablePath -ieq $Exe -or
+            $process.ExecutablePath -ieq (Join-Path $directory 'Agwinterm.Host.exe') -or
+            $process.ExecutablePath -ieq (Join-Path $directory 'host/Agwinterm.Host.exe') -or
             $process.ExecutablePath -ieq $old -or $process.ExecutablePath -ieq (Join-Path (Split-Path $old) 'agwinterm-ptyhost.exe')) -and
             $process.CommandLine -match ([regex]::Escape($controlPipe)+'(?:-presentation-v1|-owner-v1|-rust)?(?:"|\s|$)')) {
             $ownedProcess=Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue

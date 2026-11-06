@@ -4,6 +4,7 @@
     PtyProcessContracts = @{ Path='tests/integration/pty-process-contracts.ps1'; Exe=$false; Options=@() }
     HostOwnerSoak = @{ Path='tests/integration/host-owner-soak.ps1'; Exe=$true; Strict=$false; Options=@('Sessions','Minutes') }
     HostOwnerUpgrade = @{ Path='tests/integration/host-owner-upgrade.ps1'; Exe=$true; Strict=$false; Options=@('Contracts','Preview') }
+    InstalledSelfUpdate = @{ Path='tests/integration/installed-self-update.ps1'; Ctl=$true; Inputs=@('OldSetup','NewSetup'); Options=@() }
     HostOwnerContracts = @{ Path='tests/integration/host-owner-contracts.ps1'; Exe=$true; Strict=$false; Options=@() }
     SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation','LatencyCandidate','AllCandidates','RevisionComparison') }
     SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','PairOffset','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','AllCandidates','RevisionComparison') }

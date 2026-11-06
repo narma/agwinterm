@@ -17,6 +17,16 @@ namespace Agwinterm.Win32;
 /// <summary>Session/workspace management: panes, MRU, covers, overlays, splits, reopen-closed, watermarks.</summary>
 internal partial class Program
 {
+    private static string HostExePath
+    {
+        get
+        {
+            string tools = CliInstaller.CliDir();
+            string installed = Path.Combine(tools, "host", "Agwinterm.Host.exe");
+            return File.Exists(installed) ? installed : Path.Combine(tools, "Agwinterm.Host.exe");
+        }
+    }
+
     private static ServerSessionBackend? _liveSessionBackend;
     private static (string Core, string Conpty)? _liveBackendConfig;
 
@@ -27,7 +37,7 @@ internal partial class Program
         {
             // Existing panes retain their backend when settings change, just as
             // ordinary panes do. Never dispose a backend still owning live handles.
-            _liveSessionBackend = SessionBackends.ResolveLive(_config, _argPipe ?? _appId, AppExePath);
+            _liveSessionBackend = SessionBackends.ResolveLive(_config, _argPipe ?? _appId, HostExePath);
             _liveBackendConfig = key;
         }
         return _liveSessionBackend;

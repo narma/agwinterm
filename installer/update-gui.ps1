@@ -12,6 +12,9 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $InstallDir = [IO.Path]::GetFullPath($InstallDir)
 $exe = Join-Path $InstallDir 'Agwinterm.Win32.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Installed GUI not found: $exe. Run the full installer first, or specify -InstallDir." }
+if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'host/Agwinterm.Host.exe'))) {
+    throw 'This installation predates the separate session host. Finish running workloads and run the full installer once.'
+}
 $dotnet = if (Test-Path 'C:\Program Files\dotnet\dotnet.exe') { 'C:\Program Files\dotnet\dotnet.exe' } else { 'dotnet' }
 $iss = Get-Content (Join-Path $PSScriptRoot 'agwinterm.iss') -Raw
 if ($iss -notmatch '#define\s+AppVersion\s+"([^"]+)"') { throw 'AppVersion not found' }
@@ -21,21 +24,31 @@ $run = Join-Path $root ('artifacts\gui-update\' + (Get-Date -Format 'yyyyMMdd-HH
 $stage = Join-Path $run 'publish'
 $backup = Join-Path $run 'backup'
 New-Item -ItemType Directory -Path $stage, $backup -Force | Out-Null
-Write-Host "Building GUI $version..." -ForegroundColor Cyan
-& $dotnet publish (Join-Path $root 'src\Agwinterm.Win32\Agwinterm.Win32.csproj') `
-    -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false "-p:Version=$version" -o $stage
-if ($LASTEXITCODE -ne 0) { throw 'GUI publish failed; installed files were not changed.' }
-if ($IncludeCli) {
-    & $dotnet publish (Join-Path $root 'src\Agwinterm.Ctl\Agwinterm.Ctl.csproj') `
-        -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false "-p:Version=$version" -o $stage
-    if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed; installed files were not changed.' }
-}
+$framework = (Get-Content (Join-Path $InstallDir 'Agwinterm.Win32.runtimeconfig.json') -Raw | ConvertFrom-Json).runtimeOptions.tfm
+$publishArgs = @('-c','Release','-r','win-x64','--self-contained','true','-p:PublishSingleFile=false',
+    '-p:PublishReadyToRun=true', "-p:Version=$version", '-o',$stage)
+$sdkDir = $root
+if ($framework -eq 'net11.0') {
+    # Resolve the .NET 11 SDK independently of the repository's stable global.json.
+    $sdkDir = New-Item -ItemType Directory -Path (Join-Path $run 'sdk')
+    @{sdk=@{version='11.0.100-rc.3.26522.148';allowPrerelease=$true;rollForward='latestFeature'}} |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sdkDir 'global.json') -Encoding Ascii
+    $publishArgs += '-p:AgwintermNet11=true','-p:UseRuntimeAsync=true'
+} elseif ($framework -eq 'net10.0') {
+    $publishArgs += '-p:AgwintermNet11=false'
+} else { throw "Unknown installed GUI framework: $framework" }
+Write-Host "Building GUI $version ($framework)..." -ForegroundColor Cyan
+Push-Location -LiteralPath $sdkDir
+try {
+    & $dotnet publish (Join-Path $root 'src\Agwinterm.Win32\Agwinterm.Win32.csproj') @publishArgs -p:SeparateHostPayload=true
+    if ($LASTEXITCODE -ne 0) { throw 'GUI publish failed; installed files were not changed.' }
+    if ($IncludeCli) {
+        & $dotnet publish (Join-Path $root 'src\Agwinterm.Ctl\Agwinterm.Ctl.csproj') @publishArgs
+        if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed; installed files were not changed.' }
+    }
+} finally { Pop-Location }
 
-# Migration closes hosts before replacing their ConPTY/runtime files. Retired
-# Windows binaries and optional CLI/hooks are not copied from a stale build tree.
-$protected = @('agwinterm_core.dll')
 $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
-    $_.Name -notin $protected -and $_.Name -notlike 'agwinterm-ptyhost*' -and
     $_.Name -notlike 'agwinterm-hook*' -and ($IncludeCli -or $_.Name -notlike 'agwintermctl*')
 })
 $changes = @(foreach ($file in $files) {
@@ -46,15 +59,8 @@ $changes = @(foreach ($file in $files) {
         [pscustomobject]@{ Source = $file.FullName; Target = $target; Relative = $relative; Existed = $exists }
     }
 })
-$changes += @(foreach($retired in 'agwinterm_core.dll','agwinterm-ptyhost.exe') {
-    $target=Join-Path $InstallDir $retired
-    if(Test-Path -LiteralPath $target) {
-        [pscustomobject]@{Source=$null;Target=$target;Relative=$retired;Existed=$true}
-    }
-})
-
 $prepare=Join-Path $PSScriptRoot 'prepare-owner-upgrade.ps1'
-& "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $prepare -InstallDir $InstallDir -WaitSeconds ([Math]::Min($WaitSeconds,300))
+& "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $prepare -GuiOnly -InstallDir $InstallDir -WaitSeconds ([Math]::Min($WaitSeconds,300))
 if($LASTEXITCODE -ne 0){throw 'State migration failed; installed files were not changed.'}
 # Check ALL changed existing files before modifying anything. A legacy C# host or
 # another reader may still have managed/runtime DLLs locked.
@@ -75,7 +81,6 @@ try {
     foreach ($change in $changes) {
         New-Item -ItemType Directory -Path (Split-Path -Parent $change.Target) -Force | Out-Null
         $applied.Add($change) # Include a partially failed copy in rollback.
-        if($null -eq $change.Source) { Remove-Item -LiteralPath $change.Target -Force; continue }
         Copy-Item -LiteralPath $change.Source -Destination $change.Target -Force
         if ((Get-FileHash -LiteralPath $change.Source).Hash -ne (Get-FileHash -LiteralPath $change.Target).Hash) {
             throw "Verification failed: $($change.Target)"
@@ -93,6 +98,6 @@ try {
     if ($rollbackErrors.Count) { throw "Update failed: $failure. Rollback incomplete: $($rollbackErrors -join '; '). Backup: $backup" }
     throw "Update failed; previous files restored. $failure"
 }
-Write-Host "GUI $version updated: $($changes.Count) files. Old sessions were saved and closed." -ForegroundColor Green
+Write-Host "GUI $version updated: $($changes.Count) files. Hosted sessions stay running." -ForegroundColor Green
 Write-Host "Backup: $backup"
 if (-not $NoLaunch) { Start-Process -FilePath $exe -WorkingDirectory $InstallDir -WindowStyle Hidden }

@@ -632,6 +632,7 @@ public interface ISessionHost
     /// <summary>The agwinterm self-update workflow: download + SHA-256-verify the latest release for
     /// this install channel (installer / portable; package-manager installs are refused with a hint),
     /// then exit, swap, relaunch — sessions restore. Returns an ack / error string.</summary>
+    void CloseForUpdate() => throw new NotSupportedException();
     string UpdateApp();
 
     /// <summary>Focus/unfocus the active workspace (hide the others in the sidebar tree): op = on|off|toggle.</summary>

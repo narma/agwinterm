@@ -87,9 +87,11 @@ For day-to-day GUI development, double-click `installer\update-gui.cmd`, or run:
 .\installer\update-gui.ps1 -IncludeCli
 ```
 
-The script publishes the GUI into a fresh directory and runs the same upgrade preparation as the installer. It checkpoints saved windows and enabled history, closes the installed UI and ends its host. Finish running Windows workloads before updating.
+For the one-time migration from 0.20.13–0.20.19 or a version that hosts sessions in the GUI executable, use the full installer. Finish active Windows workloads before switching hosts. The installer backs up the old profile and restores windows, panes and saved history on relaunch. When starting setup manually, keep the old GUI open so setup can checkpoint its sessions. The built-in updater saves the windows before starting setup.
 
-The updater backs up changed files, verifies replacements and removes the retired Windows Rust host and core. It updates the CLI when invoked with `-IncludeCli`. Backups and build output are under `artifacts/gui-update/`. Use the full installer for changes to hooks or Windows installation registration.
+After migration, the updater checkpoints the windows, closes the GUI and replaces its files. The host runs from `host/Agwinterm.Host.exe` with its own runtime and native libraries. Hosted shells keep running and the GUI reconnects when reopened. In-process shells end when their window closes.
+
+The updater uses the installed GUI's .NET version. For .NET 11 it publishes with ReadyToRun and `runtime-async=on` for the GUI and optional CLI. It verifies replacements and stores backups under `artifacts/gui-update/`. Use `-IncludeCli` for CLI changes and the full installer for host, hook or registration changes.
 
 ## Silent install / uninstall
 

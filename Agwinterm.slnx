@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Agwinterm.Core/Agwinterm.Core.csproj" />
     <Project Path="src/Agwinterm.Ctl/Agwinterm.Ctl.csproj" />
+    <Project Path="src/Agwinterm.Host/Agwinterm.Host.csproj" />
     <Project Path="src/Agwinterm.Pty/Agwinterm.Pty.csproj" />
     <Project Path="src/Agwinterm.Win32/Agwinterm.Win32.csproj">
       <Platform Project="x64" />
