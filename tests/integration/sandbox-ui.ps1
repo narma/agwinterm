@@ -185,6 +185,9 @@ try {
     }
     Copy-Directory $PSScriptRoot (Join-Path $payload 'tests/integration')
     if($Test -eq 'PtyProcessContracts'){
+        if(-not(Get-ChildItem (Join-Path $DotnetHome 'sdk/*/vstest.console.deps.json') -File -ErrorAction SilentlyContinue)){
+            throw 'PtyProcessContracts requires a host SDK with VSTest to stage its guest runner.'
+        }
         $testBin=Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net10.0-windows'
         if(-not(Test-Path (Join-Path $testBin 'Agwinterm.Pty.Tests.dll'))){throw 'Build Agwinterm.Pty.Tests in Release first.'}
         Copy-Directory $testBin (Join-Path $payload 'pty-tests')

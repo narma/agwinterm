@@ -99,7 +99,7 @@ internal static class PresentationFrameCodec
         var h = PresentationFrameHeader.Parser.ParseFrom(reader.ReadBytes(headerSize));
         if (h.Revision != 1 || h.Incarnation != incarnation || h.AttachmentEpoch != epoch || epoch == 0 ||
             h.Sequence == 0 || h.Sequence > long.MaxValue || h.BaseSequence >= h.Sequence || h.TerminalGeneration < 0 ||
-            h.ScrollGeneration < 0 || h.CursorShape > 6 || h.KeyboardFlags > int.MaxValue || h.Modes > 511 ||
+            h.ScrollGeneration < 0 || h.CursorShape > 6 || h.KeyboardFlags > int.MaxValue || (h.Modes & ~TerminalFrameState.KnownModes) != 0 ||
             h.Cols is < 1 or > 32768 || h.Rows is < 1 or > 32768 ||
             (ulong)h.Cols*h.Rows > TerminalFrame.MaximumCells || h.HistoryRows > int.MaxValue || h.ScrollOffset > h.HistoryRows ||
             h.CursorCol >= h.Cols || h.CursorRow >= h.Rows || h.ScrollTop >= h.Rows || h.ScrollBottom >= h.Rows ||

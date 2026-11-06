@@ -21,7 +21,19 @@ public sealed partial class ServerSession
                 if(effect.Incarnation != _creationTicket || effect.AttachmentEpoch != _attachmentEpoch ||
                     effect.Sequence != ++sequence || effect.Kind > 6 || effect.Title.Length+effect.Text.Length > 512*1024)
                     throw new InvalidDataException("Invalid owner effect identity or bounds.");
-                if(effect.Kind == 0) return;
+                if(effect.Kind == 0)
+                {
+                    lock(_sync)
+                    {
+                        // Keep the view readable while refusing subsequent
+                        // writes. Consume the outstanding frame even without a
+                        // paint, so the final frame and exit code can follow.
+                        _childInputClosed=true;
+                        using var frame=((PresentedTerminalView)Emulator).AcquireFrame();
+                        if(frame is not null) AcknowledgeFrame(frame.Identity.Sequence);
+                    }
+                    return;
+                }
                 lock(_sync)
                 {
                     if(_disposed || _stopped) return;

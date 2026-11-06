@@ -10,7 +10,13 @@ public sealed record TerminalFrameState(int Columns, int Rows, int HistoryRows, 
     long ScrollGeneration, int CursorColumn, int CursorRow, bool CursorVisible, int CursorShape,
     bool AlternateScreen, bool SynchronizedOutput, Color Background, Color CursorColor,
     string Title, string WorkingDirectory, uint Modes = 0, uint KeyboardFlags = 0,
-    int ScrollTop = 0, int ScrollBottom = 0);
+    int ScrollTop = 0, int ScrollBottom = 0)
+{
+    // The resolved frame background also has a color when the application
+    // never issued OSC 11. Only a real override takes precedence over pane styling.
+    public const uint DynamicBackgroundMode = 1u << 9;
+    public const uint KnownModes = (DynamicBackgroundMode << 1) - 1;
+}
 
 /// <summary>
 /// Immutable viewport storage shared by publisher/cache and read leases. Creation copies only

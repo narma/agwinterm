@@ -80,7 +80,8 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     public bool FocusReporting=>Mode(6);
     public bool Win32InputMode=>Mode(7);
     public bool SynchronizedOutput=>State.SynchronizedOutput;
-    public uint DynamicBg=>0xff000000u | (uint)(State.Background.R<<16 | State.Background.G<<8 | State.Background.B);
+    public uint DynamicBg=>(State.Modes & TerminalFrameState.DynamicBackgroundMode) == 0 ? 0 :
+        0xff000000u | (uint)(State.Background.R<<16 | State.Background.G<<8 | State.Background.B);
     public int KeyboardFlags=>(int)State.KeyboardFlags;
     public int ScrollbackMax { get; set; }=5000;
     public int HistoryCount=>State.HistoryRows;

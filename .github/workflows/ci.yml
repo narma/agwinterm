@@ -131,9 +131,16 @@ jobs:
       - name: Verify the standalone portable payload
         shell: pwsh
         run: ./tests/integration/portable-tools.ps1
+      - name: Share the verified Ghostty runtime with Windows tests
+        uses: actions/upload-artifact@v6
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
+          if-no-files-found: error
 
   windows-tests:
     name: windows (${{ matrix.suite }})
+    needs: portable
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -152,6 +159,10 @@ jobs:
             cache: ui
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -479,11 +490,16 @@ jobs:
 
   net11-publish:
     name: .NET 11 RC3 publish
+    needs: portable
     runs-on: windows-latest
     env:
       AgwintermNet11: 'true'
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
       - name: Select .NET 11 RC3
         shell: pwsh
         run: |

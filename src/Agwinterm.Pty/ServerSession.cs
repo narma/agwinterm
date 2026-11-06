@@ -149,7 +149,7 @@ public sealed partial class ServerSession : ISession
     {
         lock(_sync)
         {
-            if(sequence <= _presentedSequence || InputClosed && !HasExited) return;
+            if(sequence <= _presentedSequence || _inputClosed && !HasExited) return;
             if(SubmitInput(new TerminalInput.FramePresented(sequence)) == TerminalInputAcceptance.Accepted) _presentedSequence=sequence;
         }
     }
@@ -178,7 +178,8 @@ public sealed partial class ServerSession : ISession
     public int? ExitCode { get; private set; }
     public bool HasExited { get; private set; }
     private volatile bool _inputClosed;
-    public bool InputClosed => _inputClosed || _disposed;
+    private volatile bool _childInputClosed;
+    public bool InputClosed => _inputClosed || _childInputClosed || _disposed;
     internal void MarkInputClosed() => _inputClosed = true;
     public event Action<int>? Exited;
 
@@ -668,7 +669,9 @@ public sealed partial class ServerSession : ISession
     {
         lock(_sync)
         {
-            if (_disposed || InputClosed && !(HasExited && input is TerminalInput.Viewport or TerminalInput.FramePresented or TerminalInput.Command)) return TerminalInputAcceptance.Closed;
+            if (_disposed || _inputClosed && !HasExited) return TerminalInputAcceptance.Closed;
+            if (InputClosed && input is not (TerminalInput.Viewport or TerminalInput.FramePresented or TerminalInput.Command))
+                return TerminalInputAcceptance.Closed;
             if(_presentationInput is null)
             {
                 // Window focus and typing can precede the asynchronous attachment.
@@ -709,7 +712,7 @@ public sealed partial class ServerSession : ISession
     {
         lock(_sync)
         {
-            if(_disposed || InputClosed && !HasExited) return TerminalInputAcceptance.Closed;
+            if(_disposed || _inputClosed && !HasExited) return TerminalInputAcceptance.Closed;
             switch(command)
             {
                 case TerminalCommand.ScrollbackLimit limit when !_started:
@@ -759,8 +762,8 @@ public sealed partial class ServerSession : ISession
                 }
                 previous?.Dispose(); previous=completeFrame.Acquire();
                 if (wireFrame.Images.Count == 0) _presentationImages.Clear();
-                if(stale) AcknowledgeFrame(completeFrame.Identity.Sequence);
-                else OutputReceived?.Invoke();
+                if(stale || _childInputClosed) AcknowledgeFrame(completeFrame.Identity.Sequence);
+                if(!stale) OutputReceived?.Invoke();
                 if (decoded.Exited && !HasExited)
                 {
                     _effectReader.GetAwaiter().GetResult();

@@ -94,7 +94,13 @@ internal sealed class HostPresentationChannel
             }
         }
     }
-    private void OnExit(int code) => Signal();
+    private void OnExit(int code)
+    {
+        // A hidden or occluded client may hold the only viewport credit.
+        // Notify it that the child has finished independently of that credit.
+        _effects.Complete();
+        Signal();
+    }
     private async Task PublishAsync()
     {
         TerminalFrame.Lease? previous=null;

@@ -35,7 +35,7 @@
 ## 5. Graphics and complete UI migration
 
 - [ ] 5.1 Implement bounded image payload transfer, generation references, eviction/re-request and session-based UI caches; verify layers, placements, links, Unicode placeholders, oversized payload rejection and reconnect correctness.
-- [ ] 5.2 Move animation state/deadlines to owner and preserve UI GPU/raster caches; verify static images cause no polling and animated images remain correct under hidden/visible transitions and stalled transport.
+- [x] 5.2 Move animation state/deadlines to owner and preserve UI GPU/raster caches; verify static images cause no polling and animated images remain correct under hidden/visible transitions and stalled transport.
 - [ ] 5.3 Finish renderer, scroll, input, search, UIA, control and error-presentation migration; verify no new-path UI code casts to Ghostty or feeds terminal bytes, using the consumer checklist and live counters.
 - [ ] 5.4 Run paired serverless regression checks including default-terminal handoff, graphics, history and IME; deliver B/D results proving the common abstraction did not introduce IPC, another live core or measurable regressions beyond the gates.
 

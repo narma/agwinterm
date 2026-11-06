@@ -25,6 +25,9 @@ if(Test-Path $pin){
     if((Get-Content -LiteralPath $pin -Raw).Trim() -ne $json.Trim()){throw 'Measurement directory belongs to another build.'}
 }else{$json|Set-Content -LiteralPath $pin}
 function Run([string]$test,[hashtable]$settings,[string]$path){
+    # Let a running guest finish and preserve its raw samples when the build
+    # is superseded. Remove STOP to resume the same pinned study.
+    if(Test-Path -LiteralPath (Join-Path $Directory 'STOP')){throw "Study stopped before $path"}
     $result=Join-Path $path 'results/result.json'
     if(Test-Path -LiteralPath $result){
         if((Get-Content -LiteralPath $result -Raw|ConvertFrom-Json).exitCode -eq 0){return}

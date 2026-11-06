@@ -27,13 +27,13 @@ stops the install before any decision to close sessions or replace program files
 ## Build
 
 ```powershell
-installer\build.ps1        # both setups (what CI/releases run)
-installer\build-lite.ps1   # lite setup only — skips the .NET publish, handy when iterating on lite
+installer\build.ps1        # full installer
+installer\build-portable.ps1
 ```
 
 Prereqs:
 - .NET SDK with the `net10.0-windows` target (the repo pins .NET 10).
-- Rust + MSVC C++ build tools (for the Rust core/host and the lite client).
+- Rust and the Windows linker for the Windows integration helper.
 - The static Linux hooks at `artifacts/wsl-hook/agwinterm-hook-linux-x64` and `agwinterm-hook-linux-arm64`. PR and release CI build and test them on native Linux runners. Local builds can run `tools/build-wsl-hook.ps1` using Rust in WSL with the `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets installed; packaging builds missing artifacts automatically. The installer ships both Linux binaries and `agwinterm-hook.exe`.
 - [Inno Setup 6](https://jrsoftware.org/isinfo.php) — `ISCC.exe` on PATH, the default install location,
   or the per-user winget location (`winget install JRSoftware.InnoSetup`).
@@ -44,10 +44,8 @@ Prereqs:
 1. publishes `Agwinterm.Win32` (the app) and `Agwinterm.Ctl` (`agwintermctl`) as **self-contained win-x64**
    (a folder, not single-file — robust for the Vortice native libs and the on-disk `themes\`/`assets\`)
    into `installer\stage`,
-2. builds the Rust core + pty-host and the `agwinterm-lite` client, staging lite (exe + its copies of
-   the core dll / pty-host + bundled fonts) into `installer\stage-lite`,
-3. compiles `installer\agwinterm.iss` and `installer\agwinterm-lite.iss`,
-4. writes `installer\Output\agwinterm-setup-<ver>.exe` and `installer\Output\agwinterm-lite-setup-<ver>.exe`.
+2. stages the verified Ghostty runtime and Windows/Linux integration helpers,
+3. compiles `installer\agwinterm.iss` and writes `installer\Output\agwinterm-setup-<ver>.exe`.
 
 ## What the installers do
 

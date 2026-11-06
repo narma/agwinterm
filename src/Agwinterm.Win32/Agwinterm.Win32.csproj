@@ -19,8 +19,14 @@
       <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf' Or '%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
     </ItemGroup>
   </Target>
-  <ItemGroup Condition="Exists('..\..\artifacts\ghostty-build\bin\agwinterm_ghostty.dll')">
-    <None Include="..\..\artifacts\ghostty-build\bin\agwinterm_ghostty.dll;..\..\artifacts\ghostty-build\bin\ghostty-vt.dll;..\..\artifacts\ghostty-build\bin\ghostty-vt.provenance.json">
+  <PropertyGroup>
+    <GhosttyRuntime>$(MSBuildThisFileDirectory)..\..\artifacts\ghostty-release-native</GhosttyRuntime>
+  </PropertyGroup>
+  <Target Name="PrepareGhosttyRuntime" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\native\ghostty-vt\stage.ps1&quot; -Destination &quot;$(GhosttyRuntime)&quot;" />
+  </Target>
+  <ItemGroup>
+    <None Include="$(GhosttyRuntime)\agwinterm_ghostty.dll;$(GhosttyRuntime)\ghostty-vt.dll;$(GhosttyRuntime)\ghostty-vt.provenance.json;$(GhosttyRuntime)\ghostty-NOTICES.txt">
       <Link>%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

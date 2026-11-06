@@ -45,7 +45,8 @@ public sealed class GhosttyFrameSource : IDisposable
                     (_core.MouseMotion ? 4u : 0) | (_core.MouseSgr ? 8u : 0) |
                     (_core.MouseSgrPixels ? 16u : 0) | (_core.BracketedPaste ? 32u : 0) |
                     (_core.FocusReporting ? 64u : 0) | (_core.Win32InputMode ? 128u : 0) |
-                    (_core.MouseReporting ? 256u : 0);
+                    (_core.MouseReporting ? 256u : 0) |
+                    (_core.DynamicBg != 0 ? TerminalFrameState.DynamicBackgroundMode : 0);
                 generation = _core.Generation;
                 marks=_core.Marks.TakeLast(4096).Select(m=>new TerminalCommandMark(m.PromptLine,m.CommandLine,m.OutputLine,m.EndLine,m.ExitCode)).ToArray();
                 state = new(_core.Cols, _core.Rows, _core.HistoryCount, scrollOffset, _core.ScrollGeneration,

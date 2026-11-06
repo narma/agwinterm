@@ -430,13 +430,23 @@ try
         Check(Present(reattached) == liveBefore,"history import preserves the fresh shell screen");
         Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("LEGACY_STATE_IMPORT [31m"),
             "legacy saved escape sequences remain inert history text");
+        reattached.Inject("\r\nHELD_EXIT_CREDIT"u8);
+        Check(Wait(()=>{
+            lock(reattached.SyncRoot)
+            {
+                if(reattached.Emulator.DumpBuffer().Any(row=>row.Contains("HELD_EXIT_CREDIT"))) return true;
+                using var frame=((PresentedTerminalView)reattached.Emulator).AcquireFrame();
+                if(frame is not null) reattached.AcknowledgeFrame(frame.Identity.Sequence);
+                return false;
+            }
+        }),
+            "exit fixture holds the last visible frame without acknowledging it");
         gate.Set();
         Check(Wait(()=>{
-            Present(reattached);
             if(!reattached.HasExited) reattached.SubmitInput(new TerminalInput.Raw(" "u8.ToArray()));
             return reattached.HasExited;
         }) && reattached.ExitCode == 7,
-            "presentation exposes exit only after its final viewport");
+            "occluded presentation closes input and receives its final viewport without a new paint");
         Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("LEGACY_STATE_IMPORT"),
             "exited session keeps owner history readable");
         Check(reattached.SubmitInput(new TerminalInput.Raw("never replay"u8.ToArray())) == TerminalInputAcceptance.Closed,
