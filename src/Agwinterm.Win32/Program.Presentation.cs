@@ -84,6 +84,7 @@ internal partial class Program : IPresentationHost
             string key = line[..eq].Trim().ToLowerInvariant(), value = line[(eq+1)..].Trim();
             if (!seen.Add(key)) notes.Add($"line {lineNumber}: duplicate {key}; last parsed value wins");
             if (!recognized.Contains(key)) { notes.Add($"line {lineNumber}: unknown key '{key}'"); continue; }
+            value = TerminalConfig.ResolveLegacyValue(key, value);
             bool editable = Array.IndexOf(ConfigKeys, key) >= 0;
             if (editable && ValidateConfigValue(key,value) is { } error) { notes.Add($"line {lineNumber}: {error}"); continue; }
             if (key is "theme" or "theme-light" or "theme-dark" && value.Length > 0 && !_allThemes.Any(t => t.Name.Equals(value,StringComparison.OrdinalIgnoreCase)))

@@ -4,6 +4,9 @@
 desktop in a new generation-2 Hyper-V VM. Different worktrees and sessions can run
 at the same time. Each invocation gets a GUID VM name, a differencing OS disk and
 a separate payload/results disk. The base Windows image is shared read-only.
+Hyper-V can report the base as attached while another guest is using its
+differencing disk. The runner accepts that state for a read-only base, provided
+Windows has no host device for it and no active VM uses it as a direct disk.
 No network adapter, host folder mapping, clipboard sharing or viewer is used.
 No additional service or interpreter is installed on the host or guest.
 
@@ -51,6 +54,8 @@ maximum 1800-second worker run. The normal default run timeout is 900 seconds.
 For an approved host-code update, wait until no jobs are active and rerun the
 installer with `-Update` and the same SID/image. This maintenance step requires
 elevation; ordinary test requests never update privileged code from a checkout.
+A job marked for recovery with its matching VM confirmed off can remain in
+place during an update. The installer preserves its disks and VM registration.
 Custom VM resources, a different base image and `-KeepVM` require an explicit
 administrator run. If the installed host is absent or unavailable, routing fails
 closed and does not launch UI on the host desktop.

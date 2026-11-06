@@ -16,7 +16,9 @@ function Refuses([string]$Name, [scriptblock]$Action, [string]$Pattern) {
     try { & $Action | Out-Null } catch { $message = $_.Exception.Message }
     Check $Name ($message -like $Pattern)
 }
-function Get-VHD { param($Path) [pscustomobject]@{VhdType=$script:baseType; Attached=$false; DiskNumber=42} }
+function Get-VHD { param($Path) [pscustomobject]@{VhdType=$script:baseType; Attached=$script:baseAttached; DiskNumber=42} }
+function Get-DiskImage { param($ImagePath) [pscustomobject]@{DevicePath=$script:devicePath} }
+function Get-VMHardDiskDrive { param($VM) [pscustomobject]@{Path=$script:vmDisk} }
 function New-VHD {
     param($Path,$ParentPath,[switch]$Differencing,[switch]$Dynamic,$SizeBytes)
     Set-Content -LiteralPath $Path -Value 'fixture'
@@ -116,6 +118,20 @@ try {
     $null = Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory $path -KeepVM
     Check 'KeepVM retains a stopped VM with exported results' ($script:owned.State -eq 'Off' -and (Test-Path "$path/vm/windows.vhdx") -and (Test-Path "$path/results/result.json"))
     Refuses 'an existing owned directory is never reused' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory $path } '*already exists*'
+    $script:baseAttached = $true
+    Refuses 'an attached writable base cannot be shared' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*writable base*'
+    (Get-Item $base).IsReadOnly = $true
+    try {
+        $script:devicePath = 'host disk'
+        Refuses 'a host-mounted base cannot be shared' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*mounted on the host*'
+        $script:devicePath = $null
+        $script:vmDisk = $base
+        Refuses 'a base used directly by a running VM cannot be shared' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*attached directly*'
+        $script:vmDisk = Join-Path $temporary 'peer/windows.vhdx'
+        $result = Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'success')
+        Check 'a read-only base used through a child disk can be shared' ($result.exitCode -eq 0)
+    } finally { (Get-Item $base).IsReadOnly = $false }
+    $script:baseAttached = $false
     $script:baseType = 'Differencing'
     Refuses 'a checkpoint chain is not accepted as a base image' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*standalone*'
     Check 'all runs use distinct VM identities' (@($script:created | Select-Object -Unique).Count -eq $script:created.Count)

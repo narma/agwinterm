@@ -34,7 +34,21 @@ try {
         if ((Get-Acl $root).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'Existing UI host has an unexpected owner.' }
         $old = Get-Content $configPath -Raw | ConvertFrom-Json
         if ($old.schema -ne 1 -or $old.userSid -ne $UserSid) { throw 'Existing UI host belongs to a different account or version.' }
-        foreach ($slot in 0,1) { if (@(Get-ChildItem -LiteralPath (Join-Path $root "jobs/slot-$slot") -Directory -ErrorAction SilentlyContinue).Count) { throw 'Wait until all UI host jobs have finished before updating.' } }
+        foreach ($slot in 0,1) {
+            $slotPath = Join-Path $root "jobs/slot-$slot"
+            if (-not (Test-Path -LiteralPath $slotPath)) { continue }
+            foreach ($job in Get-ChildItem -LiteralPath $slotPath -Directory -ErrorAction Stop) {
+                # A worker can retain a failed job for recovery indefinitely.
+                # Leave its files and registered VM in place during an update.
+                $marker = Join-Path $job.FullName 'recovery-required.json'
+                if (Test-Path -LiteralPath $marker) {
+                    $run = Get-Content -LiteralPath (Join-Path $job.FullName 'run/hyperv-run.json') -Raw | ConvertFrom-Json
+                    $vm = Get-VM -Id ([guid]$run.vmId) -ErrorAction Stop
+                    if ($vm.Name -eq "agwinterm-ui-$($run.runId)" -and $vm.State -eq 'Off') { continue }
+                }
+                throw "Wait until UI host job $($job.Name) in slot $slot has finished before updating."
+            }
+        }
         foreach ($slot in 0,1) { Stop-ScheduledTask -TaskPath '\AgwintermUi\' -TaskName "Slot$slot" -ErrorAction SilentlyContinue }
     }
     Write-Status 'installing' 'Protecting the fixed host runner and image'
