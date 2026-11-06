@@ -518,8 +518,8 @@ internal partial class Program
                     }
                     int di = _cover is null ? DividerAt(mx, my) : -1;
                     if (di >= 0) { _divDragging = true; _divLeft = di; SetCapture(hwnd); return IntPtr.Zero; }
-                    // Child web views own native focus until the terminal takes it back.
-                    SetFocus(hwnd);
+                    // Restore terminal input after a web click without activating a background window.
+                    if (GetForegroundWindow() == hwnd) SetFocus(hwnd);
                     if (_cover is null) FocusPaneAt(mx, my); // covers capture the whole content region
                     // Ctrl+click on a hovered link opens it (never starts a selection or reaches the app).
                     if (KeyDown(VK_CONTROL) && UpdateLinkHover(mx, my) && _linkUrl is { } lurl) { OpenLink(lurl); return IntPtr.Zero; }
