@@ -67,11 +67,15 @@ $proc=[Diagnostics.Process]::GetProcessById($job.Pid);$proc.Refresh();$hwnd=$pro
 $null=Rpc 'window.resize' @{w=1086;h=700} -NoTarget
 Start-Sleep -Milliseconds 400
 $null=Shot 'c8-light-theme-recovered-pane'
-@('','cursor-style = invalid','c8-unknown-key = true','bell = none','conpty = inbox')|Add-Content (Join-Path $appDir 'agwinterm.conf')
+$configPath = Join-Path $appDir 'agwinterm.conf'
+$configLines = (Get-Content $configPath) -replace '^session-host = .*$', 'session-host = server-rust' -replace '^emulator-core = .*$', 'emulator-core = rust'
+$configLines | Set-Content $configPath
+@('','cursor-style = invalid','c8-unknown-key = true','bell = none','conpty = inbox')|Add-Content $configPath
 $reload=Rpc 'config.reload' @{} -NoTarget
 Check 'reload returns visible invalid and unknown entry diagnostics' (($reload.diagnostics -join ' ')-match 'cursor-style' -and ($reload.diagnostics -join ' ')-match 'unknown key')
 Check 'valid file-only bell setting does not produce a diagnostic' (@($reload.diagnostics|Where-Object {$_-match '\bbell\b'}).Count-eq 0)
 Check 'old inbox setting reports the bundled ConPTY now in use' (($reload.diagnostics -join ' ') -match "conpty effective value is 'bundled'")
+Check 'legacy core and host aliases do not trigger normalization warnings' (($reload.diagnostics -join ' ') -notmatch '(emulator-core|session-host) effective value')
 $version=Rpc 'app.version' @{} -NoTarget
 ($version|ConvertTo-Json -Depth 5)|Set-Content (Join-Path $artifact 'version.json')
 Check 'version reports explicit metadata availability and comparison' ($version.running -and $version.path -and $version.source-eq 'running-executable-path' -and $version.comparison-in @('match','different','unknown') -and $version.availability-in @('available','missing-file','metadata-unavailable'))

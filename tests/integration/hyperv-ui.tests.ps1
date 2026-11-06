@@ -16,7 +16,9 @@ function Refuses([string]$Name, [scriptblock]$Action, [string]$Pattern) {
     try { & $Action | Out-Null } catch { $message = $_.Exception.Message }
     Check $Name ($message -like $Pattern)
 }
-function Get-VHD { param($Path) [pscustomobject]@{VhdType=$script:baseType; Attached=$false; DiskNumber=42} }
+function Get-VHD { param($Path) [pscustomobject]@{VhdType=$script:baseType; Attached=$script:baseAttached; DiskNumber=42} }
+function Get-DiskImage { param($ImagePath) [pscustomobject]@{DevicePath=$script:devicePath} }
+function Get-VMHardDiskDrive { param($VM) [pscustomobject]@{Path=$script:vmDisk} }
 function New-VHD {
     param($Path,$ParentPath,[switch]$Differencing,[switch]$Dynamic,$SizeBytes)
     Set-Content -LiteralPath $Path -Value 'fixture'
@@ -116,6 +118,20 @@ try {
     $null = Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory $path -KeepVM
     Check 'KeepVM retains a stopped VM with exported results' ($script:owned.State -eq 'Off' -and (Test-Path "$path/vm/windows.vhdx") -and (Test-Path "$path/results/result.json"))
     Refuses 'an existing owned directory is never reused' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory $path } '*already exists*'
+    $script:baseAttached = $true
+    Refuses 'an attached writable base cannot be shared' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*writable base*'
+    (Get-Item $base).IsReadOnly = $true
+    try {
+        $script:devicePath = 'host disk'
+        Refuses 'a host-mounted base cannot be shared' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*mounted on the host*'
+        $script:devicePath = $null
+        $script:vmDisk = $base
+        Refuses 'a base used directly by a running VM cannot be shared' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*attached directly*'
+        $script:vmDisk = Join-Path $temporary 'peer/windows.vhdx'
+        $result = Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'success')
+        Check 'a read-only base used through a child disk can be shared' ($result.exitCode -eq 0)
+    } finally { (Get-Item $base).IsReadOnly = $false }
+    $script:baseAttached = $false
     $script:baseType = 'Differencing'
     Refuses 'a checkpoint chain is not accepted as a base image' { Invoke-HyperVUiRun -BaseVhd $base -OutputDirectory (New-Case 'base') } '*standalone*'
     Check 'all runs use distinct VM identities' (@($script:created | Select-Object -Unique).Count -eq $script:created.Count)
@@ -217,6 +233,25 @@ try {
     Check 'worker preserves retained disks and marks administrator recovery' ((Test-Path "$recoveryJob/run/vm/payload.vhdx") -and (Test-Path "$recoveryJob/recovery-required.json"))
     Remove-OwnedJob $recoveryJob
     Check 'worker restart cleanup preserves recovery evidence' ((Get-Content "$recoveryJob/run/vm/payload.vhdx") -eq 'unexported evidence')
+    $installerAst = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot/../../tools/hyperv-ui-install-host.ps1", [ref]$null, [ref]$null)
+    $updateAst = $installerAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Assert-JobAllowsUpdate'}, $true)
+    . ([scriptblock]::Create($updateAst.Extent.Text))
+    $runId = [guid]::NewGuid()
+    $vmId = [guid]::NewGuid()
+    $retainedVM = [pscustomobject]@{Id=$vmId; Name="agwinterm-ui-$runId"; State='Off'}
+    $script:vms[$vmId] = $retainedVM
+    @{runId=$runId; vmId=$vmId} | ConvertTo-Json | Set-Content "$recoveryJob/run/hyperv-run.json"
+    $jobDir = Get-Item $recoveryJob
+    Assert-JobAllowsUpdate $jobDir
+    Check 'update accepts a stopped recovery VM and preserves its evidence' ((Get-Content "$recoveryJob/run/vm/payload.vhdx") -eq 'unexported evidence')
+    $retainedVM.State = 'Running'
+    Refuses 'active recovery VMs block updates' { Assert-JobAllowsUpdate $jobDir } '*Wait until*'
+    $retainedVM.State = 'Off'
+    $retainedVM.Name = 'unrelated-vm'
+    Refuses 'mismatched recovery VMs block updates' { Assert-JobAllowsUpdate $jobDir } '*Wait until*'
+    $retainedVM.Name = "agwinterm-ui-$runId"
+    Remove-Item -LiteralPath "$recoveryJob/recovery-required.json"
+    Refuses 'unmarked jobs block updates even when their VM is off' { Assert-JobAllowsUpdate $jobDir } '*Wait until*'
     $markedJob = Join-Path $slotRoot ([guid]::NewGuid().ToString('N'))
     $null = New-Item -ItemType Directory -Path $markedJob
     '{}' | Set-Content "$markedJob/recovery-required.json"

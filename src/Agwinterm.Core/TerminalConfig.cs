@@ -420,6 +420,13 @@ public sealed class TerminalConfig
 
     public static TerminalConfig Parse(string text) => Parse(text, null);
 
+    public static string ResolveLegacyValue(string key, string value) => (key, value) switch
+    {
+        ("session-host", "server-rust") => "server",
+        ("emulator-core", "rust" or "managed") => "ghostty",
+        _ => value
+    };
+
     /// <summary>Optionally record file keys recognized by the parser, including keys whose values are rejected.</summary>
     public static TerminalConfig Parse(string text, ISet<string>? recognizedKeys)
     {
@@ -431,7 +438,7 @@ public sealed class TerminalConfig
             int eq = line.IndexOf('=');
             if (eq <= 0) continue;
             string key = line[..eq].Trim().ToLowerInvariant();
-            string val = line[(eq + 1)..].Trim();
+            string val = ResolveLegacyValue(key, line[(eq + 1)..].Trim());
 
             switch (key)
             {
@@ -462,14 +469,14 @@ public sealed class TerminalConfig
                 case "claude-update-check": cfg.ClaudeUpdateCheck = ParseBool(val, cfg.ClaudeUpdateCheck); break;
                 case "update-check": cfg.UpdateCheck = ParseBool(val, cfg.UpdateCheck); break;
                 case "session-host":
-                    if (val is "in-process" or "server" or "server-rust") cfg.SessionHost = val;
+                    if (val is "in-process" or "server") cfg.SessionHost = val;
                     break;
                 case "conpty":
                     if (val is "bundled" or "inbox") cfg.Conpty = val;
                     break;
                 case "fresh-env": cfg.FreshEnv = ParseBool(val, cfg.FreshEnv); break;
                 case "emulator-core":
-                    if (val is "managed" or "rust" or "ghostty") cfg.EmulatorCore = val;
+                    if (val == "ghostty") cfg.EmulatorCore = val;
                     break;
                 case "word-delimiters": cfg.WordDelimiters = val; break;
                 case "desktop-notifications": cfg.DesktopNotifications = ParseBool(val, cfg.DesktopNotifications); break;

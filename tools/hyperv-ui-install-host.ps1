@@ -15,6 +15,15 @@ Import-Module Hyper-V
 $BaseVhd = (Resolve-Path -LiteralPath $BaseVhd).Path
 $image = Get-VHD -Path $BaseVhd
 if ($image.Attached -or $image.VhdType -notin @('Dynamic','Fixed') -or [IO.Path]::GetExtension($BaseVhd) -ne '.vhdx') { throw 'Use the detached, prepared standalone VHDX.' }
+function Assert-JobAllowsUpdate([IO.DirectoryInfo]$Job) {
+    # Preserve marked recovery jobs and their stopped VMs in place.
+    if (Test-Path -LiteralPath (Join-Path $Job.FullName 'recovery-required.json')) {
+        $run = Get-Content -LiteralPath (Join-Path $Job.FullName 'run/hyperv-run.json') -Raw | ConvertFrom-Json
+        $vm = Get-VM -Id ([guid]$run.vmId) -ErrorAction Stop
+        if ($vm.Name -eq "agwinterm-ui-$($run.runId)" -and $vm.State -eq 'Off') { return }
+    }
+    throw "Wait until UI host job $($Job.FullName) has finished before updating."
+}
 function Write-Status([string]$Phase, [string]$Detail='') {
     Write-Host "$Phase $Detail"
     if ($StatusPath) { @{phase=$Phase;detail=$Detail;utc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $StatusPath }
@@ -34,7 +43,13 @@ try {
         if ((Get-Acl $root).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'Existing UI host has an unexpected owner.' }
         $old = Get-Content $configPath -Raw | ConvertFrom-Json
         if ($old.schema -ne 1 -or $old.userSid -ne $UserSid) { throw 'Existing UI host belongs to a different account or version.' }
-        foreach ($slot in 0,1) { if (@(Get-ChildItem -LiteralPath (Join-Path $root "jobs/slot-$slot") -Directory -ErrorAction SilentlyContinue).Count) { throw 'Wait until all UI host jobs have finished before updating.' } }
+        foreach ($slot in 0,1) {
+            $slotPath = Join-Path $root "jobs/slot-$slot"
+            if (-not (Test-Path -LiteralPath $slotPath)) { continue }
+            foreach ($job in Get-ChildItem -LiteralPath $slotPath -Directory -ErrorAction Stop) {
+                Assert-JobAllowsUpdate $job
+            }
+        }
         foreach ($slot in 0,1) { Stop-ScheduledTask -TaskPath '\AgwintermUi\' -TaskName "Slot$slot" -ErrorAction SilentlyContinue }
     }
     Write-Status 'installing' 'Protecting the fixed host runner and image'

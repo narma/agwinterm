@@ -128,11 +128,27 @@ function Invoke-HyperVUiRun {
         [switch]$KeepVM
     )
     $BaseVhd = (Resolve-Path -LiteralPath $BaseVhd).Path
-    $base = Get-VHD -Path $BaseVhd
-    if ($base.VhdType -notin @('Dynamic','Fixed') -or $base.Attached) {
-        throw 'BaseVhd must be a detached, standalone VHDX from a shut-down prepared generation-2 Windows VM.'
+    $base = Get-VHD -Path $BaseVhd -ErrorAction Stop
+    if ($base.VhdType -notin @('Dynamic','Fixed')) {
+        throw "BaseVhd must be a standalone VHDX; found $($base.VhdType) at $BaseVhd."
     }
     if ([IO.Path]::GetExtension($BaseVhd) -ne '.vhdx') { throw 'BaseVhd must be a VHDX file.' }
+    if ($base.Attached) {
+        # Hyper-V also reports Attached while a running guest uses this file as
+        # the parent of its writable OS disk. Only share an immutable base.
+        if (-not (Get-Item -LiteralPath $BaseVhd -ErrorAction Stop).IsReadOnly) {
+            throw "Cannot share an attached writable base: $BaseVhd."
+        }
+        if ((Get-DiskImage -ImagePath $BaseVhd -ErrorAction Stop).DevicePath) {
+            throw "BaseVhd is mounted on the host: $BaseVhd."
+        }
+        $active = @(Get-VM -ErrorAction Stop | Where-Object State -ne 'Off')
+        foreach ($machine in $active) {
+            if ($BaseVhd -in (Get-VMHardDiskDrive -VM $machine -ErrorAction Stop).Path) {
+                throw "BaseVhd is attached directly to VM '$($machine.Name)': $BaseVhd."
+            }
+        }
+    }
     $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
     $ownedRoot = Join-Path $OutputDirectory 'vm'
     if (Test-Path -LiteralPath $ownedRoot) { throw "VM directory already exists: $ownedRoot" }
