@@ -94,7 +94,7 @@ public class TerminalConfigTests
     }
 
     [Fact]
-    public void GhosttyUsesNativeCapableServerWithoutErasingLegacyHostPreference()
+    public void LegacySettingsMigrateToGhosttyHost()
     {
         var config = TerminalConfig.Parse("session-host = server-rust");
         Assert.Equal("ghostty", config.EmulatorCore);
@@ -102,15 +102,15 @@ public class TerminalConfigTests
         foreach (var core in new[] { "managed", "rust" })
         {
             config.EmulatorCore = core;
-            Assert.Equal("server-rust", config.SessionHost);
-            Assert.Equal("server-rust", TerminalConfig.Parse($"emulator-core = {core}\nsession-host = server-rust").SessionHost);
+            Assert.Equal("server", config.SessionHost);
+            Assert.Equal("server", TerminalConfig.Parse($"emulator-core = {core}\nsession-host = server-rust").SessionHost);
         }
         config.EmulatorCore = "ghostty";
         Assert.Equal("server", config.SessionHost);
     }
 
     [Fact]
-    public void Conpty_DefaultsToBundledForGhostty_PreservesLegacyChoices()
+    public void LegacyCoreAndConptySettingsMigrateToGhosttyBundled()
     {
         Assert.Equal("bundled", TerminalConfig.Parse("").Conpty);
         Assert.Equal("bundled", TerminalConfig.Parse("conpty = bundled").Conpty);
@@ -119,9 +119,9 @@ public class TerminalConfigTests
         foreach (var core in new[] { "managed", "rust" })
         {
             var config = TerminalConfig.Parse($"emulator-core = {core}\nconpty = inbox");
-            Assert.Equal(core, config.EmulatorCore);
-            Assert.Equal("inbox", config.Conpty);
-            Assert.Equal("inbox", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bogus").Conpty);
+            Assert.Equal("ghostty", config.EmulatorCore);
+            Assert.Equal("bundled", config.Conpty);
+            Assert.Equal("bundled", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bogus").Conpty);
             Assert.Equal("bundled", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bundled").Conpty);
         }
     }
@@ -134,9 +134,9 @@ public class TerminalConfigTests
         var config = new TerminalConfig { Conpty = "inbox", EmulatorCore = "ghostty" };
         Assert.Equal("bundled", config.Conpty);
         config.EmulatorCore = "managed";
-        Assert.Equal("inbox", config.Conpty);
+        Assert.Equal("bundled", config.Conpty);
         config.EmulatorCore = "rust";
-        Assert.Equal("inbox", config.Conpty);
+        Assert.Equal("bundled", config.Conpty);
     }
 
     [Fact]

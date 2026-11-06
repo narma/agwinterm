@@ -3,6 +3,38 @@ namespace Agwinterm.Pty.Tests;
 public class InputLifecycleTests
 {
     [Fact]
+    public void HistoryReadBeforeFirstFrameCanReturnLaunchError()
+    {
+        using var backend=new ServerSessionBackend("unstarted-test",null,singleOwner:true);
+        var session=new ServerSession(backend,"pane",30,4);
+        try
+        {
+            Assert.Equal("",SurfaceText.Dump(session,new(true,0)));
+            ((Agwinterm.Core.PresentedTerminalView)session.Emulator).ShowError("Cannot start shell");
+            Assert.Equal("Cannot start shell",SurfaceText.Dump(session,new(true,0)));
+            Assert.Contains("Cannot start shell",SurfaceText.DumpStyled(session,new(true,0)));
+        }
+        finally { session.Detach(); }
+    }
+    [Fact]
+    public void OwnerStartupAcceptsEarlyFocusButBoundsPendingInput()
+    {
+        using var backend=new ServerSessionBackend("not-connected",null,singleOwner:true);
+        var session=new ServerSession(backend,"pane",80,24);
+        try
+        {
+            Assert.Equal(TerminalInputAcceptance.Accepted,session.SubmitInput(new TerminalInput.Focus(true)));
+            Assert.False(session.InputClosed);
+            TerminalInputAcceptance result=TerminalInputAcceptance.Accepted;
+            for(int i=0;i<5000 && result == TerminalInputAcceptance.Accepted;i++)
+                result=session.SubmitInput(new TerminalInput.Text("early"));
+            Assert.Equal(TerminalInputAcceptance.Overflow,result);
+            Assert.True(session.InputClosed);
+            Assert.Equal(TerminalInputAcceptance.Closed,session.SubmitInput(new TerminalInput.Focus(false)));
+        }
+        finally { session.Detach(); }
+    }
+    [Fact]
     public void InProcessInputCanCloseBeforeOutputCompletion()
     {
         using var session = new TerminalSession(80, 24);

@@ -27,6 +27,7 @@ public partial class WslIntegrationTests
         var profile = new ShellProfile { Command = "wsl.exe", Zmx = new(true, "/opt/test ' zmx"),
             Args = ["-d", "My Ubuntu", "--user=alice", "--exec", "bash", "-c", "printf '%s' \"$VALUE\""] };
         Assert.Null(WslLiveProfiles.Validate(profile, "server-rust", WslLiveSurface.Ordinary));
+        Assert.Null(WslLiveProfiles.Validate(profile, "server", WslLiveSurface.Ordinary));
         Assert.Equal(new[] { "bash", "-c", "printf '%s' \"$VALUE\"" }, WslLiveProfiles.WorkloadArgv(profile));
         Assert.Equal(new[] { "--distribution", "My Ubuntu", "--user", "alice" }, WslLiveProfiles.ResolvedSelectors("My Ubuntu", "alice"));
         profile.Args = null;

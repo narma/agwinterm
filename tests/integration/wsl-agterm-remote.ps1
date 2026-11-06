@@ -513,7 +513,7 @@ public static class RemoteAskProbe {
     if (-not ($after.Sessions | Where-Object { $_.Session.Id -eq $candidate.Session.Id })) { throw 'Absent-origin Recent mutated real origin' }
     Write-Host 'PASS absent-origin Recent stays unavailable and preserves original work'
     if ($TerminalFixture) {
-        & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture (Join-Path (Split-Path $exe) 'agwinterm-ptyhost.exe')
+        & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture $exe
         if ($LASTEXITCODE -ne 0) { throw 'Remote terminal continuity harness failed' }
     }
 } finally {

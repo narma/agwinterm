@@ -37,6 +37,52 @@ finally
 }
 if (!GhosttyVt.TryLoad(args[0], out string? error)) throw new InvalidOperationException(error);
 
+Environment.SetEnvironmentVariable("AGWINTERM_GHOSTTY_COUNTERS", "1");
+Check(GhosttyDiagnostics.Enabled, "native lifecycle diagnostics enabled before terminal allocation");
+var initialCounts = GhosttyDiagnostics.Snapshot();
+var initialNative = GhosttyDiagnostics.NativeAllocationSnapshot();
+Check(initialNative is not null, "native allocation diagnostics export is available");
+var initialPages=GhosttyDiagnostics.NativePageSnapshot();
+Check(initialPages is not null,"native page diagnostics export is available");
+using (var owner = new GhosttyTerminalCore(20, 5))
+{
+    Check(GhosttyDiagnostics.Snapshot().Owners == initialCounts.Owners + 1,
+        "serverless core has one owner");
+    Check(GhosttyDiagnostics.NativePageSnapshot()!.ResidentBytes > initialPages!.ResidentBytes,
+        "page diagnostics include terminal storage outside the budget allocator");
+    using (var replica = new GhosttyTerminalCore(20, 5))
+    {
+        replica.MarkLegacyReplica(); replica.MarkLegacyReplica();
+        var hosted = GhosttyDiagnostics.Snapshot();
+        Check(hosted.Owners == initialCounts.Owners + 1 && hosted.LegacyReplicas == initialCounts.LegacyReplicas + 1,
+            "legacy hosted pair has one owner and one replica; classification is idempotent");
+        owner.Feed("hello"u8); replica.Feed("hello"u8);
+        Check(GhosttyDiagnostics.Snapshot().FeedBytes == initialCounts.FeedBytes + 10,
+            "duplicate parsing is visible in feed byte counters");
+        Check(GhosttyDiagnostics.Snapshot().OwnerFeedBytes == initialCounts.OwnerFeedBytes + 5 &&
+            GhosttyDiagnostics.Snapshot().LegacyReplicaFeedBytes == initialCounts.LegacyReplicaFeedBytes + 5,
+            "feed bytes distinguish owners from legacy replicas");
+        owner.BeginPaint();
+        Check(GhosttyDiagnostics.Snapshot().ActiveCaptures == initialCounts.ActiveCaptures + 1,
+            "capture is counted separately from live terminals");
+        owner.Dispose();
+        Check(GhosttyDiagnostics.Snapshot().Owners == initialCounts.Owners + 1,
+            "in-flight capture retains actual native owner after disposal request");
+        owner.CompletePaint();
+    }
+}
+var finalCounts = GhosttyDiagnostics.Snapshot();
+var finalNative = GhosttyDiagnostics.NativeAllocationSnapshot()!;
+Check(GhosttyDiagnostics.NativePageSnapshot() == initialPages,"native page counters return to baseline after deferred disposal");
+Check(finalNative.CurrentBytes == initialNative!.CurrentBytes && finalNative.Allocations > initialNative.Allocations &&
+    finalNative.AllocatedBytes > initialNative.AllocatedBytes && finalNative.Frees > initialNative.Frees,
+    "native allocator records allocations and returns to baseline after disposal");
+Check(finalCounts.Owners == initialCounts.Owners && finalCounts.LegacyReplicas == initialCounts.LegacyReplicas &&
+    finalCounts.ActiveCaptures == initialCounts.ActiveCaptures &&
+    finalCounts.TerminalsAllocated - initialCounts.TerminalsAllocated == 2 &&
+    finalCounts.TerminalsReleased - initialCounts.TerminalsReleased == 2,
+    "native counters return to baseline after deferred and repeated disposal");
+
 using (var vt = new GhosttyVt(20, 5))
 {
     var roles = new List<string>();
@@ -124,6 +170,10 @@ using (var vt = new GhosttyVt(20, 5))
 {
     vt.SetCursorDefault(CursorStyle.Bar, false); Capture(vt);
     Check(vt.FrameCursorShape == 6, "configured steady bar cursor reaches the frame");
+    vt.Feed("\u001b[0 q"u8);
+    vt.SetCursorDefault(CursorStyle.Block,false); Capture(vt);
+    Check(vt.FrameCursorShape == 2,"live default change reaches a cursor reset with DECSCUSR zero");
+    vt.SetCursorDefault(CursorStyle.Bar,false); Capture(vt);
     vt.Feed("\u001b[3 q"u8); Capture(vt);
     Check(vt.FrameCursorShape == 3, "DECSCUSR cursor style comes from Ghostty");
     vt.Feed("\u001bc"u8); Capture(vt);
@@ -706,6 +756,20 @@ using (var core = new GhosttyTerminalCore(80, 24))
     try { cancelTask.GetAwaiter().GetResult(); } catch (OperationCanceledException) { observed = true; }
     Check(observed, "large-history search stops after cancellation");
 }
+using (var closingCore = new GhosttyTerminalCore(16, 8))
+{
+    object ownerLock = new();
+    Task<GhosttyTerminalCore.SearchResult> pending;
+    lock (ownerLock)
+    {
+        pending = closingCore.SearchAsync("closed", ownerLock, CancellationToken.None);
+        closingCore.Dispose();
+    }
+    bool closed = false;
+    try { pending.GetAwaiter().GetResult(); }
+    catch (ObjectDisposedException) { closed = true; }
+    Check(closed, "pending search refuses a closed owner before accessing native state");
+}
 using (var core = new GhosttyTerminalCore(16, 8))
 {
     core.Feed(Encoding.UTF8.GetBytes("\x1b[?2027hStraße ẞ ﬃ K İ\r\nSTRASSE\r\n"));
@@ -771,6 +835,25 @@ using (var core = new GhosttyTerminalCore(80, 24))
     Check(matches.All(m => m.Col0 % 2 == 1 && m.Col1 % 2 == 0 &&
         (m.EndLine * 80 + m.Col1) - (m.Line * 80 + m.Col0) == 1),
         "cross-page native search keeps forward cell endpoints");
+}
+using (var core = new GhosttyTerminalCore(20, 4))
+{
+    var gate = new object();
+    using var source = new GhosttyFrameSource(core, gate, "capture-owner", 1);
+    core.Feed("first"u8);
+    using var first = source.Capture(0,8,18)!;
+    core.Feed("\rsecond"u8);
+    using var second = source.Capture(0,8,18)!;
+    Check(first[0,0].Rune == 'f' && second[0,0].Rune == 's', "owner frame leases preserve prior content across captures");
+    Check(second.Identity.TerminalGeneration > first.Identity.TerminalGeneration, "frame identity follows owner generation");
+    core.Feed("\x1b[?2026h\rheld"u8);
+    using var held = source.Capture(0,8,18)!;
+    Check(held.Identity == second.Identity && held[0,0].Rune == 's', "synchronized output retains complete prior frame and metadata");
+    core.Feed("\x1b[?2026l"u8);
+    using var released = source.Capture(0,8,18)!;
+    Check(released[0,0].Rune == 'h', "synchronized release publishes latest owner frame");
+    core.Dispose(); source.Dispose();
+    Check(first[0,0].Rune == 'f', "immutable frame outlives native owner and capture source");
 }
 Console.WriteLine($"{checks} Ghostty native contract checks passed.");
 

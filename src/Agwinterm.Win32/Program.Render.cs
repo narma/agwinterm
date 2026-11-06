@@ -17,6 +17,10 @@ namespace Agwinterm.Win32;
 /// <summary>Rendering: Kitty images + the Direct2D terminal draw path.</summary>
 internal partial class Program
 {
+    private readonly HashSet<long> _latencyPresentedIds = new();
+    private readonly List<(long Id, long Captured, long Applied, long Frame)> _latencyFrameIds = new();
+    private long _latencyFrameSequence;
+    private readonly List<(ServerSession Session,ulong Sequence)> _presentationCredits = new();
     // ---- Kitty images (Direct2D) ----
 
     private static readonly string? _imgLog = Environment.GetEnvironmentVariable("AGWINTERM_IMGLOG");
@@ -349,6 +353,8 @@ internal partial class Program
         _imageOwnersThisFrame.Clear();
         _ghosttyImagesThisFrame.Clear();
         _ghosttyAnimationOwnersThisFrame.Clear();
+        _presentationCredits.Clear();
+        if (TerminalLatencyTrace.Enabled) { _latencyFrameIds.Clear(); _latencyFrameSequence++; }
         try
         {
             RenderBody();
@@ -357,6 +363,19 @@ internal partial class Program
             if (_perfLog is not null) bodyMs = Stopwatch.GetElapsedTime(tStart).TotalMilliseconds;
             long endStart = _perfLog is null ? 0 : Stopwatch.GetTimestamp();
             Result end = _rt.EndDraw(out _, out _);
+            long endDrawTicks=TerminalLatencyTrace.Enabled ? Stopwatch.GetTimestamp() : 0;
+            if(!end.Failure) foreach(var credit in _presentationCredits) credit.Session.AcknowledgeFrame(credit.Sequence);
+            if (TerminalLatencyTrace.Enabled && !end.Failure)
+            {
+                long presented = endDrawTicks;
+                foreach (var sample in _latencyFrameIds)
+                    if (_latencyPresentedIds.Add(sample.Id))
+                    {
+                        TerminalLatencyTrace.Record(6, sample.Id, sample.Captured, sample.Frame);
+                        TerminalLatencyTrace.Record(7, sample.Id, sample.Applied, sample.Frame);
+                        TerminalLatencyTrace.Record(8, sample.Id, presented, sample.Frame);
+                    }
+            }
             if (_perfLog is not null) endMs = Stopwatch.GetElapsedTime(endStart).TotalMilliseconds;
             if (end.Failure)
             {
@@ -456,8 +475,16 @@ internal partial class Program
         int sl0 = 0, sc0 = 0, sl1 = 0, sc1 = 0;
         (int PromptLine, int? ExitCode)[] marks;
         GhosttyTerminalCore? nativePaint = null;
+        var localPresentation = session.Presentation is { IsRemote:false } local ? local : null;
+        Color? frameCursorColor = null;
+        IReadOnlyList<GhosttyImagePlacement> frameImages = [];
+        long frameAnimationDeadline = 0;
+        long capturedTicks=0, appliedTicks=0, presentedSequence=0;
+        bool resolvedColors=em is GhosttyTerminalCore or PresentedTerminalView;
+        long waitingSince = TerminalLatencyTrace.Enabled ? Stopwatch.GetTimestamp() : 0;
         lock (session.SyncRoot)
         {
+            using var timing = new TerminalLatencyTrace.LockTiming(waitingSince, 30);
             // Reconcile and capture the cells in the same frame under the same lock.
             hasSel = selPane is not null && HasLiveSel(selPane) && selPane.SelContentVisible;
             if (hasSel) NormSel(selPane!, out sl0, out sc0, out sl1, out sc1);
@@ -468,19 +495,40 @@ internal partial class Program
             nativePaint = em as GhosttyTerminalCore;
             // Explicit text/history reads have separate storage. A live Ghostty
             // paint never materializes that query screen under the PTY lock.
-            var screen = nativePaint is null ? em.Screen : null;
-            cols = nativePaint?.Cols ?? screen!.Cols; rows = nativePaint?.Rows ?? screen!.Rows;
+            var screen = nativePaint is null && em is not PresentedTerminalView ? em.Screen : null;
+            cols = nativePaint?.Cols ?? (em as PresentedTerminalView)?.Columns ?? screen!.Cols;
+            rows = nativePaint?.Rows ?? (em as PresentedTerminalView)?.Rows ?? screen!.Rows;
             cursorVisible = em.CursorVisible; cursorCol = em.CursorCol; cursorRow = em.CursorRow;
             cursorShape = em.CursorShape;   // DECSCUSR (0 = use user config)
-            drawImages = !_noImages && em.Placements.Count > 0 && off == 0;
+            drawImages = session.Presentation is null && !_noImages && em.Placements.Count > 0 && off == 0;
             marks = !isAlt && em.Marks.Count > 0
                 ? em.Marks.Select(m => (m.PromptLine, m.ExitCode)).ToArray()
                 : Array.Empty<(int, int?)>();
             if (_cellSnap.Length < rows * cols) _cellSnap = new Cell[rows * cols];
-            if (nativePaint is not null)
+            if (em is PresentedTerminalView view)
+            {
+                using var frame=session.Presentation?.Capture(off,Math.Max(1,(int)cw),Math.Max(1,(int)ch)) ?? view.AcquireFrame();
+                if(frame is not null)
+                {
+                    var state=frame.State;
+                    cols=state.Columns; rows=state.Rows; hist=state.HistoryRows; off=state.ScrollOffset;
+                    cursorCol=state.CursorColumn; cursorRow=state.CursorRow;
+                    cursorVisible=state.CursorVisible; cursorShape=state.CursorShape;
+                    frameCursorColor=state.CursorColor;
+                    if(_cellSnap.Length < rows*cols) _cellSnap=new Cell[rows*cols];
+                    frame.CopyCells(_cellSnap);
+                    frameImages=frame.Images;
+                    frameAnimationDeadline=frame.AnimationDeadline;
+                    capturedTicks=frame.CapturedTicks; appliedTicks=view.AppliedTicks;
+                    presentedSequence=checked((long)frame.Identity.Sequence);
+                    if(session is ServerSession remote) _presentationCredits.Add((remote,frame.Identity.Sequence));
+                }
+                else view.Screen.CopyCellsTo(_cellSnap);
+            }
+            else if (nativePaint is not null)
             {
                 nativePaint.SetCursorDefault(_config.CursorStyle, _config.CursorBlink);
-                nativePaint.BeginPaint(off);
+                if (localPresentation is null) nativePaint.BeginPaint(off);
             }
             else
             for (int r = 0; r < rows; r++)
@@ -499,7 +547,25 @@ internal partial class Program
                     _cellSnap[r * cols + c] = v;
                 }
         }
-        if (nativePaint is not null)
+        if (localPresentation is not null)
+        {
+            // The adapter owns the capture gate. Never enter it while holding
+            // SyncRoot: native snapshot decoding runs outside the feed lock.
+            using var frame = localPresentation.Capture(off,Math.Max(1,(int)cw),Math.Max(1,(int)ch));
+            if (frame is null) return;
+            var state = frame.State;
+            cols = state.Columns; rows = state.Rows; hist = state.HistoryRows; off = state.ScrollOffset;
+            cursorCol = state.CursorColumn; cursorRow = state.CursorRow;
+            cursorVisible = state.CursorVisible; cursorShape = state.CursorShape;
+            frameCursorColor = state.CursorColor;
+            frameImages=frame.Images;
+            frameAnimationDeadline=frame.AnimationDeadline;
+            if (_cellSnap.Length < rows * cols) _cellSnap = new Cell[rows * cols];
+            frame.CopyCells(_cellSnap);
+            capturedTicks = frame.CapturedTicks; appliedTicks = capturedTicks;
+            presentedSequence = checked((long)frame.Identity.Sequence);
+        }
+        else if (nativePaint is not null)
         {
             var screen = nativePaint.CompletePaint();
             (cursorCol, cursorRow, cursorVisible) = nativePaint.PaintCursor;
@@ -509,10 +575,20 @@ internal partial class Program
         }
         // Drawing below reads only the snapshot + UI-thread state — no session lock held.
         TraceTerminalPaint(em, cols, rows);
-        IReadOnlyList<GhosttyImagePlacement> nativeImages = !_noImages && nativePaint is not null ? nativePaint.PaintImages : [];
-        PrepareGhosttyImages(nativeImages);
-        if (!_noImages && nativePaint is not null) ScheduleGhosttyAnimation(nativePaint);
-        DrawGhosttyImages(nativeImages, GhosttyImageLayer.BelowBackground, ox, oy, cw, ch, cols, rows);
+        if (TerminalLatencyTrace.Enabled && rows > 1)
+        {
+            long id = TerminalLatencyTrace.FrameMarker(_cellSnap.AsSpan(cols, cols));
+            if (id > 0)
+            {
+                long captured=capturedTicks == 0 ? Stopwatch.GetTimestamp() : capturedTicks;
+                _latencyFrameIds.Add((id,captured,appliedTicks == 0 ? captured : appliedTicks,presentedSequence == 0 ? _latencyFrameSequence : presentedSequence));
+            }
+        }
+        IReadOnlyList<GhosttyImagePlacement> nativeImages = _noImages ? [] : session.Presentation is not null ? frameImages : nativePaint?.PaintImages ?? [];
+        PrepareGhosttyImages(session,nativeImages);
+        if (!_noImages && (session.Presentation is not null || nativePaint is not null)) ScheduleGhosttyAnimation(session,
+            session.Presentation is not null ? frameAnimationDeadline : nativePaint!.NextAnimationDeadline);
+        DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.BelowBackground, ox, oy, cw, ch, cols, rows);
         {
             var snap = _cellSnap;
             Cell CellAt(int r, int c) => snap[r * cols + c];
@@ -525,7 +601,7 @@ internal partial class Program
                 while (c < cols)  // Pass 1: coalesced background fills
                 {
                     Cell cell = CellAt(r, c);
-                    Color bg = EffectiveBg(cell, localBackground, nativePaint is not null);
+                    Color bg = EffectiveBg(cell, localBackground, resolvedColors);
                     if (selPane?.Appearance is not null && cell.BgSpec.Kind == ColorSpecKind.Default && !cell.Attributes.HasFlag(CellAttributes.Inverse)) { c++; continue; }
                     if (selPane?.Appearance is null && bg == _theme.DefaultBackground && localBackground is null) { c++; continue; }
                     int start = c;
@@ -533,14 +609,14 @@ internal partial class Program
                     {
                         Cell cc = CellAt(r, c);
                         if (selPane?.Appearance is not null && cc.BgSpec.Kind == ColorSpecKind.Default && !cc.Attributes.HasFlag(CellAttributes.Inverse)) break;
-                        if (cc.Width != 0 && EffectiveBg(cc, localBackground, nativePaint is not null) != bg) break;
+                        if (cc.Width != 0 && EffectiveBg(cc, localBackground, resolvedColors) != bg) break;
                         c++;
                     }
                     brush.Color = C4(bg);
                     rt.FillRectangle(new Rect(ox + start * cw, y, (c - start) * cw, ch), brush);
                 }
             }
-            DrawGhosttyImages(nativeImages, GhosttyImageLayer.BelowText, ox, oy, cw, ch, cols, rows);
+            DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.BelowText, ox, oy, cw, ch, cols, rows);
             for (int r = 0; r < rows; r++)
             {
                 float y = oy + r * ch;
@@ -598,7 +674,7 @@ internal partial class Program
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
-                    Color runFg = EffectiveFg(cell, localBackground, nativePaint is not null);
+                    Color runFg = EffectiveFg(cell, localBackground, resolvedColors);
                     CellAttributes runStyle = DisplayStyle(cell);
                     if (cell.Grapheme is { } cluster)
                     {
@@ -656,7 +732,7 @@ internal partial class Program
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
                         if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask)) break; }
-                        else if (EffectiveFg(cc, localBackground, nativePaint is not null) != runFg || DisplayStyle(cc) != runStyle) break;
+                        else if (EffectiveFg(cc, localBackground, resolvedColors) != runFg || DisplayStyle(cc) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);
                         c++;
                         if (!blank) lastNonBlank = _run.Length;
@@ -680,7 +756,7 @@ internal partial class Program
 
             if (!_noImages)
                 lock (session.SyncRoot) DrawImages(em, ox, oy, cw, ch, drawImages); // image state belongs to this pane
-            DrawGhosttyImages(nativeImages, GhosttyImageLayer.AboveText, ox, oy, cw, ch, cols, rows);
+            DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.AboveText, ox, oy, cw, ch, cols, rows);
 
             if (off > 0) // scrollback position indicator on the pane's right edge
             {
@@ -708,7 +784,7 @@ internal partial class Program
             if (cursorVisible && off == 0)
             {
                 float cx = ox + cursorCol * cw, cy = oy + cursorRow * ch;
-                brush.Color = C4(nativePaint?.PaintCursorColor ?? _theme.Cursor);
+                brush.Color = C4(frameCursorColor ?? nativePaint?.PaintCursorColor ?? (em as PresentedTerminalView)?.CursorColor ?? _theme.Cursor);
                 // DECSCUSR (cursorShape): 0 = fall back to the user's config; 1/2 block, 3/4 underline,
                 // 5/6 bar; odd = blinking, even = steady. Style 0 also inherits the config blink.
                 CursorStyle shape = cursorShape switch

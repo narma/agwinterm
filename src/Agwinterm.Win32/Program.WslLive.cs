@@ -347,7 +347,12 @@ internal partial class Program : IWslLiveHost
 
     private void ShowLiveError(Pane pane, string message)
     {
-        lock (pane.S.SyncRoot) pane.S.Emulator.Feed(Encoding.UTF8.GetBytes("\r\n[WSL live session] " + message + "\r\n"));
+        lock (pane.S.SyncRoot)
+        {
+            if(pane.S.Emulator is PresentedTerminalView view)
+                view.ShowError("[WSL live session] " + message);
+            else pane.S.Emulator.Feed(Encoding.UTF8.GetBytes("\r\n[WSL live session] " + message + "\r\n"));
+        }
         pane.LiveSaveError = message;
         RequestRedraw();
     }
@@ -369,6 +374,7 @@ internal partial class Program : IWslLiveHost
                 terminal.TitleFilter = Consume;
             }
             else if (pane.S.Emulator is GhosttyTerminalCore ghostty) ghostty.SetTitleFilter(Consume);
+            else if (pane.S.Emulator is PresentedTerminalView presented) presented.SetTitleFilter(Consume);
         }
     }
 

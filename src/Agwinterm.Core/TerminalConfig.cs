@@ -84,38 +84,28 @@ public sealed class TerminalConfig
     /// ("Update agwinterm"), which downloads, verifies, restarts, and restores sessions.</summary>
     public bool UpdateCheck { get; set; } = true;
 
-    /// <summary>Where terminal sessions live: "in-process" (default — the UI process owns the
-    /// ConPTYs), "server" (EXPERIMENTAL, #105 — a separate C# pty-host process owns them), or
-    /// "server-rust" (EXPERIMENTAL — the standalone Rust pty-host binary; same protocol, but
-    /// blocking-threaded so the .NET 10 IOCP crash class is absent). Both server modes let sessions
-    /// survive UI updates/crashes; server-rust falls back to in-process if the binary is missing.</summary>
+    /// <summary>"in-process" owns Ghostty and ConPTY in the UI process;
+    /// "server" owns both in the separate .NET host and survives UI restarts.
+    /// The old server-rust setting is imported as server.</summary>
     private string _sessionHost = "in-process";
-    // Live transports still require the Rust host, independently of the host
-    // selected for new ordinary Ghostty terminals.
     public string ConfiguredSessionHost => _sessionHost;
     public string SessionHost
     {
-        // The Rust host cannot own Ghostty snapshots/reflow. Retain the requested
-        // host so switching back to an explicit legacy core restores that choice.
-        get => EmulatorCore == "ghostty" && _sessionHost == "server-rust" ? "server" : _sessionHost;
-        set => _sessionHost = value;
+        get => _sessionHost;
+        set => _sessionHost = value == "server-rust" ? "server" : value;
     }
 
-    /// <summary>Which ConPTY sessions run on: "inbox" (default, the conhost built into Windows) or
-    /// "bundled" (#339 — the conpty.dll + OpenConsole.exe shipped beside the exe, which forwards an
-    /// app's color, device-attribute and cursor queries to the terminal and its output unchanged).
-    /// Ghostty always requires bundled ConPTY: it owns reflow, and Inbox's resize repaint
-    /// corrupts that buffer. The configured choice applies only to the legacy managed/Rust cores.</summary>
-    private string _conpty = "inbox";
+    /// <summary>Ghostty requires bundled ConPTY so Windows does not repaint its
+    /// independently reflowed terminal. Accept legacy values during import.</summary>
     public string Conpty
     {
-        get => EmulatorCore == "ghostty" ? "bundled" : _conpty;
-        set => _conpty = value;
+        get => "bundled";
+        set { }
     }
 
-    /// <summary>Core for new sessions: Ghostty by default. Explicit managed/Rust choices
-    /// remain supported during rollout; unavailable native libraries use the startup fallback.</summary>
-    public string EmulatorCore { get; set; } = "ghostty";
+    /// <summary>Ghostty is the only runtime terminal core.</summary>
+    // Retain the setter to import old configuration, but never reactivate a retired parser.
+    public string EmulatorCore { get => "ghostty"; set { } }
 
     /// <summary>Rebuild each new session's environment from the registry at spawn (WT's
     /// reloadEnvironmentVariables analog): software installed while agwinterm runs — a JDK, a new
@@ -301,25 +291,13 @@ public sealed class TerminalConfig
         # manager (scoop/chocolatey) are never self-updated - the hint points at the manager instead.
         update-check = true
 
-        # Where terminal sessions live. "in-process" (default): the window process owns them.
-        # "server" (EXPERIMENTAL, github #105): a separate C# pty-host process owns them, so shells
-        # KEEP RUNNING when the UI quits, updates, or crashes - the next start reconnects every pane
-        # to its live session (closing a pane still closes its shell). "server-rust" (EXPERIMENTAL):
-        # same, but the host is the standalone Rust binary (agwinterm-ptyhost.exe) - identical
-        # protocol, blocking-threaded so a .NET runtime IOCP crash class can't occur; falls back to
-        # in-process if the binary isn't present. Changing this applies to NEW sessions immediately;
-        # restart agwinterm to migrate existing ones.
+        # Session owner: in-process, or server (survives UI restarts).
+        # Old server-rust settings migrate to server. Windows legacy hosts are retired.
         session-host = in-process
 
-        # Which ConPTY sessions run on. "inbox" (default): the conhost built into Windows, which
-        # answers an app's device and cursor queries itself and drops its color queries.
-        # "bundled": the conpty.dll + OpenConsole.exe that ship with agwinterm (Microsoft's, the
-        # ones Windows Terminal uses). It passes an app's color, device and cursor queries through
-        # to agwinterm and its output unchanged. Ghostty always requires bundled ConPTY:
-        # it owns line reflow; Inbox's resize repaint corrupts its buffer. This choice applies
-        # only to the legacy managed/Rust cores. Missing bundled files are an error for Ghostty.
-        # Applies to NEW sessions; existing processes keep their original ConPTY.
-        conpty = inbox
+        # Ghostty uses the bundled conpty.dll and OpenConsole.exe so it owns line reflow
+        # and receives terminal queries unchanged. Old inbox settings import as bundled.
+        conpty = bundled
 
         # Build each new tab's environment FRESH from the registry (what a brand-new process tree
         # would get): software installed while agwinterm is running - a JDK, a new PATH entry - is
@@ -328,9 +306,8 @@ public sealed class TerminalConfig
         # LAUNCHED agwinterm do not reach tabs (same trade-off as Windows Terminal's default).
         fresh-env = true
 
-        # Terminal core for NEW sessions: "ghostty" (default), "managed" or "rust".
-        # Existing explicit choices are preserved. Ghostty uses bundled ConPTY.
-        # If native libraries cannot load, the UI reports the error and uses managed.
+        # Ghostty is the terminal backend and uses bundled ConPTY.
+        # Old managed/rust settings are imported as ghostty.
         emulator-core = ghostty
 
         # Blocked sound: play a sound whenever a session enters the "blocked" agent status (needs

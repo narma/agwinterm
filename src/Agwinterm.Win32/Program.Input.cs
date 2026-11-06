@@ -478,7 +478,10 @@ internal partial class Program
 
     /// <summary>Coalesce many output/decode notifications into a single pending repaint.</summary>
     private void RequestRedraw()
+        => RequestRedraw(false);
+    private void RequestRedraw(bool urgent)
     {
+        if(urgent) Interlocked.Exchange(ref _urgentRedrawPending,1);
         if (System.Threading.Interlocked.Exchange(ref _redrawPending, 1) == 0)
             PostMessageW(_hwnd, WM_APP_REDRAW, IntPtr.Zero, IntPtr.Zero);
     }
@@ -567,6 +570,20 @@ internal partial class Program
     private void SendMouseTo(Pane pane, (float ox, float oy, float cw, float ch) view,
         int btn, int dipX, int dipY, int deviceX, int deviceY, bool press)
     {
+        if (pane.ReadOnly || pane.S.InputClosed) return;
+        if (HasSemanticInput(pane.S))
+        {
+            var (ox, oy, cw, ch) = view;
+            var point = MouseReport.MapCoordinates(dipX, dipY, deviceX, deviceY,
+                ox, oy, cw, ch, Scale, pane.S.Cols, pane.S.Rows);
+            uint cellWidth = (uint)Math.Max(1, (int)MathF.Round(cw * Scale));
+            uint cellHeight = (uint)Math.Max(1, (int)MathF.Round(ch * Scale));
+            uint button = (btn & ~32) switch { 0 => 1, 1 => 3, 2 => 2, 64 => 4, 65 => 5, _ => 0 };
+            uint mods = (KeyDown(VK_SHIFT) ? 1u : 0) | (KeyDown(VK_CONTROL) ? 2u : 0) | (KeyDown(VK_MENU) ? 4u : 0);
+            SubmitOwnerInput(pane.S, new TerminalInput.Mouse((btn & 32) != 0 ? 2u : press ? 0u : 1u, button, mods,
+                point.PixelX,point.PixelY,cellWidth,cellHeight,point.Column,point.Row));
+            return;
+        }
         byte[] bytes;
         lock (pane.S.SyncRoot)
         {
@@ -614,11 +631,12 @@ internal partial class Program
         string? url = null; Pane? pane = null; int line = 0, c0 = 0, c1 = 0;
         if (PaneAt(mx, my) is { } h)
         {
-            var (ln, col) = CellAtPx(h.pane, h.ox, h.oy, h.cw, h.ch, mx, my);
             var em = h.pane.S.Emulator;
             var sb = new StringBuilder();
+            int ln,col;
             lock (h.pane.S.SyncRoot)
             {
+                (ln,col)=CellAtPx(h.pane,h.ox,h.oy,h.cw,h.ch,mx,my);
                 int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
                 if (CellAbs(em, hist, rows, cols, ln, col).Hyperlink is { } target)
                 {
@@ -760,12 +778,15 @@ internal partial class Program
     private (int line, int col) CellAtPx(Pane pane, float ox, float oy, float cw, float ch, int px, int py)
     {
         var em = pane.S.Emulator;
-        int cols, rows, hist; bool alt;
-        lock (pane.S.SyncRoot) { cols = em.Screen.Cols; rows = em.Screen.Rows; hist = em.HistoryCount; alt = em.IsAltScreen; }
+        int cols,rows,hist,off;
+        lock(pane.S.SyncRoot)
+        {
+            cols=em.Screen.Cols; rows=em.Screen.Rows; hist=em.HistoryCount;
+            off=em.IsAltScreen ? 0 : em is PresentedTerminalView view ? view.ViewportOffset : Math.Clamp(pane.ScrollOffset,0,hist);
+        }
         // The alt screen shows no history, so the renderer pins its offset to 0 (Program.Render.cs)
         // and so must this: mapping a click through a stale offset would name history rows that are
         // not on screen — a selection nothing highlights, which Ctrl+C would then copy.
-        int off = alt ? 0 : Math.Clamp(pane.ScrollOffset, 0, hist);
         int vr = Math.Clamp((int)((py - oy) / ch), 0, rows - 1);
         int col = Math.Clamp((int)((px - ox) / cw), 0, cols - 1);
         int line = Math.Clamp(hist - off + vr, 0, hist + rows - 1);
@@ -775,6 +796,7 @@ internal partial class Program
     private static Cell CellAbs(ITerminalCore em, int hist, int rows, int cols, int line, int col)
     {
         col = Math.Clamp(col, 0, cols - 1);
+        if (em is PresentedTerminalView presented) return presented.TryGetCachedCell(line,col,out var cell) ? cell : Cell.Empty;
         if (line < hist) return em.GetHistoryCell(line, col);
         int live = line - hist;
         return (live >= 0 && live < rows) ? em.Screen[live, col] : Cell.Empty;
@@ -789,7 +811,9 @@ internal partial class Program
 
     /// <summary>Record the buffer a selection was just made against. Absolute line indices only mean
     /// something relative to this snapshot, and ReconcileSel reconciles the two later.</summary>
-    private static void StampSel(Pane p)
+    private void StampSel(Pane p) => StampSelection(p,all:false);
+
+    private void StampSelection(Pane p,bool all)
     {
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
@@ -805,6 +829,17 @@ internal partial class Program
                              && em.ScrollTop == 0 && em.ScrollBottom == em.Screen.Rows - 1;
             p.SelContent = null;
             p.SelContentVisible = true;
+            if(em is PresentedTerminalView remote && p.S.Presentation is { } presentation)
+            {
+                using var frame=remote.AcquireFrame();
+                if(frame is null) return;
+                string? fallback=null;
+                try { fallback=TerminalSelectionText.Read(remote,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,100000); }
+                catch(NotSupportedException) { } catch(InvalidDataException) { }
+                p.SelOwner=new(presentation,frame.Identity,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
+                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen),fallback,()=>RequestRedraw());
+                return;
+            }
             if (em is GhosttyTerminalCore held && held.SynchronizedOutput)
             {
                 NormSel(p, out int first, out int from, out int last, out int to);
@@ -860,6 +895,18 @@ internal partial class Program
         }
         // The alt screen is a different buffer: an index into one names unrelated text in the other.
         if (alt != p.SelAlt) { p.ClearSel(); return false; }
+        if(p.SelOwner is { } owner && em is PresentedTerminalView remote)
+        {
+            using var frame=remote.AcquireFrame();
+            var located=frame is null ? null : owner.Locate(frame.Identity.TerminalGeneration);
+            p.SelContentVisible=located is { Valid:true };
+            if(located is { Valid:true })
+            {
+                p.SelAncLine=located.AnchorRow; p.SelAncCol=located.AnchorColumn;
+                p.SelFocLine=located.FocusRow; p.SelFocCol=located.FocusColumn;
+            }
+            return true; // immutable selected text remains copyable after eviction/repaint
+        }
         if (p.SelNative is { } nativeSelection)
         {
             if (em.SynchronizedOutput) { p.SelContentVisible = false; return true; }
@@ -942,6 +989,7 @@ internal partial class Program
         lock (pane.S.SyncRoot)
         {
             if (!HasLiveSel(pane)) return "";
+            if(pane.SelOwner is { } owner) return owner.Text ?? "";
             if (pane.SelContent is { } content) return content.Text;
             if (pane.SelNative is { } nativeSelection) return nativeSelection.Text;
             return TerminalSelectionText.Read(pane.S.Emulator, pane.SelAncLine, pane.SelAncCol,
@@ -1106,6 +1154,21 @@ internal partial class Program
     /// scan, so a second scan can measure a different buffer than the one that was copied.</summary>
     private bool CopySelection(Pane pane, out string copied, bool clear = true)
     {
+        if(pane.SelOwner is { Ready.IsCompleted:false } owner)
+        {
+            copied="";
+            if(!owner.CopyQueued)
+            {
+                owner.CopyQueued=true;
+                _=owner.Ready.ContinueWith(_=>Post(()=>
+                {
+                    if(ReferenceEquals(pane.SelOwner,owner)) CopySelection(pane,clear);
+                }),TaskScheduler.Default);
+            }
+            return true; // consume the key while copy is pending; never send Ctrl+C to the child
+        }
+        if(pane.SelOwner is { Text:null })
+        { copied=""; ShowToast("Selection changed before it could be copied; select it again"); return false; }
         string t = SelectionText(pane);
         copied = t;
         bool any = t.AsSpan().IndexOfAnyExcept('\r', '\n', ' ') >= 0;
@@ -1124,7 +1187,8 @@ internal partial class Program
         p.SelAncLine = 0; p.SelAncCol = 0;
         p.SelFocLine = hist + rows - 1; p.SelFocCol = cols - 1;
         p.HasSel = (hist + rows) > 0 && cols > 0;
-        StampSel(p);   // the one creation site that did not, so the first reconcile dropped it
+        p.BlockSel=false;
+        StampSelection(p,all:true);
         RequestRedraw();
     }
 
@@ -1176,6 +1240,12 @@ internal partial class Program
                 ? $"Paste {lines} lines into the terminal? A shell may run them immediately."
                 : "The clipboard text contains control characters. Paste anyway?";
             if (MessageBoxW(_hwnd, msg, "Paste", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+        }
+        if (HasSemanticInput(pane.S))
+        {
+            if (SubmitOwnerInput(pane.S,new TerminalInput.Paste(t)) == TerminalInputAcceptance.Accepted)
+            { pane.ScrollOffset = 0; pane.S.NotifyActivity(); RequestRedraw(); }
+            return;
         }
         byte[] bytes;
         lock (pane.S.SyncRoot)
@@ -1287,6 +1357,16 @@ internal partial class Program
         if (!_searchActive || _searchQuery.Length == 0 || !ReferenceEquals(pane, ActiveSurface())) return;
         if (!ReferenceEquals(_searchPane, pane) || !ReferenceEquals(_searchCore, pane.S.Emulator))
         { RecomputeSearch(); return; }
+        if (!_searchPending && _searchError is null && pane.S.Emulator is PresentedTerminalView view)
+        {
+            bool changed;
+            lock (pane.S.SyncRoot)
+            {
+                using var frame=view.AcquireFrame();
+                changed=frame is not null && frame.Identity.TerminalGeneration > _searchVersion;
+            }
+            if (changed) RecomputeSearch(preserveSelection:true);
+        }
         if (!_searchPending && _searchError is null && pane.S.Emulator is GhosttyTerminalCore core)
         {
             bool changed;
@@ -1308,6 +1388,13 @@ internal partial class Program
         _searchCore = ap?.S.Emulator;
         if (ap is null || _searchQuery.Length == 0) return;
         var em = ap.S.Emulator;
+        if (em is PresentedTerminalView && ap.S.Presentation is { } remote)
+        {
+            _searchPending=true;
+            _searchCancellation=CancellationTokenSource.CreateLinkedTokenSource(_uiGone.Token);
+            _ = SearchOwnerAsync(ap,remote,_searchQuery,_searchCancellation,preserveSelection);
+            return;
+        }
         if (em is GhosttyTerminalCore ghostty)
         {
             _searchPending = true;
@@ -1456,6 +1543,7 @@ internal partial class Program
     /// <summary>Returns true if the key was consumed (matches the WinUI key table).</summary>
     private bool OnKeyDown(int vk)
     {
+        if (vk == VK_RETURN) TerminalLatencyTrace.EnterReceived();
         bool ctrl = KeyDown(VK_CONTROL), shift = KeyDown(VK_SHIFT), alt = KeyDown(VK_MENU) || _altContext;
         if (_ghosttyKeyText is { AltGr: true } layoutText && layoutText.Vk == vk)
             ctrl = alt = false; // layout text must not activate Ctrl+Alt application shortcuts

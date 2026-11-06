@@ -13,6 +13,21 @@ internal static unsafe partial class GhosttyNative
     private static readonly object LoadLock = new();
     private static nint _library, _upstream;
     private static bool _resolverInstalled;
+    internal static GhosttyDiagnostics.NativeCounters? AllocationStats()
+    {
+        if (_library == 0 || !NativeLibrary.TryGetExport(_library, "agwvt_allocation_stats", out nint pointer)) return null;
+        ulong current, peak, allocated, allocations, frees;
+        ((delegate* unmanaged[Cdecl]<ulong*, ulong*, ulong*, ulong*, ulong*, void>)pointer)(
+            &current, &peak, &allocated, &allocations, &frees);
+        return new(current, peak, allocated, allocations, frees);
+    }
+    internal static GhosttyDiagnostics.NativePages? PageStats()
+    {
+        if (_library == 0 || !NativeLibrary.TryGetExport(_library,"agwvt_page_stats",out nint pointer)) return null;
+        ulong resident,virtualBytes,images;
+        ((delegate* unmanaged[Cdecl]<ulong*,ulong*,ulong*,void>)pointer)(&resident,&virtualBytes,&images);
+        return new(resident,virtualBytes,images);
+    }
 
     public static bool TryLoad(string directory, out string? error)
     {
@@ -139,7 +154,8 @@ internal static unsafe partial class GhosttyNative
     internal sealed class SearchHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
         private readonly Handle _owner;
-        private SearchHandle(Handle owner, nint pointer) : base(true) { _owner = owner; SetHandle(pointer); }
+        private SearchHandle(Handle owner, nint pointer) : base(true)
+        { _owner = owner; SetHandle(pointer); GhosttyDiagnostics.Search(1); }
         internal static SearchHandle Create(Handle owner, string query)
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(query);
@@ -162,16 +178,26 @@ internal static unsafe partial class GhosttyNative
         {
             // Like anchors, finalizers only queue destruction. The allocator owner
             // stays retained until the queued search can be freed safely.
-            SearchFree(handle); _owner.DangerousRelease(); return true;
+            SearchFree(handle); GhosttyDiagnostics.Search(-1); _owner.DangerousRelease(); return true;
         }
     }
     internal sealed class Handle : SafeHandleZeroOrMinusOneIsInvalid
     {
         private GCHandle _events;
-        internal Handle(nint pointer, GCHandle events) : base(true) { SetHandle(pointer); _events = events; }
+        private GhosttyInstanceRole _role;
+        internal GhosttyInstanceRole Role => _role;
+        internal Handle(nint pointer, GCHandle events) : base(true)
+        { SetHandle(pointer); _events = events; GhosttyDiagnostics.Allocate(); }
+        internal void MarkReplica()
+        {
+            ObjectDisposedException.ThrowIf(IsClosed, this);
+            if (_role == GhosttyInstanceRole.LegacyReplica) return;
+            _role = GhosttyInstanceRole.LegacyReplica; GhosttyDiagnostics.MarkReplica();
+        }
         protected override bool ReleaseHandle()
         {
             Free(handle);
+            GhosttyDiagnostics.Release(_role);
             if (_events.IsAllocated) _events.Free();
             return true;
         }

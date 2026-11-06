@@ -115,12 +115,8 @@ internal partial class Program
         Tog(0, "confirm-close-session", "Confirm before closing");
         // pty-host opt-in (#105): server mode keeps shells alive across UI restarts/updates/crashes.
         Drop(0, "session-host", "Session host (shells survive restarts)",
-            new[] { "In-process (default)", "Pty-host server (experimental)", "Pty-host server: Rust (experimental)" },
-            new[] { "in-process", "server", "server-rust" });
-        // Core changes apply to newly created sessions; live native state is never switched.
-        Drop(0, "emulator-core", "Terminal core (new sessions)",
-            new[] { "Managed", "Rust (experimental)", "Ghostty (default)" },
-            new[] { "managed", "rust", "ghostty" });
+            new[] { "In-process", "Session host (survives UI restarts)" },
+            new[] { "in-process", "server" });
         Sec(0, "Shell");
         Tog(0, "shell-integration", "Shell integration (live cwd)");
         // fresh-env: rebuild each new tab's env from the registry (new installs visible, no restart).

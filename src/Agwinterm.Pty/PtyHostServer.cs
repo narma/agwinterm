@@ -31,6 +31,7 @@ public sealed class PtyHostServer : IDisposable
 
     private readonly string _appId;
     private readonly ConPtyApi? _conpty;
+    private readonly bool _ghosttyOnly;
     private readonly CancellationTokenSource _cts = new();
     private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CreationTickets<Hosted> _creations = new();
@@ -46,6 +47,11 @@ public sealed class PtyHostServer : IDisposable
         public readonly object DataLock = new();                 // guards Data + writes to it
         public readonly PtyResizeTransaction Resize = new();     // real resize and the complete repaint jiggle
         public DataChannel? Data;                                // the currently-attached client
+        public bool SingleOwner;
+        public OwnerInputQueue? Input;
+        public HostPresentationChannel? Presentation;
+        public ulong AttachmentEpoch;
+        public readonly object CaptureGate = new();
         public readonly QueryReplies Replies = new();            // this host's answers, sent only while detached
     }
 
@@ -58,17 +64,29 @@ public sealed class PtyHostServer : IDisposable
     private sealed class QueryReplies : IHostActions
     {
         private List<string> _pending = new();
+        public Action<string>? ResponseSink;
+        public Action<PresentationEffect>? EffectSink;
+        public int ProgressState, ProgressValue;
+        public string RoleNotice="";
+        public bool ConsumeTitle(string title)
+        {
+            if(!title.StartsWith("zmx-role;",StringComparison.Ordinal)) return false;
+            RoleNotice=title; EffectSink?.Invoke(new() { Kind=6,Text=title }); return true;
+        }
         public List<string> Take() { var taken = _pending; _pending = new(); return taken; }
-        public void Respond(string reply) => _pending.Add(reply);
+        public void Respond(string reply) { if (ResponseSink is { } sink) sink(reply); else _pending.Add(reply); }
         public (Color Foreground, Color Background)? DefaultColors { get; set; }
         public IReadOnlyList<Color>? DefaultPalette { get; set; }
         public Color? DefaultCursorColor { get; set; }
         public ShellCompletion? Completion { get; set; }
-        public void Notify(string title, string body) { }
-        public void Progress(int state, int value) { }
-        public void ClipboardWrite(string text) { }
-        public void Bell() { }
-        public void CommandFinished(string token, long sequence) => Completion?.Accept(token, sequence, persist: true);
+        public void Notify(string title, string body) => EffectSink?.Invoke(new() { Kind=1,Title=title,Text=body });
+        public void MetadataChanged(string title,string cwd) => EffectSink?.Invoke(new() { Kind=7,Title=title,Text=cwd });
+        public void Progress(int state, int value)
+        { ProgressState=state; ProgressValue=value; EffectSink?.Invoke(new() { Kind=2,State=state,Value=value }); }
+        public void ClipboardWrite(string text) => EffectSink?.Invoke(new() { Kind=3,Text=text });
+        public void Bell() => EffectSink?.Invoke(new() { Kind=4 });
+        public void CommandFinished(string token, long sequence)
+        { if(Completion?.Accept(token,sequence,persist:true) == true) EffectSink?.Invoke(new() { Kind=5,Text=token,CompletionSequence=sequence }); }
         public void Unhandled(string kind, string detail) { }
     }
 
@@ -83,9 +101,10 @@ public sealed class PtyHostServer : IDisposable
     }
 
     /// <param name="conpty">The ConPTY sessions are created on; null = <see cref="ConPtyApi.Current"/>.</param>
-    public PtyHostServer(string appId, ConPtyApi? conpty = null)
+    public PtyHostServer(string appId, ConPtyApi? conpty = null, bool ghosttyOnly = false)
     {
         _appId = appId;
+        _ghosttyOnly=ghosttyOnly;
         _conpty = conpty;
         _ = RetryPendingCleanupAsync();
         _ = AcceptLoopAsync(_cts.Token);
@@ -180,12 +199,16 @@ public sealed class PtyHostServer : IDisposable
         // The handshake is the protocol's forward-compat seam: a client offering a DIFFERENT
         // version is refused loudly (never half-understood), and the reply names ours.
         return h.Protocol == ProtocolVersion
-            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1 } }
+            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1, PresentationRevision = 1 } }
             : Err($"protocol mismatch: host={ProtocolVersion} client={h.Protocol}");
     }
 
     private Reply HandleCreate(Create c)
     {
+        if(_ghosttyOnly && (!c.SingleOwner || c.EmulatorCore != "ghostty"))
+            return Err("This host supports only single-owner Ghostty sessions.");
+        if (c.SingleOwner && (c.EmulatorCore != "ghostty" || (ulong)c.Cols*c.Rows > TerminalFrame.MaximumCells))
+            return Err("single-owner presentation requires Ghostty and bounded viewport dimensions");
         if (c.Cols > 10000 || c.Rows > 10000) return Err("create cols/rows must not exceed 10000");
         string id = c.Id.Length > 0 ? c.Id : Guid.NewGuid().ToString();
         int cols = c.Cols > 0 ? (int)c.Cols : 120;
@@ -210,7 +233,18 @@ public sealed class PtyHostServer : IDisposable
         try
         {
             session = new TerminalSession(cols, rows, c.EmulatorCore) { Conpty = _conpty };
-            hosted = new Hosted { Id = id, S = session, Creation = creation };
+            hosted = new Hosted { Id = id, S = session, Creation = creation, SingleOwner = c.SingleOwner };
+            if (c.SingleOwner)
+            {
+                hosted.Input = new OwnerInputQueue(session);
+                hosted.Replies.EffectSink = effect => hosted.Presentation?.PublishEffect(effect);
+                ((GhosttyTerminalCore)session.Emulator).SetTitleFilter(hosted.Replies.ConsumeTitle);
+                hosted.Replies.ResponseSink = reply =>
+                {
+                    if (hosted.Input.Submit(new TerminalInput.Raw(System.Text.Encoding.UTF8.GetBytes(reply))) != TerminalInputAcceptance.Accepted)
+                        session.MarkInputClosed();
+                };
+            }
             hosted.Replies.DefaultColors = ThemeColors.Parse(env?.GetValueOrDefault(ThemeColors.EnvVar));
             hosted.Replies.DefaultPalette = ThemeColors.ParsePalette(env?.GetValueOrDefault(ThemeColors.PaletteEnvVar));
             hosted.Replies.DefaultCursorColor = ThemeColors.ParseColor(env?.GetValueOrDefault(ThemeColors.CursorEnvVar));
@@ -221,7 +255,7 @@ public sealed class PtyHostServer : IDisposable
             // Forward raw output to whichever client is attached; child exit closes the data pipe (EOF
             // is the client's exit signal — the code is in `list`). Whoever got the chunk answers its
             // queries: the client's emulator, or with nobody attached, this host's.
-            session.RawOutput += chunk =>
+            if (!hosted.SingleOwner) session.RawOutput += chunk =>
             {
                 var replies = hosted.Replies.Take();
                 lock (hosted.DataLock)
@@ -229,13 +263,13 @@ public sealed class PtyHostServer : IDisposable
                     var d = hosted.Data;
                     if (d is not null)
                     {
-                        try { d.Pipe.Write(chunk); d.Pipe.Flush(); return; }
+                        try { d.Pipe.Write(chunk); d.Pipe.Flush(); TerminalLatencyTrace.Record(23, chunk.Length); return; }
                         catch { CloseDataLocked(hosted); }   // client vanished mid-write → plain detach
                     }
                     foreach (var reply in replies) SessionInput.TryWrite(session, System.Text.Encoding.UTF8.GetBytes(reply));
                 }
             };
-            session.Exited += _ => CloseData(hosted);
+            session.Exited += _ => { if (!hosted.SingleOwner) CloseData(hosted); };
             // Await the spawn so a failure (bad exe, bad cwd) travels back as the create's error — the
             // throwing form: StartAsync would paint the reason into THIS process's emulator, which no
             // client sees, and answer ok for a session that never ran (#227 r3).
@@ -260,7 +294,7 @@ public sealed class PtyHostServer : IDisposable
         catch (Exception ex)
         {
             bool cleaned = true;
-            try { if (hosted is not null) CloseData(hosted); cleaned = session?.DisposeHosted() ?? true; } catch { cleaned = false; }
+            try { if (hosted is not null) { CloseData(hosted); hosted.Input?.Dispose(); } cleaned = session?.DisposeHosted() ?? true; } catch { cleaned = false; }
             lock (_lock)
             {
                 if (_sessions.TryGetValue(id, out var current) && ReferenceEquals(current, hosted)) _sessions.Remove(id);
@@ -322,7 +356,7 @@ public sealed class PtyHostServer : IDisposable
 
     private bool DisposeHosted(Hosted h)
     {
-        try { CloseData(h); return h.S.DisposeHosted(); }
+        try { CloseData(h); h.Input?.Dispose(); return h.S.DisposeHosted(); }
         catch { return false; } // keep the exact cleanup obligation queryable, never claim completion
     }
 
@@ -349,6 +383,35 @@ public sealed class PtyHostServer : IDisposable
 
     private Reply HandleAttach(Attach a) => WithSession(a.Id, hosted =>
     {
+        if (a.PresentationRevision != 0)
+        {
+            if (a.PresentationRevision != 1 || !hosted.SingleOwner || hosted.S.Emulator is not GhosttyTerminalCore)
+                return Err("requested presentation transport is unavailable for this session");
+            lock (hosted.DataLock)
+            {
+                CloseDataLocked(hosted);
+                ulong epoch = checked(++hosted.AttachmentEpoch);
+                var channel = new HostPresentationChannel(ControlPipeName(_appId),hosted.S,hosted.Input!,hosted.Creation.Ticket,epoch,hosted.CaptureGate);
+                hosted.Presentation = channel; channel.Start();
+                lock(hosted.S.SyncRoot)
+                {
+                    channel.PublishEffect(new() { Kind=2,State=hosted.Replies.ProgressState,Value=hosted.Replies.ProgressValue });
+                    if(hosted.Replies.RoleNotice.Length > 0) channel.PublishEffect(new() { Kind=6,Text=hosted.Replies.RoleNotice });
+                    channel.PublishEffect(new() { Kind=7,Title=hosted.S.Emulator.Title,Text=hosted.S.Emulator.Cwd });
+                }
+                _ = channel.Completion.ContinueWith(_ =>
+                {
+                    lock(hosted.DataLock) if(ReferenceEquals(hosted.Presentation,channel)) hosted.Presentation=null;
+                },TaskScheduler.Default);
+                return new Reply { Ok = true, Attach = new AttachReply { Pipe = channel.FramePipeName,
+                    InputPipe = channel.InputPipeName, QueryPipe = channel.QueryPipeName, EffectPipe=channel.EffectPipeName,
+                    PresentationRevision = 1, AttachmentEpoch = epoch,
+                    CreationTicket = hosted.Creation.Ticket, EmulatorCore = "ghostty", Cols = (uint)hosted.S.Cols,
+                    Rows = (uint)hosted.S.Rows, ChildPid = (uint)(hosted.S.ChildProcessId ?? 0),
+                    HasExited = hosted.S.HasExited, ExitCode = hosted.S.ExitCode ?? 0 } };
+            }
+        }
+        if (hosted.SingleOwner) return Err("single-owner session requires a presentation-capable client");
         if (hosted.S.Emulator is GhosttyTerminalCore && !a.NativeSnapshot)
             return Err("This Ghostty host requires a client supporting native snapshots.");
         bool repaint = a.Repaint;
@@ -484,7 +547,9 @@ public sealed class PtyHostServer : IDisposable
     private Reply HandleResize(Resize r) => WithSession(r.Id, h =>
     {
         if (!PtyResizeTransaction.Valid(r.Cols, r.Rows)) return Err("resize cols/rows must be in 1..10000");
+        if (h.SingleOwner && (ulong)r.Cols*r.Rows > TerminalFrame.MaximumCells) return Err("presentation viewport exceeds cell limit");
         h.Resize.Run(() => h.S.Resize((int)r.Cols, (int)r.Rows));
+        h.Presentation?.Signal();
         return Ok();
     }, r.CreationTicket);
 
@@ -493,14 +558,23 @@ public sealed class PtyHostServer : IDisposable
         var colors = ThemeColors.Parse(update.Colors);
         var palette = ThemeColors.ParsePalette(update.Palette);
         var cursor = ThemeColors.ParseColor(update.Cursor);
-        if (colors is null || palette is null || cursor is null) return Err("invalid terminal theme");
+        if (colors is null || palette is null || cursor is null || update.CursorDefault > 6) return Err("invalid terminal theme");
         lock (h.S.SyncRoot)
         {
             h.Replies.DefaultColors = colors;
             h.Replies.DefaultPalette = palette;
             h.Replies.DefaultCursorColor = cursor;
-            if (h.S.Emulator is GhosttyTerminalCore native) native.SyncTheme();
+            if (h.S.Emulator is GhosttyTerminalCore native)
+            {
+                native.SyncTheme();
+                if (update.CursorDefault != 0)
+                {
+                    var style = update.CursorDefault switch { <= 2 => CursorStyle.Block, <= 4 => CursorStyle.Underline, _ => CursorStyle.Bar };
+                    native.SetCursorDefault(style, (update.CursorDefault & 1) != 0);
+                }
+            }
         }
+        h.Presentation?.Signal();
         return Ok();
     }, update.CreationTicket);
 
@@ -535,7 +609,7 @@ public sealed class PtyHostServer : IDisposable
                 ExitCode = h.S.ExitCode ?? 0,
             };
             lock (h.S.SyncRoot) info.Title = h.S.Emulator.Title;
-            lock (h.DataLock) info.Attached = h.Data is not null;
+            lock (h.DataLock) info.Attached = h.Data is not null || h.Presentation is { Completion.IsCompleted: false };
             list.Sessions.Add(info);
         }
         return new Reply { Ok = true, List = list };
@@ -564,6 +638,7 @@ public sealed class PtyHostServer : IDisposable
     private void CloseData(Hosted h) { lock (h.DataLock) CloseDataLocked(h); }
     private static void CloseDataLocked(Hosted h)
     {
+        h.Presentation?.Cancel(); h.Presentation = null;
         var ch = h.Data;
         h.Data = null;                                   // writers stop immediately
         if (ch is not null) try { ch.Cancel.Cancel(); } catch (ObjectDisposedException) { }

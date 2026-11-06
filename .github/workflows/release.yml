@@ -86,6 +86,8 @@ jobs:
       - name: Stage native core for consumers
         shell: pwsh
         run: |
+          cargo build --locked --release --manifest-path native/Cargo.toml -p agwinterm-core -p agwinterm-ptyhost
+          if ($LASTEXITCODE -ne 0) { throw 'Legacy consumer ABI build failed' }
           ./tools/check-abi.ps1 -ManifestOut installer/Output/agwinterm-core-abi.json
           $abi = (Get-Content installer/Output/agwinterm-core-abi.json | ConvertFrom-Json).abiVersion
           Copy-Item native/target/release/agwinterm_core.dll     "installer/Output/agwinterm_core-abi$abi.dll"

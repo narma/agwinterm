@@ -12,11 +12,13 @@ public sealed class GhosttySelection : IDisposable
     private readonly bool _block, _alt;
     private long _version;
     private bool _valid = true;
+    private readonly int _maximumCharacters;
     public string Text { get; }
-    internal GhosttySelection(GhosttyTerminalCore core, int ar, int ac, int fr, int fc, bool block)
+    internal GhosttySelection(GhosttyTerminalCore core, int ar, int ac, int fr, int fc, bool block,int maximumCharacters)
     {
         _core = core; _block = block; _alt = core.IsAltScreen; _version = core.TextVersion;
-        Text = TerminalSelectionText.Read(core, ar, ac, fr, fc, block);
+        _maximumCharacters=maximumCharacters;
+        Text = TerminalSelectionText.Read(core, ar, ac, fr, fc, block,maximumCharacters);
         _anchor = core.TrackPoint(ar, ac);
         try { _focus = core.TrackPoint(fr, fc); }
         catch { _anchor.Dispose(); throw; }
@@ -29,7 +31,8 @@ public sealed class GhosttySelection : IDisposable
         if (_version != _core.TextVersion)
         {
             _version = _core.TextVersion;
-            _valid = Text == TerminalSelectionText.Read(_core, ar, ac, fr, fc, _block);
+            try { _valid = Text == TerminalSelectionText.Read(_core, ar, ac, fr, fc, _block,_maximumCharacters); }
+            catch(InvalidDataException) { _valid=false; }
         }
         return _valid;
     }

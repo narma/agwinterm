@@ -10,6 +10,7 @@ internal partial class Program
         string? pane, OverlayTextArgs text, OverlayOptions options)
     {
         TaskCompletionSource<string>? done = null;
+        ISession? readSession=null;
         string? checkedCwd = options.Cwd;
         Ses? cwdSession = null;
         ShellProfile? cwdProfile = null;
@@ -129,6 +130,8 @@ internal partial class Program
                 if (owner is null) CloseOverlayOf(session); else ClosePaneOverlay(session, owner);
                 return "closed";
             }
+            if(action == "text" && slot.Term is { } readTerm)
+            { readSession=readTerm.S; return ""; }
             if (action is "text" or "copy") return OverlayRead(slot, action, text, owner is null ? OverlayPanes.SessionWide : index);
             if (action == "result")
             {
@@ -206,6 +209,11 @@ internal partial class Program
             }
             return slot.Hidden ? "hidden" : "shown";
         });
+        if(readSession is not null)
+        {
+            try { return SurfaceText.Dump(readSession,text); }
+            catch(Exception ex) { return ISessionHost.RefusePrefix+OverlayPanes.ReadFailedRefusal(ex.Message); }
+        }
         if (action != "open" || !block || reply.StartsWith(ISessionHost.RefusePrefix, StringComparison.Ordinal)) return reply;
         if (done is null) throw new InvalidOperationException("overlay creation did not expose its completion source");
         try { done.Task.Wait(Timeout.Infinite, _uiGone.Token); }

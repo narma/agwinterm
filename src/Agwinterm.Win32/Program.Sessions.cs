@@ -17,12 +17,8 @@ namespace Agwinterm.Win32;
 /// <summary>Session/workspace management: panes, MRU, covers, overlays, splits, reopen-closed, watermarks.</summary>
 internal partial class Program
 {
-    private static ServerSessionBackend? _legacyRestoreBackend;
-    private static ServerSessionBackend? _legacyLiveRestoreBackend;
-    private static ServerSessionBackend? _nativeLiveRestoreBackend;
     private static ServerSessionBackend? _liveSessionBackend;
     private static (string Core, string Conpty)? _liveBackendConfig;
-    private static bool RustLiveHostEnabled => _config.ConfiguredSessionHost == "server-rust";
 
     private static ServerSessionBackend LiveSessionBackend()
     {
@@ -35,26 +31,6 @@ internal partial class Program
             _liveBackendConfig = key;
         }
         return _liveSessionBackend;
-    }
-
-    // A new default must not orphan shells created before the upgrade. This
-    // backend has no executable: recovery may attach, but never start a Rust host.
-    private static ServerSession? TryRestoreRustSession(string id, int cols, int rows)
-    {
-        string hostId = (_argPipe ?? _appId) + "-rust";
-        if (!PtyHostClient.IsRunning(hostId)) return null;
-        var backend = _legacyRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust");
-        return TryAdoptExisting(backend, id, cols, rows);
-    }
-
-    private static ServerSession? TryRestoreOtherLiveHost(string id, int cols, int rows, string ticket, bool rustHost, bool cancelUnattached)
-    {
-        string hostId = (_argPipe ?? _appId) + (rustHost ? "-rust" : "");
-        if (!PtyHostClient.IsRunning(hostId)) return null;
-        var backend = rustHost
-            ? _legacyLiveRestoreBackend ??= new ServerSessionBackend(hostId, null, name: "server-rust", replicaCore: "managed")
-            : _nativeLiveRestoreBackend ??= new ServerSessionBackend(hostId, null, replicaCore: "ghostty");
-        return TryAdoptExisting(backend, id, cols, rows, ticket, cancelUnattached);
     }
 
     private static ServerSession? TryAdoptExisting(ServerSessionBackend backend, string id, int cols, int rows,
@@ -149,7 +125,6 @@ internal partial class Program
                 liveError = WslLiveProfiles.Validate(liveProfile!, _config.ConfiguredSessionHost,
                     _isQuickWindow ? WslLiveSurface.Quick : handoff is not null ? WslLiveSurface.Handoff
                     : shellWrap || paneId.Contains(":scratch:", StringComparison.Ordinal) ? WslLiveSurface.Program : WslLiveSurface.Ordinary);
-            if (!hasLiveBinding && !RustLiveHostEnabled) liveError = "WSL live sessions require the Rust PTY host";
             if (deElevate || sessionCommand is not null || !string.IsNullOrWhiteSpace(command))
                 liveError = "This launch surface does not support WSL live sessions";
             try
@@ -161,15 +136,7 @@ internal partial class Program
                     : liveBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
                     && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
-                if (!adopted
-                    && (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } oldTicket
-                    && TryRestoreOtherLiveHost(paneId, cols, rows, oldTicket, rustHost: liveBackend.Name != "server-rust",
-                        cancelUnattached: restoredRemote is not null) is { } previous)
-                {
-                    session.Dispose();
-                    session = previous;
-                    adopted = true;
-                }
+
             }
             catch (Exception ex)
             {
@@ -192,17 +159,12 @@ internal partial class Program
                 session = InProcessSessionBackend.Instance.Create(paneId, cols, rows);
                 ShowToast("pty-host unavailable (" + ex.Message + ") — session created in-process", 5000);
             }
-        if (_restoring && !adopted && !liveRequested && handoff is null && !_isQuickWindow
-            && _sessionBackend.Name != "server-rust" && _config.EmulatorCore == "ghostty"
-            && TryRestoreRustSession(paneId, cols, rows) is { } surviving)
-        {
-            session.Dispose(); // provisional handle has not started a child
-            session = surviving;
-            adopted = true;
-        }
+
         // Under the session lock: with the Rust core this setter now crosses into native code and
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
+        if(adopted && session.Presentation is { IsRemote:true } presentation)
+            presentation.Execute(new TerminalCommand.ScrollbackLimit(_config.Scrollback));
         if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
         string promptToken = completion?.Token ?? ((adopted || hasLiveBinding) && _restoredPromptTokens.TryGetValue(paneId, out string? savedToken)
             && ShellCompletion.ValidToken(savedToken) ? savedToken : Guid.NewGuid().ToString("N"));
@@ -233,7 +195,9 @@ internal partial class Program
             // partial redraw never reaches the screen — the closing 2026l chunk clears the mode and
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
             // blink interval, so a crash that leaves ?2026 open can't freeze the pane for long.
-            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput) RequestRedraw();
+            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput)
+                  RequestRedraw(session is ServerSession { UsesPresentation:true } &&
+                      Interlocked.Read(ref pane.InputPaintDeadline) > Environment.TickCount64);
             else if (session.Emulator is GhosttyTerminalCore && IsSurfaceVisible(pane)) ScheduleSyncRedraw(pane);
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
@@ -257,7 +221,9 @@ internal partial class Program
             explicitSoundStatus = session.Status;
             Post(() => RouteStatusSound(pane, name, blockedDefault: false));
         };
-        session.Emulator.Host = new PaneHost(this, pane, session);   // the host-action seam (see IHostActions)
+        var paneHost=new PaneHost(this,pane,session);
+        if(session.Presentation is LocalSessionPresentation localPresentation) localPresentation.SetHost(paneHost);
+        else lock(session.SyncRoot) session.Emulator.Host=paneHost;
         // TryAdopt may have completed before the pane's host/theme existed.
         if (session is ServerSession themedServer) themedServer.UpdateTheme();
         session.Exited += code => Post(() =>
@@ -427,7 +393,7 @@ internal partial class Program
             }
             // Scrollback (survives ConPTY's initial screen erase — an Inject would be wiped) +
             // toast for immediate visibility.
-            session.MutateLocked(e => e.SeedScrollback(new[]
+            if(session is not ServerSession { UsesPresentation:true }) session.MutateLocked(e => e.SeedScrollback(new[]
             {
                 $"[agwinterm] profile exe not found: {prof?.Command}",
                 $"  fell back to {cmd} (fix the profile in profiles.json)",
@@ -485,6 +451,7 @@ internal partial class Program
         public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
         public IReadOnlyList<Color>? DefaultPalette => _theme.Palette;
         public Color? DefaultCursorColor => _theme.Cursor;
+        public (CursorStyle Style, bool Blink)? DefaultCursor => (_config.CursorStyle, _config.CursorBlink);
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
         public void CommandFinished(string token, long sequence)
         {
@@ -821,7 +788,7 @@ internal partial class Program
         int cols = Math.Max(1, (int)(w / cw)), rows = Math.Max(1, (int)(h / ch));
         // Ghostty tracks both endpoints through native reflow. Legacy selections
         // still use physical row coordinates and must be discarded on width changes.
-        if (term.S.Cols != cols && term.SelNative is null) term.ClearSel();
+        if (term.S.Cols != cols && term.SelNative is null && term.SelOwner is null) term.ClearSel();
         if (term.S.Cols != cols || term.S.Rows != rows) term.S.Resize(cols, rows);
         term.ScrollOffset = Math.Clamp(term.ScrollOffset, 0, term.S.Emulator.HistoryCount);
     }
@@ -1913,7 +1880,7 @@ internal partial class Program
         if (ses is null || ses.Panes.Count != 1) return;
         pane.AwaitingExitAck = true;
         string msg = Environment.NewLine + Environment.NewLine + "The session has ended (exit " + exitCode + ")." + Environment.NewLine + "Press Enter to close the session." + Environment.NewLine;
-        lock (pane.S.SyncRoot) pane.S.Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg));
+        pane.S.Inject(System.Text.Encoding.UTF8.GetBytes(msg));
         RequestRedraw();
     }
 

@@ -1,9 +1,8 @@
-# Update the installed GUI without replacing the running Rust pty-host or ConPTY.
-# Close the GUI normally when prompted; server-hosted sessions survive the restart.
+# Update the installed application after checkpointing and closing the previous version.
 [CmdletBinding()]
 param(
     [string]$InstallDir = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\agwinterm'),
-    [ValidateRange(1, 3600)][int]$WaitSeconds = 120,
+    [ValidateRange(5, 3600)][int]$WaitSeconds = 120,
     [switch]$NoLaunch,
     [switch]$IncludeCli
 )
@@ -13,9 +12,6 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $InstallDir = [IO.Path]::GetFullPath($InstallDir)
 $exe = Join-Path $InstallDir 'Agwinterm.Win32.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Installed GUI not found: $exe. Run the full installer first, or specify -InstallDir." }
-if (-not (Test-Path -LiteralPath (Join-Path $InstallDir 'agwinterm-ptyhost.exe'))) {
-    throw 'This update requires an existing installation with the Rust pty-host.'
-}
 $dotnet = if (Test-Path 'C:\Program Files\dotnet\dotnet.exe') { 'C:\Program Files\dotnet\dotnet.exe' } else { 'dotnet' }
 $iss = Get-Content (Join-Path $PSScriptRoot 'agwinterm.iss') -Raw
 if ($iss -notmatch '#define\s+AppVersion\s+"([^"]+)"') { throw 'AppVersion not found' }
@@ -35,9 +31,9 @@ if ($IncludeCli) {
     if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed; installed files were not changed.' }
 }
 
-# Publish currently includes ConPTY. Never replace it while a host uses it. Keep this
-# exclusion explicit, including host/core/hooks/CLI in case publish gains more payloads.
-$protected = @('conpty.dll', 'OpenConsole.exe', 'agwinterm_core.dll')
+# Migration closes hosts before replacing their ConPTY/runtime files. Retired
+# Windows binaries and optional CLI/hooks are not copied from a stale build tree.
+$protected = @('agwinterm_core.dll')
 $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
     $_.Name -notin $protected -and $_.Name -notlike 'agwinterm-ptyhost*' -and
     $_.Name -notlike 'agwinterm-hook*' -and ($IncludeCli -or $_.Name -notlike 'agwintermctl*')
@@ -50,22 +46,18 @@ $changes = @(foreach ($file in $files) {
         [pscustomobject]@{ Source = $file.FullName; Target = $target; Relative = $relative; Existed = $exists }
     }
 })
+$changes += @(foreach($retired in 'agwinterm_core.dll','agwinterm-ptyhost.exe') {
+    $target=Join-Path $InstallDir $retired
+    if(Test-Path -LiteralPath $target) {
+        [pscustomobject]@{Source=$null;Target=$target;Relative=$retired;Existed=$true}
+    }
+})
 
-Write-Host 'Close the Agwinterm GUI normally. The Rust pty-host can keep running.' -ForegroundColor Yellow
-Write-Host "Waiting up to $WaitSeconds seconds; no process will be killed."
-$deadline = [DateTime]::UtcNow.AddSeconds($WaitSeconds)
-do {
-    # A C# --pty-host uses the same exe: refuse to update it while it runs too.
-    $running = @(Get-Process -Name 'Agwinterm.Win32' -ErrorAction SilentlyContinue | Where-Object {
-        try { [string]::Equals($_.Path, $exe, [StringComparison]::OrdinalIgnoreCase) } catch { $false }
-    })
-    if ($running.Count -eq 0) { break }
-    if ([DateTime]::UtcNow -ge $deadline) { throw 'GUI (or C# pty-host) is still running. Installed files were not changed.' }
-    Start-Sleep -Milliseconds 500
-} while ($true)
-
+$prepare=Join-Path $PSScriptRoot 'prepare-owner-upgrade.ps1'
+& "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $prepare -InstallDir $InstallDir -WaitSeconds ([Math]::Min($WaitSeconds,300))
+if($LASTEXITCODE -ne 0){throw 'State migration failed; installed files were not changed.'}
 # Check ALL changed existing files before modifying anything. A legacy C# host or
-# another reader may still have managed/runtime DLLs locked. Never terminate it.
+# another reader may still have managed/runtime DLLs locked.
 foreach ($change in $changes) {
     if ($change.Existed) {
         try {
@@ -83,6 +75,7 @@ try {
     foreach ($change in $changes) {
         New-Item -ItemType Directory -Path (Split-Path -Parent $change.Target) -Force | Out-Null
         $applied.Add($change) # Include a partially failed copy in rollback.
+        if($null -eq $change.Source) { Remove-Item -LiteralPath $change.Target -Force; continue }
         Copy-Item -LiteralPath $change.Source -Destination $change.Target -Force
         if ((Get-FileHash -LiteralPath $change.Source).Hash -ne (Get-FileHash -LiteralPath $change.Target).Hash) {
             throw "Verification failed: $($change.Target)"
@@ -100,6 +93,6 @@ try {
     if ($rollbackErrors.Count) { throw "Update failed: $failure. Rollback incomplete: $($rollbackErrors -join '; '). Backup: $backup" }
     throw "Update failed; previous files restored. $failure"
 }
-Write-Host "GUI $version updated: $($changes.Count) files. Rust host and ConPTY were not replaced." -ForegroundColor Green
+Write-Host "GUI $version updated: $($changes.Count) files. Old sessions were saved and closed." -ForegroundColor Green
 Write-Host "Backup: $backup"
-if (-not $NoLaunch) { Start-Process -FilePath $exe -WorkingDirectory $InstallDir }
+if (-not $NoLaunch) { Start-Process -FilePath $exe -WorkingDirectory $InstallDir -WindowStyle Hidden }

@@ -319,6 +319,7 @@ fn dispatch(host: &Arc<Host>, req: Request) -> Reply {
                     creation_revision: 1,
                     core_selection_revision: 0, // legacy host: no per-session core selection
                     theme_revision: 0,
+                    presentation_revision: 0,
                 })))
             } else {
                 err_reply(format!(
@@ -535,6 +536,9 @@ fn finish_cleanup(host: &Arc<Host>, ticket: &str, h: &Arc<Hosted>) {
 }
 
 fn handle_create(host: &Arc<Host>, c: proto::Create) -> Reply {
+    if c.single_owner {
+        return err_reply("single-owner presentation is not supported by this host");
+    }
     if c.id.is_empty() {
         return err_reply("create needs id");
     }
@@ -744,6 +748,9 @@ fn handle_create(host: &Arc<Host>, c: proto::Create) -> Reply {
 }
 
 fn handle_attach(host: &Arc<Host>, a: proto::Attach) -> Reply {
+    if a.presentation_revision != 0 {
+        return err_reply("single-owner presentation is not supported by this host");
+    }
     let Some(hosted) = host.state.lock().unwrap().sessions.get(&a.id).cloned() else {
         return err_reply(format!("no session '{}'", a.id));
     };
@@ -837,6 +844,11 @@ fn handle_attach(host: &Arc<Host>, a: proto::Attach) -> Reply {
         creation_ticket: hosted.creation_ticket.clone(),
         native_snapshot: false,
         emulator_core: String::new(), // retain the existing legacy-replica path
+        presentation_revision: 0,
+        input_pipe: String::new(),
+        query_pipe: String::new(),
+        effect_pipe: String::new(),
+        attachment_epoch: 0,
     })))
 }
 

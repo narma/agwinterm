@@ -144,7 +144,13 @@ $wheelEncoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($wheel
 $null=Rpc 'session.type' @{text="powershell.exe -NoLogo -NoProfile -EncodedCommand $wheelEncoded`r"} $wheelPane
 for($i=0;$i-lt 300 -and -not (Test-Path $wheelReady);$i++){Start-Sleep -Milliseconds 100}
 if(-not (Test-Path $wheelReady)){throw 'Owned raw-input mouse reader was not ready'}
-$null=Rpc 'session.write' @{text=($esc+'[?1000h'+$esc+'[?1006h'+$lines)} $wheelPane
+$reportLines=$lines.Replace('WHEEL-LINE-85','WHEEL-REPORT-ARMED')
+$null=Rpc 'session.write' @{text=($esc+'[?1000h'+$esc+'[?1006h'+$reportLines)} $wheelPane
+# The control write is queued. Fence the cached generation containing both
+# mode changes before sending the wheel to the window.
+Check 'reporting viewport has reached the armed generation' (NavWait {
+    ([string](Rpc 'session.text' @{} $wheelPane)) -match 'WHEEL-REPORT-ARMED'
+})
 $reportBefore=NavPixels 'wheel-report-before'
 [void][HudOwnedJob]::SendMessageW($hwnd,0x20a,[IntPtr](120-shl 16),$wheelPosition)
 Check 'wheel report reaches the unfocused raw-input reader' (NavWait {(Test-Path $wheelBytes) -and (Get-Content $wheelBytes -Raw)-match '^\x1b\[<64;[0-9]+;[0-9]+M$'})
@@ -175,6 +181,10 @@ for ($attempt = 0; $attempt -lt 12 -and -not $ok; $attempt++) {
     $null = Rpc 'session.write' @{text="`r`nSTABILIZATION-SEARCH-MARKER`r`n"} $session
     Start-Sleep -Milliseconds 250
     $script:findBefore = Rpc 'session.search' @{query='STABILIZATION-SEARCH-MARKER'} $session
+    for($poll=0;$poll -lt 60 -and ([string]$script:findBefore).StartsWith('searching');$poll++){
+        Start-Sleep -Milliseconds 50
+        $script:findBefore=Rpc 'session.search' @{action='state'} $session
+    }
     $ok = $script:findBefore -match 'of [1-9]'
 }
 if (-not $ok) {
@@ -427,8 +437,11 @@ Check 'renaming hovered row invalidates tooltip without a move' ((NavRegionDiffe
 $oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
 try{[NavHover]::Restore($hwnd,$hoverWindow)}finally{[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
 $null=Rpc 'sidebar' @{op='mode:tree'}
-$null=Rpc 'session.type' @{text="exit`r"} $session
-Check 'exited shell does not retain shell-name hint' (NavWait {$null-eq (Node $session).foregroundShell})
+# A split can promote its surviving shell when the other child exits.
+# Check exit on a single-pane session whose shell identity is unambiguous.
+Check 'shell for exit check starts' (NavWait {(Node $callerPlaced).foregroundShell -eq 'cmd'})
+$null=Rpc 'session.type' @{text="exit`r"} $callerPlaced
+Check 'exited shell does not retain shell-name hint' (NavWait {$null-eq (Node $callerPlaced).foregroundShell})
 
 $fontOriginal=Rpc 'config.get' @{key='font-family'}
 $fontSizeOriginal=Rpc 'config.get' @{key='font-size'}

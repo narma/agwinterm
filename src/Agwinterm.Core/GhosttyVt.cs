@@ -182,12 +182,15 @@ public sealed unsafe class GhosttyVt : IDisposable
     }
     private void ApplyTitle(string title)
     {
-        if (_titleFilter?.Invoke(title) != true) Title = title;
+        if (_titleFilter?.Invoke(title) == true || Title == title) return;
+        Title = title;
+        Host?.MetadataChanged(Title,Cwd);
     }
     public string Cwd { get; private set; } = "";
     private string _notificationTitle = "";
     private long _holdDeadline;
     public bool IsSynchronizedOutputHeld => Environment.TickCount64 < Volatile.Read(ref _holdDeadline);
+    public long SynchronizedOutputDeadline => Volatile.Read(ref _holdDeadline);
     public IReadOnlyList<TerminalEmulator.ShellMark> ReadMarks()
     {
         CheckAlive();
@@ -221,12 +224,14 @@ public sealed unsafe class GhosttyVt : IDisposable
             throw new ArgumentOutOfRangeException(nameof(cols), "Terminal dimensions exceed the configured limit.");
     }
     private void CheckAlive() => ObjectDisposedException.ThrowIf(_disposeRequested, this);
+    internal void MarkLegacyReplica() { CheckAlive(); _handle.MarkReplica(); }
     private void RefreshInfo() => GhosttyNative.Check(GhosttyNative.GetInfo(_handle, out _info));
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         CheckAlive();
         SyncHostColors();
         fixed (byte* data = bytes) GhosttyNative.Check(GhosttyNative.Feed(_handle, data, (nuint)bytes.Length));
+        GhosttyDiagnostics.Feed(bytes.Length, _handle.Role);
         _windows.Feed(bytes);
         RefreshInfo();
         DrainEvents();
@@ -243,7 +248,10 @@ public sealed unsafe class GhosttyVt : IDisposable
                 case 1: Host?.Respond(Encoding.UTF8.GetString(effect.Data)); break;
                 case 2: Host?.Bell(); break;
                 case 3: ApplyTitle(Encoding.UTF8.GetString(effect.Data)); break;
-                case 4: Cwd = ReadText(1); break;
+                case 4:
+                    string cwd = ReadText(1);
+                    if (Cwd != cwd) { Cwd = cwd; Host?.MetadataChanged(Title,Cwd); }
+                    break;
                 case 5: _notificationTitle = Encoding.UTF8.GetString(effect.Data); break;
                 case 6: Host?.Notify(_notificationTitle, Encoding.UTF8.GetString(effect.Data)); break;
                 case 7: Host?.Progress(BitConverter.ToInt32(effect.Data, 0), Math.Max(0, BitConverter.ToInt32(effect.Data, 4))); break;
@@ -363,6 +371,7 @@ public sealed unsafe class GhosttyVt : IDisposable
         ArgumentOutOfRangeException.ThrowIfNegative(scrollOffset);
         GhosttyNative.Check(GhosttyNative.Begin(_handle, (uint)scrollOffset));
         _capturing = true;
+        GhosttyDiagnostics.Capture(1);
     }
     public void CompleteCapture()
     {
@@ -418,6 +427,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             lock (_lifetime)
             {
                 _capturing = false;
+                GhosttyDiagnostics.Capture(-1);
                 if (_disposeRequested) ReleaseNative();
             }
         }

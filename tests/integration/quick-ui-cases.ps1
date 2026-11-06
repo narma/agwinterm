@@ -88,12 +88,20 @@ $null=Rpc 'font' @{op='reset'} -Window quick
 Check 'font reset restores quick cell metrics' ((Rpc 'session.metrics' -Window quick).cellHeight-eq $beforeFont.cellHeight)
 $null=Rpc 'session.type' @{text="echo P14-FIND-MARKER`r"} -Window quick
 for($i=0;$i-lt 50 -and ([string](Rpc 'session.text' -Window quick))-notmatch '(?m)^P14-FIND-MARKER\s*$';$i++){Start-Sleep -Milliseconds 100}
-Check 'quick search reaches its active surface' ((Rpc 'session.search' @{query='P14-FIND-MARKER'} -Window quick)-match 'of [1-9]')
+function Wait-QuickSearch($status){
+    for($attempt=0;$attempt -lt 100 -and ([string]$status).StartsWith('searching');$attempt++){
+        Start-Sleep -Milliseconds 50
+        $status=Rpc 'session.search' @{action='state'} -Window quick
+    }
+    return $status
+}
+$search=Wait-QuickSearch (Rpc 'session.search' @{query='P14-FIND-MARKER'} -Window quick)
+Check 'quick search reaches its active surface' ($search -match 'of [1-9]') ([string]$search)
 $null=Rpc 'session.search' @{query='NO-MATCH-OLD-QUERY'} -Window quick
 $null=Rpc 'session.search' @{action='close'} -Window quick
 [void][HudOwnedJob]::SendMessageW($q,0x100,[IntPtr]118,[IntPtr]1) # F7 mapped to toggle_search
 foreach($c in 'P14-FIND-MARKER'.ToCharArray()){[void][HudOwnedJob]::SendMessageW($q,0x102,[IntPtr][int]$c,[IntPtr]1)}
-$keySearch=Rpc 'session.search' @{action='state'} -Window quick
+$keySearch=Wait-QuickSearch (Rpc 'session.search' @{action='state'} -Window quick)
 Check 'surface-local search keymap action accepts its query' ($keySearch-match 'of [1-9]') ([string]$keySearch)
 $null=Rpc 'session.search' @{action='close'} -Window quick
 [void][HudOwnedJob]::SendMessageW($q,0x100,[IntPtr]119,[IntPtr]1) # F8 mapped to custom send

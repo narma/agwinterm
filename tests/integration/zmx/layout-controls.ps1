@@ -24,9 +24,12 @@ try {
     $null = Ctl @('session','select',$anchor)
     $null = Ctl @('session','scratch','on','--target',$anchor)
     $null = Ctl @('session','type',"printf 'SCRATCH-ORDINARY\n'`n",'--target','active')
-    Start-Sleep -Milliseconds 500
-    $scratchText = Ctl @('session','text','--target','active')
-    if ($scratchText -notlike '*SCRATCH-ORDINARY*' -or $scratchText -like '*[[]WSL live session[]]*') { throw 'Inherited scratch profile did not retain ordinary launch behavior' }
+    for($attempt=0;$attempt -lt 100;$attempt++) {
+        $scratchText = Ctl @('session','text','--target','active')
+        if($scratchText -like '*SCRATCH-ORDINARY*' -or $scratchText -like '*[[]WSL live session[]]*'){break}
+        Start-Sleep -Milliseconds 100
+    }
+    if ($scratchText -notlike '*SCRATCH-ORDINARY*' -or $scratchText -like '*[[]WSL live session[]]*') { throw "Inherited scratch profile did not retain ordinary launch behavior: $scratchText" }
     $null = Ctl @('session','scratch','off','--target',$anchor)
     for ($race=0; $race -lt 3; $race++) {
         $closing = [string](Ctl @('session','new','--profile','ZMX matrix','--no-select'))

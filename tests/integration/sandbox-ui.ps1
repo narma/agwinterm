@@ -2,7 +2,7 @@
 param(
     [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
     [string]$CtlExe = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
-    [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','Ghostty')]
+    [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','TerminalLatency','Ghostty')]
     [string]$Suite = 'Navigation',
     [string]$Test = 'Hud',
     [hashtable]$TestParameters = @{},
@@ -184,6 +184,38 @@ try {
         Copy-Item -LiteralPath $CtlExe -Destination (Join-Path $ctlDirectory 'agwintermctl.exe')
     }
     Copy-Directory $PSScriptRoot (Join-Path $payload 'tests/integration')
+    if($Test -eq 'HostOwnerHandoff'){
+        $toolDir=Join-Path $payload 'tools'
+        $null=New-Item -ItemType Directory $toolDir -Force
+        foreach($file in 'defterm-register.ps1','defterm-restore-conhost.ps1'){
+            Copy-Item -LiteralPath (Join-Path $repo "tools/$file") -Destination $toolDir
+        }
+    }
+    if($Test -eq 'PtyProcessContracts'){
+        if(-not(Get-ChildItem (Join-Path $DotnetHome 'sdk/*/vstest.console.deps.json') -File -ErrorAction SilentlyContinue)){
+            throw 'PtyProcessContracts requires a host SDK with VSTest to stage its guest runner.'
+        }
+        $testBin=Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net10.0-windows'
+        if(-not(Test-Path (Join-Path $testBin 'Agwinterm.Pty.Tests.dll'))){throw 'Build Agwinterm.Pty.Tests in Release first.'}
+        Copy-Directory $testBin (Join-Path $payload 'pty-tests')
+        $sdk=Join-Path $DotnetHome ('sdk/'+(& (Join-Path $DotnetHome 'dotnet.exe') --version))
+        $runner=Join-Path $payload 'vstest'
+        $null=New-Item -Type Directory $runner
+        $manifest=Get-Content (Join-Path $sdk 'vstest.console.deps.json') -Raw | ConvertFrom-Json -AsHashtable
+        $files=@('vstest.console.deps.json','vstest.console.runtimeconfig.json')
+        foreach($target in $manifest.targets.Values){foreach($package in $target.Values){
+            foreach($entry in $package.runtime.Keys){$files+=Split-Path $entry -Leaf}
+        }}
+        foreach($name in ($files | Select-Object -Unique)){Copy-Item -LiteralPath (Join-Path $sdk $name) -Destination $runner}
+        Copy-Directory (Join-Path $sdk 'Extensions') (Join-Path $runner 'Extensions')
+        # These binaries are test oracles for the old protocol, not app sidecars.
+        Copy-Item -LiteralPath (Join-Path $repo 'Agwinterm.slnx') -Destination $payload
+        $native=Join-Path $payload 'native/target/release'
+        $null=New-Item -ItemType Directory -Path $native -Force
+        foreach($file in 'agwinterm-ptyhost.exe','agwinterm_core.dll'){
+            Copy-Item -LiteralPath (Join-Path $repo "native/target/release/$file") -Destination $native
+        }
+    }
     foreach ($part in @('tests/ui','tests/fixtures','tests/conformance')) {
         $source = Join-Path $repo $part
         if (Test-Path -LiteralPath $source) { Copy-Directory $source (Join-Path $payload $part) }

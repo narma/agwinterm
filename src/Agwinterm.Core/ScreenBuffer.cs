@@ -66,6 +66,9 @@ public sealed class ScreenBuffer
         Array.Copy(_cells, row * Cols, dest, 0, Math.Min(Cols, dest.Length));
     }
 
+    /// <summary>Copy a captured viewport without allocating or exposing mutable storage.</summary>
+    public void CopyCellsTo(Span<Cell> destination) => _cells.AsSpan().CopyTo(destination);
+
     /// <summary>Refresh selection's compact text-only frame, reporting any change. Reading the
     /// flat array avoids per-cell coordinate checks; no bookkeeping is added to terminal writes.</summary>
     internal bool CopyTextTo(Span<uint> destination, SelectionTextMap? map = null, bool add = false)

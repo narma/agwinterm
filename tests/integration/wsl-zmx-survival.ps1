@@ -6,8 +6,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
-$hostExe = Join-Path (Split-Path $exe) 'agwinterm-ptyhost.exe'
-foreach ($file in @($exe,$ctl,$hostExe)) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing test build: $file" } }
+foreach ($file in @($exe,$ctl)) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing test build: $file" } }
 $linuxScript = (& wsl.exe -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'zmx/workload.py')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve sentinel path' }
 $id = 'agwinterm-zmx-test-' + [guid]::NewGuid().ToString('N')

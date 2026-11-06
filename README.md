@@ -21,7 +21,7 @@ What it does:
 - **Splits, scratch, quick terminal and overlays.** Split a session side by side or stacked, open a scratch or a detached quick terminal, run a program in an overlay over a session or over one pane of it, or show a passive HUD.
 - **Agent status and skill.** Agents report their state through hooks or the API as a colored dot and a title-bar bell. Opt-in installers add the agent skill, Claude Code / Codex / Devin status hooks, shell integration and the CLI on `PATH`.
 - **Claude Code binding and auto-resume.** A `claude` wrapper ties each conversation to its pane, so a restart re-launches every bound pane and the conversation comes back. Updating Claude Code restarts every running Claude session into its own conversation.
-- **Restore, and shells that survive the UI.** Sessions come back with their layout and pinned commands, and with captured commands when `restore-commands` is on. The experimental pty-host server mode keeps every shell running through a UI quit, update or crash.
+- **Restore and session ownership.** Hosted shells run in a separate Ghostty owner process and survive a UI quit or crash. When upgrading from the previous Windows host, setup checkpoints the open windows, saves a backup and closes the old shells. The new version restores the layout, configured commands and history saved with `restore-buffer` enabled.
 - **A real Windows terminal.** Default Terminal Application registration, ~33k lines/s output, Sixel and Kitty graphics, the Kitty keyboard protocol, ligatures, elevated and de-elevated sessions side by side, and agterm's menus — File, View, Navigate, Help — as a menu bar in the title bar (Alt or F10).
 - **Accessible.** The terminal is a UIA text document for Narrator and NVDA, every control is in the UIA tree, and new output is announced.
 - **Themes.** ~580 bundled themes retint the whole window, fonts apply live, and an optional mode follows Windows light/dark.
@@ -116,7 +116,7 @@ Report bugs in [Issues](https://github.com/yeroo/agwinterm/issues).
 ## Related projects
 
 - **[agterm](https://github.com/umputun/agterm)** by [umputun](https://github.com/umputun) is the macOS original whose design this project follows.
-- **[agliteterm](https://github.com/yeroo/agliteterm)** is the lightweight sibling, in its own repository (it was `agwinterm-lite` until 0.17.4): one small C++ exe over the same Rust emulator core and pty-host, built for machines where a .NET app is too much.
+- **agliteterm** is the lightweight sibling, formerly `agwinterm-lite`. Its C++ client uses the Rust emulator core and pty-host. [agliteterm repository](https://github.com/yeroo/agliteterm)
 
 <details>
 <summary>agwinterm and agliteterm, side by side</summary>

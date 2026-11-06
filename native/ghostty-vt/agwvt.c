@@ -130,8 +130,42 @@ struct AgwVt {
     int effect_error;
     GhosttyAllocator allocator;
     _Atomic size_t allocated;
+    uint64_t stats_next, stats_resident, stats_virtual, stats_images;
 };
 // The same allocator lives through decoder/terminal/render-state ownership.
+static INIT_ONCE stats_once = INIT_ONCE_STATIC_INIT;
+static int stats_enabled;
+static _Atomic uint64_t stats_current, stats_peak, stats_allocated, stats_allocations, stats_frees;
+static _Atomic uint64_t stats_resident, stats_virtual, stats_images;
+static BOOL CALLBACK init_stats(PINIT_ONCE once, PVOID parameter, PVOID* context) {
+    (void)once; (void)parameter; (void)context;
+    char value[2]; stats_enabled = GetEnvironmentVariableA("AGWINTERM_GHOSTTY_COUNTERS", value, sizeof(value)) == 1 && value[0] == '1';
+    return TRUE;
+}
+void agwvt_allocation_stats(uint64_t* current, uint64_t* peak, uint64_t* allocated, uint64_t* allocations, uint64_t* frees) {
+    *current = atomic_load(&stats_current); *peak = atomic_load(&stats_peak);
+    *allocated = atomic_load(&stats_allocated); *allocations = atomic_load(&stats_allocations); *frees = atomic_load(&stats_frees);
+}
+void agwvt_page_stats(uint64_t* resident, uint64_t* virtual_bytes, uint64_t* image_bytes) {
+    *resident = atomic_load(&stats_resident); *virtual_bytes = atomic_load(&stats_virtual); *image_bytes = atomic_load(&stats_images);
+}
+static void update_page_stats(AgwVt* vt) {
+    if (!stats_enabled) return;
+    uint64_t now = GetTickCount64();
+    if (now < vt->stats_next) return;
+    vt->stats_next = now + 250;
+    // Terminal pages use VirtualAlloc directly, outside the supplied allocator.
+    // Query on the existing owner-locked info path, never from the metrics thread.
+    GhosttyTerminalMemoryUsage usage = { .size = sizeof(usage) };
+    if (ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_MEMORY_USAGE, &usage)) return;
+    uint64_t resident = usage.primary_resident_bytes + usage.alternate_resident_bytes;
+    uint64_t virtual_bytes = usage.primary_virtual_bytes + usage.alternate_virtual_bytes;
+    uint64_t images = usage.primary_image_bytes + usage.alternate_image_bytes;
+    atomic_fetch_add(&stats_resident, resident - vt->stats_resident);
+    atomic_fetch_add(&stats_virtual, virtual_bytes - vt->stats_virtual);
+    atomic_fetch_add(&stats_images, images - vt->stats_images);
+    vt->stats_resident = resident; vt->stats_virtual = virtual_bytes; vt->stats_images = images;
+}
 // Account before allocating so malformed snapshots cannot request unbounded memory.
 static void* budget_alloc(void* context, size_t length, uint8_t alignment, uintptr_t return_address) {
     (void)return_address; AgwVt* vt = context;
@@ -144,11 +178,18 @@ static void* budget_alloc(void* context, size_t length, uint8_t alignment, uintp
     if (align < sizeof(void*)) align = sizeof(void*);
     void* memory = _aligned_malloc(length, align);
     if (!memory) atomic_fetch_sub(&vt->allocated, length);
+    if (memory && stats_enabled) {
+        uint64_t now = atomic_fetch_add(&stats_current, length) + length;
+        uint64_t peak = atomic_load(&stats_peak);
+        while (now > peak && !atomic_compare_exchange_weak(&stats_peak, &peak, now)) { }
+        atomic_fetch_add(&stats_allocated, length); atomic_fetch_add(&stats_allocations, 1);
+    }
     return memory;
 }
 static void budget_free(void* context, void* memory, size_t length, uint8_t alignment, uintptr_t return_address) {
     (void)alignment; (void)return_address; AgwVt* vt = context;
     _aligned_free(memory); atomic_fetch_sub(&vt->allocated, length);
+    if (stats_enabled) { atomic_fetch_sub(&stats_current, length); atomic_fetch_add(&stats_frees, 1); }
 }
 static const GhosttyAllocatorVtable budget_vtable = { .alloc = budget_alloc, .free = budget_free };
 static void free_images(AgwVt* vt, ImageEntry* images) {
@@ -442,6 +483,11 @@ void agwvt_anchor_free(void* pointer) {
 }
 void agwvt_free(AgwVt* vt) {
     if (!vt) return;
+    if (stats_enabled) {
+        atomic_fetch_sub(&stats_resident, vt->stats_resident);
+        atomic_fetch_sub(&stats_virtual, vt->stats_virtual);
+        atomic_fetch_sub(&stats_images, vt->stats_images);
+    }
     flush_anchors(vt);
     for (size_t i = 0; i < vt->mark_count; i++) free_mark(&vt->marks[i]);
     ghostty_tracked_grid_ref_free(vt->scroll_probe);
@@ -495,6 +541,7 @@ static int configure_terminal(AgwVt* vt, int initialize_colors) {
     return result;
 }
 int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, AgwVt** out) {
+    InitOnceExecuteOnce(&stats_once, init_stats, NULL, NULL);
     if (!out || !cols || !rows || cols > 32768 || rows > 32768 || (uint64_t)cols * rows > 4000000)
         return GHOSTTY_INVALID_VALUE;
     *out = NULL;
@@ -655,6 +702,7 @@ static uint32_t rgb(GhosttyColorRgb value) { return ((uint32_t)value.r << 16) | 
 extern int agwinterm_ghostty_metadata(GhosttyTerminal, uint32_t*, uint32_t*, uint32_t*, uint32_t*);
 int agwvt_info(AgwVt* vt, AgwVtInfo* out) {
     if (!vt || !out) return GHOSTTY_INVALID_VALUE;
+    update_page_stats(vt);
     memset(out, 0, sizeof(*out));
     uint16_t cols, rows, x, y; bool visible; uint8_t keyboard; size_t history;
     GhosttyTerminalScreen screen; GhosttyColorRgb bg, default_bg;

@@ -207,8 +207,15 @@ internal partial class Program
                     System.Threading.Interlocked.Exchange(ref _redrawPending, 0);
                     // Frame cap (RedrawMinIntervalMs): paint immediately when quiet; under sustained
                     // output defer to a one-shot timer so floods render at ~66fps instead of per chunk.
+                    // During input, newly received hosted frames can paint
+                    // immediately. The frame credit still bounds publication.
                     long since = Environment.TickCount64 - _lastPaintTick;
-                    if (since >= RedrawMinIntervalMs) InvalidateRect(hwnd, IntPtr.Zero, false);
+                    bool urgent=Interlocked.Exchange(ref _urgentRedrawPending,0) != 0;
+                    if (urgent || since >= RedrawMinIntervalMs)
+                    {
+                        if(_redrawTimerArmed) { KillTimer(hwnd,(IntPtr)RedrawTimer); _redrawTimerArmed=false; }
+                        InvalidateRect(hwnd, IntPtr.Zero, false);
+                    }
                     else if (!_redrawTimerArmed)
                     {
                         _redrawTimerArmed = true;
@@ -709,8 +716,11 @@ internal partial class Program
                 if (!_windowActive) { _altArmed = false; LeaveMenuBar(); }   // an Alt+Tab away is not a lone Alt tap
                 // Focus reporting (DECSET ?1004): on a real focus transition, tell the active pane's
                 // app the terminal gained (ESC[I) or lost (ESC[O) focus, so it can pause/resume.
-                if (_windowActive != wasActive && _session is { } fs && fs.Emulator.FocusReporting)
-                    SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
+                if (_windowActive != wasActive && _session is { } fs)
+                {
+                    if (HasSemanticInput(fs)) SubmitOwnerInput(fs,new TerminalInput.Focus(_windowActive));
+                    else if (fs.Emulator.FocusReporting) SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
+                }
                 if (_config.UnfocusedDim > 0) RequestRedraw();
                 if (_isQuickWindow && !_windowActive && _quickVisible && !_quickPinned
                     && (lParam == IntPtr.Zero || GetAncestor(lParam, 3 /* GA_ROOTOWNER */) != _hwnd)) DismissQuick(blur: true);
@@ -724,8 +734,8 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_CLOSE:
-                CloseWindowQuestion();
-                return DefWindowProcW(hwnd, msg, wParam, lParam);
+                CloseLibraryWindow();
+                return IntPtr.Zero;
 
             case WM_DESTROY:
                 _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
@@ -742,11 +752,10 @@ internal partial class Program
                 EndObservation();
                 RemoveTrayIcon();                 // drop the shell tray balloon icon
                 bool quitting;
-                lock (_windowIndex) quitting = _updateQuitting || _byId.Count <= 1;
-                // Persist this window's tree before tearing down its sessions — written NOW only when
-                // the process is about to go; a window closing beside others enqueues, because a
-                // synchronous write here would stall the UI thread every window shares (#294).
-                SaveState(captureCommands: true, sync: quitting);
+                lock (_windowIndex) quitting = _updateQuitting || (_detachOnClose ?? (_byId.Count <= 1));
+                // Persist before teardown; even with other windows open, an
+                // owner-backed history export must finish before its session closes.
+                if (!_closeSaveComplete) SaveState(captureCommands: true, sync: quitting);
                 // App-quit (last window, or an update-quit closing all of them) DETACHES panes —
                 // server-hosted sessions keep running and the next start adopts them (#105 2c).
                 // An explicit window close (others remain) still disposes = kills, like a pane
@@ -776,7 +785,7 @@ internal partial class Program
                     // (this was the last open window) -> keep IsOpen=true so it reopens next launch.
                     // Update-quit closes every window in sequence — those must ALL reopen after the
                     // relaunch, so it never marks any of them closed.
-                    if (meta is not null && !lastWindow && !_updateQuitting) meta.IsOpen = false;
+                    if (meta is not null && !quitting) meta.IsOpen = false;
                     if (ReferenceEquals(Frontmost, this))
                     {
                         var nf = _byId.Values.FirstOrDefault();

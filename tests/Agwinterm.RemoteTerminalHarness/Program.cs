@@ -8,7 +8,8 @@ var origin = inventory.Sessions.First(s => s.CanImportTerminal).Session;
 var operations = new AgtermRemoteOperations();
 var binding = await operations.ProbeAsync(target, args[5], inventory.Endpoint, origin, origin.Panes[0]);
 string id = "aw-remote-terminal-" + Guid.NewGuid().ToString("N");
-using var backend = new ServerSessionBackend(id, args[7], "--pipe " + id, "server-rust");
+string hostPipe=id+"-owner-v1";
+using var backend=(ServerSessionBackend)SessionBackends.Resolve("server",id,args[7],"bundled");
 ServerSession? first = null, second = null;
 try
 {
@@ -17,12 +18,12 @@ try
         bool observed = false;
         await prepared.StartCheckpointedAsync("SHOULD-NOT-RUN", [], ticket =>
         {
-            using var host = PtyHostClient.Connect(id);
+            using var host = PtyHostClient.Connect(hostPipe);
             observed = host.QueryCreate("checkpoint-refusal", ticket) == Agwinterm.Pty.Proto.CreationPhase.CreationPrepared
                 && !host.List().Any(s => s.Id == "checkpoint-refusal");
             throw new IOException("test checkpoint refusal");
         });
-        using var host = PtyHostClient.Connect(id);
+        using var host = PtyHostClient.Connect(hostPipe);
         if (!observed || !prepared.HasExited || host.List().Any(s => s.Id == "checkpoint-refusal"))
             throw new Exception("Transport spawned before durable checkpoint");
         var orphanTicket = host.PrepareCreate("orphan-preparation");
@@ -38,7 +39,7 @@ try
     first = (ServerSession)backend.Create("first", 80, 24);
     await Attach(first, "first");
     await Wait(() => { lock (first.SyncRoot) return Ready(first); });
-    using (var observer = PtyHostClient.Connect(id))
+    using (var observer = PtyHostClient.Connect(hostPipe))
     {
         bool refused = false;
         try { using var wrong = observer.Attach("first", creationTicket: Guid.NewGuid().ToString("N")); }
@@ -66,23 +67,29 @@ try
     AssertCells(second);
     await operations.TypeAsync(binding, "n");
     await Wait(() => { lock (second.SyncRoot) return !second.Emulator.IsAltScreen && second.Emulator.DumpBuffer().Any(l => l.Contains("NORMAL-RESTORED")); });
-    string history;
-    lock (second.SyncRoot) history = string.Join('\n', second.Emulator.DumpBuffer());
+    // A follower inherits origin geometry. Narrow split panes can wrap a
+    // marker across physical rows, so check the complete character stream.
+    string history=SurfaceText.Dump(second,new(All:true,Lines:0)).Replace("\r","").Replace("\n","");
     for (int i = 0; i < 90; i++)
-        if (history.Split("HISTORY-" + id + "-" + i.ToString("D3")).Length != 2) throw new Exception("lost/duplicated hidden primary history " + i + "\n" + history);
+        if (history.Split("HISTORY-" + id + "-" + i.ToString("D3")).Length != 2) throw new Exception("lost/duplicated hidden primary history " + i);
     await operations.RevalidateAsync(binding);
-    Console.WriteLine("PASS real agterm + Rust viewers: styled wide cells, alternate/modes, follower geometry, one query reply, hidden primary history once, exact reconnect");
+    Console.WriteLine("PASS real agterm + Ghostty owner: styled wide cells, alternate/modes, follower geometry, one query reply, hidden primary history once, exact reconnect");
 }
 finally
 {
     // Stop only the explicitly started fixture program, keeping the borrowed shell alive.
     try { await operations.TypeAsync(binding, "x"); } catch { }
     first?.Dispose(); second?.Dispose();
-    using var host = PtyHostClient.Connect(id);
-    System.Diagnostics.Process.GetProcessById((int)host.HostPid).Kill();
+    if(PtyHostClient.IsRunning(hostPipe))
+    {
+        using var host=PtyHostClient.Connect(hostPipe);
+        host.Shutdown();
+    }
 }
 async Task Attach(ServerSession session, string nonce)
 {
+    // This headless fixture consumes frames without an EndDraw loop.
+    session.OutputReceived+=()=> { _=SurfaceText.Dump(session,new(false,0)); };
     var command = AgtermRemoteOperations.AttachmentArgs(binding, nonce);
     await session.StartAsync("wsl.exe", new SessionCommand("wsl.exe", command).QuotedArgs, verbatimCommandLine: true);
 }
