@@ -780,9 +780,9 @@ internal partial class Program : ISessionHost, IWindowHost
             ? CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, ClassName, "agwinterm quick terminal", WS_POPUP,
                 0, 0, 640, 480, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero)
             : _geoValid
-            ? CreateWindowExW(0, ClassName, AppName, WS_OVERLAPPEDWINDOW,
+            ? CreateWindowExW(0, ClassName, AppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                 _geoX, _geoY, _geoW, _geoH, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero)
-            : CreateWindowExW(0, ClassName, AppName, WS_OVERLAPPEDWINDOW,
+            : CreateWindowExW(0, ClassName, AppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                 CW_USEDEFAULT, CW_USEDEFAULT, 1040, 660, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
         _creating = null;
         if (_hwnd == IntPtr.Zero)

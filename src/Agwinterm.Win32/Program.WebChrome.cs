@@ -79,8 +79,9 @@ internal partial class Program
             {
                 text = page.PresentedOrigin ?? "";
                 var layout = Agwinterm.Core.WebChromeLayout.Fit(page.Bounds.Width, Scale, page.Request.Navigation, page.Owner.PageParentId is not null);
-                rect.left += layout.TitleLeft;
-                rect.right = draw.Bounds.left + layout.TitleRight;
+                int labelOffset = layout.NavigationCount * layout.ButtonWidth;
+                rect.left += layout.TitleLeft - labelOffset;
+                rect.right = draw.Bounds.left + layout.TitleRight - labelOffset;
             }
             else
             {

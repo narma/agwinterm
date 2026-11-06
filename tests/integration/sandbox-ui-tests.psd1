@@ -16,7 +16,7 @@
     ControlEvents = @{ Path='tests/integration/control-events-and-wait.ps1'; Options=@() }
     SplitRetention = @{ Path='tests/integration/split-retention.ps1'; Options=@() }
     ProgramOverlay = @{ Path='tests/integration/program-overlay-controls.ps1'; Options=@('Dpi') }
-    WebOverlayHost = @{ Path='tests/integration/web-overlay-host.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@('Cookbook','CookbookOnly','NavigationOnly') }
+    WebOverlayHost = @{ Path='tests/integration/web-overlay-host.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@('Cookbook','CookbookOnly','NavigationOnly','SplitImageOnly') }
     WebOverlayParity = @{ Path='tests/integration/web-overlay-parity.ps1'; Exe=$true; Ctl=$true; Web=$true; Python=$true; Options=@('ReviewOnly') }
     WebViewGate = @{ Path='tests/integration/webview-gate.ps1'; Gate=$true; Web=$true; Options=@() }
     ProfileMemory = @{ Path='tools/profile-memory.ps1'; Exe=$true; Ctl=$true; Options=@('Cycles') }

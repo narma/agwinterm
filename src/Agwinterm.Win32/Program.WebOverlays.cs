@@ -22,11 +22,13 @@ internal partial class Program
         public LocalWebSource? Resources;
         public string? ReloadUrl;
         public IntPtr[] NavigationButtons = [];
+        public int VisibleButtonMask;
         public IntPtr Tooltip;
         public readonly List<IntPtr> TooltipText = [];
         public Theme? AppliedTheme;
         public IntPtr ErrorLabel;
         public Rectangle? NativeBounds;
+        public float NativeDpi;
         public bool? NavigationVisible;
         public bool? ErrorVisible;
         public string? PresentedError;
