@@ -28,6 +28,11 @@ public static class SurfaceText
         if(s is ServerSession owner) owner.AdvanceHiddenReadback();
         if(s.Presentation is { IsRemote:true } && (args.All || args.Lines > 0))
             return DumpRemoteAsync(s,args).GetAwaiter().GetResult();
+        return DumpCached(s,args);
+    }
+
+    private static string DumpCached(ISession s,OverlayTextArgs args)
+    {
         var sb = new StringBuilder();
         lock (s.SyncRoot)
         {
@@ -48,9 +53,14 @@ public static class SurfaceText
         for(int attempt=0;attempt<4;attempt++)
         {
             TerminalFrame.Lease? captured;
-            lock(session.SyncRoot) captured=((PresentedTerminalView)session.Emulator).AcquireFrame();
+            lock(session.SyncRoot)
+            {
+                captured=((PresentedTerminalView)session.Emulator).AcquireFrame();
+                // Startup has no history yet, and a failed launch may have a
+                // literal error view with no owner. Both are readable surfaces.
+                if(captured is null) return styled ? DumpStyledCached(session,args) : DumpCached(session,args);
+            }
             using var frame=captured;
-            if(frame is null) throw new IOException("Terminal presentation is not available yet.");
             var state=frame.State;
             int first=FirstRow(state.Rows,state.HistoryRows,args),end=checked(state.HistoryRows+state.Rows);
             int pageSize=Math.Clamp(100000/state.Columns,1,32);
@@ -103,6 +113,11 @@ public static class SurfaceText
         if(s is ServerSession owner) owner.AdvanceHiddenReadback();
         if(s.Presentation is { IsRemote:true } && (args.All || args.Lines > 0))
             return DumpRemoteAsync(s,args,styled:true).GetAwaiter().GetResult();
+        return DumpStyledCached(s,args);
+    }
+
+    private static string DumpStyledCached(ISession s,OverlayTextArgs args)
+    {
         lock (s.SyncRoot)
         {
             var em = s.Emulator;

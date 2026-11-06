@@ -3,6 +3,20 @@ namespace Agwinterm.Pty.Tests;
 public class InputLifecycleTests
 {
     [Fact]
+    public void HistoryReadBeforeFirstFrameCanReturnLaunchError()
+    {
+        using var backend=new ServerSessionBackend("unstarted-test",null,singleOwner:true);
+        var session=new ServerSession(backend,"pane",30,4);
+        try
+        {
+            Assert.Equal("",SurfaceText.Dump(session,new(true,0)));
+            ((Agwinterm.Core.PresentedTerminalView)session.Emulator).ShowError("Cannot start shell");
+            Assert.Equal("Cannot start shell",SurfaceText.Dump(session,new(true,0)));
+            Assert.Contains("Cannot start shell",SurfaceText.DumpStyled(session,new(true,0)));
+        }
+        finally { session.Detach(); }
+    }
+    [Fact]
     public void OwnerStartupAcceptsEarlyFocusButBoundsPendingInput()
     {
         using var backend=new ServerSessionBackend("not-connected",null,singleOwner:true);
