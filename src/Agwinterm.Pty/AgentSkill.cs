@@ -617,7 +617,7 @@ public static class AgentSkill
         - `agwintermctl image frameshm <Local\agwinterm-frame-NAME> [--slot N] [--seq N] ...` — display
           a high-rate raw BGRA/RGBA frame from a versioned shared-memory mapping. This is a specialized
           producer path; query `agwintermctl session metrics [<pane-id>] --json` before sizing it and
-          follow https://github.com/yeroo/agwinterm/blob/main/docs/specs/image-frameshm.md for the
+          follow https://github.com/narma/agwinterm/blob/narma/docs/specs/image-frameshm.md for the
           versioned contract. Ordinary image files should use `image show`.
         Note: Windows ConPTY strips inline terminal-graphics sequences, so images MUST be delivered
         through this control channel — not by printing escape codes to stdout.

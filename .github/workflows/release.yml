@@ -98,7 +98,7 @@ jobs:
           Copy-Item ctl-publish/agwintermctl.exe installer/Output/agwintermctl.exe
 
       # Free, certless supply-chain signing: a Sigstore-backed attestation binding each artifact to
-      # this commit + workflow. Verify with:  gh attestation verify <file> --repo yeroo/agwinterm
+      # this commit + workflow. Verify with:  gh attestation verify <file> --repo narma/agwinterm
       # (Doesn't remove SmartScreen — that needs Authenticode, e.g. a SignPath Foundation OSS cert.)
       # The carried-forward handover asset is deliberately NOT in this list: this run did not build
       # those bytes, and attesting them here would claim provenance this workflow cannot vouch for.

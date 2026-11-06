@@ -1,6 +1,8 @@
 # User guide
 
-For Linux sessions, see [WSL setup and integration](wsl.md).
+Install this edition from [narma/agwinterm releases](https://github.com/narma/agwinterm/releases). Help → About identifies the fork. Help → Developer Documentation opens its [control API reference](control-api.md).
+
+Choose hosted sessions to keep Windows shells running across GUI restarts. For Linux shells, select a WSL distribution and enable ZMX if you need session recovery. Follow the [WSL guide](wsl.md) for prerequisites and remote attach. See [recent work](recent-work.md) to reopen closed items and [working sets](working-sets.md) to filter the sidebar.
 
 Links in terminal output support OSC 8, including labels that differ from the destination URL.
 Hold Ctrl and hover to underline a link; Ctrl+click opens it. Explicit OSC 8 targets take priority

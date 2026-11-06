@@ -1,5 +1,7 @@
 # AGWin Bitmap — build-time raster font packs for agwinterm-lite
 
+This directory preserves the bitmap-pack pipeline used by the separate [agliteterm project](https://github.com/yeroo/agliteterm). In the narma Windows GUI, select an installed monospace family in Settings. See the [user guide](../docs/user-guide.md) and [font licenses](../THIRD_PARTY_FONTS.md).
+
 Lite targets slow/old machines; the goal is text rendering with **no runtime vector
 rasterization**. These packs pre-rasterize a pinned Nerd Font into compact binary
 strikes that the renderer can memory-map and blit.

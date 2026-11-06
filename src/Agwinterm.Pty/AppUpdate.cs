@@ -31,11 +31,10 @@ public static class AppUpdate
 {
 #if NET11_0_OR_GREATER
     private const bool Net11Build = true;
-    public const string DefaultApiUrl = "https://api.github.com/repos/narma/agwinterm/releases/latest";
 #else
     private const bool Net11Build = false;
-    public const string DefaultApiUrl = "https://api.github.com/repos/yeroo/agwinterm/releases/latest";
 #endif
+    public const string DefaultApiUrl = "https://api.github.com/repos/narma/agwinterm/releases/latest";
 
     /// <summary>Test seam: a local FILE PATH here (instead of an URL) is read as the API response,
     /// and asset "URLs" that are local paths are copied instead of downloaded — lets E2E runs

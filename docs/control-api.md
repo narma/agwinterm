@@ -6,6 +6,8 @@ agwinterm is scriptable through a local named pipe speaking newline-delimited JS
 replies a script can rely on, and the ones that answer a question a script would otherwise have to
 guess at.
 
+For architecture, testing and differences from upstream, see the [fork developer guide](fork.md).
+
 Related pages: [launching a session command](session-commands.md), [session HUD](session-hud.md),
 [workspace navigation](navigation.md), [quick terminal](quick-terminal.md),
 [native picker](native-picker.md), [`image frameshm`](specs/image-frameshm.md). The subset agliteterm

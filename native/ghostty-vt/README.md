@@ -1,5 +1,7 @@
 # Ghostty VT Windows adapter
 
+The [single-owner contract](../../docs/single-owner-contracts.md) explains which state belongs to the terminal host and which operations the GUI delegates to it. See [installer layout and migration](../../installer/README.md) when changing the native payload.
+
 Windows sessions use Ghostty for terminal state. Installed configurations that previously selected Managed or Rust migrate to Ghostty. Hosted sessions keep their terminal in the application host and send viewport frames to the UI.
 
 The Windows adapter pins Ghostty at `2c76f29972dad21d3f2cc0efde2517a6fa8fed56` with Zig 0.17.0. This revision freezes the layouts of callback payloads, unifies cursor and image-layer enums, gives key and mouse setters explicit results, and exposes Kitty image pixels as one borrowed pointer-and-length value. The adapter checks encoder results and copies image bytes into its frame-owned cache while the native image is valid. Upstream also fixes the cursor pin after resize and how Kitty resolves placeholders and numbered images. See the [upstream changes](https://github.com/ghostty-org/ghostty/compare/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0...2c76f29972dad21d3f2cc0efde2517a6fa8fed56).

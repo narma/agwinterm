@@ -1,0 +1,15 @@
+# Developing the narma fork
+
+This comparison covers the fork through `82c7002` on 2026-11-06. The common ancestor with the original Windows project was `df15ab3`. After that point 70 commits appear only in the fork's history and two only in upstream's history. Both upstream changes, per-workspace default directories and Sandbox testing, were integrated here under different commits. Counts include merges. [Upstream snapshot](https://github.com/yeroo/agwinterm/tree/d80bc30) · [Fork snapshot](https://github.com/narma/agwinterm/tree/82c7002)
+
+| Area | What changed | Implementation and verification |
+| --- | --- | --- |
+| Windows terminals | Ghostty owns terminal state. Hosted shells survive a GUI restart. The GUI renders viewport frames and queries the owner for text, selection and history. Older emulator settings migrate on load. | [Ownership contract](single-owner-contracts.md), [adapter](../native/ghostty-vt/README.md), [upgrade procedure](../installer/README.md) |
+| WSL | Distribution-aware CLI, hooks, path conversion and native Linux x64/ARM64 helpers. Opt-in ZMX sessions reconnect to a running Linux process. | [Setup](wsl.md), [recovery evidence](wsl-zmx-development.md) |
+| Remote sessions | A Windows viewer can borrow an agterm terminal over SSH. An agterm viewer can attach to an exported WSL terminal. Presentation supports questions, pages and program overlays on compatible peers. | [Attach](agterm-remote-development.md), [export](wsl-origin-export-development.md), [presentation](agterm-presentation-development.md) |
+| Agent interaction | Status waiting, event observation, task context, native questions, formatted HUDs, pane-targeted programs and optional WebView2 pages. | [API](control-api.md), [questions](native-questions.md), [HUD](session-hud.md), [cookbook](cookbook-parity.md) |
+| Navigation | Workspace filters, cross-window recent work, focused-pane zoom, window controls and per-pane appearance diagnostics. | [Working sets](working-sets.md), [recent work](recent-work.md), [windows](window-controls.md), [pane diagnostics](presentation-diagnostics.md) |
+| Text and rendering | OSC 8 links, color emoji, soft-wrapped copying, selection during TUI redraws and restored-history reflow. Font settings enumerate installed monospace families. | [User guide](user-guide.md), [selection](selection-performance.md), [emoji measurements](performance-emoji-2026-11-05.md) |
+| Distribution and testing | Self-contained ReadyToRun builds, a separate .NET 11 channel, embedded portable tools, isolated Hyper-V GUI runs and private-desktop WSL checks. | [Installer](../installer/README.md), [Hyper-V tests](hyperv-ui-tests.md), [contributing](../CONTRIBUTING.md) |
+
+For functionality inside a Linux distribution, prefer the bundled Rust helper. Adding a separately installed runtime requires maintainer approval. For terminal ownership changes, exercise both hosted and in-process sessions. For remote interoperability, record the peer revision and test discovery, attach and reconnect with the real peer. The linked development reports identify the configurations tested and outstanding acceptance work.

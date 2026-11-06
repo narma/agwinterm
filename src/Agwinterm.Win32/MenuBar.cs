@@ -449,7 +449,7 @@ internal partial class Program
             case "focus_left": FocusPane(-1); break;
             case "focus_right": FocusPane(1); break;
             // Help
-            case "docs": OpenLink("https://github.com/yeroo/agwinterm/blob/main/docs/control-api.md"); break;
+            case "docs": OpenLink("https://github.com/narma/agwinterm/blob/narma/docs/control-api.md"); break;
             case "install_cli": InstallCli(); break;
             case "install_hooks": InstallHooks(); break;
             case "install_skill": InstallSkill(); break;
@@ -570,7 +570,7 @@ internal partial class Program
         var sb = new StringBuilder();
         sb.Append("agwinterm ").Append(_termProgramVersion);
         if (commit.Length > 0) sb.Append(" (").Append(commit.Length > 12 ? commit[..12] : commit).Append(')');
-        sb.Append("\n\nA native Windows terminal built for AI coding agents —\na homage to umputun's agterm.\n\nhttps://github.com/yeroo/agwinterm\n\nMIT © Boris Kudriashov");
+        sb.Append("\n\nAgwinterm for Windows, maintained by narma.\nBased on Boris Kudriashov's agwinterm and inspired by umputun's agterm.\n\nhttps://github.com/narma/agwinterm\n\nMIT © Boris Kudriashov");
         MessageBoxW(_hwnd, sb.ToString(), "About agwinterm", MB_OK | MB_ICONINFORMATION);
     }
 }

@@ -1,5 +1,7 @@
 # Per-strike glyph overrides ("corrected" source)
 
+These overrides are inputs to the [AGWin Bitmap pack builder](../README.md). To change which font the Windows GUI displays, use the font picker described in the [user guide](../../docs/user-guide.md).
+
 Hand-drawn replacement bitmaps with the **highest precedence** in the fallback
 order (corrected → Nerd Font → synthesized → Unifont → missing-glyph cell).
 They apply to both families.

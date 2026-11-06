@@ -11,7 +11,7 @@ public class AgentSkillTests
             @"agwintermctl image frameshm <Local\agwinterm-frame-NAME>",
             AgentSkill.SkillMarkdown);
         Assert.Contains(
-            "https://github.com/yeroo/agwinterm/blob/main/docs/specs/image-frameshm.md",
+            "https://github.com/narma/agwinterm/blob/narma/docs/specs/image-frameshm.md",
             AgentSkill.SkillMarkdown);
         Assert.Contains("agwintermctl session metrics [<pane-id>] --json", AgentSkill.SkillMarkdown);
         Assert.Contains("Ordinary", AgentSkill.SkillMarkdown);

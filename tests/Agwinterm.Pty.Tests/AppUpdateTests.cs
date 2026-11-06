@@ -6,6 +6,10 @@ public class AppUpdateTests
 {
     private const string LocalAppData = @"C:\Users\x\AppData\Local";
 
+    [Fact]
+    public void DefaultUpdateFeedUsesForkReleases()
+        => Assert.Equal("https://api.github.com/repos/narma/agwinterm/releases/latest", AppUpdate.DefaultApiUrl);
+
     [Theory]
     [InlineData(@"C:\Users\x\AppData\Local\Programs\agwinterm\Agwinterm.Win32.exe", UpdateChannel.Installed)]
     [InlineData(@"C:\Users\x\AppData\Local\PROGRAMS\AGWINTERM\Agwinterm.Win32.exe", UpdateChannel.Installed)]   // case-insensitive
