@@ -31,6 +31,14 @@ internal static class PresentationInputCodec
                 break;
             case TerminalInput.Focus f: p.Kind=5; p.Focused=f.Focused; break;
             case TerminalInput.Raw r: p.Kind=6; p.Raw=ByteString.CopyFrom(r.Bytes.Span); break;
+            case TerminalInput.Command command:
+                p.Kind=9; p.OwnerCommand=command.Value switch {
+                    TerminalCommand.InjectOutput inject=>new() { Kind=1,Bytes=ByteString.CopyFrom(inject.Bytes.Span) },
+                    TerminalCommand.Clear clear=>new() { Kind=2,History=clear.History },
+                    TerminalCommand.Reset=>new() { Kind=3 },
+                    TerminalCommand.ScrollbackLimit limit when limit.Rows >= 0=>new() { Kind=4,Rows=limit.Rows },
+                    _=>throw new ArgumentException("Unsupported ordered owner command.") };
+                break;
             case TerminalInput.FramePresented f: p.Kind=7; p.FrameSequence=f.Sequence; break;
             case TerminalInput.Viewport v:
                 ValidateViewport(v);
@@ -65,6 +73,7 @@ internal static class PresentationInputCodec
             throw new InvalidDataException("Key text exceeds the native encoder limit.");
         TerminalInput input = p.Kind switch
         {
+            9 => DecodeCommand(p.OwnerCommand),
             1 => new TerminalInput.Key(p.VirtualKey,p.Action,p.Modifiers,p.Text,p.Unshifted,p.ConsumedModifiers,
                 p.WindowsUnicode,p.WindowsControlState,p.ScanCode,p.WindowsText),
             2 => new TerminalInput.Text(p.Text),
@@ -84,6 +93,14 @@ internal static class PresentationInputCodec
         if(input is TerminalInput.Viewport viewport) ValidateViewport(viewport);
         return (input,p.Sequence);
     }
+    private static TerminalInput DecodeCommand(PresentationOwnerCommand? command)
+        => new TerminalInput.Command(command switch {
+            { Kind:1 } c when c.Bytes.Length <= MaximumBytes-256 => new TerminalCommand.InjectOutput(c.Bytes.ToByteArray()),
+            { Kind:2 } c => new TerminalCommand.Clear(c.History),
+            { Kind:3 } => new TerminalCommand.Reset(),
+            { Kind:4,Rows:>=0 } c => new TerminalCommand.ScrollbackLimit(c.Rows),
+            _ => throw new InvalidDataException("Invalid owner command.") });
+
     private static void ValidateViewport(TerminalInput.Viewport v)
     {
         if(v.Revision == 0 || v.Columns is < 1 or > 10000 || v.Rows is < 1 or > 10000 ||

@@ -178,14 +178,6 @@ internal partial class Program
                 EndPaint(hwnd, ref ps);
                 return IntPtr.Zero;
 
-            case 0x0018: // WM_SHOWWINDOW: a parked owner is reused by window.select/restore.
-                if(wParam != IntPtr.Zero && _journalWindowParked)
-                {
-                    _journalWindowParked=false;
-                    RequestRedraw();
-                }
-                break;
-
             case WM_IME_STARTCOMPOSITION:
                 _imeComposing = !_chromeFocus;
                 _imePosition = null;
@@ -244,7 +236,6 @@ internal partial class Program
                 return IntPtr.Zero;
 
             case WM_TIMER:
-                if(_journalWindowParked) return IntPtr.Zero;
                 if ((int)wParam == HudTimer) { HudTick(); return IntPtr.Zero; }
                 if ((int)wParam == 2) { _toastText = null; _toastTarget = null; KillTimer(hwnd, (IntPtr)2); InvalidateRect(hwnd, IntPtr.Zero, false); return IntPtr.Zero; }
                 if ((int)wParam == SelAutoTimer) { SelAutoscrollTick(); return IntPtr.Zero; }
@@ -743,7 +734,6 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_CLOSE:
-                if(ParkJournalOwnerWindow()) return IntPtr.Zero;
                 CloseWindowQuestion();
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 

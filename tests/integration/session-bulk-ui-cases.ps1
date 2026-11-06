@@ -44,7 +44,7 @@ $hashes=[ordered]@{}
 foreach($name in 'Agwinterm.Win32.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll','ghostty-vt.dll','agwinterm_ghostty.dll','echo-fixture/Agwinterm.EchoFixture.dll','echo-fixture/Agwinterm.Core.dll') {
     $hashes[$name]=(Get-FileHash -LiteralPath (Join-Path (Split-Path $Exe) $name) -Algorithm SHA256).Hash
 }
-@{schema=1;hostMode=$LatencyHost;presentation=$LatencyPresentation;traceMode=$LatencyTraceMode;
+@{schema=1;hostMode=$LatencyHost;presentation=$LatencyPresentation;measurementVariant=$LatencyVariant;traceMode=$LatencyTraceMode;
   bytes=[long]$LatencyBulkMiB*1MB;elapsedSeconds=$elapsed;bytesPerSecond=([long]$LatencyBulkMiB*1MB/$elapsed);
   cpuLowerMs=($previous.cpuMs-$start.cpuMs);cpuUpperMs=($end.cpuMs-$start.cpuMs);
   meanPrivateBytes=($samples.privateBytes|Measure-Object -Average).Average;peakPrivateBytes=($samples.privateBytes|Measure-Object -Maximum).Maximum;

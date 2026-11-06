@@ -12,9 +12,7 @@ public abstract record TerminalInput
         int Column=-1,int Row=-1) : TerminalInput;
     public sealed record Focus(bool Focused) : TerminalInput;
     public sealed record Raw(ReadOnlyMemory<byte> Bytes) : TerminalInput;
-    internal sealed record JournalResize(int Columns,int Rows) : TerminalInput;
-    internal sealed record JournalInject(ReadOnlyMemory<byte> Bytes) : TerminalInput;
-    internal sealed record JournalResponse(long EventSequence,int Index,ReadOnlyMemory<byte> Bytes) : TerminalInput;
+    public sealed record Command(TerminalCommand Value) : TerminalInput;
     public sealed record FramePresented(ulong Sequence) : TerminalInput;
     public sealed record Viewport(ulong Revision, int Columns, int Rows, int CellWidth, int CellHeight,
         int ScrollOffset, bool Visible) : TerminalInput;
@@ -34,7 +32,10 @@ public abstract record TerminalCommand
 public sealed record TerminalQuery(string Incarnation, ulong AttachmentEpoch, long Generation,
     string Operation, int StartRow = 0, int RowCount = 0, string Text = "", int ResultLimit = 100000);
 public sealed record TerminalQueryResult(string Incarnation, ulong AttachmentEpoch, long Generation,
-    string Status, IReadOnlyList<string> Rows, bool Truncated = false);
+    string Status, IReadOnlyList<string> Rows, bool Truncated = false,
+    IReadOnlyList<TerminalSearchMatch>? Matches = null);
+public sealed record TerminalSearchMatch(int Line, int Column, int EndLine, int EndColumn);
+public sealed record TerminalTextCell(string Text,byte Width);
 
 /// <summary>
 /// UI-facing semantics, independent of direct/local calls or a hosted transport. Capture never

@@ -12,6 +12,7 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
     private readonly GhosttyFrameSource _frames;
     private readonly OwnerInputQueue _input;
     private readonly OwnerActions _actions;
+    private readonly OwnerQueries _queries;
     private readonly object _captureGate=new();
     private readonly string _incarnation=Guid.NewGuid().ToString("N");
     private ulong _viewportRevision;
@@ -23,6 +24,7 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
     internal LocalSessionPresentation(TerminalSession session)
     {
         _session=session;
+        _queries=new(session,_incarnation,1);
         _core=session.Emulator as GhosttyTerminalCore ?? throw new ArgumentException("Ghostty owner required.",nameof(session));
         _input=new(session);
         _actions=new(_input,session,_core.Host);
@@ -81,15 +83,11 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
                     _viewportRevision=viewport.ViewportRevision; _scrollOffset=viewport.ScrollOffset; _visible=viewport.Visible;
                     break;
                 case TerminalCommand.InjectOutput inject:
-                    if(inject.Bytes.Length > OwnerInputQueue.MaximumBytes) return TerminalInputAcceptance.Overflow;
-                    _session.Inject(inject.Bytes.Span); break;
-                case TerminalCommand.Clear clear:
-                    _session.Inject(clear.History ? "\u001b[2J\u001b[3J\u001b[H"u8 : "\u001b[2J\u001b[H"u8); break;
+                    return _input.Submit(new TerminalInput.Command(inject));
+                case TerminalCommand.Clear:
                 case TerminalCommand.Reset:
-                    _session.Inject("\u001bc"u8); break;
-                case TerminalCommand.ScrollbackLimit limit:
-                    if(limit.Rows < 0) throw new ArgumentOutOfRangeException(nameof(command));
-                    _session.MutateLocked(core=>core.ScrollbackMax=limit.Rows); break;
+                case TerminalCommand.ScrollbackLimit:
+                    return _input.Submit(new TerminalInput.Command(command));
                 case TerminalCommand.Theme theme:
                     var colors=ThemeColors.Parse(theme.Colors);
                     var palette=ThemeColors.ParsePalette(theme.Palette);
@@ -106,6 +104,9 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
     public ValueTask<TerminalQueryResult> QueryAsync(TerminalQuery query,CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (query.Operation is "history" or "search" or "buffer" or "styled-buffer" or "text-cells" ||
+            query.Operation.StartsWith("selection-",StringComparison.Ordinal))
+            return _queries.ReadAsync(query,cancellationToken);
         return new(Task.Run(()=>ReadViewport(query,cancellationToken),cancellationToken));
     }
     private TerminalQueryResult ReadViewport(TerminalQuery query,CancellationToken cancellation)
@@ -146,7 +147,7 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
         lock(_captureGate)
         {
             if(_disposed) return;
-            _disposed=true; _input.Dispose(); _frames.Dispose();
+            _disposed=true; _input.Dispose(); _frames.Dispose(); _queries.Dispose();
         }
     }
     private sealed class OwnerActions(OwnerInputQueue input,TerminalSession session,IHostActions? target) : IHostActions

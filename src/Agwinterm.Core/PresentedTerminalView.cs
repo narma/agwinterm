@@ -24,6 +24,7 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
             frame.Identity.AttachmentEpoch != _frame.Identity.AttachmentEpoch || frame.Identity.Sequence <= _frame.Identity.Sequence))
             throw new InvalidDataException("Stale presentation frame.");
         var next=frame.Acquire(); var old=_frame; _frame=next; old?.Dispose(); _dirty=true;
+        _marks=null;
         AppliedTicks=TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
     }
     public ScreenBuffer Screen
@@ -34,12 +35,14 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
             var state=_frame.State;
             if (_screen.Cols != state.Columns || _screen.Rows != state.Rows) _screen=new(state.Columns,state.Rows);
             for (int row=0;row<state.Rows;row++) for(int col=0;col<state.Columns;col++) _screen[row,col]=_frame[row,col];
+            for (int row=0;row<state.Rows;row++) _screen.WrapLengths[row]=_frame.WrapLength(row);
             _dirty=false; return _screen;
         }
     }
     private static NotSupportedException OwnerOperation() => new("This operation must be sent to the terminal owner.");
     public void ShowError(string message)
     {
+        _empty=State with { Columns=Screen.Cols,Rows=Screen.Rows,HistoryRows=0,ScrollOffset=0,CursorVisible=false };
         _frame?.Dispose(); _frame=null; _dirty=false; _screen.Clear();
         int row=0,col=0;
         foreach(var rune in message.EnumerateRunes())
@@ -55,7 +58,7 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
         }
     }
     public void Feed(ReadOnlySpan<byte> bytes) => throw OwnerOperation();
-    public void Resize(int cols,int rows) { if (_frame is null) { _screen=new(cols,rows); _empty=_empty with { Columns=cols,Rows=rows }; } }
+    public void Resize(int cols,int rows) { if (_frame is null) { _screen.Resize(cols,rows); _empty=_empty with { Columns=cols,Rows=rows }; } }
     public int CursorRow=>State.CursorRow;
     public int CursorCol=>State.CursorColumn;
     public bool CursorVisible=>State.CursorVisible;
@@ -81,13 +84,63 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     public int ScrollbackMax { get; set; }=5000;
     public int HistoryCount=>State.HistoryRows;
     public long ScrollGeneration=>State.ScrollGeneration;
-    public Cell GetHistoryCell(int row,int col)=>throw OwnerOperation();
-    public int GetRowWrapLength(int line)=>throw OwnerOperation();
+    public Cell GetCachedCell(int absoluteRow,int column)
+    {
+        int row=absoluteRow-(State.HistoryRows-State.ScrollOffset);
+        if(_frame is null || (uint)row >= State.Rows || (uint)column >= State.Columns) throw OwnerOperation();
+        return _frame[row,column];
+    }
+    public Cell GetHistoryCell(int row,int col)=>GetCachedCell(row,col);
+    public int GetRowWrapLength(int line)
+    {
+        int row=line-(State.HistoryRows-State.ScrollOffset);
+        return _frame is not null && (uint)row < State.Rows ? _frame.WrapLength(row) : throw OwnerOperation();
+    }
     public void SeedScrollback(IReadOnlyList<string> lines) { if(lines.Count != 0) throw OwnerOperation(); }
-    public IReadOnlyList<TerminalEmulator.ShellMark> Marks=>[];
+    private IReadOnlyList<TerminalEmulator.ShellMark>? _marks;
+    public IReadOnlyList<TerminalEmulator.ShellMark> Marks=>_marks ??= _frame?.Marks.Select(m=>new TerminalEmulator.ShellMark {
+        PromptLine=m.PromptLine,CommandLine=m.CommandLine,OutputLine=m.OutputLine,EndLine=m.EndLine,ExitCode=m.ExitCode }).ToArray() ?? [];
     public string Title=>State.Title;
     public string Cwd=>State.WorkingDirectory;
-    public IHostActions? Host { get; set; }
+    private string? _roleNotice;
+    private Func<string,bool>? _titleFilter;
+    public void SetTitleFilter(Func<string,bool> filter)
+    {
+        _titleFilter=filter;
+        if(_roleNotice is { } notice) filter(notice);
+    }
+    public void PublishRoleNotice(string notice)
+    {
+        _roleNotice=notice;
+        _titleFilter?.Invoke(notice);
+    }
+    private IHostActions? _host;
+    private readonly Queue<(Action<IHostActions> Apply,int Bytes)> _pendingEffects=new();
+    private int _pendingEffectBytes;
+    private (int State,int Value)? _progress;
+    public IHostActions? Host
+    {
+        get => _host;
+        set
+        {
+            _host=value;
+            if(value is null) return;
+            if(_progress is { } progress) value.Progress(progress.State,progress.Value);
+            while(_pendingEffects.TryDequeue(out var effect))
+            { _pendingEffectBytes-=effect.Bytes; effect.Apply(value); }
+        }
+    }
+    // Publication and Host assignment use the session lock. Startup effects
+    // must survive the short interval before the pane installs its callbacks.
+    public void DispatchHostEffect(Action<IHostActions> apply,int retainedBytes)
+    {
+        if(_host is { } host) { apply(host); return; }
+        if(retainedBytes < 0 || retainedBytes > 1024*1024-_pendingEffectBytes || _pendingEffects.Count >= 256)
+            throw new InvalidDataException("Pending owner effect budget exceeded.");
+        _pendingEffects.Enqueue((apply,retainedBytes)); _pendingEffectBytes+=retainedBytes;
+    }
+    public void SetProgress(int state,int value)
+    { _progress=(state,value); _host?.Progress(state,value); }
     private static readonly IReadOnlyDictionary<int,KittyImage> EmptyImages=new Dictionary<int,KittyImage>();
     public IReadOnlyDictionary<int,KittyImage> Images=>EmptyImages;
     public IReadOnlyList<ImagePlacement> Placements=>[];
@@ -107,5 +160,5 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     public string DumpHistoryRow(int index)=>throw OwnerOperation();
     public IReadOnlyList<string> DumpBuffer()=>Enumerable.Range(0,Screen.Rows).Select(DumpRow).ToArray();
     public string DumpModes()=>throw OwnerOperation();
-    public void Dispose() { _frame?.Dispose(); _frame=null; }
+    public void Dispose() { _frame?.Dispose(); _frame=null; _pendingEffects.Clear(); _pendingEffectBytes=0; _host=null; }
 }

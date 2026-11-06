@@ -76,9 +76,6 @@ pub struct Create {
     /// presentation_revision >= 1; requires Ghostty, no raw-stream fallback
     #[prost(bool, tag = "13")]
     pub single_owner: bool,
-    /// journal_revision >= 1; parser lives with UI
-    #[prost(bool, tag = "14")]
-    pub journal_owner: bool,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Attach {
@@ -94,8 +91,6 @@ pub struct Attach {
     pub native_snapshot: bool,
     #[prost(uint32, tag = "5")]
     pub presentation_revision: u32,
-    #[prost(uint32, tag = "6")]
-    pub journal_revision: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionRef {
@@ -204,9 +199,6 @@ pub struct HelloReply {
     /// 1 = bounded viewport channel plus ordered semantic input
     #[prost(uint32, tag = "6")]
     pub presentation_revision: u32,
-    /// 1 = parser-free broker and UI owner
-    #[prost(uint32, tag = "7")]
-    pub journal_revision: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CreateReply {
@@ -257,8 +249,11 @@ pub struct AttachReply {
     pub input_pipe: ::prost::alloc::string::String,
     #[prost(uint64, tag = "15")]
     pub attachment_epoch: u64,
-    #[prost(uint32, tag = "16")]
-    pub journal_revision: u32,
+    /// optional revision-1 bounded owner queries; independent of input/frames
+    #[prost(string, tag = "17")]
+    pub query_pipe: ::prost::alloc::string::String,
+    #[prost(string, tag = "18")]
+    pub effect_pipe: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SessionInfo {
@@ -348,6 +343,64 @@ pub struct PresentationFrameHeader {
     /// opt-in QPC timestamp; 0 when diagnostics are disabled
     #[prost(int64, tag = "28")]
     pub captured_ticks: i64,
+    #[prost(message, repeated, tag = "29")]
+    pub images: ::prost::alloc::vec::Vec<PresentationImagePlacement>,
+    #[prost(int32, repeated, tag = "30")]
+    pub wrap_lengths: ::prost::alloc::vec::Vec<i32>,
+    #[prost(message, repeated, tag = "31")]
+    pub marks: ::prost::alloc::vec::Vec<PresentationCommandMark>,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PresentationCommandMark {
+    #[prost(int32, tag = "1")]
+    pub prompt_line: i32,
+    #[prost(int32, tag = "2")]
+    pub command_line: i32,
+    #[prost(int32, tag = "3")]
+    pub output_line: i32,
+    #[prost(int32, tag = "4")]
+    pub end_line: i32,
+    #[prost(int32, optional, tag = "5")]
+    pub exit_code: ::core::option::Option<i32>,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PresentationImagePlacement {
+    #[prost(uint64, tag = "1")]
+    pub generation: u64,
+    #[prost(int32, tag = "2")]
+    pub image_width: i32,
+    #[prost(int32, tag = "3")]
+    pub image_height: i32,
+    #[prost(uint32, tag = "4")]
+    pub format: u32,
+    #[prost(uint32, tag = "5")]
+    pub id: u32,
+    #[prost(uint32, tag = "6")]
+    pub layer: u32,
+    #[prost(int32, tag = "7")]
+    pub z: i32,
+    #[prost(int32, tag = "8")]
+    pub column: i32,
+    #[prost(int32, tag = "9")]
+    pub row: i32,
+    #[prost(uint32, tag = "10")]
+    pub offset_x: u32,
+    #[prost(uint32, tag = "11")]
+    pub offset_y: u32,
+    #[prost(uint32, tag = "12")]
+    pub width: u32,
+    #[prost(uint32, tag = "13")]
+    pub height: u32,
+    #[prost(uint32, tag = "14")]
+    pub source_x: u32,
+    #[prost(uint32, tag = "15")]
+    pub source_y: u32,
+    #[prost(uint32, tag = "16")]
+    pub source_width: u32,
+    #[prost(uint32, tag = "17")]
+    pub source_height: u32,
+    #[prost(uint32, tag = "18")]
+    pub payload_length: u32,
 }
 /// Independent input pipe. Acceptance never waits for a frame/query round trip.
 /// All records are fenced by incarnation/epoch and strictly increasing sequence.
@@ -409,6 +462,21 @@ pub struct PresentationInput {
     pub cell_column: u32,
     #[prost(uint32, tag = "26")]
     pub cell_row: u32,
+    /// kind 9, ordered terminal mutation
+    #[prost(message, optional, tag = "27")]
+    pub owner_command: ::core::option::Option<PresentationOwnerCommand>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PresentationOwnerCommand {
+    /// 1 display injection; 2 clear; 3 reset; 4 scrollback limit
+    #[prost(uint32, tag = "1")]
+    pub kind: u32,
+    #[prost(bytes = "vec", tag = "2")]
+    pub bytes: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag = "3")]
+    pub history: bool,
+    #[prost(int32, tag = "4")]
+    pub rows: i32,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PresentationViewport {
@@ -426,6 +494,85 @@ pub struct PresentationViewport {
     pub scroll_offset: u32,
     #[prost(bool, tag = "7")]
     pub visible: bool,
+}
+/// One request/reply per connection. Disconnect/deadline cancels the query; a new
+/// attachment owns a new endpoint. Neither endpoint carries user input or VT.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PresentationQuery {
+    #[prost(string, tag = "1")]
+    pub incarnation: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub attachment_epoch: u64,
+    #[prost(int64, tag = "3")]
+    pub generation: i64,
+    #[prost(string, tag = "4")]
+    pub operation: ::prost::alloc::string::String,
+    #[prost(int32, tag = "5")]
+    pub start_row: i32,
+    #[prost(int32, tag = "6")]
+    pub row_count: i32,
+    #[prost(string, tag = "7")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(int32, tag = "8")]
+    pub result_limit: i32,
+    #[prost(uint64, tag = "9")]
+    pub frame_sequence: u64,
+    #[prost(uint64, tag = "10")]
+    pub image_generation: u64,
+    #[prost(int32, tag = "11")]
+    pub image_offset: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PresentationQueryReply {
+    #[prost(string, tag = "1")]
+    pub incarnation: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub attachment_epoch: u64,
+    #[prost(int64, tag = "3")]
+    pub generation: i64,
+    #[prost(string, tag = "4")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "5")]
+    pub rows: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag = "6")]
+    pub truncated: bool,
+    #[prost(message, repeated, tag = "7")]
+    pub matches: ::prost::alloc::vec::Vec<PresentationSearchMatch>,
+    #[prost(bytes = "vec", tag = "8")]
+    pub image_bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct PresentationSearchMatch {
+    #[prost(int32, tag = "1")]
+    pub line: i32,
+    #[prost(int32, tag = "2")]
+    pub column: i32,
+    #[prost(int32, tag = "3")]
+    pub end_line: i32,
+    #[prost(int32, tag = "4")]
+    pub end_column: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PresentationEffect {
+    #[prost(string, tag = "1")]
+    pub incarnation: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub attachment_epoch: u64,
+    #[prost(uint64, tag = "3")]
+    pub sequence: u64,
+    /// 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role
+    #[prost(uint32, tag = "4")]
+    pub kind: u32,
+    #[prost(string, tag = "5")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(int32, tag = "7")]
+    pub state: i32,
+    #[prost(int32, tag = "8")]
+    pub value: i32,
+    #[prost(int64, tag = "9")]
+    pub completion_sequence: i64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

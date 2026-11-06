@@ -1,5 +1,11 @@
 # Design
 
+## Approved scope update — 2026-11-06
+
+The user explicitly replaced live legacy-host adoption with save-and-close upgrade migration. This decision supersedes legacy-adapter/drain/old-client rollback requirements below. The new runtime ships only Ghostty (host-owned or serverless); remove old managed/Rust terminal choices and Windows host implementations as far as practical. Retain the bundled Rust Linux helper needed for WSL/remote operation.
+
+Upgrade must first persist old layout, settings and attributed history, back up the files, and close old sessions/hosts before replacing binaries. Running programs stop; restoring saved state does not resume process execution. Failed save/shutdown must leave the old installation recoverable. Test installed 0.20.19 (b48dbb9) and Ghostty preview (a9efbfe). Same-version new-host reconnect still preserves live process identity. Performance acceptance and the full Ghostty feature contract remain unchanged.
+
 ## Context
 
 See proposal.md for motivation. Inspected baseline: PR #35, commit `83d82b1c55501bac97e5995d50910df59a8e7bf3` on `codex/ghostty-vt-foundation`. If implementation starts from a newer head, record and benchmark that exact head again.

@@ -82,7 +82,7 @@ function ReadRuns([string]$Directory) {
         $workBytes = [double]$data.producerBytesPerEvent * $samples.Count
         $activeSeconds = ($samples | ForEach-Object { ([long]$_.ticks[5]-[long]$_.ticks[4])/[double]$data.frequency } | Measure-Object -Sum).Sum
         [pscustomobject]@{path=$file.FullName;utc=$data.utc;key="$($data.hostMode)/$($data.workload)/$inputPattern";inputPattern=$inputPattern;
-            mode=$data.hostMode;workload=$data.workload;presentation=$data.presentation;journalCheckpoints=$data.journalCheckpoints;count=$samples.Count;hashes=$data.binaryHashes;grid=$data.grid;
+            mode=$data.hostMode;workload=$data.workload;presentation=$(if($data.measurementVariant){$data.measurementVariant}else{$data.presentation});journalCheckpoints=$data.journalCheckpoints;count=$samples.Count;hashes=$data.binaryHashes;grid=$data.grid;
             latencies=$latencies;metricsComplete=$metricsComplete;combinedCpuMs=$cpuMs;combinedCpuUpperMs=$cpuUpperMs;combinedPrivateBytes=$privateBytes;
             fixedWorkBytes=$workBytes;activeOutputBytesPerSecond=$(if ($workBytes -gt 0 -and $activeSeconds -gt 0) {$workBytes/$activeSeconds} else {0});
             nativeCurrentBytes=$nativeBytes;nativePageResidentBytes=$pageBytes;nativeImageBytes=$imageBytes;pageMetricsComplete=$pageMetricsComplete;

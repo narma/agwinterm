@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory)][string]$Directory,
     [ValidateSet('ownership','trace')][string]$Comparison='ownership',
     [Parameter(Mandatory)][string]$Output,
-    [ValidateSet('legacy','single-owner','ui-owner-journal')][string]$BaselineVariant='legacy'
+    [ValidateSet('legacy','single-owner','ui-owner-journal','before')][string]$BaselineVariant='legacy'
 )
 $ErrorActionPreference='Stop'
 function Confidence([double[]]$Values) {
@@ -16,6 +16,7 @@ function Confidence([double[]]$Values) {
 }
 $runs=@(Get-ChildItem -LiteralPath $Directory -Filter session-bulk.json -Recurse | ForEach-Object {
     $data=Get-Content -LiteralPath $_.FullName -Raw|ConvertFrom-Json
+    if($data.measurementVariant){$data.presentation=$data.measurementVariant}
     if($data.schema -ne 1 -or $data.bytes -le 0 -or $data.elapsedSeconds -le 0 -or $data.cpuLowerMs -le 0 -or
         $data.cpuUpperMs -lt $data.cpuLowerMs){throw "Invalid completed bulk run: $($_.FullName)"}
     $data|Add-Member -NotePropertyName sourcePath -NotePropertyValue $_.FullName -PassThru

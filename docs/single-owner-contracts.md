@@ -49,7 +49,17 @@ exist: remaining consumer migration is tracked in
 `single-owner-consumer-checklist.md` and the OpenSpec tasks.
 
 The presentation publisher has one frame credit. Output coalesces a wakeup while
-credit is exhausted; successful EndDraw releases the next credit. It never holds
+credit is exhausted; successful EndDraw releases the next credit. Explicit control
+readback also consumes the cached frame and releases its credit, allowing later
+reads to progress when a hidden/occluded window never paints. This does not request
+a paint or enter the ordinary keyboard/render timing path. The publisher never holds
 the feed lock during a pipe write, and has no fixed repaint timer. Synchronized
 output uses its explicit deadline. T8 is application EndDraw submission, not a
 physical display timestamp.
+
+A hosted display write is an ordered command to the owner. Its successful reply
+means the command was queued; a subsequent cached viewport read may still show
+the preceding frame. Clients requiring read-after-write visibility should wait
+for the expected text or frame. Explicit reads release credit even without a
+paint. After child exit the same attachment still serves history, selection and
+resize; ordinary terminal input is closed.

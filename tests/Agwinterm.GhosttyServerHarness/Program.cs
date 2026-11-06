@@ -1,9 +1,15 @@
 using System.Text;
 using Agwinterm.Core;
 using Agwinterm.Pty;
+System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(Console.Out));
+System.Diagnostics.Trace.AutoFlush=true;
 
 // Run inside the owned Windows VM; no UI, global configuration or user sessions are touched.
-if(args is [var journalDirectory,"--journal-only"]) { await JournalChecks.Run(journalDirectory); return; }
+if (args is ["--soak",var appDirectory,var count,var minutes,var report])
+{
+    await OwnerSoak.Run(appDirectory,int.Parse(count),int.Parse(minutes),report);
+    return;
+}
 if (args.Length != 1) throw new ArgumentException("Pass the application directory (Ghostty and bundled ConPTY).");
 Environment.SetEnvironmentVariable("AGWINTERM_GHOSTTY_COUNTERS", "1");
 if (!GhosttyVt.TryLoad(args[0], out string? error)) throw new InvalidOperationException(error);
@@ -38,7 +44,7 @@ using (var encoder = new GhosttyTerminalCore(20, 4))
     Check(Encoding.UTF8.GetString(OwnerInputQueue.Encode(encoder,mouse)) == "\u001b[<0;4;3M",
         "owner chooses cell mouse coordinates from its current mode");
     encoder.Feed("\u001b[?1016h"u8);
-    Check(Encoding.UTF8.GetString(OwnerInputQueue.Encode(encoder,mouse)) == "\u001b[<0;32;48M",
+    Check(Encoding.UTF8.GetString(OwnerInputQueue.Encode(encoder,mouse)) == "\u001b[<0;31;47M",
         "same semantic pointer uses pixels after an owner mode change");
 }
 string Text(ISession session) { lock (session.SyncRoot) return string.Join("\n", session.Emulator.DumpBuffer()); }
@@ -56,6 +62,9 @@ using (var local=new TerminalSession(20,4))
     Check(result.Status == "ok" && result.Rows.Single().StartsWith("LOCAL é界"),"local viewport query retains a coherent frame generation");
     Check((await presentation.QueryAsync(query with { Incarnation="replaced" },default)).Status == "stale",
         "local query rejects replacement incarnation");
+    local.Inject("\u001b_Ga=T,f=32,s=1,v=1,i=77,q=2,C=1;/wAA/w==\u001b\\"u8);
+    using(var imageFrame=presentation.Capture(0,8,18)!)
+        Check(imageFrame.Images.Count == 1,"owner default pixel geometry makes native images visible");
     using var cancel=new CancellationTokenSource(); cancel.Cancel();
     bool cancelled=false;
     try { await presentation.QueryAsync(query,cancel.Token); }
@@ -136,7 +145,10 @@ try
         "detaching releases only the legacy replica");
     Check(Wait(() => !client.List().Single().Attached), "detach closes its data channel without killing the child");
     gate.Set(); Check(ready.WaitOne(15000), "child writes while detached");
-    Check(RustEmulatorCore.TryLoad(Path.Combine(args[0], "agwinterm_core.dll"), out _), "Rust comparison core loads");
+    // The legacy oracle belongs to the test harness, not the shipped app package.
+    string rustOracle=Path.Combine(AppContext.BaseDirectory,"agwinterm_core.dll");
+    if(!File.Exists(rustOracle)) rustOracle=Path.Combine(args[0],"agwinterm_core.dll");
+    Check(RustEmulatorCore.TryLoad(rustOracle, out _), "Rust comparison core loads");
     TerminalSession.CoreFactory = (cols, rows) => new RustTerminalCore(cols, rows);
     using var second = (ServerSession)backend.Create("native", 60, 10);
     Check(second.Emulator is RustTerminalCore, "second replica starts with changed Rust UI preference");
@@ -188,6 +200,7 @@ try
     {
         var countsBefore=GhosttyDiagnostics.Snapshot();
         var single=(ServerSession)presentationBackend.Create("single-owner",60,10);
+        var effects=new HarnessEffects(); single.Emulator.Host=effects;
         Check(single.Emulator is PresentedTerminalView && GhosttyDiagnostics.Snapshot() == countsBefore,
             "presentation handle creates no UI terminal");
         await single.StartAsync("powershell.exe",["-NoProfile","-ExecutionPolicy","Bypass","-File",script]);
@@ -203,6 +216,29 @@ try
         gate.Set(); Check(ready.WaitOne(15000),"single owner finishes split CSI");
         Check(Wait(()=>Present(single).Contains("ALTRED")),"presentation preserves split escape state in its sole owner");
         Check(Wait(()=>Present(single).Contains("LINK")),"presentation receives grapheme and hyperlink fixture");
+        // ConPTY may consume Kitty APCs before the terminal owner sees them.
+        // The display-injection contract exercises the exact owner/frame/bulk path.
+        single.Inject("\u001b[s\u001b[31m\u001b[2;1Hé界\u001b]8;;https://example.test/\u001b\\LINK\u001b]8;;\u001b\\\u001b[4;1H\u001b_Ga=T,f=32,s=1,v=1,i=77,q=2,C=1;/wAA/w==\u001b\\\u001b[u"u8);
+        bool imageReady=Wait(()=>
+        {
+            Present(single);
+            lock(single.SyncRoot)
+            {
+                using var frame=((PresentedTerminalView)single.Emulator).AcquireFrame();
+                return frame?.Images.Any(p=>p.Id == 77 && p.Image.Pixels.Span.SequenceEqual(new byte[] {255,0,0,255})) == true;
+            }
+        });
+        if(!imageReady)
+        {
+            lock(single.SyncRoot)
+            {
+                using var frame=((PresentedTerminalView)single.Emulator).AcquireFrame();
+                Console.WriteLine($"Image diagnostic: closed={single.InputClosed}; frame={frame?.Identity}; images={frame?.Images.Count}");
+                if(frame is not null) foreach(var p in frame.Images)
+                    Console.WriteLine($"Image {p.Id}: {p.Image.Format} {p.Image.Width}x{p.Image.Height}; bytes={Convert.ToHexString(p.Image.Pixels.Span)}");
+            }
+        }
+        Check(imageReady,"presentation resolves image pixels over bounded bulk queries without a UI terminal");
         lock(single.SyncRoot)
         {
             using var frame=((PresentedTerminalView)single.Emulator).AcquireFrame()!;
@@ -216,12 +252,40 @@ try
                 "single-owner viewport preserves restored cursor metadata");
         }
         int? singlePid=single.ChildProcessId;
+        string pngPath=Path.Combine(Path.GetTempPath(),appId+".png");
+        try
+        {
+            File.WriteAllBytes(pngPath,Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="));
+            using var control=new ControlServer(single);
+            string imageCommand=System.Text.Json.JsonSerializer.Serialize(new { cmd="image.frame",
+                args=new { images=new[] { new { path=pngPath,id=88,row=3,col=0,cols=2,rows=2 } } } });
+            using(var response=System.Text.Json.JsonDocument.Parse(control.Dispatch(imageCommand)))
+                Check(response.RootElement.GetProperty("ok").GetBoolean(),"image.frame control commits in the owner process");
+            Check(Wait(()=>
+            {
+                Present(single);
+                lock(single.SyncRoot) { using var frame=((PresentedTerminalView)single.Emulator).AcquireFrame();
+                    return frame?.Images.Any(p=>p.Id == 88 && p.Image.Format == GhosttyPixelFormat.Png &&
+                        p.Image.Width == 1 && p.Image.Height == 1 && p.Image.Pixels.Span.SequenceEqual(File.ReadAllBytes(pngPath))) == true; }
+            }),"owner image.frame publishes immutable PNG payload and placements");
+            using(var response=System.Text.Json.JsonDocument.Parse(control.Dispatch("{\"cmd\":\"image.clear\",\"args\":{}}")))
+                Check(response.RootElement.GetProperty("ok").GetBoolean(),"image.clear control reaches the owner");
+            Check(Wait(()=>{ Present(single); lock(single.SyncRoot) { using var frame=((PresentedTerminalView)single.Emulator).AcquireFrame();
+                return frame is not null && frame.Images.Count == 0; } }),"owner image clear removes transported placements");
+        }
+        finally { File.Delete(pngPath); }
+        single.Inject("\u001b]52;c;Y2xpcGJvYXJk\a\a\u001b]9;4;2;25\a"u8);
+        Check(Wait(()=>effects.Events.Contains("clipboard:clipboard") && effects.Events.Contains("bell") && effects.Events.Contains("progress:2:25")),
+            "owner forwards clipboard bell and progress on its ordered reliable channel");
         string ticket=single.CreationTicket;
         single.Detach();
         gate.Set(); Check(ready.WaitOne(15000),"single owner receives detached output");
         using var reattached=(ServerSession)presentationBackend.Create("single-owner",60,10);
+        var restoredEffects=new HarnessEffects(); reattached.Emulator.Host=restoredEffects;
         Check(reattached.TryAdopt(ticket) && reattached.ChildProcessId == singlePid,"presentation reattach retains exact shell incarnation");
         Check(Wait(()=>Present(reattached).Contains("ALTRED DETACHED")),"reattach sends latest viewport without a history replica");
+        Check(Wait(()=>restoredEffects.Events.Contains("progress:2:25")) && !restoredEffects.Events.Contains("bell") &&
+            !restoredEffects.Events.Any(e=>e.StartsWith("clipboard:")),"reattach restores durable progress without replaying ephemeral effects");
         gate.Set(); Check(ready.WaitOne(15000),"presentation child restores primary screen");
         Check(Wait(()=>{ Present(reattached); lock(reattached.SyncRoot) return !reattached.Emulator.IsAltScreen && reattached.Emulator.HistoryCount > 0; }),
             "presentation carries primary screen and history metadata");
@@ -252,9 +316,87 @@ try
             }
         }),
             "resize publishes a complete new viewport");
+        TerminalQuery ownerQuery;
+        lock(reattached.SyncRoot)
+        {
+            using var frame=((PresentedTerminalView)reattached.Emulator).AcquireFrame()!;
+            ownerQuery=new(frame.Identity.Incarnation,frame.Identity.AttachmentEpoch,frame.Identity.TerminalGeneration,"history",0,16);
+        }
+        var history=await reattached.Presentation!.QueryAsync(ownerQuery,default);
+        Check(history.Status == "ok" && history.Rows.Any(row=>row.Contains("HISTORY")),
+            "bounded owner history query reads retained history without a UI replica");
+        Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("HISTORY"),
+            "control text reads owner history across bounded coherent pages");
+        using(var styled=System.Text.Json.JsonDocument.Parse(SurfaceText.DumpStyled(reattached,new OverlayTextArgs(All:true,Lines:0))))
+            Check(styled.RootElement.GetProperty("rows").GetArrayLength() > 12,
+                "styled control readback includes owner history beyond the cached viewport");
+        var found=await reattached.Presentation.QueryAsync(ownerQuery with { Operation="search",Text="HISTORY",ResultLimit=3 },default);
+        Check(found.Status == "ok" && found.Matches?.Count == 3 && found.Truncated,
+            "owner search returns bounded native matches independently of frame credits");
+        Check((await reattached.Presentation.QueryAsync(ownerQuery with { Generation=0 },default)).Status == "stale",
+            "owner history query refuses a mixed generation");
+        Check((await reattached.Presentation.QueryAsync(ownerQuery with { RowCount=33 },default)).Status == "invalid",
+            "owner query rejects oversized history pages");
+        using(var cancelledQuery=new CancellationTokenSource())
+        {
+            cancelledQuery.Cancel(); bool refused=false;
+            try { await reattached.Presentation.QueryAsync(ownerQuery,cancelledQuery.Token); }
+            catch(OperationCanceledException) { refused=true; }
+            Check(refused,"owner query cancellation leaves input and presentation attached");
+        }
+        int selectedRow=history.Rows.Select((text,index)=>(text,index)).First(pair=>pair.text.Contains("HISTORY")).index;
+        int selectedColumn=history.Rows[selectedRow].IndexOf("HISTORY",StringComparison.Ordinal);
+        var selectionRequest=new TerminalSelectionRequest(Guid.NewGuid().ToString("N"),selectedRow,selectedColumn,
+            selectedRow,selectedColumn+6,false);
+        string selectionJson=System.Text.Json.JsonSerializer.Serialize(selectionRequest);
+        var selectionReply=await reattached.Presentation.QueryAsync(ownerQuery with { Operation="selection-create",Text=selectionJson },default);
+        var selection=selectionReply.Rows.Count == 1 ? System.Text.Json.JsonSerializer.Deserialize<TerminalSelectionResult>(selectionReply.Rows[0]) : null;
+        Check(selectionReply.Status == "ok" && selection is { Valid:true,Text:"HISTORY" },
+            "selection owner captures immutable copy text and native tracked endpoints");
+        reattached.Resize(80,12);
+        Check(Wait(()=>{ Present(reattached); lock(reattached.SyncRoot) return reattached.Emulator.Screen.Cols == 80; }),
+            "selection fixture applies resize before locating anchors");
+        var locatedReply=await reattached.Presentation.QueryAsync(ownerQuery with { Operation="selection-locate",Text=selectionJson },default);
+        var located=locatedReply.Rows.Count == 1 ? System.Text.Json.JsonSerializer.Deserialize<TerminalSelectionResult>(locatedReply.Rows[0]) : null;
+        Check(locatedReply.Status == "ok" && located is { Valid:true } && locatedReply.Generation > ownerQuery.Generation,
+            "owner selection survives resize and reports its new generation");
+        await reattached.Presentation.QueryAsync(ownerQuery with { Operation="selection-release",Text=selectionJson },default);
+        Check((await reattached.Presentation.QueryAsync(ownerQuery with { Operation="selection-locate",Text=selectionJson },default)).Status == "stale",
+            "released selection cannot reuse native anchor handles");
+        using(var liveViewport=reattached.Presentation.Capture(0,11,23)) { }
+        reattached.Inject("\r\nOWNER_DISPLAY_INJECTION"u8);
+        Check(Wait(()=>Present(reattached).Contains("OWNER_DISPLAY_INJECTION")),
+            "display injection mutates the sole host terminal without sending child input");
+        var all=selectionRequest with { Id=Guid.NewGuid().ToString("N"),All=true };
+        var allReply=await reattached.Presentation.QueryAsync(ownerQuery with { Operation="selection-create",
+            Text=System.Text.Json.JsonSerializer.Serialize(all) },default);
+        var allText=allReply.Rows.Count == 1 ? System.Text.Json.JsonSerializer.Deserialize<TerminalSelectionResult>(allReply.Rows[0])?.Text : null;
+        Check(allReply.Generation > ownerQuery.Generation && allText?.Contains("HISTORY") == true && allText.Contains("OWNER_DISPLAY_INJECTION"),
+            "select-all uses one coherent current buffer after output advanced past the painted frame");
+        byte[] checkpoint=await reattached.ExportBufferAsync();
+        Check(BufferPersist.TryParse(checkpoint,out var savedBuffer) && savedBuffer.Rows.Count > 10,
+            "host exports attributed history beyond the UI viewport");
+        string liveBefore=Present(reattached);
+        int historyBefore=reattached.Emulator.HistoryCount;
+        await reattached.ImportBufferAsync(BufferPersist.FromPlainText(["LEGACY_STATE_IMPORT\u001b[31m"],60));
+        Check(Wait(()=>{ Present(reattached); return reattached.Emulator.HistoryCount > historyBefore; }),
+            "old plain state restores through the owner without a UI terminal");
+        Check(Present(reattached) == liveBefore,"history import preserves the fresh shell screen");
+        Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("LEGACY_STATE_IMPORT [31m"),
+            "legacy saved escape sequences remain inert history text");
         gate.Set();
         Check(Wait(()=>{ Present(reattached); return reattached.HasExited; }) && reattached.ExitCode == 7,
             "presentation exposes exit only after its final viewport");
+        Check(SurfaceText.Dump(reattached,new OverlayTextArgs(All:true,Lines:0)).Contains("LEGACY_STATE_IMPORT"),
+            "exited session keeps owner history readable");
+        Check(reattached.SubmitInput(new TerminalInput.Raw("never replay"u8.ToArray())) == TerminalInputAcceptance.Closed,
+            "exited session rejects child input");
+        reattached.Resize(70,10);
+        Check(Wait(()=>{ Present(reattached); return reattached.Emulator.Screen.Cols == 70; }),
+            "exited terminal still reflows through its owner");
+        reattached.Inject("\r\nPRESS_ENTER_TO_CLOSE"u8);
+        Check(Wait(()=>Present(reattached).Contains("PRESS_ENTER_TO_CLOSE")),
+            "exit prompt is injected at the owner after child exit");
     }
     Console.WriteLine($"{checks} server checks passed.");
 }

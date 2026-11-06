@@ -3,18 +3,26 @@
 Builds **per-user** Windows installers — end users need **no** .NET runtime installed:
 
 - **`agwinterm-setup-<ver>.exe`** — the full `agwinterm` (.NET) terminal + `agwintermctl`, from a
-  self-contained publish. Its shortcuts pass `--default-session-host server-rust` so a fresh
-  install defaults new sessions to the Rust pty-host (a first-run seed only; it never overrides
-  an existing config, and the Settings UI stays authoritative after).
+  self-contained publish. Its shortcuts seed `--default-session-host server` on first run.
+  Hosted sessions share a separate application host process; each terminal has one Ghostty
+  owner. Direct in-process sessions remain available.
 - **`agwinterm-lite-setup-<ver>.exe`** — the lightweight `agwinterm-lite` (C++/GDI) client for
   old / low-RAM machines, standalone. Always rides the Rust pty-host.
 
-Each setup ships its own copy of the shared `agwinterm-ptyhost.exe` + `agwinterm_core.dll`, so
-either installs (and uninstalls) cleanly without the other.
+The full installer ships Ghostty and the Rust Linux helpers. It removes the retired Windows
+Rust host and core from the full application's directory. The separate lite installation
+and its native ABI assets remain independent.
 
 The agwinterm setup also carries Microsoft's ConPTY, `conpty.dll` + `x64\OpenConsole.exe` from the
-`Microsoft.Windows.Console.ConPTY` NuGet package (MIT), which `dotnet publish` puts in the stage. Both the app
-and `agwinterm-ptyhost.exe` load it from their own directory, and fall back to the inbox conhost without it.
+`Microsoft.Windows.Console.ConPTY` NuGet package (MIT), which `dotnet publish` puts in the stage.
+Both host and in-process sessions use the bundled ConPTY.
+
+On upgrade, setup asks the installed UI to checkpoint its open windows, creates a verified
+backup under `%LOCALAPPDATA%\agwinterm-upgrade-backups`, closes the UI and ends the old host.
+Running Windows programs end; layout, settings and history saved by the previous version
+are restored at next launch. History requires the old `restore-buffer` setting. If an old
+host has no matching UI, open that version once and retry. A failed checkpoint or backup
+stops the install before any decision to close sessions or replace program files.
 
 ## Build
 

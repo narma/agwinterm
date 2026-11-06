@@ -5,6 +5,30 @@ namespace Agwinterm.Core.Tests;
 
 public sealed class TerminalFrameTests
 {
+    [Fact]
+    public void ScrolledSelectionUsesAbsoluteFrameRowsAcrossHistoryBoundary()
+    {
+        using var frame=new TerminalFrame(new("session",1,1,1,1),
+            new(2,2,2,1,0,0,0,true,1,false,false,default,default,"",""),
+            new[] {Cell.Empty with {Rune='A'},Cell.Empty with {Rune='B'},
+                Cell.Empty with {Rune='C'},Cell.Empty with {Rune='D'}});
+        using var view=new PresentedTerminalView(2,2); view.Publish(frame);
+        Assert.Equal("AB\r\nCD",TerminalSelectionText.Read(view,1,0,2,1,false));
+        Assert.Throws<NotSupportedException>(()=>view.GetCachedCell(0,0));
+    }
+
+    [Fact]
+    public void ImagePlacementsAndDeadlineBelongToTheRetainedFrame()
+    {
+        using var text=Create(1);
+        var image=new GhosttyImage(7,1,1,GhosttyPixelFormat.Rgba,new byte[] {255,0,0,255});
+        var placements=new List<GhosttyImagePlacement> { new(image,1,GhosttyImageLayer.AboveText,0,0,0,0,0,1,1,0,0,1,1) };
+        var frame=new TerminalFrame(text.Identity,text.State,[Cell.Empty],images:placements,animationDeadline:123);
+        using var lease=frame.Acquire(); placements.Clear(); frame.Dispose();
+        Assert.Single(lease.Images); Assert.Equal(123,lease.AnimationDeadline);
+        Assert.Equal(new byte[] {255,0,0,255},lease.Images[0].Image.Pixels.ToArray());
+    }
+
     private static TerminalFrame Create(ulong sequence, int rune = 'A', ulong epoch = 1, ulong viewport = 0)
         => new(new("session", epoch, viewport, sequence, (long)sequence),
             new(1, 1, 0, 0, 0, 0, 0, true, 1, false, false, new(0,0,0), new(255,255,255), "", ""),

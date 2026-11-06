@@ -14,6 +14,20 @@ public static class BufferPersist
 {
     public const uint Version = 1;
 
+    /// <summary>Import legacy plain rows as inert data, without a parser or live terminal.</summary>
+    public static byte[] FromPlainText(IEnumerable<string> lines,int columns)
+    {
+        var buffer=new PBuffer { Version=Version,Cols=(uint)Math.Clamp(columns,1,32768) };
+        foreach(string line in lines.TakeLast(500))
+        {
+            var row=new PRow();
+            foreach(var rune in line.EnumerateRunes().Take(32768))
+                row.Cells.Add(new PCell { Rune=System.Text.Rune.IsControl(rune) ? 32 : rune.Value,Width=1 });
+            buffer.Rows.Add(row);
+        }
+        return buffer.ToByteArray();
+    }
+
     private static uint Pack(Color c) => ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
     private static Color Unpack(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v);
 

@@ -8,7 +8,7 @@ using Agwinterm.Pty;
 // Compiled fixture; launched only inside the routed VM by the latency suite.
 if (args is ["--shutdown-host", var pipe])
 {
-    if (!System.Text.RegularExpressions.Regex.IsMatch(pipe, "^p13-[0-9a-f]{32}(-presentation-v1|-journal-v1)?$"))
+    if (!System.Text.RegularExpressions.Regex.IsMatch(pipe, "^p13-[0-9a-f]{32}(-presentation-v1|-owner-v1)?$"))
         throw new ArgumentException("Only an isolated latency fixture namespace can be shut down.");
     if (!PtyHostClient.IsRunning(pipe)) return;
     using var client = PtyHostClient.Connect(pipe);
@@ -18,13 +18,30 @@ if (args is ["--shutdown-host", var pipe])
     return;
 }
 bool bulk=args.Length > 0 && args[0] == "fixed-bulk";
-if (!bulk && !TerminalLatencyTrace.Enabled) throw new InvalidOperationException("The echo fixture requires a trace directory.");
+bool soak=args is ["soak"];
+if (!bulk && !soak && !TerminalLatencyTrace.Enabled) throw new InvalidOperationException("The echo fixture requires a trace directory.");
 nint input = Native.GetStdHandle(-10);
 if (!Native.GetConsoleMode(input, out uint previous)) throw new Win32Exception();
 if (!Native.SetConsoleMode(input, previous & ~7u)) throw new Win32Exception();
 try
 {
     Console.OutputEncoding = new UTF8Encoding(false);
+    if (soak)
+    {
+        // Each carriage return produces exactly one numbered marker. A missed
+        // or duplicated write is observable across detach and resize.
+        Console.Write("\u001b[?9001lSOAK_READY\r\n");
+        Console.Out.Flush();
+        string output=string.Concat(Enumerable.Repeat(new string('x',62)+"\r\n",64));
+        using var keys=Console.OpenStandardInput();
+        for(int sequence=1;keys.ReadByte() is int key && key >= 0;sequence++)
+        {
+            if(key != 13) throw new InvalidDataException("Unexpected soak input.");
+            Console.Write(output+$"SOAK_{sequence:D8}!\r\n");
+            Console.Out.Flush();
+        }
+        return;
+    }
     if(bulk)
     {
         int mib=args.Length == 2 && int.TryParse(args[1],out var size) && size is >= 1 and <= 2048 ? size : throw new ArgumentException("Pass fixed-bulk MiB (1..2048).");

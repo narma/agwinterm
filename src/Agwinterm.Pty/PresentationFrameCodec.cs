@@ -33,11 +33,25 @@ internal static class PresentationFrameCodec
             Background = Pack(s.Background), CursorColor = Pack(s.CursorColor), Title = s.Title, Cwd = s.WorkingDirectory,
             Modes = s.Modes, KeyboardFlags = s.KeyboardFlags, ScrollTop = (uint)s.ScrollTop, ScrollBottom = (uint)s.ScrollBottom,
             HasExited = exited, ExitCode = exitCode, CapturedTicks = frame.CapturedTicks };
+        for(int row=0;row<s.Rows;row++) header.WrapLengths.Add(frame.WrapLength(row));
+        foreach(var mark in frame.Marks)
+        {
+            var encoded=new PresentationCommandMark { PromptLine=mark.PromptLine,CommandLine=mark.CommandLine,
+                OutputLine=mark.OutputLine,EndLine=mark.EndLine };
+            if(mark.ExitCode is { } code) encoded.ExitCode=code;
+            header.Marks.Add(encoded);
+        }
+        if (frame.Images.Count > 65536) throw new InvalidDataException("Too many image placements.");
+        header.Images.AddRange(frame.Images.Select(p => new PresentationImagePlacement {
+            Generation=p.Image.Generation,ImageWidth=p.Image.Width,ImageHeight=p.Image.Height,Format=(uint)p.Image.Format,
+            PayloadLength=(uint)p.Image.Pixels.Length,
+            Id=p.Id,Layer=(uint)p.Layer,Z=p.Z,Column=p.Col,Row=p.Row,OffsetX=p.OffsetX,OffsetY=p.OffsetY,
+            Width=p.Width,Height=p.Height,SourceX=p.SourceX,SourceY=p.SourceY,SourceWidth=p.SourceWidth,SourceHeight=p.SourceHeight }));
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Utf8, true);
         writer.Write(0); // outer size, excluding this prefix
         byte[] metadata = header.ToByteArray();
-        if (metadata.Length > 256 * 1024) throw new InvalidDataException("Presentation metadata exceeds limit.");
+        if (metadata.Length > 8 * 1024 * 1024) throw new InvalidDataException("Presentation metadata exceeds limit.");
         writer.Write(metadata.Length); writer.Write(metadata);
         for (int row = 0; row < s.Rows; row++)
         {
@@ -73,13 +87,14 @@ internal static class PresentationFrameCodec
     }
 
     internal static (TerminalFrame Frame, bool Exited, int ExitCode) Decode(byte[] payload,
-        TerminalFrame.Lease? previous, string incarnation, ulong epoch, System.Buffers.ArrayPool<Cell>? pool = null)
+        TerminalFrame.Lease? previous, string incarnation, ulong epoch, System.Buffers.ArrayPool<Cell>? pool = null, int? payloadLength = null)
     {
-        if (payload.Length is < 8 or > MaximumBytes) throw new InvalidDataException("Invalid presentation record length.");
-        using var stream = new MemoryStream(payload, writable: false);
+        int length = payloadLength ?? payload.Length;
+        if (length is < 8 or > MaximumBytes || length > payload.Length) throw new InvalidDataException("Invalid presentation record length.");
+        using var stream = new MemoryStream(payload, 0, length, writable: false);
         using var reader = new BinaryReader(stream, Utf8);
         int headerSize = reader.ReadInt32();
-        if (headerSize < 1 || headerSize > 256 * 1024 || headerSize > stream.Length-stream.Position-4)
+        if (headerSize < 1 || headerSize > 8 * 1024 * 1024 || headerSize > stream.Length-stream.Position-4)
             throw new InvalidDataException("Invalid presentation header length.");
         var h = PresentationFrameHeader.Parser.ParseFrom(reader.ReadBytes(headerSize));
         if (h.Revision != 1 || h.Incarnation != incarnation || h.AttachmentEpoch != epoch || epoch == 0 ||
@@ -91,6 +106,16 @@ internal static class PresentationFrameCodec
             h.Title.Length > MaximumStringBytes || h.Cwd.Length > MaximumStringBytes)
             throw new InvalidDataException("Invalid presentation identity or bounds.");
         int cols = (int)h.Cols, rows = (int)h.Rows;
+        if(h.WrapLengths.Count != 0 && (h.WrapLengths.Count != rows || h.WrapLengths.Any(w=>w < -1 || w > cols)))
+            throw new InvalidDataException("Invalid frame wrap metadata.");
+        if (h.Images.Count > 65536) throw new InvalidDataException("Too many image placements.");
+        var images=h.Images.Select(DecodeImagePlacement).ToArray();
+        long totalRows=(long)h.HistoryRows+h.Rows;
+        if(h.Marks.Count > 4096 || h.Marks.Any(m=>m.PromptLine < 0 || m.PromptLine >= totalRows ||
+            m.CommandLine < -1 || m.CommandLine >= totalRows || m.OutputLine < -1 || m.OutputLine >= totalRows ||
+            m.EndLine < -1 || m.EndLine >= totalRows)) throw new InvalidDataException("Invalid command marks.");
+        var marks=h.Marks.Select(m=>new TerminalCommandMark(m.PromptLine,m.CommandLine,m.OutputLine,m.EndLine,
+            m.HasExitCode ? m.ExitCode : null)).ToArray();
         if (h.BaseSequence != 0 && (previous is null || previous.Identity.Incarnation != incarnation ||
             previous.Identity.AttachmentEpoch != epoch || previous.Identity.Sequence != h.BaseSequence ||
             previous.Identity.ViewportRevision != h.ViewportRevision || previous.State.Columns != cols || previous.State.Rows != rows))
@@ -123,9 +148,26 @@ internal static class PresentationFrameCodec
         var state = new TerminalFrameState(cols, rows, (int)h.HistoryRows, (int)h.ScrollOffset, h.ScrollGeneration,
             (int)h.CursorCol, (int)h.CursorRow, h.CursorVisible, (int)h.CursorShape, h.AlternateScreen, false,
             Unpack(h.Background), Unpack(h.CursorColor), h.Title, h.Cwd, h.Modes, h.KeyboardFlags, (int)h.ScrollTop, (int)h.ScrollBottom);
-        return (new(new(incarnation,epoch,h.ViewportRevision,h.Sequence,h.TerminalGeneration),state,cells.AsSpan(0,cellCount),h.CapturedTicks,pool),h.HasExited,h.ExitCode);
+        return (new(new(incarnation,epoch,h.ViewportRevision,h.Sequence,h.TerminalGeneration),state,cells.AsSpan(0,cellCount),h.CapturedTicks,pool,images,
+            wrapLengths:h.WrapLengths.Count == 0 ? null : h.WrapLengths,marks:marks),h.HasExited,h.ExitCode);
         }
         finally { pool.Return(cells,clearArray:true); }
+    }
+
+    private static GhosttyImagePlacement DecodeImagePlacement(PresentationImagePlacement p)
+    {
+        int channels=(GhosttyPixelFormat)p.Format switch { GhosttyPixelFormat.Rgb=>3,GhosttyPixelFormat.Rgba or GhosttyPixelFormat.Bgra=>4,
+            GhosttyPixelFormat.GrayAlpha=>2,GhosttyPixelFormat.Gray=>1,GhosttyPixelFormat.Png=>1,_=>0 };
+        if (p.Generation == 0 || channels == 0 || p.ImageWidth <= 0 || p.ImageHeight <= 0 ||
+            (long)p.ImageWidth*p.ImageHeight > 16*1024*1024 || (long)p.ImageWidth*p.ImageHeight*channels > 64*1024*1024 ||
+            p.PayloadLength > 64*1024*1024 || ((GhosttyPixelFormat)p.Format == GhosttyPixelFormat.Png && p.PayloadLength < 33) ||
+            (p.PayloadLength != 0 && (GhosttyPixelFormat)p.Format != GhosttyPixelFormat.Png && p.PayloadLength != (long)p.ImageWidth*p.ImageHeight*channels) ||
+            p.Layer > 2 || p.Width == 0 || p.Height == 0 || p.Width > 1_000_000 || p.Height > 1_000_000 ||
+            (ulong)p.SourceX+p.SourceWidth > (uint)p.ImageWidth || (ulong)p.SourceY+p.SourceHeight > (uint)p.ImageHeight)
+            throw new InvalidDataException("Invalid image placement.");
+        return new(new(p.Generation,p.ImageWidth,p.ImageHeight,(GhosttyPixelFormat)p.Format,ReadOnlyMemory<byte>.Empty,(int)p.PayloadLength),
+            p.Id,(GhosttyImageLayer)p.Layer,p.Z,p.Column,p.Row,p.OffsetX,p.OffsetY,p.Width,p.Height,
+            p.SourceX,p.SourceY,p.SourceWidth,p.SourceHeight);
     }
 
     private static void WriteString(BinaryWriter w, string? s)

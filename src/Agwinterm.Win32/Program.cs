@@ -396,9 +396,11 @@ internal partial class Program : ISessionHost, IWindowHost
         public bool BlockSel;   // rectangular (Alt+drag) selection: clip each row to [minCol,maxCol]
         public ContentSelection? SelContent;
         public GhosttySelection? SelNative;
+        public OwnerSelection? SelOwner;
         public bool SelContentVisible = true;
         public void ReleaseSelectionAnchors()
         {
+            SelOwner?.Dispose(); SelOwner=null;
             if (SelNative is null) return;
             lock (S.SyncRoot)
             {
@@ -638,22 +640,15 @@ internal partial class Program : ISessionHost, IWindowHost
         if (_argPtyHost)
         {
             _config = LoadOrCreateConfig();
-            if (_config.EmulatorCore == "ghostty")
-            {
-                ResolveEmulatorCore();
-                // The UI may have fallen back to managed because the native package
-                // is unavailable. Its explicit create request must still be accepted.
-                // Explicit Ghostty requests remain fail-closed in CreateCore.
-            }
+            ResolveEmulatorCore();
             ConPtyApi.Select(_argConpty == "bundled" || _argConpty is null && _config.Conpty == "bundled");
-            using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId);
+            using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId,ghosttyOnly:true);
             ptyHost.Completion.Wait();
             return;
         }
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         // Process-global setup (config/themes/keymap + window class + shared D2D/DWrite objects).
         _config = LoadOrCreateConfig();
-        if(ActivateExistingJournalOwner()) return;
         ConPtyApi.Select(_config.Conpty != "inbox");
         _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
         ResolveEmulatorCore();
@@ -726,20 +721,18 @@ internal partial class Program : ISessionHost, IWindowHost
             string host = sb.Name == "server-rust" ? "the Rust pty-host binary" : "the pty-host process";
             front!.Post(() => front.ShowToast($"session-host = {sb.Name} (experimental) — sessions live in {host}", 6000));
         }
-        if (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null || _legacyRestoreBackend is not null)
+        if (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null)
         {
             // All restore handles have already claimed their hosted IDs in the backend. New
             // handles claim before async creation too, not after publication in the UI tree.
             // Sweep both namespaces: an upgrade can leave old Rust attachments alongside
             // native-hosted sessions, including an orphan with no saved pane to adopt.
-            string hostNamespace = _argPipe ?? _appId;
+            string hostNamespace = (_argPipe ?? _appId)+"-owner-v1";
             _ = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(30));
                 using var nativeHost = new ServerSessionBackend(hostNamespace, null);
-                using var rustHost = new ServerSessionBackend(hostNamespace + "-rust", null);
                 nativeHost.ReapUnclaimedStartupSessions();
-                rustHost.ReapUnclaimedStartupSessions();
             });
         }
 
@@ -887,49 +880,14 @@ internal partial class Program : ISessionHost, IWindowHost
     private static IDWriteFont? _familyFont;
     private static readonly Dictionary<int, bool> _glyphInFont = new();
 
-    // Deferred startup toast when `emulator-core = rust` couldn't load (shown once a window exists).
     private static string? _emulatorCoreNote;
 
-    /// <summary>Wire `emulator-core = rust`: probe the native dll (next to the exe, then the
-    /// dev-tree cargo output), verify the ABI handshake, and install the session core factory.
-    /// Any failure falls back to the managed emulator — visibly, never silently.</summary>
     private static void ResolveEmulatorCore()
     {
-        if (_config.EmulatorCore == "ghostty")
-        {
-            if (GhosttyTerminalCore.TryLoad(CliInstaller.CliDir(), out string? error))
-            {
-                Agwinterm.Pty.TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows, _config.CursorStyle, _config.CursorBlink);
-                _emulatorCoreNote = "emulator-core = ghostty (EXPERIMENTAL) — new sessions use libghostty-vt";
-            }
-            else
-            {
-                Agwinterm.Pty.TerminalSession.CoreFactory = null;
-                _emulatorCoreNote = "emulator-core = ghostty unavailable (" + error + ") — using managed";
-            }
-            return;
-        }
-        if (_config.EmulatorCore != "rust") { Agwinterm.Pty.TerminalSession.CoreFactory = null; return; }
-        string? err = null;
-        foreach (var dll in new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "agwinterm_core.dll"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "..",
-                "native", "agwinterm-core", "target", "release", "agwinterm_core.dll"),
-        })
-        {
-            if (RustEmulatorCore.TryLoad(Path.GetFullPath(dll), out err))
-            {
-                Agwinterm.Pty.TerminalSession.CoreFactory = (c, r) => new RustTerminalCore(c, r);
-                _emulatorCoreNote = "emulator-core = rust (EXPERIMENTAL) — new sessions run the native core";
-                return;
-            }
-            if (err is not null && !err.StartsWith("native core not found")) break;   // found but bad → stop probing
-        }
-        Agwinterm.Pty.TerminalSession.CoreFactory = null;
-        _emulatorCoreNote = "emulator-core = rust unavailable (" + (err ?? "unknown") + ") — using managed";
+        if (!GhosttyTerminalCore.TryLoad(CliInstaller.CliDir(), out string? error))
+            throw new InvalidOperationException("Ghostty terminal backend is unavailable: " + error);
+        TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows, _config.CursorStyle, _config.CursorBlink);
     }
-
     private static void ResolveFamilyFont()
     {
         _glyphInFont.Clear();
@@ -1287,6 +1245,20 @@ internal partial class Program : ISessionHost, IWindowHost
         lock (p.S.SyncRoot)
         {
             var em = p.S.Emulator;
+            if(em is PresentedTerminalView presented)
+            {
+                using var frame=presented.AcquireFrame();
+                if(frame is null) return null;
+                var viewportLines=new TerminalTextLine[frame.State.Rows];
+                var viewportCells=new Cell[frame.State.Columns];
+                for(int row=0;row<viewportLines.Length;row++)
+                {
+                    for(int col=0;col<viewportCells.Length;col++) viewportCells[col]=frame[row,col];
+                    viewportLines[row]=new TerminalTextLine(viewportCells);
+                }
+                return OwnerUiaSnapshot(frame.State,viewportLines,frame.State.HistoryRows-frame.State.ScrollOffset,
+                    origin.x,origin.y,cw*Scale,ch*Scale);
+            }
             int hist = em.IsAltScreen ? 0 : em.HistoryCount, rows = em.Screen.Rows, cols = em.Screen.Cols;
             const int MaxHist = 2000;                       // bound the document the reader walks
             int keepHist = Math.Min(hist, MaxHist);
@@ -1603,7 +1575,7 @@ internal partial class Program : ISessionHost, IWindowHost
                 return sb.ToString().TrimEnd() is { Length: > 0 } t ? t : "terminal";
             }
         });
-        _uia.GetTextSnapshot = () => ReadUia(() => { _uia.EnsureAlive(); return BuildUiaTextSnapshot(); });
+        _uia.GetTextSnapshot = ReadOwnerAwareUiaSnapshot;
         _uia.GetTree = () => ReadUia(() => { _uia.EnsureAlive(); return BuildUiaTree(); });
         _uia.OnSetFocus = (kind, index) => Post(() => { if (!_uia.IsClosed) HandleUiaSetFocus(kind, index); });
         _uia.OnInvoke = (kind, index) => Post(() => { if (!_uia.IsClosed) HandleUiaInvoke(kind, index); });

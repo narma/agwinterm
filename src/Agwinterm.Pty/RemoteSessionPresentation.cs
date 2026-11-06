@@ -13,8 +13,5 @@ internal sealed class RemoteSessionPresentation(ServerSession session) : ISessio
     public TerminalInputAcceptance Execute(TerminalCommand command)
         => session.ExecutePresentation(command);
     public ValueTask<TerminalQueryResult> QueryAsync(TerminalQuery query,CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new TerminalQueryResult(query.Incarnation,query.AttachmentEpoch,query.Generation,"unsupported",[]));
-    }
+        => session.QueryPresentationAsync(query,cancellationToken);
 }

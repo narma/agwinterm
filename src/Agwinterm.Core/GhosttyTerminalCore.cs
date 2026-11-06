@@ -37,7 +37,9 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public int Cols => _cols;
     public int Rows => _rows;
     /// <summary>UI consumer only, under the session lock. Does not populate the query screen.</summary>
-    private int _paintCellWidth = 8, _paintCellHeight = 18;
+    // Native construction knows columns/rows but has no pixel geometry yet.
+    // Even the default 8x18 capture must publish it before image placement.
+    private int _paintCellWidth, _paintCellHeight;
     public void BeginPaint(int scrollOffset = 0)
     {
         if (_paintCellWidth != CellPixelWidth || _paintCellHeight != CellPixelHeight)
@@ -56,7 +58,6 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public IReadOnlyList<GhosttyImagePlacement> PaintImages => _vt.FrameImages;
     public long NextAnimationDeadline => _vt.NextAnimationDeadline;
     public byte[] CaptureSnapshot() => _vt.CaptureSnapshot();
-    public bool SnapshotCaptureAvailable => _vt.SnapshotCaptureAvailable;
     public void RestoreSnapshot(ReadOnlySpan<byte> snapshot)
     {
         _vt.RestoreSnapshot(snapshot);
@@ -157,8 +158,8 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     // tracked positions, so it does not infer eviction counts from this value.
     public long ScrollGeneration => _vt.ScrollEpoch;
     public GhosttyAnchor TrackPoint(int row, int col) => _vt.TrackPoint(row, col);
-    public GhosttySelection CreateSelection(int ar, int ac, int fr, int fc, bool block)
-        => new(this, ar, ac, fr, fc, block);
+    public GhosttySelection CreateSelection(int ar, int ac, int fr, int fc, bool block,int maximumCharacters=int.MaxValue)
+        => new(this, ar, ac, fr, fc, block,maximumCharacters);
     private void ReadHistory(int row)
     {
         SyncQueryTheme();
@@ -201,19 +202,31 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public IHostActions? Host { get => _vt.Host; set => _vt.Host = value; }
     public IReadOnlyDictionary<int, KittyImage> Images => _hostImages;
     public IReadOnlyList<ImagePlacement> Placements => _hostPlacements;
-    public void ClearPlacements() => _hostPlacements.Clear();
+    public void ClearPlacements() { _hostPlacements.Clear(); Invalidate(); }
     public bool HasImage(int id) => _hostImages.ContainsKey(id);
     public void SetImageData(int id, KittyFormat format, int width, int height, byte[] data)
     {
-        if (width <= 0 || height <= 0 || (long)width * height > 64 * 1024 * 1024 || data.Length > 256 * 1024 * 1024)
+        if (format == KittyFormat.Png)
+        {
+            if (data.Length < 33 || !data.AsSpan(0,8).SequenceEqual(new byte[] {137,80,78,71,13,10,26,10}) ||
+                !data.AsSpan(12,4).SequenceEqual("IHDR"u8)) throw new InvalidDataException("Invalid PNG header.");
+            width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(16,4));
+            height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(20,4));
+        }
+        int channels = format switch { KittyFormat.Rgb=>3, KittyFormat.Rgba or KittyFormat.Bgra=>4, KittyFormat.Png=>0,
+            _=>throw new InvalidDataException("Invalid image format.") };
+        if (width <= 0 || height <= 0 || (long)width * height > 16 * 1024 * 1024 || data.Length > 64 * 1024 * 1024 ||
+            channels != 0 && (long)width*height*channels != data.Length)
             throw new ArgumentOutOfRangeException(nameof(width));
         _hostImages[id] = new KittyImage(id, format, width, height, data);
+        Invalidate();
     }
     public void PlaceImage(int id, int row, int col, int cols, int rows, int srcX = 0, int srcY = 0, int srcW = 0, int srcH = 0)
     {
         if (!HasImage(id)) return;
         _hostPlacements.RemoveAll(p => p.ImageId == id);
         _hostPlacements.Add(new ImagePlacement(id, row, col, cols, rows, srcX, srcY, srcW, srcH));
+        Invalidate();
     }
     public bool PlaceSixel(byte[] data) => false;
     public int CellPixelWidth { get; set; } = 8;

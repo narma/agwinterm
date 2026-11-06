@@ -692,10 +692,22 @@ public sealed partial class ControlServer : IDisposable
             }
 
             // Session-targeted commands.
+            // Resolve on UI once, then let bounded owner queries wait on this
+            // exact session on the pipe worker. Paint/input must not wait for
+            // history, image transfer, or a remote daemon's readback.
+            ISession? capturedSession=null;
+            bool captured=false;
+            if(_sessionCommandExecutor is not null && (cmd is "session.text" or "surface.cursor" || OwnerImageCommands.Supports(cmd)))
+            {
+                _sessionCommandExecutor(()=> { capturedSession=host.Resolve(target); return ""; });
+                captured=cmd is "session.text" or "surface.cursor" || capturedSession is ServerSession { UsesPresentation:true };
+            }
             string ExecuteSessionCommand()
             {
-                var s = host.Resolve(target);
+                var s = captured ? capturedSession : host.Resolve(target);
                 if (s is null) return Err("no session");
+                if(s is ServerSession { UsesPresentation:true } owner && OwnerImageCommands.Supports(cmd))
+                    return owner.ForwardImageCommand(cmd,args);
                 if (host is IWslLiveHost liveTerminal && cmd is "session.type" or "session.text" or "surface.cursor")
                 {
                     if (cmd == "session.text" && !TryTextArgs(args, out _, out var textError)) return Err(textError!);
@@ -738,7 +750,7 @@ public sealed partial class ControlServer : IDisposable
                     _ => Err($"unknown command '{cmd}'"),
                 };
             }
-            return _sessionCommandExecutor is null ? ExecuteSessionCommand() : _sessionCommandExecutor(ExecuteSessionCommand);
+            return _sessionCommandExecutor is null || captured ? ExecuteSessionCommand() : _sessionCommandExecutor(ExecuteSessionCommand);
         }
         catch (ObservationException ex) { return ex.ToJson(); }
         catch (JsonException ex) { return Err("invalid json: " + ex.Message); }
@@ -1328,6 +1340,7 @@ public sealed partial class ControlServer : IDisposable
 
     private static string HandleImageClear(ISession s)
     {
+        s.MutateLocked(core=>core.ClearPlacements());
         s.Inject(Encoding.ASCII.GetBytes("\x1b_Ga=d\x1b\\"));
         return Ok("cleared");
     }
@@ -1340,6 +1353,8 @@ public sealed partial class ControlServer : IDisposable
         if (args.ValueKind != JsonValueKind.Object ||
             !args.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array)
             return Err("image.frame requires args.images array");
+        if(images.GetArrayLength() > MaxRetainedSharedFrameImages)
+            return Err("image.frame: too many placements");
 
         var state = _frameState.GetOrCreateValue(s);
         // Phase 1 (OFF the render lock): resolve placements and read+own the pixel bytes for any
@@ -1368,7 +1383,17 @@ public sealed partial class ControlServer : IDisposable
             byte[]? data = null;
             if (!cached)
             {
-                try { data = File.ReadAllBytes(path); } catch { data = null; }
+                try
+                {
+                    using var file=File.OpenRead(path);
+                    long bytes=file.Length;
+                    if(bytes > 64L*1024*1024 || bytes > MaxSharedFrameRequestBytes-readBytes)
+                        return Err("image.frame: image payload exceeds byte limit");
+                    data=new byte[checked((int)bytes)];
+                    file.ReadExactly(data);
+                }
+                catch(IOException) { data=null; }
+                catch(UnauthorizedAccessException) { data=null; }
                 if (data is not null) { transmits++; readBytes += data.Length; }
             }
             ops.Add((id, row, col, cols, rows, sx, sy, sw, sh, path, sig, data, cacheEntry));
@@ -1379,6 +1404,7 @@ public sealed partial class ControlServer : IDisposable
         // updates only, microseconds, so a big image appearing never stalls the paint thread.
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         HashSet<int>? staleIds = null;
+        string? budgetError=null;
         s.MutateLocked(em =>
         {
             // Phase 1 trusted the cache dictionary alone; this is the only check that the emulator
@@ -1392,6 +1418,9 @@ public sealed partial class ControlServer : IDisposable
                     (staleIds ??= new()).Add(op.id);
             if (staleIds is not null) return;
 
+            if(!FitsRetainedSharedFrameBudget(em,
+                ops.Where(op=>op.data is not null).Select(op=>(op.id,op.data!.LongLength)),out budgetError,"image.frame"))
+                return;
             em.ClearPlacements();
             var updates = new List<(int id, FrameCacheEntry entry)>();
             foreach (var op in ops)
@@ -1409,6 +1438,7 @@ public sealed partial class ControlServer : IDisposable
             lock (state)
                 foreach (var update in updates) state[update.id] = update.entry;
         });
+        if(budgetError is not null) return Err(budgetError);
         if (staleIds is not null)
         {
             RemoveInvalidCacheEntries(state, ops.Where(op => staleIds.Contains(op.id)).Select(op => (op.id, op.cached)));
@@ -1630,7 +1660,7 @@ public sealed partial class ControlServer : IDisposable
     private bool FitsRetainedSharedFrameBudget(
         ITerminalCore em,
         IEnumerable<(int id, long bytes)> replacements,
-        out string? error)
+        out string? error,string operation="image.frameshm")
     {
         error = null;
         var finalReplacements = new Dictionary<int, long>();
@@ -1658,12 +1688,12 @@ public sealed partial class ControlServer : IDisposable
         // frame without making the situation worse. Shared frames may never increase the excess.
         if (projectedCount > _retainedSharedFrameImageLimit && projectedCount > currentCount)
         {
-            error = $"image.frameshm: retained image limit of {_retainedSharedFrameImageLimit} would be exceeded";
+            error = $"{operation}: retained image limit of {_retainedSharedFrameImageLimit} would be exceeded";
             return false;
         }
         if (projectedBytes > _retainedSharedFrameByteLimit && projectedBytes > currentBytes)
         {
-            error = $"image.frameshm: retained pixel budget of {_retainedSharedFrameByteLimit} bytes would be exceeded";
+            error = $"{operation}: retained pixel budget of {_retainedSharedFrameByteLimit} bytes would be exceeded";
             return false;
         }
         return true;

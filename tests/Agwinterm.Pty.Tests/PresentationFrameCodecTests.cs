@@ -6,6 +6,35 @@ namespace Agwinterm.Pty.Tests;
 
 public class PresentationFrameCodecTests
 {
+    [Fact]
+    public void CommandMarksAndEncodedImageLengthSurviveTransport()
+    {
+        using var text=Frame(1,Cell.Empty);
+        var image=new GhosttyImage(42,1,1,GhosttyPixelFormat.Png,new byte[67]);
+        var placement=new GhosttyImagePlacement(image,7,GhosttyImageLayer.AboveText,0,0,0,0,0,1,1,0,0,1,1);
+        var mark=new TerminalCommandMark(0,0,0,-1,null);
+        using var frame=new TerminalFrame(text.Identity,text.State,[Cell.Empty],images:[placement],marks:[mark]);
+        using var lease=frame.Acquire(); using var decoded=Decode(PresentationFrameCodec.Encode(lease)).Frame;
+        Assert.Equal(mark,Assert.Single(decoded.Marks));
+        Assert.Equal(67,Assert.Single(decoded.Images).Image.PayloadLength);
+    }
+    [Fact]
+    public void ImageMetadataTravelsWithoutCopyingPixelPayloadIntoFramePipe()
+    {
+        using var text=Frame(1,Cell.Empty);
+        var image=new GhosttyImage(42,2,1,GhosttyPixelFormat.Rgba,new byte[8]);
+        var placement=new GhosttyImagePlacement(image,7,GhosttyImageLayer.AboveText,1,0,0,0,0,2,1,0,0,2,1);
+        using var frame=new TerminalFrame(text.Identity,text.State,[Cell.Empty],images:[placement]);
+        using var lease=frame.Acquire();
+        using var decoded=Decode(PresentationFrameCodec.Encode(lease)).Frame;
+        using var read=decoded.Acquire();
+        var actual=Assert.Single(read.Images);
+        Assert.Equal(42ul,actual.Image.Generation);
+        Assert.Equal(2,actual.Image.Width);
+        Assert.True(actual.Image.Pixels.IsEmpty);
+        Assert.Equal(GhosttyImageLayer.AboveText,actual.Layer);
+    }
+
     private static TerminalFrame Frame(ulong sequence, params Cell[] cells) => new(new("owner",1,0,sequence,(long)sequence),
         new(cells.Length,1,0,0,0,0,0,true,1,false,false,default,default,"title","cwd"),cells);
     private static (TerminalFrame Frame, bool Exited, int ExitCode) Decode(byte[] bytes, TerminalFrame.Lease? previous = null)

@@ -24,9 +24,15 @@ internal sealed class HostPresentationChannel
     private readonly NamedPipeServerStream _outputPipe, _inputPipe;
     private readonly object _signalGate = new();
     private readonly object _acceptanceGate = new();
+    private readonly Timer _animation;
+    private readonly HostEffectChannel _effects;
+    private Task _effectWriter=Task.CompletedTask;
     private bool _finished;
     public string FramePipeName { get; }
     public string InputPipeName { get; }
+    public string QueryPipeName { get; }
+    public string EffectPipeName => _effects.PipeName;
+    public void PublishEffect(Proto.PresentationEffect effect) => _effects.Publish(effect);
     public Task Completion { get; private set; } = Task.CompletedTask;
 
     public HostPresentationChannel(string prefix, TerminalSession session, OwnerInputQueue input,
@@ -35,9 +41,12 @@ internal sealed class HostPresentationChannel
         _session=session; _input=input; _incarnation=incarnation; _epoch=epoch; _captureGate=captureGate;
         _frames=new((GhosttyTerminalCore)session.Emulator,session.SyncRoot,incarnation,epoch,captureGate);
         FramePipeName=prefix+"-f-"+Guid.NewGuid().ToString("N"); InputPipeName=prefix+"-i-"+Guid.NewGuid().ToString("N");
+        QueryPipeName=prefix+"-q-"+Guid.NewGuid().ToString("N");
         _outputPipe=new(FramePipeName,PipeDirection.Out,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous);
         try { _inputPipe=new(InputPipeName,PipeDirection.In,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous); }
         catch { _outputPipe.Dispose(); _frames.Dispose(); throw; }
+        _animation=new Timer(_=>Signal(),null,Timeout.Infinite,Timeout.Infinite);
+        _effects=new(prefix+"-e-"+Guid.NewGuid().ToString("N"),incarnation,epoch,Cancel);
     }
     public void Start() => Completion=Task.Run(RunAsync);
     public void Signal()
@@ -53,6 +62,8 @@ internal sealed class HostPresentationChannel
     private async Task RunAsync()
     {
         _session.OutputReceived+=Signal; _session.Exited+=OnExit;
+        Task queries=new HostQueryChannel(QueryPipeName,_session,_incarnation,_epoch,_frames).RunAsync(_cancel.Token);
+        _effectWriter=_effects.RunAsync(_cancel.Token);
         try
         {
             using var connect=CancellationTokenSource.CreateLinkedTokenSource(_cancel.Token);
@@ -60,17 +71,27 @@ internal sealed class HostPresentationChannel
             await Task.WhenAll(_outputPipe.WaitForConnectionAsync(connect.Token),_inputPipe.WaitForConnectionAsync(connect.Token)).ConfigureAwait(false);
             Signal();
             Task output=PublishAsync(), input=Task.Factory.StartNew(ReadInput,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
-            await Task.WhenAny(output,input).ConfigureAwait(false);
+            // An effect writer can finish normally only after the final output
+            // publisher asks it to drain. Its failure revokes this attachment.
+            _ = _effectWriter.ContinueWith(t=> { if(t.IsFaulted) { _ = t.Exception; Cancel(); } },TaskScheduler.Default);
+            await Task.WhenAny(output,input,queries).ConfigureAwait(false);
             _cancel.Cancel();
             // Both operations finish before either pipe is disposed (overlapped IO lifetime).
             await Task.WhenAll(output,input).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException) { }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+        { if(ex is not OperationCanceledException) System.Diagnostics.Trace.WriteLine("Owner presentation ended: "+ex); }
         finally
         {
-            _session.OutputReceived-=Signal; _session.Exited-=OnExit;
-            lock (_signalGate) { _finished=true; _changed.Dispose(); _credit.Dispose(); _cancel.Dispose(); }
-            _outputPipe.Dispose(); _inputPipe.Dispose(); _frames.Dispose();
+            _cancel.Cancel();
+            try { await Task.WhenAll(queries,_effectWriter).ConfigureAwait(false); }
+            catch(Exception ex) when(ex is IOException or OperationCanceledException) { }
+            finally
+            {
+                _session.OutputReceived-=Signal; _session.Exited-=OnExit;
+                lock (_signalGate) { _finished=true; _animation.Dispose(); _changed.Dispose(); _credit.Dispose(); _cancel.Dispose(); }
+                _outputPipe.Dispose(); _inputPipe.Dispose(); _frames.Dispose();
+            }
         }
     }
     private void OnExit(int code) => Signal();
@@ -90,6 +111,9 @@ internal sealed class HostPresentationChannel
                     captured=_visible || _session.HasExited ? _frames.Capture(_scrollOffset,_cellWidth,_cellHeight,_viewportRevision) : null;
                 }
                 using var frame=captured;
+                long animation=frame?.AnimationDeadline ?? 0;
+                _animation.Change(_visible && animation > 0 ? Math.Clamp(animation-Environment.TickCount64,1,int.MaxValue) : Timeout.Infinite,
+                    Timeout.Infinite);
                 if (frame is null || previous?.Identity == frame.Identity)
                 {
                     _credit.Release();
@@ -103,6 +127,7 @@ internal sealed class HostPresentationChannel
                     continue;
                 }
                 bool exited=_session.HasExited;
+                if (exited) { _effects.Complete(); await _effectWriter.ConfigureAwait(false); }
                 byte[] record=PresentationFrameCodec.Encode(frame,previous,exited,_session.ExitCode ?? 0);
                 lock(_signalGate) _sentSequence=frame.Identity.Sequence;
                 await _outputPipe.WriteAsync(record,_cancel.Token).ConfigureAwait(false);
@@ -110,7 +135,8 @@ internal sealed class HostPresentationChannel
                 previous?.Dispose();
                 // A second lease of this exact immutable frame is kept as the next delta base.
                 previous = frame.Retain();
-                if (exited) return;
+                // Child exit closes typing, not the terminal view. Keep queries
+                // and viewport updates alive until the attachment is released.
             }
         }
         finally { previous?.Dispose(); }
@@ -167,11 +193,16 @@ internal sealed class HostPresentationChannel
         }
         void SubmitInputs(bool waitForWriter=false)
         {
+            if(inputs.Count == 0 && _session.HasExited) return;
             lock(_acceptanceGate)
             {
                 _cancel.Token.ThrowIfCancellationRequested();
                 foreach(var input in inputs)
                 {
+                    // A key already in the pipe may arrive just after child
+                    // exit. It cannot reach a child and must not tear down the
+                    // still-readable terminal view or its history queries.
+                    if(_session.HasExited && input is not TerminalInput.Command) continue;
                     var accepted=_input.Submit(input);
                     if(accepted != TerminalInputAcceptance.Accepted) throw new IOException("Owner rejected input: "+accepted);
                 }

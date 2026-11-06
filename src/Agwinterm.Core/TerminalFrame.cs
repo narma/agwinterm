@@ -4,6 +4,7 @@ namespace Agwinterm.Core;
 
 public readonly record struct TerminalFrameIdentity(string Incarnation, ulong AttachmentEpoch,
     ulong ViewportRevision, ulong Sequence, long TerminalGeneration);
+public sealed record TerminalCommandMark(int PromptLine,int CommandLine,int OutputLine,int EndLine,int? ExitCode);
 
 public sealed record TerminalFrameState(int Columns, int Rows, int HistoryRows, int ScrollOffset,
     long ScrollGeneration, int CursorColumn, int CursorRow, bool CursorVisible, int CursorShape,
@@ -26,8 +27,14 @@ public sealed class TerminalFrame : IDisposable
     public TerminalFrameIdentity Identity { get; }
     public TerminalFrameState State { get; }
     public long CapturedTicks { get; }
+    public IReadOnlyList<GhosttyImagePlacement> Images { get; }
+    public long AnimationDeadline { get; }
+    public IReadOnlyList<TerminalCommandMark> Marks { get; }
+    private readonly int[]? _wrapLengths;
 
-    public TerminalFrame(TerminalFrameIdentity identity, TerminalFrameState state, ReadOnlySpan<Cell> cells, long? capturedTicks = null, ArrayPool<Cell>? pool = null)
+    public TerminalFrame(TerminalFrameIdentity identity, TerminalFrameState state, ReadOnlySpan<Cell> cells, long? capturedTicks = null, ArrayPool<Cell>? pool = null,
+        IReadOnlyList<GhosttyImagePlacement>? images = null, long animationDeadline = 0, IReadOnlyList<int>? wrapLengths = null,
+        IReadOnlyList<TerminalCommandMark>? marks = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         if (string.IsNullOrEmpty(identity.Incarnation) || identity.Incarnation.Length > 128 || identity.Sequence == 0 ||
@@ -40,7 +47,14 @@ public sealed class TerminalFrame : IDisposable
             throw new ArgumentException("Invalid viewport bounds.", nameof(state));
         _length = checked(state.Columns * state.Rows);
         if (cells.Length != _length) throw new ArgumentException("Viewport cell count does not match dimensions.", nameof(cells));
+        if (wrapLengths is not null && (wrapLengths.Count != state.Rows || wrapLengths.Any(w=>w < -1 || w > state.Columns)))
+            throw new ArgumentException("Invalid frame wrap metadata.",nameof(wrapLengths));
+        _wrapLengths=wrapLengths?.ToArray();
         Identity = identity; State = state;
+        Images = images is { Count: > 0 } ? Array.AsReadOnly(images.ToArray()) : Array.Empty<GhosttyImagePlacement>();
+        AnimationDeadline = animationDeadline;
+        if(marks is { Count:>4096 }) throw new ArgumentException("Too many command marks.",nameof(marks));
+        Marks=marks is null ? [] : Array.AsReadOnly(marks.ToArray());
         _pool = pool ?? ArrayPool<Cell>.Shared;
         _cells = _pool.Rent(_length);
         cells.CopyTo(_cells);
@@ -82,6 +96,10 @@ public sealed class TerminalFrame : IDisposable
         public TerminalFrameIdentity Identity => Frame.Identity;
         public TerminalFrameState State => Frame.State;
         public long CapturedTicks => Frame.CapturedTicks;
+        public IReadOnlyList<GhosttyImagePlacement> Images => Frame.Images;
+        public long AnimationDeadline => Frame.AnimationDeadline;
+        public IReadOnlyList<TerminalCommandMark> Marks => Frame.Marks;
+        public int WrapLength(int row) => (uint)row < Frame.State.Rows ? Frame._wrapLengths?[row] ?? -1 : throw new ArgumentOutOfRangeException(nameof(row));
         /// <summary>Retain this exact generation, including after its publisher replaces it.</summary>
         public Lease Retain() => Frame.Retain();
         public Cell this[int row, int column]

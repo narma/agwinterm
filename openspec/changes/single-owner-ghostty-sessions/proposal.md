@@ -11,7 +11,7 @@ Hosted Ghostty sessions currently parse the same PTY output in the .NET host and
 - Move mode-dependent input encoding, terminal responses, history/search/selection and terminal state mutations to the owner. Keep Windows keyboard translation, IME and rendering in UI.
 - Add versioned presentation, ordered input, query and host-effect contracts with backpressure, reconnect fencing and bounded memory.
 - Establish repeatable latency, throughput and memory baselines before changes; require non-regression and measure the expected input-latency improvement separately.
-- Preserve running pre-upgrade sessions through an explicitly isolated legacy attachment path. The one-instance requirement applies to the new negotiated path; old hosts are drained, never silently restarted.
+- Ship only the Ghostty backend. Remove managed/Rust engine selection and old Windows hosts from the new runtime. Upgrade compatibility is saved-state import: the old installation saves state and closes its sessions before replacement; the new version imports layout/history/settings, not running process identity.
 - Preserve current control API behavior, default-terminal handoff, WSL/remote recovery and no-new-runtime-dependency policy.
 
 ## Capabilities
@@ -26,4 +26,4 @@ None. Existing pane appearance, diagnostics and recovery behavior is preserved. 
 
 ## Impact
 
-Primary changes: `ISession`, `TerminalSession`, `ServerSession`, `PtyHostServer`, `PtyHostClient`, `proto/ptyhost.proto`, native capture adapter and Win32 rendering/input/search/selection/UIA/control consumers. Tests extend Ghostty native/server harnesses and routed Windows/WSL integration suites. No Rust host rewrite, Ghostty upgrade, legacy-engine removal, new external runtime, or multi-client collaboration is included. This proposal plans follow-up implementation on the current PR foundation; it does not change executable code.
+Primary changes: `ISession`, `TerminalSession`, `ServerSession`, `PtyHostServer`, `PtyHostClient`, `proto/ptyhost.proto`, native capture adapter and Win32 rendering/input/search/selection/UIA/control consumers. Tests extend Ghostty native/server harnesses and routed Windows/WSL integration suites. No Ghostty upgrade, new external runtime, or multi-client collaboration is included. The bundled Rust Linux helper remains; it is distinct from the retired Windows Rust host. This proposal plans follow-up implementation on the current PR foundation; it does not change executable code.

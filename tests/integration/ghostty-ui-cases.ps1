@@ -53,7 +53,13 @@ $scene = $esc+'[?1049h'+$esc+'[?2027h'+$esc+'[2J'+$esc+'[H'+'Ghostty native VT'+
     $esc+'[31;1mRED'+$esc+'[0m '+$cluster+' 👩🏽‍💻 中文'+"`r`n"+
     $esc+']8;;https://example.org/'+$esc+'\'+'LINK'+$esc+']8;;'+$esc+'\'
 $null = Rpc 'session.write' @{text=$scene} $session
-$text = [string](Rpc 'session.text' @{} $session)
+# Display injection is queued at the owner. Readback consumes published frames;
+# do not make correctness depend on the pipe/UI scheduling between two RPCs.
+for($attempt=0;$attempt -lt 100;$attempt++) {
+    $text = [string](Rpc 'session.text' @{} $session)
+    if($text.Contains('Ghostty native VT') -and $text.Contains('LINK')){break}
+    Start-Sleep -Milliseconds 20
+}
 $text | Set-Content (Join-Path $artifact 'ghostty-screen.txt')
 Check 'Ghostty active screen readback' ($text.Contains('Ghostty native VT'))
 Check 'Ghostty combining cluster survives application text API' ($text.Contains($cluster))
@@ -101,23 +107,14 @@ if ($null -ne $emojiRange -and $null -ne $combiningRange) {
     $character.ExpandToEnclosingUnit([System.Windows.Automation.Text.TextUnit]::Character)
     Check 'Ghostty UIA character navigation keeps the emoji intact' ($character.GetText(-1) -eq '👩🏽‍💻')
 }
-# Select through the real Settings dropdown, starting from a different value.
-# The already-running terminal keeps its native core throughout this setting change.
+# Retired settings normalize to Ghostty; the selector is no longer offered.
 $null = Rpc 'config.set' @{key='emulator-core';value='managed'}
+Check 'Legacy core setting normalizes to Ghostty' ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
 $null = Rpc 'settings.open' @{}
 Start-Sleep -Milliseconds 150
 $coreControl = @($uiaRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
     [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name.StartsWith('Terminal core (new sessions),') })
-Check 'Settings exposes the terminal-core dropdown' ($coreControl.Count -eq 1)
-if ($coreControl.Count -ne 1) { throw 'No unique core setting' }
-$coreControl[0].SetFocus()
-$coreControl[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-Start-Sleep -Milliseconds 100
-foreach ($character in 'ghostty'.ToCharArray()) {
-    [void][HudOwnedJob]::SendMessageW($hwnd,0x102,[IntPtr][int]$character,[IntPtr]1)
-}
-[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)
-Check 'Settings dropdown selects and persists Ghostty' ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
+Check 'Settings removes retired terminal-core selector' ($coreControl.Count -eq 0)
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]27,[IntPtr]1)
 function Check-PalettePixels([string]$label, [int]$red, [int]$green, [int]$blue,
     [int]$minimum=200, [int]$maximum=[int]::MaxValue) {
@@ -243,30 +240,8 @@ $null = Rpc 'session.write' @{text="freshuniquehistorymarker`r`n"} $session
 Check 'Ghostty search sees output after a completed scan' ((Find-GhosttyText 'FRESHUNIQUEHISTORYMARKER') -eq '1 of 1')
 $null = Rpc 'session.search' @{action='close'} $session
 
-$null = Rpc 'config.set' @{key='emulator-core';value='managed'}
-$legacySearch = [string](Rpc 'session.new' @{name='legacy-search-control'})
-try {
-    $null = Rpc 'session.type' @{text="echo LEGACY_SEARCH_READY`r"} $legacySearch
-    for ($attempt = 0; $attempt -lt 50; $attempt++) {
-        if (([string](Rpc 'session.text' @{} $legacySearch)).Contains('LEGACY_SEARCH_READY')) { break }
-        Start-Sleep -Milliseconds 100
-    }
-    Start-Sleep -Milliseconds 250
-    $null = Rpc 'session.write' @{text=($esc+'[?1049h'+$esc+'[2J'+$esc+'[Hlegacyfind legacyfind')} $legacySearch
-    $initial = Rpc 'session.search' @{query='legacyfind'} $legacySearch
-    $next = Rpc 'session.search' @{action='next'} $legacySearch
-    $polled = Rpc 'session.search' @{} $legacySearch
-    Check 'Legacy search poll preserves selected occurrence' ($initial -eq '1 of 2' -and $next -eq '2 of 2' -and $polled -eq '2 of 2') "initial=$initial; next=$next; poll=$polled"
-    $null = Rpc 'session.write' @{text="`r`nlegacyfind"} $legacySearch
-    Check 'Legacy search poll refreshes output without resetting selection' ((Rpc 'session.search' @{} $legacySearch) -eq '2 of 3')
-} finally {
-    $null = Rpc 'session.search' @{action='close'} $legacySearch
-    $null = Rpc 'session.close' @{} $legacySearch
-    $null = Rpc 'config.set' @{key='emulator-core';value='ghostty'}
-}
-
 $null = Rpc 'config.set' @{key='session-host';value='server-rust'}
-Check 'Ghostty retains the selected Rust-host preference' ((Rpc 'config.get' @{key='session-host'}) -eq 'server-rust')
+Check 'Legacy Rust host setting migrates to host-owner' ((Rpc 'config.get' @{key='session-host'}) -eq 'server')
 $serverSession = [string](Rpc 'session.new' @{name='ghostty-server';'no-select'=$true})
 try {
     $serverReady = $false
@@ -277,10 +252,10 @@ try {
         if ($serverText -match '(?m)^GHOSTTY_SERVER_READY\s*$') { $serverReady = $true; break }
     }
     $serverText | Set-Content (Join-Path $artifact 'ghostty-server-shell.txt')
-    Check 'Ghostty headless application host responds through the UI replica' $serverReady
+    Check 'Ghostty headless application host responds through its presentation cache' $serverReady
 } finally {
     $null = Rpc 'session.close' @{} $serverSession
-    $null = Rpc 'config.set' @{key='session-host';value='in-process'}
+    $null = Rpc 'config.set' @{key='session-host';value=$SessionHost}
 }
 
 # Real keyboard acceptance runs only on the owned guest desktop.
@@ -297,19 +272,19 @@ Check 'Settings exposes the session-host dropdown' ($hostControl.Count -eq 1)
 if ($hostControl.Count -ne 1) { throw 'No unique session-host setting' }
 $hostControl[0].SetFocus()
 $hostControl[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-foreach ($character in 'rust'.ToCharArray()) { [void][HudOwnedJob]::SendMessageW($hwnd,0x102,[IntPtr][int]$character,[IntPtr]1) }
+foreach ($character in 'session host'.ToCharArray()) { [void][HudOwnedJob]::SendMessageW($hwnd,0x102,[IntPtr][int]$character,[IntPtr]1) }
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)
-Check 'Settings Rust host choice round-trips while Ghostty remains selected' ((Rpc 'config.get' @{key='session-host'}) -eq 'server-rust' -and (Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
-Check 'Settings keeps Rust server visibly selected' ($hostControl[0].Current.Name -like '*Rust*') $hostControl[0].Current.Name
+Check 'Settings host choice round-trips with Ghostty' ((Rpc 'config.get' @{key='session-host'}) -eq 'server' -and (Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
+Check 'Settings keeps session host visibly selected' ($hostControl[0].Current.Name -like '*Session host*') $hostControl[0].Current.Name
 Set-Clipboard -Value 'settings-copy-sentinel'
 [void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
 [GhosttyInputFixture]::Key(0x11,$false)
 try { [GhosttyInputFixture]::Tap(0x43) } finally { [GhosttyInputFixture]::Key(0x11,$true) }
 Start-Sleep -Milliseconds 200
 $copiedMessage = Get-Clipboard -Raw
-Check 'Ctrl+C copies the settings message without a false rejection' ($copiedMessage -like '*Rust server preference saved*' -and $copiedMessage -notlike '*rejected by parser*') $copiedMessage
+Check 'Ctrl+C copies the settings message without a false rejection' ($copiedMessage -like '*Session host enabled*' -and $copiedMessage -notlike '*rejected by parser*') $copiedMessage
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]27,[IntPtr]1)
-$null = Rpc 'config.set' @{key='session-host';value='in-process'}
+$null = Rpc 'config.set' @{key='session-host';value=$SessionHost}
 
 # Optional self-contained server contract payload, staged only for this test run.
 $serverHarness = Join-Path $nativeDirectory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe'

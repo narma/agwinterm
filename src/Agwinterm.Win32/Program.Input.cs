@@ -481,7 +481,6 @@ internal partial class Program
         => RequestRedraw(false);
     private void RequestRedraw(bool urgent)
     {
-        if(_journalWindowParked) return;
         if(urgent) Interlocked.Exchange(ref _urgentRedrawPending,1);
         if (System.Threading.Interlocked.Exchange(ref _redrawPending, 1) == 0)
             PostMessageW(_hwnd, WM_APP_REDRAW, IntPtr.Zero, IntPtr.Zero);
@@ -793,6 +792,7 @@ internal partial class Program
     private static Cell CellAbs(ITerminalCore em, int hist, int rows, int cols, int line, int col)
     {
         col = Math.Clamp(col, 0, cols - 1);
+        if (em is PresentedTerminalView presented) return presented.GetCachedCell(line,col);
         if (line < hist) return em.GetHistoryCell(line, col);
         int live = line - hist;
         return (live >= 0 && live < rows) ? em.Screen[live, col] : Cell.Empty;
@@ -807,7 +807,9 @@ internal partial class Program
 
     /// <summary>Record the buffer a selection was just made against. Absolute line indices only mean
     /// something relative to this snapshot, and ReconcileSel reconciles the two later.</summary>
-    private static void StampSel(Pane p)
+    private void StampSel(Pane p) => StampSelection(p,all:false);
+
+    private void StampSelection(Pane p,bool all)
     {
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
@@ -823,6 +825,17 @@ internal partial class Program
                              && em.ScrollTop == 0 && em.ScrollBottom == em.Screen.Rows - 1;
             p.SelContent = null;
             p.SelContentVisible = true;
+            if(em is PresentedTerminalView remote && p.S.Presentation is { } presentation)
+            {
+                using var frame=remote.AcquireFrame();
+                if(frame is null) return;
+                string? fallback=null;
+                try { fallback=TerminalSelectionText.Read(remote,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,100000); }
+                catch(NotSupportedException) { } catch(InvalidDataException) { }
+                p.SelOwner=new(presentation,frame.Identity,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
+                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen),fallback,()=>RequestRedraw());
+                return;
+            }
             if (em is GhosttyTerminalCore held && held.SynchronizedOutput)
             {
                 NormSel(p, out int first, out int from, out int last, out int to);
@@ -878,6 +891,18 @@ internal partial class Program
         }
         // The alt screen is a different buffer: an index into one names unrelated text in the other.
         if (alt != p.SelAlt) { p.ClearSel(); return false; }
+        if(p.SelOwner is { } owner && em is PresentedTerminalView remote)
+        {
+            using var frame=remote.AcquireFrame();
+            var located=frame is null ? null : owner.Locate(frame.Identity.TerminalGeneration);
+            p.SelContentVisible=located is { Valid:true };
+            if(located is { Valid:true })
+            {
+                p.SelAncLine=located.AnchorRow; p.SelAncCol=located.AnchorColumn;
+                p.SelFocLine=located.FocusRow; p.SelFocCol=located.FocusColumn;
+            }
+            return true; // immutable selected text remains copyable after eviction/repaint
+        }
         if (p.SelNative is { } nativeSelection)
         {
             if (em.SynchronizedOutput) { p.SelContentVisible = false; return true; }
@@ -960,6 +985,7 @@ internal partial class Program
         lock (pane.S.SyncRoot)
         {
             if (!HasLiveSel(pane)) return "";
+            if(pane.SelOwner is { } owner) return owner.Text ?? "";
             if (pane.SelContent is { } content) return content.Text;
             if (pane.SelNative is { } nativeSelection) return nativeSelection.Text;
             return TerminalSelectionText.Read(pane.S.Emulator, pane.SelAncLine, pane.SelAncCol,
@@ -1124,6 +1150,21 @@ internal partial class Program
     /// scan, so a second scan can measure a different buffer than the one that was copied.</summary>
     private bool CopySelection(Pane pane, out string copied, bool clear = true)
     {
+        if(pane.SelOwner is { Ready.IsCompleted:false } owner)
+        {
+            copied="";
+            if(!owner.CopyQueued)
+            {
+                owner.CopyQueued=true;
+                _=owner.Ready.ContinueWith(_=>Post(()=>
+                {
+                    if(ReferenceEquals(pane.SelOwner,owner)) CopySelection(pane,clear);
+                }),TaskScheduler.Default);
+            }
+            return true; // consume the key while copy is pending; never send Ctrl+C to the child
+        }
+        if(pane.SelOwner is { Text:null })
+        { copied=""; ShowToast("Selection changed before it could be copied; select it again"); return false; }
         string t = SelectionText(pane);
         copied = t;
         bool any = t.AsSpan().IndexOfAnyExcept('\r', '\n', ' ') >= 0;
@@ -1142,7 +1183,8 @@ internal partial class Program
         p.SelAncLine = 0; p.SelAncCol = 0;
         p.SelFocLine = hist + rows - 1; p.SelFocCol = cols - 1;
         p.HasSel = (hist + rows) > 0 && cols > 0;
-        StampSel(p);   // the one creation site that did not, so the first reconcile dropped it
+        p.BlockSel=false;
+        StampSelection(p,all:true);
         RequestRedraw();
     }
 
@@ -1311,6 +1353,16 @@ internal partial class Program
         if (!_searchActive || _searchQuery.Length == 0 || !ReferenceEquals(pane, ActiveSurface())) return;
         if (!ReferenceEquals(_searchPane, pane) || !ReferenceEquals(_searchCore, pane.S.Emulator))
         { RecomputeSearch(); return; }
+        if (!_searchPending && _searchError is null && pane.S.Emulator is PresentedTerminalView view)
+        {
+            bool changed;
+            lock (pane.S.SyncRoot)
+            {
+                using var frame=view.AcquireFrame();
+                changed=frame is not null && frame.Identity.TerminalGeneration > _searchVersion;
+            }
+            if (changed) RecomputeSearch(preserveSelection:true);
+        }
         if (!_searchPending && _searchError is null && pane.S.Emulator is GhosttyTerminalCore core)
         {
             bool changed;
@@ -1332,6 +1384,13 @@ internal partial class Program
         _searchCore = ap?.S.Emulator;
         if (ap is null || _searchQuery.Length == 0) return;
         var em = ap.S.Emulator;
+        if (em is PresentedTerminalView && ap.S.Presentation is { } remote)
+        {
+            _searchPending=true;
+            _searchCancellation=CancellationTokenSource.CreateLinkedTokenSource(_uiGone.Token);
+            _ = SearchOwnerAsync(ap,remote,_searchQuery,_searchCancellation,preserveSelection);
+            return;
+        }
         if (em is GhosttyTerminalCore ghostty)
         {
             _searchPending = true;

@@ -25,6 +25,9 @@ public static class SurfaceText
     /// </summary>
     public static string Dump(ISession s, OverlayTextArgs args)
     {
+        if(s is ServerSession owner) owner.AdvanceHiddenReadback();
+        if(s.Presentation is { IsRemote:true } && (args.All || args.Lines > 0))
+            return DumpRemoteAsync(s,args).GetAwaiter().GetResult();
         var sb = new StringBuilder();
         lock (s.SyncRoot)
         {
@@ -35,6 +38,50 @@ public static class SurfaceText
                 sb.Append(abs < hist ? em.DumpHistoryRow(abs) : em.DumpRow(abs - hist)).Append('\n');
         }
         return sb.ToString().TrimEnd('\n');
+    }
+
+    /// <summary>Pipe-worker read: bounded pages from one owner generation. Never
+    /// hold the UI/session lock while waiting for transport or return a mixed buffer.</summary>
+    private static async Task<string> DumpRemoteAsync(ISession session,OverlayTextArgs args,bool styled=false)
+    {
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        for(int attempt=0;attempt<4;attempt++)
+        {
+            TerminalFrame.Lease? captured;
+            lock(session.SyncRoot) captured=((PresentedTerminalView)session.Emulator).AcquireFrame();
+            using var frame=captured;
+            if(frame is null) throw new IOException("Terminal presentation is not available yet.");
+            var state=frame.State;
+            int first=FirstRow(state.Rows,state.HistoryRows,args),end=checked(state.HistoryRows+state.Rows);
+            int pageSize=Math.Clamp(100000/state.Columns,1,32);
+            var result=new StringBuilder(); var styledRows=new List<StyledRow>(); bool stale=false;
+            for(int row=first;row<end;)
+            {
+                int count=Math.Min(pageSize,end-row);
+                var page=await session.Presentation!.QueryAsync(new(frame.Identity.Incarnation,
+                    frame.Identity.AttachmentEpoch,frame.Identity.TerminalGeneration,styled ? "styled-buffer" : "buffer",row,count),deadline.Token).ConfigureAwait(false);
+                if(page.Status == "stale") { stale=true; break; }
+                if(page.Status != "ok" || page.Truncated || page.Rows.Count != count || page.Generation != frame.Identity.TerminalGeneration)
+                    throw new IOException("Owner buffer query failed: "+page.Status);
+                foreach(string line in page.Rows)
+                {
+                    if(result.Length+line.Length > 16*1024*1024) throw new IOException("Terminal text exceeds the readback limit.");
+                    result.Append(line).Append('\n');
+                    if(styled) styledRows.Add(JsonSerializer.Deserialize<StyledRow>(line,StyledJson)
+                        ?? throw new InvalidDataException("Empty styled owner row."));
+                }
+                row+=count;
+            }
+            if(!stale)
+            {
+                if(!styled) return result.ToString().TrimEnd('\n');
+                while(styledRows.Count > 0 && styledRows[^1].Runs.Count == 0) styledRows.RemoveAt(styledRows.Count-1);
+                return JsonSerializer.Serialize(new { cols=state.Columns,rows=styledRows,
+                    cursor=new { row=state.CursorRow,col=state.CursorColumn } },StyledJson);
+            }
+            await Task.Delay(16,deadline.Token).ConfigureAwait(false);
+        }
+        throw new IOException("Terminal changed during readback; retry the request.");
     }
 
     private static int FirstRow(int rows, int hist, OverlayTextArgs args)
@@ -53,58 +100,67 @@ public static class SurfaceText
     /// not UTF-16 or codepoint counts. Row zero is the screen top; negative rows are history.</summary>
     public static string DumpStyled(ISession s, OverlayTextArgs args)
     {
+        if(s is ServerSession owner) owner.AdvanceHiddenReadback();
+        if(s.Presentation is { IsRemote:true } && (args.All || args.Lines > 0))
+            return DumpRemoteAsync(s,args,styled:true).GetAwaiter().GetResult();
         lock (s.SyncRoot)
         {
             var em = s.Emulator;
             int rows = em.Screen.Rows, cols = em.Screen.Cols, hist = em.HistoryCount;
             var result = new List<StyledRow>();
             for (int abs = FirstRow(rows, hist, args); abs < hist + rows; abs++)
-            {
-                Cell At(int col) => abs < hist ? em.GetHistoryCell(abs, col) : em.Screen[abs - hist, col];
-                // DumpRow uses string.TrimEnd(): all Unicode whitespace, regardless of style.
-                // No supplementary-plane codepoints are whitespace in .NET's TrimEnd set.
-                int last = cols - 1;
-                while (last >= 0)
-                {
-                    var cell = At(last);
-                    if (cell.Width != 0 && (cell.Grapheme is not null || !(cell.Rune <= char.MaxValue && char.IsWhiteSpace((char)cell.Rune)))) break;
-                    last--;
-                }
-
-                var runs = new List<StyledRun>();
-                var text = new StringBuilder();
-                Cell style = default;
-                int start = 0, end = 0;
-                void Flush()
-                {
-                    if (text.Length == 0) return;
-                    var a = style.Attributes;
-                    runs.Add(new(start, end - start, text.ToString(),
-                        (a & CellAttributes.Dim) != 0, (a & CellAttributes.Bold) != 0,
-                        (a & CellAttributes.Italic) != 0, (a & CellAttributes.Underline) != 0,
-                        (a & CellAttributes.Inverse) != 0, (a & CellAttributes.Strikethrough) != 0,
-                        Spec(style.FgSpec), Spec(style.BgSpec)));
-                    text.Clear();
-                }
-                for (int c = 0; c <= last; c++)
-                {
-                    var cell = At(c);
-                    if (cell.Width == 0) continue;
-                    if (text.Length > 0 && (style.Attributes != cell.Attributes ||
-                        style.FgSpec != cell.FgSpec || style.BgSpec != cell.BgSpec)) Flush();
-                    if (text.Length == 0) { start = c; style = cell; }
-                    if (cell.Grapheme is { } cluster) text.Append(cluster);
-                    else if (cell.Rune > char.MaxValue) text.Append(char.ConvertFromUtf32(cell.Rune));
-                    else text.Append((char)cell.Rune);
-                    end = Math.Min(cols, c + cell.Width);
-                }
-                Flush();
-                result.Add(new(abs - hist, runs));
-            }
+                result.Add(ReadStyledRow(em,abs,hist,cols));
             while (result.Count > 0 && result[^1].Runs.Count == 0) result.RemoveAt(result.Count - 1);
             return JsonSerializer.Serialize(new { cols, rows = result,
                 cursor = new { row = em.CursorRow, col = em.CursorCol } }, StyledJson);
         }
+    }
+
+    internal static string SerializeStyledRow(ITerminalCore em,int absoluteRow,int history,int columns)
+        => JsonSerializer.Serialize(ReadStyledRow(em,absoluteRow,history,columns),StyledJson);
+
+    private static StyledRow ReadStyledRow(ITerminalCore em,int abs,int hist,int cols)
+    {
+        Cell At(int col) => abs < hist ? em.GetHistoryCell(abs, col) : em.Screen[abs - hist, col];
+        // DumpRow uses string.TrimEnd(): all Unicode whitespace, regardless of style.
+        // No supplementary-plane codepoints are whitespace in .NET's TrimEnd set.
+        int last = cols - 1;
+        while (last >= 0)
+        {
+            var cell = At(last);
+            if (cell.Width != 0 && (cell.Grapheme is not null || !(cell.Rune <= char.MaxValue && char.IsWhiteSpace((char)cell.Rune)))) break;
+            last--;
+        }
+
+        var runs = new List<StyledRun>();
+        var text = new StringBuilder();
+        Cell style = default;
+        int start = 0, end = 0;
+        void Flush()
+        {
+            if (text.Length == 0) return;
+            var a = style.Attributes;
+            runs.Add(new(start, end - start, text.ToString(),
+                (a & CellAttributes.Dim) != 0, (a & CellAttributes.Bold) != 0,
+                (a & CellAttributes.Italic) != 0, (a & CellAttributes.Underline) != 0,
+                (a & CellAttributes.Inverse) != 0, (a & CellAttributes.Strikethrough) != 0,
+                Spec(style.FgSpec), Spec(style.BgSpec)));
+            text.Clear();
+        }
+        for (int c = 0; c <= last; c++)
+        {
+            var cell = At(c);
+            if (cell.Width == 0) continue;
+            if (text.Length > 0 && (style.Attributes != cell.Attributes ||
+                style.FgSpec != cell.FgSpec || style.BgSpec != cell.BgSpec)) Flush();
+            if (text.Length == 0) { start = c; style = cell; }
+            if (cell.Grapheme is { } cluster) text.Append(cluster);
+            else if (cell.Rune > char.MaxValue) text.Append(char.ConvertFromUtf32(cell.Rune));
+            else text.Append((char)cell.Rune);
+            end = Math.Min(cols, c + cell.Width);
+        }
+        Flush();
+        return new(abs-hist,runs);
     }
 
     private static string Spec(ColorSpec spec) => spec.Kind switch

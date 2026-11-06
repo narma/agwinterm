@@ -1206,14 +1206,9 @@ internal partial class Program
             // Live switch (#105 2d): NEW sessions use the chosen backend immediately; existing panes
             // keep the one they were born with (both kinds coexist fine) and converge on restart.
             _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
-            Note(_config.ConfiguredSessionHost == "server-rust" && _config.EmulatorCore == "ghostty"
-                ? "Rust server preference saved. Ghostty sessions use the compatible PTY server; existing sessions keep their host."
-                : _config.SessionHost switch
-            {
-                "server" => "server mode ON (experimental) — new sessions survive UI restarts; restart agwinterm to move existing ones",
-                "server-rust" => "Rust server mode ON (experimental) — new sessions live in the Rust pty-host; restart agwinterm to move existing ones",
-                _ => "in-process mode — new sessions run in the window process; restart agwinterm to convert existing ones",
-            });
+            Note(_config.SessionHost == "server"
+                ? "Session host enabled — new shells survive UI restarts."
+                : "In-process mode — new shells run in the window process.");
         }
         if (Has("conpty") || Has("emulator-core"))
         {
@@ -1228,7 +1223,7 @@ internal partial class Program
             // Live switch, same semantics as session-host: NEW sessions get the chosen core;
             // existing panes keep the one they were born with and converge on restart.
             ResolveEmulatorCore();
-            Note(_emulatorCoreNote ?? "emulator-core = managed — new sessions use the C# emulator");
+            Note(_emulatorCoreNote ?? "Ghostty is the terminal backend");
             _emulatorCoreNote = null;   // startup path only announces once
         }
         if (Has("cursor-blink-ms"))
@@ -1716,13 +1711,17 @@ internal partial class Program
         foreach (var session in AllSessions()) ObserveLayout(session);
         string? json = BuildStateSnapshot(out _, captureCommands);
         if (json is null) return false;
+        var ownerSessions=CaptureOwnerBufferSessions();
+        long stamp=_stateWriter.Reserve();
         if (sync)
         {
-            bool ok = _stateWriter.Publish(StatePath, json, out _);
+            try { json=CompleteOwnerBuffers(json,ownerSessions).GetAwaiter().GetResult(); }
+            catch(Exception ex) { Trace.WriteLine("Final owner checkpoint failed: "+ex.Message); return false; }
+            bool ok = _stateWriter.Publish(StatePath, json, stamp, out _);
             SaveIndex(sync: true);
             return ok;
         }
-        _stateWriter.Enqueue(StatePath, json);
+        QueueOwnerSave(json,stamp,ownerSessions);
         SaveIndex();
         return true;
     }
@@ -1797,7 +1796,7 @@ internal partial class Program
                         string cmd = p.CapturedCommand ?? "";   // the durable slot; "" on disk = none (RestoreState)
                         List<string>? buf = null;
                         string? blob = null;
-                        if (_config.RestoreBuffer)
+                        if (_config.RestoreBuffer && p.S is not ServerSession { UsesPresentation:true })
                             try
                             {
                                 lock (p.S.SyncRoot)
@@ -2001,6 +2000,20 @@ internal partial class Program
                             {
                                 var pane = ses.Panes[i];
                                 if (SuppressesRestoreReplay(pane)) continue;
+                                if(pane.S is ServerSession { UsesPresentation:true } owner)
+                                {
+                                    byte[]? saved=null;
+                                    if(pl[i].BufferBlob is { Length:>0 } encoded)
+                                        try { var bytes=Convert.FromBase64String(encoded); if(BufferPersist.TryParse(bytes,out _)) saved=bytes; }
+                                        catch(FormatException) { }
+                                    if(saved is null && pl[i].Buffer is { Count:>0 } plain)
+                                    {
+                                        // Convert old plain state without parsing its text as terminal commands.
+                                        saved=BufferPersist.FromPlainText(plain,owner.Cols);
+                                    }
+                                    if(saved is not null) owner.ImportBufferAsync(saved).GetAwaiter().GetResult();
+                                    continue;
+                                }
                                 // Prefer the full-fidelity attributed blob; fall back to plain text.
                                 if (pl[i].BufferBlob is { Length: > 0 } b64
                                     && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))

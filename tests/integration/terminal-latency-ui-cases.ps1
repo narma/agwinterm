@@ -92,8 +92,7 @@ foreach ($name in 'Agwinterm.Win32.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll'
     $binaryHashes[$name] = (Get-FileHash (Join-Path (Split-Path $Exe) $name) -Algorithm SHA256).Hash
 }
 @{hostMode=$LatencyHost;workload=$LatencyWorkload;count=$samples.Count;warmupSamples=[Math]::Min(50,[int]($samples.Count/10));
-    presentation=$LatencyPresentation;inputPattern=$LatencyInputPattern;
-    journalCheckpoints=$JournalCheckpoints;
+    presentation=$LatencyPresentation;measurementVariant=$LatencyVariant;inputPattern=$LatencyInputPattern;
     producerBytesPerEvent=$(if ($LatencyWorkload -eq 'fixed-output') {262144} else {0});
     binaryHashes=$binaryHashes;grid=(Rpc 'session.metrics' @{} $session);uiPid=$job.Pid;utc=[DateTime]::UtcNow.ToString('O');
     frequency=$frequencies[0];endpoint='EndDraw, not physical display';samples=$samples} |

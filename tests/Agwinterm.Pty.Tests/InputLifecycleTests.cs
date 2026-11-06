@@ -3,6 +3,24 @@ namespace Agwinterm.Pty.Tests;
 public class InputLifecycleTests
 {
     [Fact]
+    public void OwnerStartupAcceptsEarlyFocusButBoundsPendingInput()
+    {
+        using var backend=new ServerSessionBackend("not-connected",null,singleOwner:true);
+        var session=new ServerSession(backend,"pane",80,24);
+        try
+        {
+            Assert.Equal(TerminalInputAcceptance.Accepted,session.SubmitInput(new TerminalInput.Focus(true)));
+            Assert.False(session.InputClosed);
+            TerminalInputAcceptance result=TerminalInputAcceptance.Accepted;
+            for(int i=0;i<5000 && result == TerminalInputAcceptance.Accepted;i++)
+                result=session.SubmitInput(new TerminalInput.Text("early"));
+            Assert.Equal(TerminalInputAcceptance.Overflow,result);
+            Assert.True(session.InputClosed);
+            Assert.Equal(TerminalInputAcceptance.Closed,session.SubmitInput(new TerminalInput.Focus(false)));
+        }
+        finally { session.Detach(); }
+    }
+    [Fact]
     public void InProcessInputCanCloseBeforeOutputCompletion()
     {
         using var session = new TerminalSession(80, 24);

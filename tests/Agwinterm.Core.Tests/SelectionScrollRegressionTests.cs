@@ -150,8 +150,11 @@ public class SelectionScrollRegressionTests
             Set("HasSel", true);
             Invoke("StampSel");
         }
-        private object? Invoke(string method) => ProgramType.GetMethod(method,
-            BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new[] { Pane });
+        private object? Invoke(string name)
+        {
+            var method=ProgramType.GetMethod(name,BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic)!;
+            return method.Invoke(method.IsStatic ? null : RuntimeHelpers.GetUninitializedObject(ProgramType),new[] { Pane });
+        }
         public string Text() => (string)Invoke("SelectionText")!;
         public void AssertSelection(int row)
         {

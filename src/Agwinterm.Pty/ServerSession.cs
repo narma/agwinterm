@@ -19,7 +19,6 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     private readonly string _name;
     internal string? ReplicaCore { get; }
     internal bool SingleOwner { get; }
-    internal bool JournalOwner { get; }
     private readonly object _lock = new();
     private PtyHostClient? _client;
     private bool _disposed;
@@ -31,7 +30,7 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     /// <param name="spawnArgs">Argument string for the host exe. The C# host is the app itself
     /// (<c>--pty-host --pipe ...</c>); the Rust host is a standalone binary (<c>--pipe ...</c>).</param>
     /// <param name="name">Diagnostics name ("server" or "server-rust").</param>
-    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null, bool singleOwner = false, bool journalOwner = false)
+    public ServerSessionBackend(string appId, string? exePath, string? spawnArgs = null, string name = "server", string? replicaCore = null, bool singleOwner = false)
     {
         _appId = appId;
         _startupClaims = StartupHostClaims.ForNamespace(appId);
@@ -40,8 +39,6 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
         _name = name;
         ReplicaCore = replicaCore;
         SingleOwner = singleOwner;
-        if(singleOwner && journalOwner) throw new ArgumentException("Select one ownership transport.");
-        JournalOwner=journalOwner;
     }
 
     public string Name => _name;
@@ -126,19 +123,33 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
 public sealed partial class ServerSession : ISession
 {
     public bool UsesPresentation => _backend.SingleOwner;
-    public bool UsesJournal => _backend.JournalOwner;
     public ISessionPresentation? Presentation { get; }
     private ulong _viewportRevision;
     private int _viewportScroll, _viewportCellWidth=8, _viewportCellHeight=18;
     private bool _viewportVisible=true;
+    internal void AdvanceHiddenReadback()
+    {
+        // An explicit read is also a consumer of the cached viewport. A window
+        // on a private desktop, hidden or occluded, may never complete a paint;
+        // release this frame's credit so a subsequent read can see newer output.
+        if(!UsesPresentation) return;
+        ulong sequence;
+        lock(_sync) { using var frame=((PresentedTerminalView)Emulator).AcquireFrame(); sequence=frame?.Identity.Sequence ?? 0; }
+        if(sequence != 0) AcknowledgeFrame(sequence);
+    }
     private PresentationInputSender? _presentationInput;
+    private readonly Queue<TerminalInput> _startupInput=new();
+    private int _startupInputBytes;
     private ulong _attachmentEpoch;
+    private string _queryPipe = "";
+    private string _effectPipe = "";
+    private Task _effectReader=Task.CompletedTask;
     private ulong _presentedSequence;
     public void AcknowledgeFrame(ulong sequence)
     {
         lock(_sync)
         {
-            if(sequence <= _presentedSequence || InputClosed) return;
+            if(sequence <= _presentedSequence || InputClosed && !HasExited) return;
             if(SubmitInput(new TerminalInput.FramePresented(sequence)) == TerminalInputAcceptance.Accepted) _presentedSequence=sequence;
         }
     }
@@ -179,8 +190,7 @@ public sealed partial class ServerSession : ISession
         Rows = rows;
         Emulator = backend.SingleOwner ? new PresentedTerminalView(cols,rows) : TerminalSession.CreateCore(cols, rows, backend.ReplicaCore);
         if(backend.SingleOwner) Presentation=new RemoteSessionPresentation(this);
-        if (Emulator is GhosttyTerminalCore ghostty && !UsesJournal) ghostty.MarkLegacyReplica();
-        if(UsesJournal) Emulator.Host=new JournalOwnerActions(this);
+        if (Emulator is GhosttyTerminalCore ghostty) ghostty.MarkLegacyReplica();
     }
 
     /// <summary>True when this handle reconnected to a SURVIVING hosted session instead of spawning
@@ -261,12 +271,12 @@ public sealed partial class ServerSession : ISession
                     int cols = Cols, rows = Rows;
                     client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
                         verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket,
-                        emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation,journalOwner:UsesJournal);
+                        emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation);
                     if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
                     if (_startFence.IsClosed) return;
                     // Even the first attachment can follow output from a fast child.
                     // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
-                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0,journalRevision:UsesJournal ? 1u : 0)) && (Cols != cols || Rows != rows))
+                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -303,18 +313,14 @@ public sealed partial class ServerSession : ISession
             if (_disposed) { att.Dispose(); return false; }
             try
             {
-                if(UsesJournal)
+                if (UsesPresentation)
                 {
-                    if(att.JournalRevision != 1 || att.Input is null || att.AttachmentEpoch == 0) throw new IOException("Missing journal transport.");
-                    _attachmentEpoch=att.AttachmentEpoch;
-                    _journalCheckpointPipe=att.JournalCheckpointPipe;
-                    Emulator.Resize(att.Cols,att.Rows);
-                }
-                else if (UsesPresentation)
-                {
-                    if (att.PresentationRevision != 1 || att.Input is null || att.AttachmentEpoch == 0)
+                    if (att.PresentationRevision != 1 || att.Input is null || att.AttachmentEpoch == 0 ||
+                        string.IsNullOrEmpty(att.QueryPipe) || string.IsNullOrEmpty(att.EffectPipe))
                         throw new IOException("Missing negotiated presentation transport.");
                     _attachmentEpoch = att.AttachmentEpoch;
+                    _queryPipe = att.QueryPipe;
+                    _effectPipe = att.EffectPipe;
                 }
                 else
                 {
@@ -340,15 +346,29 @@ public sealed partial class ServerSession : ISession
         bool published = _startFence.Publish(() =>
         {
             _data = att.Data; _childPid = att.ChildPid;
-            if (UsesPresentation) _presentationInput = new(att.Input!,att.CreationTicket,att.AttachmentEpoch);
-            if(UsesJournal) _presentationInput=new(att.Input!,att.CreationTicket,att.AttachmentEpoch,EncodeJournalInput);
+            if (UsesPresentation)
+            {
+                lock(_sync)
+                {
+                    _presentationInput = new(att.Input!,att.CreationTicket,att.AttachmentEpoch);
+                    while(_startupInput.TryDequeue(out var input))
+                        if(!InputClosed && _presentationInput.Submit(input) != TerminalInputAcceptance.Accepted) MarkInputClosed();
+                    _startupInputBytes=0;
+                }
+            }
+            if (UsesPresentation && _effectPipe.Length > 0) _effectReader=ReadEffectsAsync();
             _started = true; // from here the reader alone owns disposal, even if close cancels it now
             _ = Task.Factory.StartNew(ReadLoop, CancellationToken.None,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default);
         });
         if (!published) att.Dispose(); // no read was ever issued
-        if (published && !UsesJournal && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
-        if (published) UpdateTheme();
+        if (published && Emulator is GhosttyTerminalCore restored && (restored.Cols != Cols || restored.Rows != Rows)) Resize(Cols, Rows);
+        if (published)
+        {
+            if(UsesPresentation) _presentationReady.TrySetResult();
+            if(UsesPresentation) ExecutePresentation(new TerminalCommand.ScrollbackLimit(Emulator.ScrollbackMax));
+            UpdateTheme();
+        }
         return published;
     }
 
@@ -420,7 +440,7 @@ public sealed partial class ServerSession : ISession
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0,journalRevision:UsesJournal ? 1u : 0); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0); _creationHostPid = client.HostPid; }
         catch
         {
             // Recovery may find a checkpoint written before Create reached publication.
@@ -461,7 +481,6 @@ public sealed partial class ServerSession : ISession
     /// operation is ever in flight at close (that race is a native AV in the IOCP poller).</summary>
     private void ReadLoop()
     {
-        if(UsesJournal) { ReadJournalLoop(); return; }
         if (UsesPresentation) { ReadPresentationLoop(); return; }
         var data = _data!;
         var buffer = new byte[64 * 1024];
@@ -511,13 +530,14 @@ public sealed partial class ServerSession : ISession
 
     public void Inject(ReadOnlySpan<byte> bytes)
     {
-        if(UsesJournal && _started)
+        if(UsesPresentation)
         {
+            if(!_started) throw new InvalidOperationException("Terminal owner is not attached.");
             while(!bytes.IsEmpty)
             {
-                int count=Math.Min(bytes.Length,TerminalJournal.MaximumOutputBytes);
-                if(SubmitInput(new TerminalInput.JournalInject(bytes[..count].ToArray())) != TerminalInputAcceptance.Accepted)
-                    throw new IOException("Journal injection was not accepted.");
+                int count=Math.Min(bytes.Length,64*1024);
+                if(SubmitInput(new TerminalInput.Command(new TerminalCommand.InjectOutput(bytes[..count].ToArray()))) != TerminalInputAcceptance.Accepted)
+                    throw new IOException("Owner display injection was not accepted.");
                 bytes=bytes[count..];
             }
             return;
@@ -534,11 +554,6 @@ public sealed partial class ServerSession : ISession
 
     public void Write(ReadOnlySpan<byte> bytes)
     {
-        if(UsesJournal)
-        {
-            if(SubmitJournalInput(bytes) != TerminalInputAcceptance.Accepted) throw new IOException("Journal input was not accepted.");
-            return;
-        }
         if (UsesPresentation)
         {
             var acceptance = SubmitInput(new TerminalInput.Raw(bytes.ToArray()));
@@ -555,19 +570,6 @@ public sealed partial class ServerSession : ISession
     public void Resize(int cols, int rows)
     {
         if (cols <= 0 || rows <= 0) return;
-        if(UsesJournal)
-        {
-            lock(_sync)
-            {
-                ObjectDisposedException.ThrowIf(_disposed,this);
-                if(cols > 10000 || rows > 10000 || (long)cols*rows > TerminalFrame.MaximumCells) throw new ArgumentOutOfRangeException(nameof(cols));
-                if(Cols == cols && Rows == rows) return;
-                Cols=cols; Rows=rows;
-                if(_started && !HasExited && SubmitInput(new TerminalInput.JournalResize(cols,rows)) != TerminalInputAcceptance.Accepted)
-                    throw new IOException("Journal resize was not accepted.");
-            }
-            return;
-        }
         if(UsesPresentation)
         {
             lock(_sync)
@@ -576,7 +578,7 @@ public sealed partial class ServerSession : ISession
                 if((long)cols*rows > TerminalFrame.MaximumCells || cols > 10000 || rows > 10000) throw new ArgumentOutOfRangeException(nameof(cols));
                 if(Cols == cols && Rows == rows) return;
                 Cols=cols; Rows=rows;
-                if(_started && !HasExited) SendViewportLocked();
+                if(_started) SendViewportLocked();
             }
             return;
         }
@@ -592,7 +594,6 @@ public sealed partial class ServerSession : ISession
     /// <summary>Coalesce live theme changes off the UI thread. Never replay VT or resize a child.</summary>
     public void UpdateTheme()
     {
-        if(UsesJournal) return; // the UI owner already supplies native theme answers
         string colors, palette, cursor, ticket;
         long sequence;
         lock (_sync)
@@ -656,6 +657,7 @@ public sealed partial class ServerSession : ISession
 
     private void CancelRead()
     {
+        lock(_sync) { _startupInput.Clear(); _startupInputBytes=0; }
         _presentationInput?.Dispose();
         try { _readCancel.Cancel(); } catch (ObjectDisposedException) { }
         // PublishAttachment either assigns the pipe to a reader, or closes the unpublished pipe.
@@ -664,10 +666,30 @@ public sealed partial class ServerSession : ISession
 
     public TerminalInputAcceptance SubmitInput(TerminalInput input,bool persistentUiThread=false)
     {
-        if (InputClosed) return TerminalInputAcceptance.Closed;
-        var result = _presentationInput?.Submit(input,persistentUiThread) ?? TerminalInputAcceptance.Closed;
-        if (result != TerminalInputAcceptance.Accepted) MarkInputClosed();
-        return result;
+        lock(_sync)
+        {
+            if (_disposed || InputClosed && !(HasExited && input is TerminalInput.Viewport or TerminalInput.FramePresented or TerminalInput.Command)) return TerminalInputAcceptance.Closed;
+            if(_presentationInput is null)
+            {
+                // Window focus and typing can precede the asynchronous attachment.
+                // Retain a bounded, owned copy; never resend after an attachment fails.
+                int bytes;
+                try { bytes=PresentationInputCodec.Encode(input,"startup",1,1).Length; }
+                catch(InvalidDataException) { MarkInputClosed(); return TerminalInputAcceptance.Overflow; }
+                if(_startupInput.Count >= 4096 || bytes > OwnerInputQueue.MaximumBytes-_startupInputBytes)
+                { _startupInput.Clear(); _startupInputBytes=0; MarkInputClosed(); return TerminalInputAcceptance.Overflow; }
+                input=input switch {
+                    TerminalInput.Raw raw=>new TerminalInput.Raw(raw.Bytes.ToArray()),
+                    TerminalInput.Command { Value:TerminalCommand.InjectOutput output }=>new TerminalInput.Command(new TerminalCommand.InjectOutput(output.Bytes.ToArray())),
+                    _=>input
+                };
+                _startupInput.Enqueue(input); _startupInputBytes+=bytes;
+                return TerminalInputAcceptance.Accepted;
+            }
+            var result = _presentationInput.Submit(input,persistentUiThread);
+            if (result != TerminalInputAcceptance.Accepted) MarkInputClosed();
+            return result;
+        }
     }
     private TerminalInputAcceptance SendViewportLocked()
         => SubmitInput(new TerminalInput.Viewport(++_viewportRevision,Cols,Rows,_viewportCellWidth,_viewportCellHeight,_viewportScroll,_viewportVisible));
@@ -679,7 +701,7 @@ public sealed partial class ServerSession : ISession
             if(_disposed) return null;
             bool changed=_viewportScroll != scrollOffset || _viewportCellWidth != cellWidth || _viewportCellHeight != cellHeight || !_viewportVisible;
             _viewportScroll=scrollOffset; _viewportCellWidth=cellWidth; _viewportCellHeight=cellHeight; _viewportVisible=true;
-            if(_started && !HasExited && (changed || _viewportRevision == 0)) SendViewportLocked();
+            if(_started && (changed || _viewportRevision == 0)) SendViewportLocked();
             return ((PresentedTerminalView)Emulator).AcquireFrame();
         }
     }
@@ -687,9 +709,14 @@ public sealed partial class ServerSession : ISession
     {
         lock(_sync)
         {
-            if(_disposed || InputClosed) return TerminalInputAcceptance.Closed;
+            if(_disposed || InputClosed && !HasExited) return TerminalInputAcceptance.Closed;
             switch(command)
             {
+                case TerminalCommand.ScrollbackLimit limit when !_started:
+                    Emulator.ScrollbackMax=limit.Rows;
+                    return TerminalInputAcceptance.Accepted;
+                case TerminalCommand.InjectOutput or TerminalCommand.Clear or TerminalCommand.Reset or TerminalCommand.ScrollbackLimit:
+                    return SubmitInput(new TerminalInput.Command(command));
                 case TerminalCommand.Resize resize:
                     if(resize.ViewportRevision < _viewportRevision || resize.Columns is < 1 or > 10000 || resize.Rows is < 1 or > 10000 ||
                         (long)resize.Columns*resize.Rows > TerminalFrame.MaximumCells || resize.CellWidth is < 1 or > 65535 || resize.CellHeight is < 1 or > 65535)
@@ -710,31 +737,56 @@ public sealed partial class ServerSession : ISession
     private void ReadPresentationLoop()
     {
         var data = _data!;
-        using var buffered = new BufferedStream(data,64*1024);
+        PresentationPipeIo? pipeReader = data is System.IO.Pipes.PipeStream pipe ? new(pipe, _readCancel.Token) : null;
+        var reader = new PresentationFrameReader(data, pipeReader is null ? null : pipeReader.Read);
         var framePool = System.Buffers.ArrayPool<Cell>.Create(TerminalFrame.MaximumCells,3);
         TerminalFrame.Lease? previous = null;
         try
         {
             while (true)
             {
-                var decoded = PresentationFrameCodec.ReadAsync(buffered,previous,_creationTicket,_attachmentEpoch,_readCancel.Token,framePool).AsTask().GetAwaiter().GetResult();
-                using var frame = decoded.Frame;
+                var decoded = reader.Read(previous,_creationTicket,_attachmentEpoch,_readCancel.Token,framePool);
+                using var wireFrame = decoded.Frame;
+                using var frame = wireFrame.Images.Count == 0 ? null : ResolveFrameImagesAsync(wireFrame,_readCancel.Token).GetAwaiter().GetResult();
+                var completeFrame = frame ?? wireFrame;
+                if(decoded.Exited && !HasExited) awaitFinalCheckpoint();
                 bool stale;
                 lock (_sync)
                 {
                     if (_disposed) break;
-                    stale=!decoded.Exited && frame.Identity.ViewportRevision < _viewportRevision;
-                    if(!stale) ((PresentedTerminalView)Emulator).Publish(frame);
+                    stale=!decoded.Exited && completeFrame.Identity.ViewportRevision < _viewportRevision;
+                    if(!stale) ((PresentedTerminalView)Emulator).Publish(completeFrame);
                 }
-                previous?.Dispose(); previous=frame.Acquire();
-                if(stale) AcknowledgeFrame(frame.Identity.Sequence);
+                previous?.Dispose(); previous=completeFrame.Acquire();
+                if (wireFrame.Images.Count == 0) _presentationImages.Clear();
+                if(stale) AcknowledgeFrame(completeFrame.Identity.Sequence);
                 else OutputReceived?.Invoke();
-                if (decoded.Exited) { ExitCode=decoded.ExitCode; HasExited=true; Exited?.Invoke(decoded.ExitCode); break; }
+                if (decoded.Exited && !HasExited)
+                {
+                    _effectReader.GetAwaiter().GetResult();
+                    ExitCode=decoded.ExitCode; HasExited=true; MarkInputClosed();
+                    AcknowledgeFrame(completeFrame.Identity.Sequence);
+                    Exited?.Invoke(decoded.ExitCode);
+                }
             }
         }
-        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or Google.Protobuf.InvalidProtocolBufferException) { }
-        finally { previous?.Dispose(); MarkInputClosed(); _presentationInput?.Dispose(); data.Dispose(); }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or Google.Protobuf.InvalidProtocolBufferException)
+        { if(ex is not OperationCanceledException) Trace.WriteLine($"Presentation reader ended: {ex}"); }
+        finally
+        {
+            previous?.Dispose(); _presentationImages.Clear(); MarkInputClosed(); _presentationInput?.Dispose();
+            _readCancel.Cancel();
+            try { _effectReader.GetAwaiter().GetResult(); }
+            catch(Exception ex) when(ex is IOException or OperationCanceledException or Google.Protobuf.InvalidProtocolBufferException) { }
+            pipeReader?.Dispose(); data.Dispose();
+        }
         OnStreamEnded();
+        void awaitFinalCheckpoint()
+        {
+            try { ExportBufferAsync(_readCancel.Token).GetAwaiter().GetResult(); }
+            catch(Exception ex) when(ex is IOException or OperationCanceledException or TimeoutException)
+            { Trace.WriteLine("Final terminal checkpoint failed: "+ex.Message); }
+        }
     }
     private void DisposeReplica()
     {

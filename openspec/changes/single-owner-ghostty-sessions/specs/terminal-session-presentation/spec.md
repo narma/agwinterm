@@ -57,12 +57,27 @@ Terminal responses SHALL originate once from the owner. UI effects SHALL preserv
 - **WHEN** a selection or history query races with resize
 - **THEN** the result uses a consistent captured generation or is explicitly invalidated, never assembled from incompatible coordinates
 
-### Requirement: Upgrade preserves live workload identity
-Capability negotiation SHALL distinguish new presentation sessions from legacy hosts. Existing live sessions SHALL be adopted through a compatible path or reported unavailable, never killed or recreated to satisfy a transport preference. Creation tickets, incarnation checks and no-command-replay recovery SHALL remain effective.
+### Requirement: Upgrade migrates saved state without legacy runtime backends
+The system SHALL ship only the Ghostty terminal backend, supporting hosted and serverless modes. Installation SHALL save and back up old state before closing old sessions and replacing binaries. The new version SHALL import supported settings, layout and attributed history without old-host attachment. Saved-state restore SHALL NOT claim to resume process execution.
 
-#### Scenario: Upgrade with a surviving old host
-- **WHEN** the new UI discovers an existing session in an older .NET or Rust host
-- **THEN** it preserves that process using the isolated legacy path and identifies the legacy transport in diagnostics
+#### Scenario: Upgrade from installed 0.20.19
+- **WHEN** installation finds the previous UI and hosted sessions running
+- **THEN** it saves state, preserves a backup, closes old sessions and restores supported saved state without adopting old hosts
+
+#### Scenario: Saving or stopping the old installation fails
+- **WHEN** state persistence or old-process shutdown cannot be verified
+- **THEN** installation does not overwrite the running version and preserves recoverable state
+
+#### Scenario: New-version UI reconnects
+- **WHEN** a UI of the new version reconnects to its compatible surviving host
+- **THEN** it retains session incarnation and process identity without replaying saved commands
+
+### Requirement: Backend removal preserves WSL and remote functionality
+Removing legacy Windows terminal backends SHALL preserve the bundled Rust Linux helper, WSL, ZMX, remote sessions and their recovery behavior.
+
+#### Scenario: Existing WSL or remote workflow after upgrade
+- **WHEN** the user opens or restores a supported WSL/ZMX or remote session
+- **THEN** its helper, connection and recovery functionality remains available with the Ghostty backend
 
 ### Requirement: Performance acceptance covers both operating modes
 Release acceptance SHALL compare hosted and serverless modes separately against their pinned baselines using repeatable input-to-echo, input-to-present, throughput, CPU and memory measurements. Results SHALL include tail latency and instrumentation limits. A reproducible regression beyond the predeclared measurement tolerances SHALL block rollout; latency improvement SHALL require evidence rather than inference from fewer terminal instances.

@@ -52,7 +52,7 @@ message Create {
   string creation_ticket = 11;  // creation_revision >= 1: host-issued, single-use spawn authority
   string emulator_core = 12;   // core_selection_revision >= 1: managed/rust/ghostty; empty = host default
   bool single_owner = 13;      // presentation_revision >= 1; requires Ghostty, no raw-stream fallback
-  bool journal_owner = 14;     // journal_revision >= 1; parser lives with UI
+  reserved 14; // retired UI-owner prototype
 }
 
 message Attach {
@@ -61,7 +61,7 @@ message Attach {
   string creation_ticket = 3;   // optional expected incarnation; mismatch refuses
   bool native_snapshot = 4;    // accept length-prefixed Ghostty snapshot before raw PTY bytes
   uint32 presentation_revision = 5;
-  uint32 journal_revision = 6;
+  reserved 6; // retired UI-owner prototype
 }
 
 message SessionRef {
@@ -119,7 +119,7 @@ message HelloReply {
   uint32 core_selection_revision = 4; // 1 = per-session core selection and authoritative attach core
   uint32 theme_revision = 5; // 1 = update live query defaults without injecting VT
   uint32 presentation_revision = 6; // 1 = bounded viewport channel plus ordered semantic input
-  uint32 journal_revision = 7; // 1 = parser-free broker and UI owner
+  reserved 7; // retired UI-owner prototype
 }
 
 message CreateReply {
@@ -147,7 +147,9 @@ message AttachReply {
   uint32 presentation_revision = 13;
   string input_pipe = 14;
   uint64 attachment_epoch = 15;
-  uint32 journal_revision = 16;
+  reserved 16; // retired UI-owner prototype
+  string query_pipe = 17; // optional revision-1 bounded owner queries; independent of input/frames
+  string effect_pipe = 18;
 }
 
 message SessionInfo {
@@ -198,6 +200,38 @@ message PresentationFrameHeader {
   bool has_exited = 26;
   int32 exit_code = 27;
   int64 captured_ticks = 28; // opt-in QPC timestamp; 0 when diagnostics are disabled
+  repeated PresentationImagePlacement images = 29;
+  repeated int32 wrap_lengths = 30;
+  repeated PresentationCommandMark marks = 31;
+}
+
+message PresentationCommandMark {
+  int32 prompt_line = 1;
+  int32 command_line = 2;
+  int32 output_line = 3;
+  int32 end_line = 4;
+  optional int32 exit_code = 5;
+}
+
+message PresentationImagePlacement {
+  uint64 generation = 1;
+  int32 image_width = 2;
+  int32 image_height = 3;
+  uint32 format = 4;
+  uint32 id = 5;
+  uint32 layer = 6;
+  int32 z = 7;
+  int32 column = 8;
+  int32 row = 9;
+  uint32 offset_x = 10;
+  uint32 offset_y = 11;
+  uint32 width = 12;
+  uint32 height = 13;
+  uint32 source_x = 14;
+  uint32 source_y = 15;
+  uint32 source_width = 16;
+  uint32 source_height = 17;
+  uint32 payload_length = 18;
 }
 
 // Independent input pipe. Acceptance never waits for a frame/query round trip.
@@ -229,6 +263,14 @@ message PresentationInput {
   bool has_cell_position = 24;
   uint32 cell_column = 25;
   uint32 cell_row = 26;
+  PresentationOwnerCommand owner_command = 27; // kind 9, ordered terminal mutation
+}
+
+message PresentationOwnerCommand {
+  uint32 kind = 1; // 1 display injection; 2 clear; 3 reset; 4 scrollback limit
+  bytes bytes = 2;
+  bool history = 3;
+  int32 rows = 4;
 }
 
 message PresentationViewport {
@@ -239,4 +281,48 @@ message PresentationViewport {
   uint32 cell_height = 5;
   uint32 scroll_offset = 6;
   bool visible = 7;
+}
+
+// One request/reply per connection. Disconnect/deadline cancels the query; a new
+// attachment owns a new endpoint. Neither endpoint carries user input or VT.
+message PresentationQuery {
+  string incarnation = 1;
+  uint64 attachment_epoch = 2;
+  int64 generation = 3;
+  string operation = 4;
+  int32 start_row = 5;
+  int32 row_count = 6;
+  string text = 7;
+  int32 result_limit = 8;
+  uint64 frame_sequence = 9;
+  uint64 image_generation = 10;
+  int32 image_offset = 11;
+}
+message PresentationQueryReply {
+  string incarnation = 1;
+  uint64 attachment_epoch = 2;
+  int64 generation = 3;
+  string status = 4;
+  repeated string rows = 5;
+  bool truncated = 6;
+  repeated PresentationSearchMatch matches = 7;
+  bytes image_bytes = 8;
+}
+message PresentationSearchMatch {
+  int32 line = 1;
+  int32 column = 2;
+  int32 end_line = 3;
+  int32 end_column = 4;
+}
+
+message PresentationEffect {
+  string incarnation = 1;
+  uint64 attachment_epoch = 2;
+  uint64 sequence = 3;
+  uint32 kind = 4; // 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role
+  string title = 5;
+  string text = 6;
+  int32 state = 7;
+  int32 value = 8;
+  int64 completion_sequence = 9;
 }

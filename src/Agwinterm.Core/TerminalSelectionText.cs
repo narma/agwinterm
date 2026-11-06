@@ -12,7 +12,8 @@ public static class TerminalSelectionText
         else if (cell.Rune <= 0xffff) text.Append(cell.Rune == 0 ? ' ' : (char)cell.Rune);
         else text.Append(char.ConvertFromUtf32(cell.Rune));
     }
-    public static string Read(ITerminalCore core, int anchorRow, int anchorCol, int focusRow, int focusCol, bool block)
+    public static string Read(ITerminalCore core, int anchorRow, int anchorCol, int focusRow, int focusCol, bool block,
+        int maximumCharacters=int.MaxValue)
     {
         int cols = core is GhosttyTerminalCore native ? native.Cols : core.Screen.Cols;
         int rows = core is GhosttyTerminalCore nativeRows ? nativeRows.Rows : core.Screen.Rows;
@@ -32,11 +33,18 @@ public static class TerminalSelectionText
             int lineStart = text.Length;
             for (int col = Math.Max(0, begin); col < Math.Min(cols, end); col++)
             {
-                Cell cell = line < history ? core.GetHistoryCell(line, col) : core.Screen[line - history, col];
+                Cell cell = core is PresentedTerminalView presented ? presented.GetCachedCell(line,col)
+                    : line < history ? core.GetHistoryCell(line, col) : core.Screen[line - history, col];
+                int characters=cell.Width == 0 ? 0 : cell.Grapheme?.Length ?? (cell.Rune > 0xffff ? 2 : 1);
+                if(characters > maximumCharacters-text.Length) throw new InvalidDataException("Selection exceeds the copy limit.");
                 AppendCell(text, cell);
             }
             if (!join) while (text.Length > lineStart && text[^1] == ' ') text.Length--;
-            if (line != last && !join) text.Append("\r\n");
+            if (line != last && !join)
+            {
+                if(maximumCharacters-text.Length < 2) throw new InvalidDataException("Selection exceeds the copy limit.");
+                text.Append("\r\n");
+            }
         }
         return text.ToString();
     }

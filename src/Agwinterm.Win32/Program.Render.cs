@@ -343,7 +343,6 @@ internal partial class Program
 
     private void Render()
     {
-        if(_journalWindowParked) return;
         UpdateWebPresentation();
         if (_rt is null || _brush is null) return;
         long tStart = Stopwatch.GetTimestamp();
@@ -478,6 +477,8 @@ internal partial class Program
         GhosttyTerminalCore? nativePaint = null;
         var localPresentation = session.Presentation is { IsRemote:false } local ? local : null;
         Color? frameCursorColor = null;
+        IReadOnlyList<GhosttyImagePlacement> frameImages = [];
+        long frameAnimationDeadline = 0;
         long capturedTicks=0, appliedTicks=0, presentedSequence=0;
         bool resolvedColors=em is GhosttyTerminalCore or PresentedTerminalView;
         long waitingSince = TerminalLatencyTrace.Enabled ? Stopwatch.GetTimestamp() : 0;
@@ -499,7 +500,7 @@ internal partial class Program
             rows = nativePaint?.Rows ?? (em as PresentedTerminalView)?.Rows ?? screen!.Rows;
             cursorVisible = em.CursorVisible; cursorCol = em.CursorCol; cursorRow = em.CursorRow;
             cursorShape = em.CursorShape;   // DECSCUSR (0 = use user config)
-            drawImages = !_noImages && em.Placements.Count > 0 && off == 0;
+            drawImages = session.Presentation is null && !_noImages && em.Placements.Count > 0 && off == 0;
             marks = !isAlt && em.Marks.Count > 0
                 ? em.Marks.Select(m => (m.PromptLine, m.ExitCode)).ToArray()
                 : Array.Empty<(int, int?)>();
@@ -509,7 +510,15 @@ internal partial class Program
                 using var frame=session.Presentation?.Capture(off,Math.Max(1,(int)cw),Math.Max(1,(int)ch)) ?? view.AcquireFrame();
                 if(frame is not null)
                 {
+                    var state=frame.State;
+                    cols=state.Columns; rows=state.Rows; hist=state.HistoryRows; off=state.ScrollOffset;
+                    cursorCol=state.CursorColumn; cursorRow=state.CursorRow;
+                    cursorVisible=state.CursorVisible; cursorShape=state.CursorShape;
+                    frameCursorColor=state.CursorColor;
+                    if(_cellSnap.Length < rows*cols) _cellSnap=new Cell[rows*cols];
                     frame.CopyCells(_cellSnap);
+                    frameImages=frame.Images;
+                    frameAnimationDeadline=frame.AnimationDeadline;
                     capturedTicks=frame.CapturedTicks; appliedTicks=view.AppliedTicks;
                     presentedSequence=checked((long)frame.Identity.Sequence);
                     if(session is ServerSession remote) _presentationCredits.Add((remote,frame.Identity.Sequence));
@@ -549,6 +558,8 @@ internal partial class Program
             cursorCol = state.CursorColumn; cursorRow = state.CursorRow;
             cursorVisible = state.CursorVisible; cursorShape = state.CursorShape;
             frameCursorColor = state.CursorColor;
+            frameImages=frame.Images;
+            frameAnimationDeadline=frame.AnimationDeadline;
             if (_cellSnap.Length < rows * cols) _cellSnap = new Cell[rows * cols];
             frame.CopyCells(_cellSnap);
             capturedTicks = frame.CapturedTicks; appliedTicks = capturedTicks;
@@ -573,10 +584,11 @@ internal partial class Program
                 _latencyFrameIds.Add((id,captured,appliedTicks == 0 ? captured : appliedTicks,presentedSequence == 0 ? _latencyFrameSequence : presentedSequence));
             }
         }
-        IReadOnlyList<GhosttyImagePlacement> nativeImages = !_noImages && nativePaint is not null ? nativePaint.PaintImages : [];
-        PrepareGhosttyImages(nativeImages);
-        if (!_noImages && nativePaint is not null) ScheduleGhosttyAnimation(nativePaint);
-        DrawGhosttyImages(nativeImages, GhosttyImageLayer.BelowBackground, ox, oy, cw, ch, cols, rows);
+        IReadOnlyList<GhosttyImagePlacement> nativeImages = _noImages ? [] : session.Presentation is not null ? frameImages : nativePaint?.PaintImages ?? [];
+        PrepareGhosttyImages(session,nativeImages);
+        if (!_noImages && (session.Presentation is not null || nativePaint is not null)) ScheduleGhosttyAnimation(session,
+            session.Presentation is not null ? frameAnimationDeadline : nativePaint!.NextAnimationDeadline);
+        DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.BelowBackground, ox, oy, cw, ch, cols, rows);
         {
             var snap = _cellSnap;
             Cell CellAt(int r, int c) => snap[r * cols + c];
@@ -604,7 +616,7 @@ internal partial class Program
                     rt.FillRectangle(new Rect(ox + start * cw, y, (c - start) * cw, ch), brush);
                 }
             }
-            DrawGhosttyImages(nativeImages, GhosttyImageLayer.BelowText, ox, oy, cw, ch, cols, rows);
+            DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.BelowText, ox, oy, cw, ch, cols, rows);
             for (int r = 0; r < rows; r++)
             {
                 float y = oy + r * ch;
@@ -744,7 +756,7 @@ internal partial class Program
 
             if (!_noImages)
                 lock (session.SyncRoot) DrawImages(em, ox, oy, cw, ch, drawImages); // image state belongs to this pane
-            DrawGhosttyImages(nativeImages, GhosttyImageLayer.AboveText, ox, oy, cw, ch, cols, rows);
+            DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.AboveText, ox, oy, cw, ch, cols, rows);
 
             if (off > 0) // scrollback position indicator on the pane's right edge
             {

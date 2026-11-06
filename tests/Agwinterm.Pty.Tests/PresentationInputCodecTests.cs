@@ -6,6 +6,19 @@ namespace Agwinterm.Pty.Tests;
 public class PresentationInputCodecTests
 {
     [Fact]
+    public async Task DisplayMutationIsDistinctFromRawChildInput()
+    {
+        byte[] bytes=[27,(byte)'[',(byte)'2',(byte)'J'];
+        using var stream=new MemoryStream(PresentationInputCodec.Encode(new TerminalInput.Command(new TerminalCommand.InjectOutput(bytes)),"owner",2,1));
+        var decoded=await PresentationInputCodec.ReadAsync(stream,"owner",2,0,default);
+        var command=Assert.IsType<TerminalInput.Command>(decoded.Input);
+        Assert.Equal(bytes,Assert.IsType<TerminalCommand.InjectOutput>(command.Value).Bytes.ToArray());
+        Assert.Throws<InvalidDataException>(()=>PresentationInputCodec.Decode(new PresentationInput {
+            Incarnation="owner",AttachmentEpoch=2,Sequence=1,Kind=9,OwnerCommand=new() { Kind=4,Rows=-1 }
+        },"owner",2,0));
+    }
+
+    [Fact]
     public async Task MouseCarriesBothPixelAndCellPositionsForOwnerModeSelection()
     {
         var expected=new TerminalInput.Mouse(0,1,0,31,47,9,19,3,2);

@@ -1,9 +1,11 @@
 @{
-    JournalContracts = @{ Path='tests/integration/journal-contracts.ps1'; Exe=$true; Strict=$false; Options=@() }
-    JournalMeasurements = @{ Path='tests/integration/journal-measurements-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples') }
-    SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation','LatencyCandidate','AllCandidates') }
-    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','JournalCheckpoints','AllCandidates') }
-    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner','JournalCheckpoints') }
+    PtyProcessContracts = @{ Path='tests/integration/pty-process-contracts.ps1'; Exe=$false; Options=@() }
+    HostOwnerSoak = @{ Path='tests/integration/host-owner-soak.ps1'; Exe=$true; Strict=$false; Options=@('Sessions','Minutes') }
+    HostOwnerUpgrade = @{ Path='tests/integration/host-owner-upgrade.ps1'; Exe=$true; Strict=$false; Options=@('Contracts','Preview') }
+    HostOwnerContracts = @{ Path='tests/integration/host-owner-contracts.ps1'; Exe=$true; Strict=$false; Options=@() }
+    SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation','LatencyCandidate','AllCandidates','RevisionComparison') }
+    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','AllCandidates','RevisionComparison') }
+    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','SessionHost','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyVariant','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner') }
     Win32Control = @{ Path='tests/integration/win32-control.ps1'; Exe=$true; Strict=$true; Options=@() }
     Conformance = @{ Path='tests/conformance/conformance.ps1'; Exe=$true; Strict=$true; Options=@(); OptionalInputs=@('Spec') }
     RestoreRoundtrip = @{ Path='tests/integration/restore-roundtrip.ps1'; Exe=$true; Strict=$true; Options=@('Only') }

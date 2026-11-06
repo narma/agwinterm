@@ -7,16 +7,16 @@ public class SessionBackendTests
     [Theory]
     [InlineData("", "ghostty")]
     [InlineData("emulator-core = ghostty", "ghostty")]
-    [InlineData("emulator-core = rust", "rust")]
-    [InlineData("emulator-core = managed", "managed")]
+    [InlineData("emulator-core = rust", "ghostty")]
+    [InlineData("emulator-core = managed", "ghostty")]
     public void LiveTransport_UsesHostCompatibleWithSelectedCore(string setting, string expectedCore)
     {
         var config = Agwinterm.Core.TerminalConfig.Parse("session-host = server-rust\n" + setting);
         using var live = SessionBackends.ResolveLive(config, "isolated-live", null);
-        Assert.Equal("server-rust", config.ConfiguredSessionHost);
+        Assert.Equal("server", config.ConfiguredSessionHost);
         Assert.Equal(expectedCore == "ghostty" ? "server" : "server-rust", live.Name);
         Assert.Equal(expectedCore, live.ReplicaCore);
-        Assert.Contains(expectedCore == "ghostty" ? "--pipe \"isolated-live\"" : "--pipe \"isolated-live-rust\"", live.SpawnArgs);
+        Assert.Contains(expectedCore == "ghostty" ? "--pipe \"isolated-live-owner-v1\"" : "--pipe \"isolated-live-rust\"", live.SpawnArgs);
         Assert.Equal(config.EmulatorCore == "ghostty" ? "server" : "server-rust",
             SessionBackends.Resolve(config.SessionHost, "isolated-live", null).Name);
     }
@@ -59,18 +59,18 @@ public class SessionBackendTests
     {
         var b = SessionBackends.Resolve("server-rust", "x", null);
         Assert.IsType<ServerSessionBackend>(b);
-        Assert.Equal("server-rust", b.Name);   // distinct name drives the toast + reap pipe
+        Assert.Equal("server", b.Name);   // distinct name drives the toast + reap pipe
         // Case-insensitive, like the other values.
-        Assert.Equal("server-rust", SessionBackends.Resolve("SERVER-RUST", "x", null).Name);
+        Assert.Equal("server", SessionBackends.Resolve("SERVER-RUST", "x", null).Name);
     }
 
     [Fact]
     public void Resolve_PassesTheConptyKeyToThePtyHosts()
     {
         // A pty-host picks its ConPTY once, when it starts (#339), and without the flag keeps the inbox one.
-        Assert.Equal("--pipe \"x-rust\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "bundled")).SpawnArgs);
-        Assert.Equal("--pipe \"x-rust\" --conpty inbox", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "inbox")).SpawnArgs);
-        Assert.Equal("--pty-host --pipe \"x\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server", "x", null, "bundled")).SpawnArgs);
+        Assert.Equal("--pty-host --pipe \"x-owner-v1\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "bundled")).SpawnArgs);
+        Assert.Equal("--pty-host --pipe \"x-owner-v1\" --conpty inbox", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "inbox")).SpawnArgs);
+        Assert.Equal("--pty-host --pipe \"x-owner-v1\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server", "x", null, "bundled")).SpawnArgs);
     }
 
     [Fact]
