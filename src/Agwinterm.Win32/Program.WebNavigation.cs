@@ -44,7 +44,7 @@ internal partial class Program
             : ["Close", "Hide"];
         page.NavigationButtons = labels
             .Select((label, index) => Win32.CreateWindowExW(0, "BUTTON", label,
-                Win32.WS_CHILD | Win32.WS_VISIBLE | Win32.WS_TABSTOP | 0xB /* BS_OWNERDRAW */, 0, 0, 1, 1, _hwnd,
+                Win32.WS_CHILD | Win32.WS_TABSTOP | 0xB /* BS_OWNERDRAW */, 0, 0, 1, 1, _hwnd,
                 (IntPtr)(7100 + index), Win32.GetModuleHandleW(null), IntPtr.Zero)).ToArray();
         CreateWebTooltips(page, labels);
     }
@@ -52,7 +52,7 @@ internal partial class Program
     private Rectangle PresentWebNavigation(WebPage page)
     {
         var bounds = page.Bounds;
-        bool moved = page.NativeBounds != bounds;
+        bool moved = page.NativeBounds != bounds || page.NativeDpi != _dpi;
         int height = page.NavigationButtons.Length == 0 ? 0 : Math.Min(bounds.Height, (int)Math.Ceiling(36 * Scale));
         var layout = Agwinterm.Core.WebChromeLayout.Fit(bounds.Width, Scale, page.Request.Navigation, page.Owner.PageParentId is not null);
         int buttonWidth = layout.ButtonWidth;
@@ -64,7 +64,14 @@ internal partial class Program
             string origin = string.IsNullOrWhiteSpace(page.Title) ? identity : identity + "  ·  " + page.Title;
             if (page.PresentedOrigin != origin) Win32.SetWindowTextW(page.OriginLabel, origin);
             page.PresentedOrigin = origin;
-            if (moved) Win32.SetWindowPos(page.OriginLabel, IntPtr.Zero, bounds.Left, bounds.Top, bounds.Width, height, 0x0014);
+            if (moved)
+            {
+                // Keep the label's native window out of the buttons' paint and mouse regions.
+                int start = layout.NavigationCount * buttonWidth;
+                int end = bounds.Width - (layout.ShowHide ? 2 : 1) * buttonWidth;
+                Win32.SetWindowPos(page.OriginLabel, IntPtr.Zero, bounds.Left + start, bounds.Top,
+                    Math.Max(0, end - start), height, 0x0014);
+            }
             if (page.NavigationVisible != page.Visible) Win32.ShowWindow(page.OriginLabel, page.Visible ? 4 : 0);
         }
         for (int i = 0; i < page.NavigationButtons.Length; i++)
@@ -84,7 +91,12 @@ internal partial class Program
             int navigationIndex = action == 6 ? 4 : action;
             bool visible = page.Visible && (action == 4 || action == 5 && layout.ShowHide ||
                 action is not (4 or 5) && navigationIndex < layout.NavigationCount);
-            Win32.ShowWindow(page.NavigationButtons[i], visible ? 4 : 0);
+            int bit = 1 << i;
+            if (visible != ((page.VisibleButtonMask & bit) != 0))
+            {
+                Win32.ShowWindow(page.NavigationButtons[i], visible ? 4 : 0);
+                page.VisibleButtonMask ^= bit;
+            }
         }
         var document = new Rectangle(bounds.Left, bounds.Top + height, bounds.Width, Math.Max(0, bounds.Height - height));
         if (page.ErrorLabel != IntPtr.Zero)
@@ -99,6 +111,7 @@ internal partial class Program
             page.ErrorVisible = showError;
         }
         page.NativeBounds = bounds;
+        page.NativeDpi = _dpi;
         page.NavigationVisible = page.Visible;
         return document;
     }

@@ -23,6 +23,8 @@ internal sealed partial class WebViewHost : IDisposable
     private readonly int _thread = Environment.CurrentManagedThreadId;
     private readonly SynchronizationContext _context;
     private CoreWebView2Controller? _controller;
+    private Rectangle? _presentedBounds;
+    private bool _presentedVisible;
     private bool _disposed;
     private bool _initializing;
     private bool _persistent;
@@ -144,8 +146,17 @@ internal sealed partial class WebViewHost : IDisposable
     {
         CheckThread();
         if (_controller is not { } controller) return;
-        controller.Bounds = bounds;
-        controller.IsVisible = visible && bounds.Width > 0 && bounds.Height > 0;
+        if (_presentedBounds != bounds)
+        {
+            controller.Bounds = bounds;
+            _presentedBounds = bounds;
+        }
+        bool show = visible && bounds.Width > 0 && bounds.Height > 0;
+        if (_presentedVisible != show)
+        {
+            controller.IsVisible = show;
+            _presentedVisible = show;
+        }
     }
     public void Focus(CoreWebView2MoveFocusReason reason = CoreWebView2MoveFocusReason.Programmatic) { CheckThread(); _controller?.MoveFocus(reason); }
     public void Dispose()

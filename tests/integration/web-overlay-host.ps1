@@ -3,6 +3,7 @@ param(
     [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
     [switch]$Cookbook,
     [switch]$CookbookOnly,
+    [switch]$SplitImageOnly,
     [switch]$NavigationOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -74,6 +75,34 @@ public static class WebGateWindow {
         finally { Marshal.FreeHGlobal(memory); }
     }
     public static void Key(IntPtr hwnd,int key) { PostMessageW(hwnd,0x100,(IntPtr)key,(IntPtr)1);PostMessageW(hwnd,0x101,(IntPtr)key,(IntPtr)1); }
+    public static void Click(int x,int y) {
+        SetCursorPos(x,y);
+        mouse_event(2,0,0,0,UIntPtr.Zero);
+        mouse_event(4,0,0,0,UIntPtr.Zero);
+    }
+    public static void NativeZ() {
+        keybd_event(0x5a,0x2c,0,UIntPtr.Zero);
+        keybd_event(0x5a,0x2c,2,UIntPtr.Zero);
+    }
+    [DllImport("user32.dll")] public static extern bool InvalidateRect(IntPtr hwnd,IntPtr rect,bool erase);
+    public static int[] ImageTitleRect(IntPtr parent) {
+        int[] result=null;
+        EnumChildWindows(parent,(hwnd,arg)=>{
+            var title=new StringBuilder(512);
+            GetWindowTextW(hwnd,title,title.Capacity);
+            if(!IsWindowVisible(hwnd) || !title.ToString().Contains("split-image.png")) return true;
+            GetWindowRect(hwnd,out var rect);
+            result=new[]{rect.Left,rect.Top,rect.Right,rect.Bottom};
+            return false;
+        },IntPtr.Zero);
+        return result;
+    }
+    [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr parent,int id);
+    public static int[] ButtonRect(IntPtr parent,int id) {
+        var button=GetDlgItem(parent,id);
+        if(!IsWindowVisible(button) || !GetWindowRect(button,out var r)) throw new Exception("Missing button "+id);
+        return new[]{r.Left,r.Top,r.Right,r.Bottom};
+    }
     public static void NativeSpace() { keybd_event(0x20,0x39,0,UIntPtr.Zero);System.Threading.Thread.Sleep(40);keybd_event(0x20,0x39,2,UIntPtr.Zero); }
     public static IntPtr Find(int pid) {
         IntPtr result=IntPtr.Zero;
@@ -133,6 +162,101 @@ try {
     $children = @(Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $process.Id -and $_.Name -match 'msedge|webview|chrome' })
     Require ($children.Count -eq 0) 'terminal-only startup creates no browser process'
     $owner = (Call @('tree')).result.workspaces[0].sessions[0].id
+    if ($SplitImageOnly) {
+        $handle=[WebGateWindow]::Find($process.Id)
+        [void][WebGateWindow]::ShowWindow($handle,3)
+        [WebGateWindow]::FocusForKeys($handle)
+        $png=Join-Path $directory 'split-image.png'
+        Add-Type -AssemblyName System.Drawing
+        $picture=[Drawing.Bitmap]::new(64,64)
+        try { $picture.Save($png,[Drawing.Imaging.ImageFormat]::Png) } finally { $picture.Dispose() }
+        Require ((Call @('session','split','on','--axis','vertical','--target',$owner)).ok) 'vertical split opens'
+        Require ((Call @('session','overlay','open','--image',$png,'--pane','right','--target',$owner)).ok) 'image opens on the right'
+        $deadline=[DateTime]::UtcNow.AddSeconds(30)
+        do {
+            $session=(Call @('tree')).result.workspaces[0].sessions[0]
+            $title=[WebGateWindow]::ImageTitleRect($handle)
+            if($title -and $session.htmlOverlays[0].state -eq 'loaded'){break}
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $deadline)
+        Require ($title -and $session.htmlOverlays[0].state -eq 'loaded') 'right image and native title are visible'
+        $left=$session.paneIds[0]
+        $rightBefore=(Call @('session','text','--target',$session.paneIds[1])).result
+        $y=$title[3]+100
+        foreach($iteration in 1..3){
+            [WebGateWindow]::Click($title[0]+100,$y)
+            Start-Sleep -Milliseconds 150
+            Require ((Call @('tree')).result.workspaces[0].sessions[0].focusedPane -eq 1) "image takes focus on click $iteration"
+            [WebGateWindow]::Click($title[0]-80,$y)
+            Start-Sleep -Milliseconds 100
+            [WebGateWindow]::NativeZ()
+            $expected='z' * $iteration
+            foreach($retry in 1..20){
+                if((Call @('session','text','--target',$left)).result.Contains($expected)){break}
+                Start-Sleep -Milliseconds 50
+            }
+            Require ((Call @('session','text','--target',$left)).result.Contains($expected)) "native typing reaches left pane after click $iteration"
+        }
+        Require ((Call @('session','text','--target',$session.paneIds[1])).result -ceq $rightBefore) 'typing never reaches the right terminal'
+        # Capture the actual screen over the title text while forcing terminal paints.
+        $width=$title[2]-$title[0]-100
+        $height=$title[3]-$title[1]
+        $bitmap=[Drawing.Bitmap]::new($width,$height)
+        $graphics=[Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $reference=$null
+            foreach($frame in 0..60){
+                [void][WebGateWindow]::InvalidateRect($handle,[IntPtr]::Zero,$false)
+                Start-Sleep -Milliseconds 17
+                $graphics.CopyFromScreen($title[0],$title[1],0,0,$bitmap.Size)
+                $stream=[IO.MemoryStream]::new()
+                try {
+                    $bitmap.Save($stream,[Drawing.Imaging.ImageFormat]::Png)
+                    $capture=[Convert]::ToBase64String($stream.ToArray())
+                } finally { $stream.Dispose() }
+                if($frame -eq 0){
+                    $reference=$capture
+                    $background=$bitmap.GetPixel(1,1)
+                    $hasText=$false
+                    for($x=2;$x -lt $width-2;$x++){
+                        if($bitmap.GetPixel($x,[int]($height/2)) -ne $background){$hasText=$true;break}
+                    }
+                    Require $hasText 'captured title contains visible text'
+                } elseif($capture -cne $reference){throw "Title pixels changed during terminal repaint $frame"}
+            }
+        } finally { $graphics.Dispose();$bitmap.Dispose() }
+        Require ((Call @('tree')).result.workspaces[0].sessions[0].htmlOverlays[0].visible) 'image stays visible and title pixels stay stable during 60 repaints'
+        foreach($action in 'Hide','Close'){
+            $buttonId=if($action -eq 'Close'){7100}else{7101}
+            $rect=[WebGateWindow]::ButtonRect($handle,$buttonId)
+            $icon=[Drawing.Bitmap]::new($rect[2]-$rect[0],$rect[3]-$rect[1])
+            $graphics=[Drawing.Graphics]::FromImage($icon)
+            try {
+                $graphics.CopyFromScreen($rect[0],$rect[1],0,0,$icon.Size)
+                $background=$icon.GetPixel(2,2)
+                $hasGlyph=$false
+                for($x=4;$x -lt $icon.Width-4 -and -not $hasGlyph;$x++){
+                    for($y=4;$y -lt $icon.Height-4;$y++){
+                        if($icon.GetPixel($x,$y) -ne $background){$hasGlyph=$true;break}
+                    }
+                }
+                Require $hasGlyph "$action glyph is visible in the toolbar"
+            } finally {$graphics.Dispose();$icon.Dispose()}
+            [WebGateWindow]::Click(($rect[0]+$rect[2])/2,($rect[1]+$rect[3])/2)
+            foreach($retry in 1..20){
+                $pages=(Call @('tree')).result.workspaces[0].sessions[0].htmlOverlays
+                if(-not $pages -or $pages[0].hidden){break}
+                Start-Sleep -Milliseconds 50
+            }
+            if($action -eq 'Hide'){
+                Require ($pages -and $pages[0].hidden) 'clicking Hide hides the image'
+                Require ((Call @('session','overlay','show','--pane','right','--target',$owner)).ok) 'right image shown again'
+                Start-Sleep -Milliseconds 200
+            } else { Require (-not $pages) 'clicking Close removes the image' }
+        }
+        Stop-App
+        return
+    }
     Add-Type -Path "$PSHOME/UIAutomationTypes.dll"
     Add-Type -Path "$PSHOME/UIAutomationClient.dll"
     $providers = [System.Reflection.Assembly]::LoadFrom("$PSHOME/UIAutomationClientSideProviders.dll")
