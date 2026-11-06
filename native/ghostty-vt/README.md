@@ -1,14 +1,10 @@
 # Ghostty VT Windows adapter
 
-Ghostty is the default for configurations without an explicit terminal core.
-Explicit Managed/Rust choices remain supported while this backend matures.
-The upstream source is pinned by `pin.json`. The build adds the narrow
-`history.zig` embedding export to prepend existing native pages; it does not
-replace upstream parsing, reflow or page ownership. The source checkout is
-restored byte-for-byte after building, and provenance records the extension hash.
-The build uses
-Zig's Windows GNU target so the DLLs do not require a separately installed
-Visual C++ redistributable. Zig is build tooling, not a runtime dependency.
+Windows sessions use Ghostty for terminal state. Installed configurations that previously selected Managed or Rust migrate to Ghostty. Hosted sessions keep their terminal in the application host and send viewport frames to the UI.
+
+The Windows adapter pins Ghostty at `2c76f29972dad21d3f2cc0efde2517a6fa8fed56` with Zig 0.17.0. This revision freezes the layouts of callback payloads, unifies cursor and image-layer enums, gives key and mouse setters explicit results, and exposes Kitty image pixels as one borrowed pointer-and-length value. The adapter checks encoder results and copies image bytes into its frame-owned cache while the native image is valid. Upstream also fixes the cursor pin after resize and how Kitty resolves placeholders and numbered images. See the [upstream changes](https://github.com/ghostty-org/ghostty/compare/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0...2c76f29972dad21d3f2cc0efde2517a6fa8fed56).
+
+The build applies the history import and Unicode search extensions to the pinned checkout and records their hashes. Zig builds the Windows GNU target. The shipped DLLs load with the Windows inbox CRT.
 
 From the repository root:
 
@@ -16,14 +12,13 @@ From the repository root:
 ./native/ghostty-vt/build.ps1
 dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin
 dotnet build src/Agwinterm.Win32/Agwinterm.Win32.csproj -c Release
-./tests/integration/hyperv-ui.ps1 -Suite Ghostty -Exe ./src/Agwinterm.Win32/bin/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe
+./tests/integration/hyperv-ui.ps1 -Suite Ghostty -Exe ./src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe
 ```
 
 Use `-SkipDownload` once the pinned sources/toolchain are available. Local
 upstream modifications are rejected. The build records source/toolchain IDs,
 targets, and both DLL hashes in `artifacts/ghostty-build/provenance.json`.
-Build after generating the DLLs to copy them alongside the application;
-`emulator-core = ghostty` selects the experimental core for new sessions.
+Build the application to stage the verified DLLs beside its executable.
 
 `agwvt.c` owns terminals, render states, tracked command marks, and bounded
 allocations. Feed never exports a grid. Capture begins under the terminal's
@@ -50,11 +45,7 @@ Ghostty's next-frame deadline, with no polling for static/stopped images.
 Native snapshots retain parser continuation and tracked command boundaries.
 The managed envelope includes the upstream revision, bounded Windows input
 sidecar state, lengths, and a SHA-256 integrity check. Decode builds a separate
-terminal and commits only after validation. Windows server sessions transfer this
-snapshot on their data pipe before registering the live output stream, under the
-same lock as VT ingestion. New replicas preserve both screens, parser continuation,
-images and input modes without a resize repaint. Native hosts require snapshot-aware
-clients; native clients can still attach to older hosts using the legacy path.
+terminal and commits only after validation. Hosted panes reconnect to the surviving owner and receive its current viewport. Input, queries and frame acknowledgements use the presentation protocol.
 Application history persistence uses the existing attributed protobuf
 format (now including graphemes). Import parses inert attributed text into a
 separate Ghostty terminal, lets Ghostty reflow it, then prepends native pages.
@@ -71,11 +62,7 @@ Search uses native screen coordinates (including wide cells and soft wraps).
 The pinned search patch adds full Unicode folding using Ghostty's existing uucode tables, preserves original cell coordinates, and retains feed/tick progress on a worker. No managed text matcher or separately installed runtime is used. Run build.ps1 -TestSearch to include upstream search tests in Debug mode.
 UI Automation maps UTF-16 ranges to complete graphemes and terminal columns.
 
-The application adapter still has migration gaps: remaining margin metadata,
-complete palette/theme integration, host-image lifetimes, expanded graphics
-placement acceptance and keyboard-layout/IME acceptance. Do not enable this core by default or remove the old cores
-until their required consumers have migrated (obsolete interfaces can be removed sooner). Sixel will not be implemented in this
-backend. See the migration audit for the complete contract map.
+The adapter renders Kitty graphics. Sixel remains outside the supported graphics formats.
 
 The Windows CI contract job builds the pinned source and runs the host-free
 harness. Local desktop checks must use the existing Hyper-V worker. License

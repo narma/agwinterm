@@ -501,6 +501,12 @@ using (var vt = new GhosttyVt(20, 8))
     Capture(vt);
     Check(vt.FrameImages.Any(image => image.Id == 73 && image.Col == 5 && image.Row == 3),
         "Unicode Kitty placeholder exports the virtual image at the grapheme cell");
+    vt.Feed("\u001b[2;2H\u001b_Ga=p,i=73,p=7,c=1,r=1,C=1;\u001b\\"u8);
+    vt.Feed(Encoding.UTF8.GetBytes("\u001b[6;9H\u001b[38;2;0;0;73;58;2;0;0;7m\U0010eeee\u0305\u0305\u001b[0m"));
+    Capture(vt);
+    Check(vt.FrameImages.Any(image => image.Id == 73 && image.Col == 1 && image.Row == 1) &&
+        !vt.FrameImages.Any(image => image.Id == 73 && image.Col == 8 && image.Row == 5),
+        "an explicit placeholder cannot target a non-virtual Kitty placement");
 }
 using (var vt = new GhosttyVt(20, 5))
 {

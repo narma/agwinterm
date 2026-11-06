@@ -9,7 +9,7 @@ namespace Agwinterm.Core;
 internal static unsafe partial class GhosttyNative
 {
     internal const string Library = "agwinterm_ghostty";
-    internal const string Revision = "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0";
+    internal const string Revision = "2c76f29972dad21d3f2cc0efde2517a6fa8fed56";
     private static readonly object LoadLock = new();
     private static nint _library, _upstream;
     private static bool _resolverInstalled;

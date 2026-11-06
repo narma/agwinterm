@@ -78,8 +78,7 @@ done:
 static INIT_ONCE system_once = INIT_ONCE_STATIC_INIT;
 static BOOL CALLBACK initialize_system(PINIT_ONCE once, PVOID parameter, PVOID* context) {
     (void)once; (void)parameter; (void)context;
-    ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, (const void*)decode_png);
-    return TRUE;
+    return ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, (const void*)decode_png) == GHOSTTY_SUCCESS;
 }
 
 #define TRY(expr) do { int result_ = (expr); if (result_ != GHOSTTY_SUCCESS) return result_; } while (0)
@@ -241,22 +240,23 @@ static int capture_images(AgwVt* vt, GhosttyRenderState state, ImageEntry** out)
         if (!pixels) {
             GhosttyKittyGraphicsImage image = ghostty_kitty_graphics_image(graphics, value.id);
             if (!image) continue;
-            const uint8_t* data; size_t length; uint64_t generation;
-            GhosttyKittyGraphicsImageData image_keys[] = { GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
-                GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
-                GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
-                GHOSTTY_KITTY_IMAGE_DATA_GENERATION };
-            void* image_values[] = { &value.image_width, &value.image_height, &value.format, &data, &length, &generation };
-            result = ghostty_kitty_graphics_image_get_multi(image, 6, image_keys, image_values, NULL);
+            GhosttyString data; uint64_t generation;
+            GhosttyKittyGraphicsImageData image_keys[] = { GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_WIDTH,
+                GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_HEIGHT, GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_FORMAT,
+                GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS,
+                GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_GENERATION };
+            void* image_values[] = { &value.image_width, &value.image_height, &value.format, &data, &generation };
+            result = ghostty_kitty_graphics_image_get_multi(image, 5, image_keys, image_values, NULL);
             if (result == GHOSTTY_NO_VALUE) { result = 0; continue; }
             if (result) break;
+            size_t length = data.len;
             if (generation != value.generation || length > 64u * 1024u * 1024u) { result = GHOSTTY_INVALID_VALUE; break; }
             pixels = budget_alloc(vt, sizeof(*pixels) + length, 0, 0);
             if (!pixels) { result = GHOSTTY_OUT_OF_MEMORY; break; }
             pixels->next = vt->image_cache; pixels->generation = generation;
             atomic_init(&pixels->references, 1);
             pixels->width = value.image_width; pixels->height = value.image_height; pixels->format = value.format;
-            pixels->length = length; memcpy(pixels->data, data, length); vt->image_cache = pixels;
+            pixels->length = length; memcpy(pixels->data, data.ptr, length); vt->image_cache = pixels;
         }
         ImageEntry* entry = budget_alloc(vt, sizeof(*entry), 0, 0);
         if (!entry) { result = GHOSTTY_OUT_OF_MEMORY; break; }
@@ -333,7 +333,7 @@ uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (info_size) *info_size = sizeof(AgwVtInfo);
     return 5;
 }
-const char* agwvt_revision(void) { return "f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0"; }
+const char* agwvt_revision(void) { return "2c76f29972dad21d3f2cc0efde2517a6fa8fed56"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
@@ -545,7 +545,7 @@ int agwvt_new(uint32_t cols, uint32_t rows, AgwVtEvent event, void* context, Agw
     if (!out || !cols || !rows || cols > 32768 || rows > 32768 || (uint64_t)cols * rows > 4000000)
         return GHOSTTY_INVALID_VALUE;
     *out = NULL;
-    InitOnceExecuteOnce(&system_once, initialize_system, NULL, NULL);
+    if (!InitOnceExecuteOnce(&system_once, initialize_system, NULL, NULL)) return GHOSTTY_UNSUPPORTED;
     AgwVt* vt = calloc(1, sizeof(*vt));
     if (!vt) return GHOSTTY_OUT_OF_MEMORY;
     vt->event = event; vt->context = context;
@@ -795,14 +795,15 @@ int agwvt_begin_viewport(AgwVt* vt, uint32_t offset) {
     if (!vt || vt->capture_busy) return GHOSTTY_INVALID_VALUE;
     size_t history;
     TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS, &history));
-    GhosttyTerminalScrollViewport bottom = { .tag = GHOSTTY_SCROLL_VIEWPORT_BOTTOM };
-    GhosttyTerminalScrollViewport viewport = { .tag = GHOSTTY_SCROLL_VIEWPORT_ROW,
+    GhosttyTerminalScrollViewport bottom = { .tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM };
+    GhosttyTerminalScrollViewport viewport = { .tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW,
         .value = { .row = history - (offset < history ? offset : history) } };
-    ghostty_terminal_scroll_viewport(vt->terminal, offset ? viewport : bottom);
+    TRY(ghostty_terminal_scroll_viewport(vt->terminal, offset ? viewport : bottom));
     int result = begin_capture(vt, offset == 0);
     // The capture owns its viewport. Parsing, held-frame callbacks and explicit
     // reads continue against the active area after releasing the session lock.
-    ghostty_terminal_scroll_viewport(vt->terminal, bottom);
+    int restored = ghostty_terminal_scroll_viewport(vt->terminal, bottom);
+    if (!result && restored) { TRY(agwvt_abort(vt)); return restored; }
     return result;
 }
 int agwvt_end(AgwVt* vt) {
@@ -810,7 +811,7 @@ int agwvt_end(AgwVt* vt) {
     if (vt->capture == vt->render) TRY(ghostty_render_state_end_update(vt->capture));
     if (!vt->last_valid || vt->last_serial != vt->capture_serial) {
         GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FULL;
-        TRY(ghostty_render_state_set(vt->capture, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &dirty));
+        TRY(ghostty_render_state_set(vt->capture, GHOSTTY_RENDER_STATE_OPT_DIRTY, &dirty));
     }
     vt->updating = 0;
     return GHOSTTY_SUCCESS;
@@ -829,7 +830,7 @@ int agwvt_clean(AgwVt* vt) {
 }
 int agwvt_cursor_default(AgwVt* vt, uint32_t style, uint32_t blink) {
     if (!vt || style > 2 || blink > 1) return GHOSTTY_INVALID_VALUE;
-    GhosttyTerminalCursorStyle cursor_style = (GhosttyTerminalCursorStyle)style;
+    GhosttyCursorStyle cursor_style = (GhosttyCursorStyle)style;
     bool cursor_blink = blink != 0;
     TRY(ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE, &cursor_style));
     return ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK, &cursor_blink);
@@ -848,8 +849,8 @@ int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uin
     *col = cursor.viewport_has_value ? cursor.viewport_x : 0;
     *row = cursor.viewport_has_value ? cursor.viewport_y : 0;
     *visible = cursor.viewport_has_value && cursor.visible;
-    *shape = (cursor.visual_style == GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR ? 5u :
-        cursor.visual_style == GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE ? 3u : 1u) + (cursor.blinking ? 0u : 1u);
+    *shape = (cursor.visual_style == GHOSTTY_CURSOR_STYLE_BAR ? 5u :
+        cursor.visual_style == GHOSTTY_CURSOR_STYLE_UNDERLINE ? 3u : 1u) + (cursor.blinking ? 0u : 1u);
     return GHOSTTY_SUCCESS;
 }
 int agwvt_theme(AgwVt* vt, const uint32_t* palette, uint32_t cursor) {
@@ -1024,38 +1025,38 @@ int agwvt_mouse(AgwVt* vt, uint32_t action, uint32_t button, uint32_t mods,
     TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_ROWS, &rows));
     GhosttyMouseEncoderSize size = { .size = sizeof(size), .screen_width = cols * cw,
         .screen_height = rows * ch, .cell_width = cw, .cell_height = ch };
-    ghostty_mouse_encoder_setopt_from_terminal(vt->mouse_encoder, vt->terminal);
-    TRY(ghostty_mouse_encoder_setopt(vt->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size));
+    TRY(ghostty_mouse_encoder_set_from_terminal(vt->mouse_encoder, vt->terminal));
+    TRY(ghostty_mouse_encoder_set(vt->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size));
     bool pressed = action != GHOSTTY_MOUSE_ACTION_RELEASE && button >= 1 && button <= 3;
-    TRY(ghostty_mouse_encoder_setopt(vt->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &pressed));
+    TRY(ghostty_mouse_encoder_set(vt->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &pressed));
     TRY(ghostty_mouse_event_set_action(vt->mouse_event, (GhosttyMouseAction)action));
     if (button) { TRY(ghostty_mouse_event_set_button(vt->mouse_event, (GhosttyMouseButton)button)); }
-    else ghostty_mouse_event_clear_button(vt->mouse_event);
-    ghostty_mouse_event_set_mods(vt->mouse_event, (GhosttyMods)mods);
-    ghostty_mouse_event_set_position(vt->mouse_event, (GhosttyMousePosition){x, y});
-    return ghostty_mouse_encoder_encode(vt->mouse_encoder, vt->mouse_event, (char*)output, capacity, length);
+    else { TRY(ghostty_mouse_event_clear_button(vt->mouse_event)); }
+    TRY(ghostty_mouse_event_set_mods(vt->mouse_event, (GhosttyMods)mods));
+    TRY(ghostty_mouse_event_set_position(vt->mouse_event, (GhosttyMousePosition){x, y}));
+    return ghostty_mouse_encoder_encode(vt->mouse_encoder, vt->mouse_event, output, capacity, length);
 }
 int agwvt_paste(AgwVt* vt, uint8_t* text, size_t text_length, uint8_t* output, size_t capacity, size_t* length) {
     if (!vt || text_length > 16u * 1024u * 1024u || (!text && text_length) || (!output && capacity) || !length)
         return GHOSTTY_INVALID_VALUE;
     GhosttyTerminalModeConfig mode = { .mode = ghostty_mode_new(2004, false) };
     TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_MODE, &mode));
-    return ghostty_paste_encode((char*)text, text_length, mode.value, (char*)output, capacity, length);
+    return ghostty_paste_encode((char*)text, text_length, mode.value, output, capacity, length);
 }
 int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
     uint32_t consumed, uint32_t unshifted, const uint8_t* text, size_t text_length,
     uint8_t* output, size_t capacity, size_t* length) {
     if (!vt || action > 2 || mods > 1023 || consumed > 1023 || text_length > 4096 ||
         (!text && text_length) || (!output && capacity) || !length) return GHOSTTY_INVALID_VALUE;
-    ghostty_key_encoder_setopt_from_terminal(vt->key_encoder, vt->terminal);
+    TRY(ghostty_key_encoder_set_from_terminal(vt->key_encoder, vt->terminal));
     TRY(ghostty_key_event_set_action(vt->key_event, (GhosttyKeyAction)action));
     TRY(ghostty_key_event_set_key(vt->key_event, windows_key(vk)));
-    ghostty_key_event_set_mods(vt->key_event, (GhosttyMods)mods);
-    ghostty_key_event_set_consumed_mods(vt->key_event, (GhosttyMods)consumed);
-    ghostty_key_event_set_unshifted_codepoint(vt->key_event, unshifted);
-    ghostty_key_event_set_utf8(vt->key_event, (const char*)text, text_length);
-    int result = ghostty_key_encoder_encode(vt->key_encoder, vt->key_event, (char*)output, capacity, length);
-    ghostty_key_event_set_utf8(vt->key_event, NULL, 0); // never retain a managed pointer
+    TRY(ghostty_key_event_set_mods(vt->key_event, (GhosttyMods)mods));
+    TRY(ghostty_key_event_set_consumed_mods(vt->key_event, (GhosttyMods)consumed));
+    TRY(ghostty_key_event_set_unshifted_codepoint(vt->key_event, unshifted));
+    TRY(ghostty_key_event_set_utf8(vt->key_event, (GhosttyString){ .ptr = text, .len = text_length }));
+    int result = ghostty_key_encoder_encode(vt->key_encoder, vt->key_event, output, capacity, length);
+    TRY(ghostty_key_event_set_utf8(vt->key_event, (GhosttyString){0})); // never retain a managed pointer
     return result;
 }
 int agwvt_animation_tick(AgwVt* vt, uint64_t* deadline) {
