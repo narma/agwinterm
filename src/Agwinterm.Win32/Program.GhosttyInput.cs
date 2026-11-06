@@ -18,10 +18,12 @@ internal partial class Program
     {
         // Mark before submission so a very fast echo cannot beat its repaint hint.
         // This does not request paint: only a subsequent complete owner frame can.
-        if(action != 0) Interlocked.Exchange(ref pane.InputFramePending,1);
+        // Frames already in flight can precede the child's echo. Keep the
+        // short interactive window open across those frames as well.
+        if(action != 0) Interlocked.Exchange(ref pane.InputPaintDeadline,Environment.TickCount64+120);
         bool accepted=SubmitOwnerInput(session,new TerminalInput.Key(vk,action,mods,text,unshifted,consumed,windowsText.Length == 1 ? windowsText[0] : 0,
             (shift ? 0x10u : 0) | (ctrl ? 0x8u : 0) | (alt ? 0x2u : 0),MapVirtualKeyW(vk,0),windowsText.Length == 1 ? "" : windowsText)) == TerminalInputAcceptance.Accepted;
-        if(!accepted) Interlocked.Exchange(ref pane.InputFramePending,0);
+        if(!accepted) Interlocked.Exchange(ref pane.InputPaintDeadline,0);
         return accepted;
     }
     private sealed record NativeKeyTarget(Pane Pane, string Text, uint Unshifted, uint Consumed, bool AltGr, string Unicode)

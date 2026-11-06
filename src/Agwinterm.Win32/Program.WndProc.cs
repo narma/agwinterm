@@ -207,8 +207,8 @@ internal partial class Program
                     System.Threading.Interlocked.Exchange(ref _redrawPending, 0);
                     // Frame cap (RedrawMinIntervalMs): paint immediately when quiet; under sustained
                     // output defer to a one-shot timer so floods render at ~66fps instead of per chunk.
-                    // A real owner frame following accepted interactive input bypasses this
-                    // flood cap once. Input itself never invalidates an unreceived frame.
+                    // During input, newly received hosted frames can paint
+                    // immediately. The frame credit still bounds publication.
                     long since = Environment.TickCount64 - _lastPaintTick;
                     bool urgent=Interlocked.Exchange(ref _urgentRedrawPending,0) != 0;
                     if (urgent || since >= RedrawMinIntervalMs)

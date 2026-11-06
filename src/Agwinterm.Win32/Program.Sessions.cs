@@ -196,7 +196,8 @@ internal partial class Program
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
             // blink interval, so a crash that leaves ?2026 open can't freeze the pane for long.
             if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput)
-                RequestRedraw(session is ServerSession { UsesPresentation:true } && Interlocked.Exchange(ref pane.InputFramePending,0) != 0);
+                  RequestRedraw(session is ServerSession { UsesPresentation:true } &&
+                      Interlocked.Read(ref pane.InputPaintDeadline) > Environment.TickCount64);
             else if (session.Emulator is GhosttyTerminalCore && IsSurfaceVisible(pane)) ScheduleSyncRedraw(pane);
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).

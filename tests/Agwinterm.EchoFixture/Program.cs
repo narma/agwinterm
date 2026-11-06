@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Channels;
 using Agwinterm.Core;
 using Agwinterm.Pty;
 
@@ -33,12 +34,20 @@ try
         Console.Write("\u001b[?9001lSOAK_READY\r\n");
         Console.Out.Flush();
         string output=string.Concat(Enumerable.Repeat(new string('x',62)+"\r\n",64));
+        // The parent reads this only after a soak timeout. Distinguish a
+        // missing input from lost PTY output or a stalled viewport without
+        // sending another key or relying on the presentation being tested.
+        using var progress=System.IO.MemoryMappedFiles.MemoryMappedFile.CreateNew(
+            @"Local\agwinterm-soak-child-"+Environment.ProcessId,8);
+        using var counters=progress.CreateViewAccessor();
         using var keys=Console.OpenStandardInput();
         for(int sequence=1;keys.ReadByte() is int key && key >= 0;sequence++)
         {
             if(key != 13) throw new InvalidDataException("Unexpected soak input.");
+            counters.Write(0,sequence);
             Console.Write(output+$"SOAK_{sequence:D8}!\r\n");
             Console.Out.Flush();
+            counters.Write(4,sequence);
         }
         return;
     }
@@ -63,12 +72,33 @@ try
         for (int line = 0; line < 50000; line++) Console.Write($"HISTORY {line:D6} abcdefghijklmnopqrstuvwxyz 0123456789\r\n");
     Console.Write("\u001b[2J\u001b[HECHO_READY\r\n");
     string? fixedOutput = workload == "fixed-output" ? string.Concat(Enumerable.Range(0,4096).Select(n => $"{n:D6}" + new string('x',56) + "\r\n")) : null;
+    Channel<long>? echoRequests=null;
+    Task? flood=null;
     if (workload is "ascii" or "unicode" or "tui" or "fixed-output")
     {
         Console.Write("\u001b[3;r\u001b[3;1H");
         string line = workload == "unicode" ? "Сборка 中文 e\u0301 👩🏽‍💻 0123456789\r\n" : "build abcdefghijklmnopqrstuvwxyz 0123456789\r\n";
         string output = workload == "tui" ? "\u001b[3;1H\u001b[32mCPU 0123456789\u001b[0m\u001b[4;1HProcesses running\u001b[K" : string.Concat(Enumerable.Repeat(line, 96));
-        if (fixedOutput is null) _ = Task.Run(() => { while (true) Console.Write(output); });
+        if (fixedOutput is null)
+        {
+            // Only one thread writes stdout. Once a key reaches the child,
+            // publish its echo between two complete log chunks. Competing for
+            // Console.Out with an unbounded producer measured monitor fairness
+            // in the fixture and could delay a marker by dozens of chunks.
+            var requests=echoRequests=Channel.CreateBounded<long>(64);
+            flood=Task.Factory.StartNew(() =>
+            {
+                try
+                {
+                    while(!requests.Reader.Completion.IsCompleted)
+                    {
+                        if(requests.Reader.TryRead(out long id)) WriteMarker(id);
+                        else Console.Write(output);
+                    }
+                }
+                catch(Exception ex) { requests.Writer.TryComplete(ex); throw; }
+            }, CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
+        }
     }
     var marker = new TerminalLatencyTrace.MarkerReader();
     using var stream = Console.OpenStandardInput();
@@ -79,11 +109,21 @@ try
         if (id == 0) continue;
         TerminalLatencyTrace.Record(4, id, Stopwatch.GetTimestamp());
         if (fixedOutput is not null) Console.Write(fixedOutput);
-        Console.Write($"\u001b7\u001b[2;1H~AGL{id:X8}~\u001b8");
-        Console.Out.Flush();
+        if(echoRequests is null) WriteMarker(id);
+        else if(!echoRequests.Writer.TryWrite(id)) throw new IOException("Echo producer could not accept a marker.");
     }
+    echoRequests?.Writer.TryComplete();
+    flood?.GetAwaiter().GetResult();
 }
 finally { Native.SetConsoleMode(input, previous); }
+
+static void WriteMarker(long id)
+{
+    TerminalLatencyTrace.Record(12,id);
+    Console.Write($"\u001b7\u001b[2;1H~AGL{id:X8}~\u001b8");
+    TerminalLatencyTrace.Record(13,id);
+    Console.Out.Flush();
+}
 
 internal static class Native
 {

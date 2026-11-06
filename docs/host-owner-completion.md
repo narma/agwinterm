@@ -12,6 +12,11 @@ Windows Rust host does **not** retire the Rust Linux helper, WSL, ZMX, or remote
 sessions. Their helper deployment, transport identity, recovery and lifecycle
 contracts remain required. Hosted ZMX and remote import must accept the new
 `server` configuration instead of requiring a `server-rust` preference.
+The version-1 ZMX readiness payload still reports the historical
+`host: "server-rust"` label to clients. Both the Linux helper and the
+Windows inventory emit that wire value. The effective Windows session
+backend for this configuration is `server`, with the UI executable started
+in its separate `--pty-host` role.
 
 Upgrade compatibility means saved-state import, not attaching to old Windows
 hosts. The installer must checkpoint the previous UI, preserve a backup, close
@@ -215,3 +220,63 @@ SHA-256 is `466F8B28208EE00600BC2275B5593AB8341F27F62D013BDB3C301BB8641ABEAB`
 and the portable SHA-256 is `657FD3941644F1B5E16FB61C8AF9BC9511F686D9615A55AF91AE5ACC2F0E090A`.
 The pinned measurement inputs and individual run reports live under
 `artifacts/single-owner/host-completion-v30-final`.
+
+### V30 primary hosted measurements
+
+Five alternating pairs, fixed 256 KiB output per key, 10,000 post-warmup
+echoes per variant. Latencies are means of per-run percentiles in milliseconds.
+
+| Metric | Legacy | Host-owner | Gate |
+| --- | ---: | ---: | --- |
+| Child input p50 | 0.278 | 0.907 | Inconclusive |
+| Child input p95 | 1.056 | 1.898 | Inconclusive |
+| Child input p99 | 1.720 | 2.763 | Inconclusive |
+| EndDraw p50 | 70.950 | 49.247 | Pass |
+| EndDraw p95 | 90.424 | 68.421 | Inconclusive |
+| EndDraw p99 | 280.013 | 84.387 | Inconclusive |
+
+In the separate trace-disabled 128 MiB runs, hosted throughput averaged
+5.08 → 12.43 MiB/s, combined CPU 32.42 → 6.48 seconds and combined peak
+private memory 101.38 → 83.32 MiB. All five throughput pairs improved.
+The paired ratio's 95% lower bound was 0.9467 against the 0.95 gate.
+For direct local sessions the corresponding results were 9.77 → 10.27
+MiB/s, 9.79 → 9.05 seconds CPU and 65.90 → 64.20 MiB peak.
+
+### V30 soak
+
+| Sessions | Completed echoes in 20 minutes | Combined CPU, s | First / last quarter median private MiB | Echo p95 / p99, ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 18,254 | 51.84 | 58.32 / 58.24 | 32.29 / 44.63 |
+| 8 | 18,212 | 55.81 | 95.98 / 98.32 | 32.30 / 46.92 |
+| 32, repeat | 17,836 | 63.94 | 235.84 / 244.16 | 32.32 / 44.93 |
+
+The first 32-session attempt timed out waiting for slot 16's 328th echo.
+Its last successful observation was at 688.713 seconds. The repeat used
+the same production binaries and a fixture with separate counters for child
+input consumption and output flush on timeout. It completed with all markers.
+The original timeout remains unexplained. Keep the failed attempt alongside
+the successful runs when evaluating the rollout gate. These echo timings
+include headless polling to decoded viewport, with no UI EndDraw.
+
+### Continuous ASCII investigation
+
+In the original saturated ASCII test, legacy → v30 hosted EndDraw p50 was
+11.67 → 102.75 ms. All five pairs showed a presentation regression. The
+child's input thread and its continuous log thread competed to write to the
+same synchronized output writer. Of the approximately 100 ms in the hosted
+median, the T4-to-T5 median was 70–81 ms across the five runs. The separate
+T7-to-T8 median was about 15 ms. In the instrumented reproduction, two of
+three hosted runs spent 56–69 ms waiting in the child before it acquired the
+writer. Once it acquired the writer, the median marker write took 0.03–0.04 ms.
+Raw contention results remain in `host-completion-v30-final` and
+`host-completion-ascii-v30-probe`.
+
+The revised fixture still saturates stdout. A single writer checks for
+accepted echoes between complete log chunks, instead of depending on the
+runtime's monitor scheduling. The same compiled echo fixture runs against
+both architectures. Separate short pilots compared the v30 and v31 UI:
+v30 EndDraw p50 was 21.32 ms (paired legacy 10.05), and v31 measured 9.17 ms
+(paired legacy 9.97). V31 lets received frames paint promptly for 120 ms
+after interactive input because a frame already in flight can precede the
+echo. Both pilots used three pairs and 350 events per run. They are diagnostic
+observations; the full acceptance series is `host-completion-v31-final`.

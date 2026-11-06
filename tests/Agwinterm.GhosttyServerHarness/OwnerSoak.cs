@@ -108,6 +108,40 @@ internal static class OwnerSoak
             }
             await Task.Delay(1);
         }
-        throw new TimeoutException($"No decoded viewport containing {marker}");
+        TerminalFrameIdentity? cached;
+        string viewport;
+        lock(session.SyncRoot)
+        {
+            var view=(PresentedTerminalView)session.Emulator;
+            using var frame=view.AcquireFrame();
+            cached=frame?.Identity;
+            viewport=string.Join("\n",view.DumpBuffer());
+        }
+        string child="unavailable";
+        if(session.ChildProcessId is int pid)
+        {
+            try
+            {
+                using var progress=System.IO.MemoryMappedFiles.MemoryMappedFile.OpenExisting(
+                    @"Local\agwinterm-soak-child-"+pid,System.IO.MemoryMappedFiles.MemoryMappedFileRights.Read);
+                using var counters=progress.CreateViewAccessor(0,8,System.IO.MemoryMappedFiles.MemoryMappedFileAccess.Read);
+                child=$"read={counters.ReadInt32(0)}, flushed={counters.ReadInt32(4)}";
+            }
+            catch(IOException ex) { child=ex.Message; }
+        }
+        string owner="no cached identity";
+        if(cached is { } last)
+        {
+            try
+            {
+                using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var query=new TerminalQuery(last.Incarnation,last.AttachmentEpoch,last.TerminalGeneration,"search",Text:marker,ResultLimit:2);
+                var reply=await session.Presentation!.QueryAsync(query,deadline.Token);
+                owner=$"{reply.Status}, generation={reply.Generation}, matches={reply.Matches?.Count}";
+            }
+            catch(Exception ex) when(ex is OperationCanceledException or IOException or InvalidOperationException) { owner=ex.Message; }
+        }
+        throw new TimeoutException($"No decoded viewport containing {marker}; child {session.ChildProcessId} {child}; "+
+            $"inputClosed={session.InputClosed}, cached={cached}, owner={owner}. Cached viewport:\n{viewport}");
     }
 }

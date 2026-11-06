@@ -317,7 +317,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <see cref="Ses.Axis"/>: left→right when vertical, top→bottom when horizontal.</summary>
     private sealed class Pane
     {
-        public int InputFramePending; // consumed only by the next real presentation update
+        public long InputPaintDeadline; // only subsequent owner frames can request a paint
         public required string Id;
         public required ISession S;
         public JsonElement LiveBinding;
