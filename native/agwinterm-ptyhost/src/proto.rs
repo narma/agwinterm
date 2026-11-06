@@ -127,6 +127,9 @@ pub struct ThemeUpdate {
     /// rrggbb
     #[prost(string, tag = "5")]
     pub cursor: ::prost::alloc::string::String,
+    /// 0 = unchanged, 1..6 = DECSCUSR default shape and blink
+    #[prost(uint32, tag = "6")]
+    pub cursor_default: u32,
 }
 /// Preparation never starts a child. A lost prepare reply may be abandoned safely. A client must
 /// never allocate a replacement ticket or replay a legacy create after an ambiguous create reply.
@@ -560,7 +563,7 @@ pub struct PresentationEffect {
     pub attachment_epoch: u64,
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
-    /// 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role
+    /// 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role; 7 current title and cwd
     #[prost(uint32, tag = "4")]
     pub kind: u32,
     #[prost(string, tag = "5")]

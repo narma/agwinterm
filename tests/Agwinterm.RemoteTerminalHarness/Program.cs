@@ -67,9 +67,11 @@ try
     AssertCells(second);
     await operations.TypeAsync(binding, "n");
     await Wait(() => { lock (second.SyncRoot) return !second.Emulator.IsAltScreen && second.Emulator.DumpBuffer().Any(l => l.Contains("NORMAL-RESTORED")); });
-    string history=SurfaceText.Dump(second,new(All:true,Lines:0));
+    // A follower inherits origin geometry. Narrow split panes can wrap a
+    // marker across physical rows, so check the complete character stream.
+    string history=SurfaceText.Dump(second,new(All:true,Lines:0)).Replace("\r","").Replace("\n","");
     for (int i = 0; i < 90; i++)
-        if (history.Split("HISTORY-" + id + "-" + i.ToString("D3")).Length != 2) throw new Exception("lost/duplicated hidden primary history " + i + "\n" + history);
+        if (history.Split("HISTORY-" + id + "-" + i.ToString("D3")).Length != 2) throw new Exception("lost/duplicated hidden primary history " + i);
     await operations.RevalidateAsync(binding);
     Console.WriteLine("PASS real agterm + Ghostty owner: styled wide cells, alternate/modes, follower geometry, one query reply, hidden primary history once, exact reconnect");
 }

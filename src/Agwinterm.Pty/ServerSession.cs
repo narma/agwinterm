@@ -596,6 +596,7 @@ public sealed partial class ServerSession : ISession
     public void UpdateTheme()
     {
         string colors, palette, cursor, ticket;
+        uint cursorDefault = 0;
         long sequence;
         lock (_sync)
         {
@@ -604,6 +605,11 @@ public sealed partial class ServerSession : ISession
             if (host?.DefaultColors is not { } defaults || host.DefaultPalette is not { } entries || host.DefaultCursorColor is not { } caret) return;
             colors = ThemeColors.Format(defaults.Foreground, defaults.Background);
             palette = ThemeColors.FormatPalette(entries); cursor = ThemeColors.FormatColor(caret);
+            if (host.DefaultCursor is { } shape)
+            {
+                cursorDefault = shape.Style switch { CursorStyle.Block => 1u, CursorStyle.Underline => 3u, _ => 5u };
+                if (!shape.Blink) cursorDefault++;
+            }
             ticket = _creationTicket;
             sequence = Interlocked.Increment(ref _themeSequence);
         }
@@ -612,7 +618,7 @@ public sealed partial class ServerSession : ISession
             lock (_themeGate)
             {
                 if (_disposed || sequence != Volatile.Read(ref _themeSequence)) return;
-                try { _backend.Client.UpdateTheme(_id, colors, palette, cursor, ticket); }
+                try { _backend.Client.UpdateTheme(_id, colors, palette, cursor, ticket, cursorDefault); }
                 catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or TimeoutException) { }
             }
         });

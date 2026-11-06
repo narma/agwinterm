@@ -5,6 +5,20 @@ System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceLis
 System.Diagnostics.Trace.AutoFlush=true;
 
 // Run inside the owned Windows VM; no UI, global configuration or user sessions are touched.
+if(args is ["--search-load",var searchDirectory,var samplesFile])
+{
+    await OwnerSearchLoad.Measure(searchDirectory,samplesFile);
+    return;
+}
+if(args is ["--upgrade-child",var pipe,var sessionId])
+{
+    if(!System.Text.RegularExpressions.Regex.IsMatch(pipe,"^agwinterm-upgrade-test-[0-9a-f]{8}-control-owner-v1$"))
+        throw new ArgumentException("An isolated upgrade fixture pipe is required.");
+    using var probe=PtyHostClient.Connect(pipe);
+    var child=probe.List().SingleOrDefault(s=>s.Id == sessionId);
+    Console.WriteLine(child is null ? "absent" : $"{child.ChildPid}:{child.CreationTicket}");
+    return;
+}
 if(args is ["--check-window-history",var stateFile,var paneId,var marker])
 {
     if(!RestoreState.TryDeserialize(File.ReadAllText(stateFile),out var state) || state is null)
@@ -292,6 +306,9 @@ try
         var hidden=Animation(false);
         Thread.Sleep(120);
         Check(Animation(false).sequence == hidden.sequence,"hidden animation does not continuously publish");
+        single.Inject("\u001b]2;HIDDEN_OWNER_TITLE\u0007\u001b]7;file://localhost/tmp/owner-cwd\u0007"u8);
+        Check(Wait(()=>{lock(single.SyncRoot) return single.Emulator.Title == "HIDDEN_OWNER_TITLE" && single.Emulator.Cwd.EndsWith("/owner-cwd");}),
+            "hidden pane receives durable title and cwd without a viewport credit");
         single.Presentation.Execute(new TerminalCommand.Viewport(0,true,stalled.revision+2));
         Check(Wait(()=>Animation(true).revision >= stalled.revision+2),"visible animation resumes with a fresh viewport");
         single.Inject("\u001b_Ga=a,i=97,s=1,q=2\u001b\\\u001b7\u001b[8;1HANIMATION_STOPPED\u001b8"u8);
@@ -334,6 +351,8 @@ try
         using var reattached=(ServerSession)presentationBackend.Create("single-owner",60,10);
         var restoredEffects=new HarnessEffects(); reattached.Emulator.Host=restoredEffects;
         Check(reattached.TryAdopt(ticket) && reattached.ChildProcessId == singlePid,"presentation reattach retains exact shell incarnation");
+        Check(Wait(()=>{lock(reattached.SyncRoot) return reattached.Emulator.Title == "HIDDEN_OWNER_TITLE" && reattached.Emulator.Cwd.EndsWith("/owner-cwd");}),
+            "new attachment receives the current title and cwd");
         Check(Wait(()=>Present(reattached).Contains("ALTRED DETACHED")),"reattach sends latest viewport without a history replica");
         Check(Wait(()=>restoredEffects.Events.Contains("progress:2:25")) && !restoredEffects.Events.Contains("bell") &&
             !restoredEffects.Events.Any(e=>e.StartsWith("clipboard:")),"reattach restores durable progress without replaying ephemeral effects");

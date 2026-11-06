@@ -163,6 +163,7 @@ try {
     foreach($legacyCore in @('managed','rust')) {
         $legacyLog=Join-Path $artifact ("ghostty-input-"+$legacyCore+'.txt')
         $null=Rpc 'config.set' @{key='emulator-core';value=$legacyCore}
+        Check "Old $legacyCore setting resolves to Ghostty" ((Rpc 'config.get' @{key='emulator-core'}) -eq 'ghostty')
         $legacySession=$null
         try {
             $legacySession=[string](Rpc 'session.new' @{name=('input-'+$legacyCore);command=$inputCommand.Replace($inputLog,$legacyLog);'command-mode'='direct'})
@@ -173,12 +174,12 @@ try {
             $null=Rpc 'session.write' @{text=($esc+'[?9001h')} $inputSession
             $null=Rpc 'session.select' @{} $inputSession
             $null=Rpc 'broadcast' @{op='on'}
-            InputCheck "Mixed $legacyCore broadcast sends physical key once to Ghostty" 'a' { [GhosttyInputFixture]::Tap(0x41) }
-            Check "Mixed $legacyCore broadcast sends physical key once to legacy recipient" ((InputBytes $legacyLog)-ceq '61')
-            InputCheck "Mixed $legacyCore broadcast keeps unpaired committed text" '漢' {
+            InputCheck "Broadcast after $legacyCore migration sends the key once to the original recipient" 'a' { [GhosttyInputFixture]::Tap(0x41) }
+            Check "Broadcast after $legacyCore migration sends the key once to the new recipient" ((InputBytes $legacyLog)-ceq '61')
+            InputCheck "Broadcast after $legacyCore migration keeps committed text" '漢' {
                 [void][GhosttyInputFixture]::SendMessageW($hwnd,0x102,[IntPtr][int][char]'漢',[IntPtr]1)
             }
-            Check "Mixed $legacyCore broadcast delivers committed text to legacy recipient" ((InputBytes $legacyLog)-ceq '61E6BCA2')
+            Check "Broadcast after $legacyCore migration delivers committed text to the new recipient" ((InputBytes $legacyLog)-ceq '61E6BCA2')
         } finally {
             $null=Rpc 'broadcast' @{op='off'}
             $null=Rpc 'config.set' @{key='emulator-core';value='ghostty'}

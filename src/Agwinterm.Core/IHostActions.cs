@@ -12,6 +12,8 @@ namespace Agwinterm.Core;
 /// </summary>
 public interface IHostActions
 {
+    /// <summary>Current terminal title and working directory after an OSC update.</summary>
+    void MetadataChanged(string title,string cwd) { }
     /// <summary>Desktop notification requested via OSC 9 (body only) or OSC 777 (title + body).</summary>
     void Notify(string title, string body);
 
@@ -34,6 +36,7 @@ public interface IHostActions
     /// <summary>Optional terminal theme defaults. OSC overrides remain owned by the terminal.</summary>
     IReadOnlyList<Color>? DefaultPalette => null;
     Color? DefaultCursorColor => null;
+    (CursorStyle Style, bool Blink)? DefaultCursor => null;
 
     /// <summary>The program rang the bell (BEL, 0x07). The host decides what that means —
     /// an audible beep, a visual flash, an attention cue, or nothing — per user config.</summary>

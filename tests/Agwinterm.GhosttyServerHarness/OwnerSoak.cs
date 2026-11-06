@@ -82,7 +82,7 @@ internal static class OwnerSoak
         }
     }
 
-    private static async Task<TerminalFrameIdentity> WaitFor(ServerSession session,string marker)
+    internal static async Task<TerminalFrameIdentity> WaitFor(ServerSession session,string marker,bool acknowledge=true)
     {
         long start=Stopwatch.GetTimestamp();
         while(Stopwatch.GetElapsedTime(start)<TimeSpan.FromSeconds(15))
@@ -98,7 +98,7 @@ internal static class OwnerSoak
             }
             if(id is { } identity)
             {
-                session.AcknowledgeFrame(identity.Sequence);
+                if(acknowledge || !found) session.AcknowledgeFrame(identity.Sequence);
                 if(found) return identity;
             }
             if(session.HasExited)

@@ -138,6 +138,12 @@ internal partial class Program : IAskHost
 
     private void CloseLibraryWindow()
     {
+        if (_detachOnClose.HasValue) return;
+        // Capture the user's close order before an owner's asynchronous save.
+        // The last requested close detaches its shells even if another save
+        // finishes later and destroys the last physical window.
+        lock (_windowIndex)
+            _detachOnClose = _updateQuitting || !_byId.Values.Any(w => w != this && !w._detachOnClose.HasValue);
         // Owned windows are destroyed before the owner's WM_DESTROY notification.
         CloseWindowQuestion();
         if (!DeferCloseForOwnerHistory()) DestroyWindow(_hwnd);

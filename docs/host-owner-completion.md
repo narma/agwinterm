@@ -170,3 +170,30 @@ partial split refusal and invalidation after explicit origin termination. These
 runs do not attest a real remote Mac peer or distribution shutdown.
 Installer and portable were rebuilt; standalone portable extraction verified
 the shipped hashes and both Linux ELF architectures without installing the app.
+
+The v26 private-desktop WSL/ZMX and WSL origin suites passed. The real Mac
+peer also passed in `host-owner-completion-v26-real-remote-final`. It used the
+isolated agterm socket and pinned Rust origin bridge. A follower kept the same
+workloads across Windows host loss and six SSH outages. The fault fixture denied
+the actual right pane of the split and dropped one input acknowledgement. The
+left pane remained usable and received its input exactly once. The terminal
+harness verified all 90 unique history markers across physical row wraps and
+exact reattachment with styled wide cells, alternate screen and follower geometry.
+
+The v28 isolated search workload held the outstanding viewport credit while
+256 keys produced 1 MiB of child output. After resize the next viewport
+contained the final marker. Across 500 additional ordered echoes in a
+40,000-row history, all 250 search-enabled submissions overlapped a query.
+Client-observed echo to decoded viewport, in milliseconds:
+
+| Condition | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: |
+| Without search | 31.58 | 32.56 | 34.45 |
+| With search | 32.10 | 83.56 | 220.82 |
+
+This includes polling and viewport publication. It measures responsiveness
+during search separately from the T1-to-child and T1-to-EndDraw measurements.
+Raw samples are in `host-completion-v28-search-load/results/evidence/owner-search/samples.csv`.
+The installed and preview v28 migration runs preserved the last window's
+live shell across rapid closes. The real Mac, WSL/ZMX and origin suites
+also passed on v28.

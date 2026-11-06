@@ -182,7 +182,9 @@ public sealed unsafe class GhosttyVt : IDisposable
     }
     private void ApplyTitle(string title)
     {
-        if (_titleFilter?.Invoke(title) != true) Title = title;
+        if (_titleFilter?.Invoke(title) == true || Title == title) return;
+        Title = title;
+        Host?.MetadataChanged(Title,Cwd);
     }
     public string Cwd { get; private set; } = "";
     private string _notificationTitle = "";
@@ -246,7 +248,10 @@ public sealed unsafe class GhosttyVt : IDisposable
                 case 1: Host?.Respond(Encoding.UTF8.GetString(effect.Data)); break;
                 case 2: Host?.Bell(); break;
                 case 3: ApplyTitle(Encoding.UTF8.GetString(effect.Data)); break;
-                case 4: Cwd = ReadText(1); break;
+                case 4:
+                    string cwd = ReadText(1);
+                    if (Cwd != cwd) { Cwd = cwd; Host?.MetadataChanged(Title,Cwd); }
+                    break;
                 case 5: _notificationTitle = Encoding.UTF8.GetString(effect.Data); break;
                 case 6: Host?.Notify(_notificationTitle, Encoding.UTF8.GetString(effect.Data)); break;
                 case 7: Host?.Progress(BitConverter.ToInt32(effect.Data, 0), Math.Max(0, BitConverter.ToInt32(effect.Data, 4))); break;

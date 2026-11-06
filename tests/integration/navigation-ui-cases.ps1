@@ -175,6 +175,10 @@ for ($attempt = 0; $attempt -lt 12 -and -not $ok; $attempt++) {
     $null = Rpc 'session.write' @{text="`r`nSTABILIZATION-SEARCH-MARKER`r`n"} $session
     Start-Sleep -Milliseconds 250
     $script:findBefore = Rpc 'session.search' @{query='STABILIZATION-SEARCH-MARKER'} $session
+    for($poll=0;$poll -lt 60 -and ([string]$script:findBefore).StartsWith('searching');$poll++){
+        Start-Sleep -Milliseconds 50
+        $script:findBefore=Rpc 'session.search' @{action='state'} $session
+    }
     $ok = $script:findBefore -match 'of [1-9]'
 }
 if (-not $ok) {
@@ -427,8 +431,11 @@ Check 'renaming hovered row invalidates tooltip without a move' ((NavRegionDiffe
 $oldDpi=[HudOwnedJob]::SetThreadDpiAwarenessContext([IntPtr](-4))
 try{[NavHover]::Restore($hwnd,$hoverWindow)}finally{[void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi)}
 $null=Rpc 'sidebar' @{op='mode:tree'}
-$null=Rpc 'session.type' @{text="exit`r"} $session
-Check 'exited shell does not retain shell-name hint' (NavWait {$null-eq (Node $session).foregroundShell})
+# A split can promote its surviving shell when the other child exits.
+# Check exit on a single-pane session whose shell identity is unambiguous.
+Check 'shell for exit check starts' (NavWait {(Node $callerPlaced).foregroundShell -eq 'cmd'})
+$null=Rpc 'session.type' @{text="exit`r"} $callerPlaced
+Check 'exited shell does not retain shell-name hint' (NavWait {$null-eq (Node $callerPlaced).foregroundShell})
 
 $fontOriginal=Rpc 'config.get' @{key='font-family'}
 $fontSizeOriginal=Rpc 'config.get' @{key='font-size'}

@@ -148,7 +148,8 @@ Start-Sleep -Milliseconds 300
 Check 'and it stays left' (-not (Focused 'File'))
 AltTap
 Check 'bar focused for the key-leak case' (MenuWait {Focused 'File'})
-PostKey $WM_KEYDOWN 0x51 0x00100001; PostKey 0x102 0x71 0x00100001; PostKey $WM_KEYUP 0x51 0xC0100001   # q, as TranslateMessage would queue it
+# The running window's TranslateMessage queues the character for this keydown.
+PostKey $WM_KEYDOWN 0x51 0x00100001; PostKey $WM_KEYUP 0x51 0xC0100001
 Check 'a non-mnemonic key leaves the bar' (MenuWait {-not (Focused 'File')})
 Start-Sleep -Milliseconds 400
 $paneText=[string](Rpc 'session.text' @{})   # the ACTIVE pane: New Session above made a second one

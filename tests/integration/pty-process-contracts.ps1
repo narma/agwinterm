@@ -1,5 +1,5 @@
 param()
-$ErrorActionPreference='Stop'
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test PtyProcessContracts -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $filter=@('ConPtyConnectionTests','FreshEnvironmentTests','PtyHostTests','ServerSessionTests',

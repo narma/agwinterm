@@ -184,6 +184,13 @@ try {
         Copy-Item -LiteralPath $CtlExe -Destination (Join-Path $ctlDirectory 'agwintermctl.exe')
     }
     Copy-Directory $PSScriptRoot (Join-Path $payload 'tests/integration')
+    if($Test -eq 'HostOwnerHandoff'){
+        $toolDir=Join-Path $payload 'tools'
+        $null=New-Item -ItemType Directory $toolDir -Force
+        foreach($file in 'defterm-register.ps1','defterm-restore-conhost.ps1'){
+            Copy-Item -LiteralPath (Join-Path $repo "tools/$file") -Destination $toolDir
+        }
+    }
     if($Test -eq 'PtyProcessContracts'){
         if(-not(Get-ChildItem (Join-Path $DotnetHome 'sdk/*/vstest.console.deps.json') -File -ErrorAction SilentlyContinue)){
             throw 'PtyProcessContracts requires a host SDK with VSTest to stage its guest runner.'

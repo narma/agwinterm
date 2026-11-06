@@ -80,6 +80,7 @@ public sealed class PtyHostServer : IDisposable
         public Color? DefaultCursorColor { get; set; }
         public ShellCompletion? Completion { get; set; }
         public void Notify(string title, string body) => EffectSink?.Invoke(new() { Kind=1,Title=title,Text=body });
+        public void MetadataChanged(string title,string cwd) => EffectSink?.Invoke(new() { Kind=7,Title=title,Text=cwd });
         public void Progress(int state, int value)
         { ProgressState=state; ProgressValue=value; EffectSink?.Invoke(new() { Kind=2,State=state,Value=value }); }
         public void ClipboardWrite(string text) => EffectSink?.Invoke(new() { Kind=3,Text=text });
@@ -396,6 +397,7 @@ public sealed class PtyHostServer : IDisposable
                 {
                     channel.PublishEffect(new() { Kind=2,State=hosted.Replies.ProgressState,Value=hosted.Replies.ProgressValue });
                     if(hosted.Replies.RoleNotice.Length > 0) channel.PublishEffect(new() { Kind=6,Text=hosted.Replies.RoleNotice });
+                    channel.PublishEffect(new() { Kind=7,Title=hosted.S.Emulator.Title,Text=hosted.S.Emulator.Cwd });
                 }
                 _ = channel.Completion.ContinueWith(_ =>
                 {
@@ -556,13 +558,21 @@ public sealed class PtyHostServer : IDisposable
         var colors = ThemeColors.Parse(update.Colors);
         var palette = ThemeColors.ParsePalette(update.Palette);
         var cursor = ThemeColors.ParseColor(update.Cursor);
-        if (colors is null || palette is null || cursor is null) return Err("invalid terminal theme");
+        if (colors is null || palette is null || cursor is null || update.CursorDefault > 6) return Err("invalid terminal theme");
         lock (h.S.SyncRoot)
         {
             h.Replies.DefaultColors = colors;
             h.Replies.DefaultPalette = palette;
             h.Replies.DefaultCursorColor = cursor;
-            if (h.S.Emulator is GhosttyTerminalCore native) native.SyncTheme();
+            if (h.S.Emulator is GhosttyTerminalCore native)
+            {
+                native.SyncTheme();
+                if (update.CursorDefault != 0)
+                {
+                    var style = update.CursorDefault switch { <= 2 => CursorStyle.Block, <= 4 => CursorStyle.Underline, _ => CursorStyle.Bar };
+                    native.SetCursorDefault(style, (update.CursorDefault & 1) != 0);
+                }
+            }
         }
         h.Presentation?.Signal();
         return Ok();

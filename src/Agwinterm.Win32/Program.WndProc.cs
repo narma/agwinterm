@@ -752,7 +752,7 @@ internal partial class Program
                 EndObservation();
                 RemoveTrayIcon();                 // drop the shell tray balloon icon
                 bool quitting;
-                lock (_windowIndex) quitting = _updateQuitting || _byId.Count <= 1;
+                lock (_windowIndex) quitting = _updateQuitting || (_detachOnClose ?? (_byId.Count <= 1));
                 // Persist before teardown; even with other windows open, an
                 // owner-backed history export must finish before its session closes.
                 if (!_closeSaveComplete) SaveState(captureCommands: true, sync: quitting);
@@ -785,7 +785,7 @@ internal partial class Program
                     // (this was the last open window) -> keep IsOpen=true so it reopens next launch.
                     // Update-quit closes every window in sequence — those must ALL reopen after the
                     // relaunch, so it never marks any of them closed.
-                    if (meta is not null && !lastWindow && !_updateQuitting) meta.IsOpen = false;
+                    if (meta is not null && !quitting) meta.IsOpen = false;
                     if (ReferenceEquals(Frontmost, this))
                     {
                         var nf = _byId.Values.FirstOrDefault();

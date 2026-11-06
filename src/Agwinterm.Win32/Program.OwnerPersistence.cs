@@ -11,6 +11,7 @@ internal partial class Program
     private bool _ownerSaveRunning;
     private bool _closeSavePending;
     private bool _closeSaveComplete;
+    private bool? _detachOnClose;
 
     // A non-final window can remain alive for its export while the other
     // windows keep processing input and paint. Destroy it only after the
@@ -18,8 +19,7 @@ internal partial class Program
     private bool DeferCloseForOwnerHistory()
     {
         if (_closeSavePending) return true;
-        lock (_windowIndex)
-            if (_updateQuitting || _byId.Count <= 1) return false;
+        if (_detachOnClose == true) return false;
         var sessions = CaptureOwnerBufferSessions();
         if (sessions.Count == 0) return false;
         foreach (var session in AllSessions()) ObserveLayout(session);
@@ -47,6 +47,7 @@ internal partial class Program
                 Post(() =>
                 {
                     _closeSavePending = false;
+                    _detachOnClose = null;
                     ShowWindow(_hwnd, SW_SHOW);
                     ShowToast("Window could not save its history: " + ex.Message, 10000);
                 });

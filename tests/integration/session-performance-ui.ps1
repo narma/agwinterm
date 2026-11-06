@@ -10,9 +10,9 @@ param(
     [switch]$AllCandidates,
     [switch]$RevisionComparison
 )
-$ErrorActionPreference='Stop'
-if($RevisionComparison -and $AllCandidates){throw 'Choose revision comparison or architecture comparison, not both.'}
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test SessionPerformance -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
+if($RevisionComparison -and $AllCandidates){throw 'Choose revision comparison or architecture comparison, not both.'}
 $baseline=Join-Path (Split-Path $Exe) 'baseline/Agwinterm.Win32.exe'
 if (-not (Test-Path -LiteralPath $baseline)) { throw 'Paired measurements require the pinned baseline package under app/baseline.' }
 # Both variants run serially in the same prepared VM. Each child invocation owns

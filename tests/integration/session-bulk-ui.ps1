@@ -9,9 +9,9 @@ param(
     [switch]$AllCandidates,
     [switch]$RevisionComparison
 )
-$ErrorActionPreference='Stop'
-if($RevisionComparison -and ($AllCandidates -or $Comparison -ne 'ownership')){throw 'Revision comparison requires ownership mode without AllCandidates.'}
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test SessionBulk -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
+if($RevisionComparison -and ($AllCandidates -or $Comparison -ne 'ownership')){throw 'Revision comparison requires ownership mode without AllCandidates.'}
 $baseline=Join-Path (Split-Path $Exe) 'baseline/Agwinterm.Win32.exe'
 if($Comparison -eq 'ownership' -and -not (Test-Path -LiteralPath $baseline)){throw 'Ownership comparison requires a pinned baseline package.'}
 for($pair=1;$pair -le $Pairs;$pair++) {

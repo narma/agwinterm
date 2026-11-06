@@ -1,6 +1,6 @@
 param([Parameter(Mandatory)][string]$Exe,[ValidateSet(1,8,32)][int]$Sessions=1,
       [ValidateRange(1,20)][int]$Minutes=20)
-$ErrorActionPreference='Stop'
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test HostOwnerSoak -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $directory=Split-Path ([IO.Path]::GetFullPath($Exe))
 $evidence=Join-Path $PSScriptRoot '../../.revmux/owner-soak'

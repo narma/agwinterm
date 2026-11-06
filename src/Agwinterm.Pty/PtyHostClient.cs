@@ -36,11 +36,11 @@ public sealed class PtyHostClient : IDisposable
     public uint PresentationRevision { get; private set; }
     public uint HostPid { get; private set; }
 
-    public bool UpdateTheme(string id, string colors, string palette, string cursor, string creationTicket = "")
+    public bool UpdateTheme(string id, string colors, string palette, string cursor, string creationTicket = "", uint cursorDefault = 0)
     {
         if (ThemeRevision < 1) return false;
         Request(new Request { ThemeUpdate = new ThemeUpdate { Id = id, CreationTicket = creationTicket,
-            Colors = colors, Palette = palette, Cursor = cursor } });
+            Colors = colors, Palette = palette, Cursor = cursor, CursorDefault = cursorDefault } });
         return true;
     }
 

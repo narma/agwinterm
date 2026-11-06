@@ -106,8 +106,10 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     private IReadOnlyList<TerminalEmulator.ShellMark>? _marks;
     public IReadOnlyList<TerminalEmulator.ShellMark> Marks=>_marks ??= _frame?.Marks.Select(m=>new TerminalEmulator.ShellMark {
         PromptLine=m.PromptLine,CommandLine=m.CommandLine,OutputLine=m.OutputLine,EndLine=m.EndLine,ExitCode=m.ExitCode }).ToArray() ?? [];
-    public string Title=>State.Title;
-    public string Cwd=>State.WorkingDirectory;
+    private (string Title,string Cwd)? _metadata;
+    public string Title=>_metadata?.Title ?? State.Title;
+    public string Cwd=>_metadata?.Cwd ?? State.WorkingDirectory;
+    public void SetMetadata(string title,string cwd) => _metadata=(title,cwd);
     private string? _roleNotice;
     private Func<string,bool>? _titleFilter;
     public void SetTitleFilter(Func<string,bool> filter)

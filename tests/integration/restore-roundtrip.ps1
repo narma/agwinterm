@@ -709,7 +709,7 @@ Cell -Name $reflowName -Conf @('restore-buffer = true', "session-host = $reflowH
     }
     $loaded = @((Get-Process -Id $ownerPid).Modules | Where-Object ModuleName -eq 'agwinterm_ghostty.dll').Count -eq 1
     Check 'buffer-reflow: Ghostty is loaded by the terminal owner' $loaded
-    [pscustomobject]@{ Sid=$sid; HostPid=$ownerPid }
+    @{ Sid=$sid; HostPid=$ownerPid }
 } -Assert {
     param($s,$ctx)
     $marker = 'REFLOW_BEGIN_' + ('0123456789' * 4) + '_REFLOW_END'

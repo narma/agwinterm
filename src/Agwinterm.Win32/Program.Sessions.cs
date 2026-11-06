@@ -450,6 +450,7 @@ internal partial class Program
         public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
         public IReadOnlyList<Color>? DefaultPalette => _theme.Palette;
         public Color? DefaultCursorColor => _theme.Cursor;
+        public (CursorStyle Style, bool Blink)? DefaultCursor => (_config.CursorStyle, _config.CursorBlink);
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
         public void CommandFinished(string token, long sequence)
         {

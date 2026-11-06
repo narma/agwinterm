@@ -19,7 +19,7 @@ public sealed partial class ServerSession
             {
                 var effect=await PresentationQueryWire.ReadAsync(pipe,PresentationEffect.Parser,_readCancel.Token).ConfigureAwait(false);
                 if(effect.Incarnation != _creationTicket || effect.AttachmentEpoch != _attachmentEpoch ||
-                    effect.Sequence != ++sequence || effect.Kind > 6 || effect.Title.Length+effect.Text.Length > 512*1024)
+                    effect.Sequence != ++sequence || effect.Kind > 7 || effect.Title.Length+effect.Text.Length > 512*1024)
                     throw new InvalidDataException("Invalid owner effect identity or bounds.");
                 if(effect.Kind == 0)
                 {
@@ -47,8 +47,10 @@ public sealed partial class ServerSession
                         case 4: view.DispatchHostEffect(a=>a.Bell(),retainedBytes); break;
                         case 5: view.DispatchHostEffect(a=>a.CommandFinished(effect.Text,effect.CompletionSequence),retainedBytes); break;
                         case 6: view.PublishRoleNotice(effect.Text); break;
+                        case 7: view.SetMetadata(effect.Title,effect.Text); break;
                     }
                 }
+                if(effect.Kind == 7) OutputReceived?.Invoke();
             }
         }
         catch(Exception ex) when(ex is IOException or OperationCanceledException or Google.Protobuf.InvalidProtocolBufferException)

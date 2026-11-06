@@ -82,6 +82,7 @@ message ThemeUpdate {
   string colors = 3;  // rrggbb;rrggbb
   string palette = 4; // 16 or 256 semicolon-separated rrggbb entries
   string cursor = 5;  // rrggbb
+  uint32 cursor_default = 6; // 0 = unchanged, 1..6 = DECSCUSR default shape and blink
 }
 
 // Preparation never starts a child. A lost prepare reply may be abandoned safely. A client must
@@ -319,7 +320,7 @@ message PresentationEffect {
   string incarnation = 1;
   uint64 attachment_epoch = 2;
   uint64 sequence = 3;
-  uint32 kind = 4; // 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role
+  uint32 kind = 4; // 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role; 7 current title and cwd
   string title = 5;
   string text = 6;
   int32 state = 7;

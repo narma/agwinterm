@@ -170,6 +170,10 @@ using (var vt = new GhosttyVt(20, 5))
 {
     vt.SetCursorDefault(CursorStyle.Bar, false); Capture(vt);
     Check(vt.FrameCursorShape == 6, "configured steady bar cursor reaches the frame");
+    vt.Feed("\u001b[0 q"u8);
+    vt.SetCursorDefault(CursorStyle.Block,false); Capture(vt);
+    Check(vt.FrameCursorShape == 2,"live default change reaches a cursor reset with DECSCUSR zero");
+    vt.SetCursorDefault(CursorStyle.Bar,false); Capture(vt);
     vt.Feed("\u001b[3 q"u8); Capture(vt);
     Check(vt.FrameCursorShape == 3, "DECSCUSR cursor style comes from Ghostty");
     vt.Feed("\u001bc"u8); Capture(vt);

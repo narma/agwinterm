@@ -683,6 +683,12 @@ internal partial class Program
     private void ApplyTheme(Theme t)
     {
         _theme = t;
+        RefreshTerminalThemes();
+        RecomputeChrome(); RequestRedraw();
+    }
+
+    private void RefreshTerminalThemes()
+    {
         var windows = new HashSet<Program>(_registry.Values) { this };
         if (_quickHost is { } quick) windows.Add(quick);
         foreach (var window in windows)
@@ -691,7 +697,6 @@ internal partial class Program
                 if (pane.S is ServerSession server) server.UpdateTheme();
             window.RequestRedraw();
         }
-        RecomputeChrome(); RequestRedraw();
     }
 
     private IEnumerable<Pane> ThemeSurfaces()
@@ -1226,6 +1231,8 @@ internal partial class Program
             Note(_emulatorCoreNote ?? "Ghostty is the terminal backend");
             _emulatorCoreNote = null;   // startup path only announces once
         }
+        if (Has("cursor-style") || Has("cursor-blink"))
+            RefreshTerminalThemes();
         if (Has("cursor-blink-ms"))
             foreach (var window in _registry.Values.ToArray())
                 if (window._hwnd != IntPtr.Zero) SetTimer(window._hwnd, (IntPtr)1, (uint)_config.CursorBlinkMs, IntPtr.Zero);

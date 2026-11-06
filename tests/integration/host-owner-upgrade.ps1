@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][string]$Exe,[switch]$Contracts,[switch]$Preview)
-$ErrorActionPreference='Stop'
-$PSNativeCommandUseErrorActionPreference=$false
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test HostOwnerUpgrade -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
+$PSNativeCommandUseErrorActionPreference=$false
 if($Contracts){ & "$PSScriptRoot/host-owner-contracts.ps1" -Exe $Exe }
 . "$PSScriptRoot/../ui/lib.ps1"
 $directory=Split-Path ([IO.Path]::GetFullPath($Exe))
@@ -118,11 +118,33 @@ try {
     for($attempt=0;$attempt -lt 50 -and @((Rpc 'window.list').windows | Where-Object open).Count -gt 1;$attempt++){Start-Sleep -Milliseconds 100}
     & (Join-Path $directory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe') --check-window-history (Join-Path $appDir "windows/$secondWindow.json") $closingPane $closeMarker
     Check 'closing one of two windows saves its latest owner history' ($LASTEXITCODE -eq 0)
+    $probe=Join-Path $directory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe'
+    $identity=& $probe --upgrade-child ($controlPipe+'-owner-v1') $id
+    Check 'original restored shell has an exact host identity' ($LASTEXITCODE -eq 0 -and $identity -match '^\d+:.+')
+    $racingWindow=[string](Rpc 'window.new' @{name='Close order'})
+    for($attempt=0;$attempt -lt 100;$attempt++){
+        $racingPane=try{[string](Rpc 'tree' @{} '' $racingWindow).workspaces[0].sessions[0].id}catch{''}
+        if($racingPane -and ([string](Rpc 'session.text' @{} $racingPane $racingWindow)).Trim()){break}
+        Start-Sleep -Milliseconds 50
+    }
+    $null=Rpc 'session.write' @{text=(("order history`r`n"*400)+"CLOSE_ORDER_READY`r`n")} $racingPane $racingWindow
+    for($attempt=0;$attempt -lt 100;$attempt++){
+        if(([string](Rpc 'session.text' @{} $racingPane $racingWindow)).Contains('CLOSE_ORDER_READY')){break}
+        Start-Sleep -Milliseconds 50
+    }
+    # Issue the two close requests without waiting for the first save.
+    $null=Rpc 'window.close' @{} $racingWindow
     # The process's cached MainWindowHandle can refer to the second window
     # we just closed. Address the surviving window by its durable identity.
     $null=Rpc 'window.close' @{} $firstWindow
     Check 'closing the remaining restored window exits the new UI' ($s.Proc.WaitForExit(20000))
     Check 'new UI restarts with the same saved state' (Start-SandboxProcess $s @('--pipe',$controlPipe,'--app-id',$appId))
+    $reopened=@((Rpc 'window.list').windows | Where-Object open | ForEach-Object id)
+    Check 'last requested close determines which window reopens' ($reopened.Count -eq 1 -and $reopened[0] -eq $firstWindow)
+    $continued=& $probe --upgrade-child ($controlPipe+'-owner-v1') $id
+    Check 'last requested window keeps its exact running shell' ($continued -eq $identity)
+    $released=& $probe --upgrade-child ($controlPipe+'-owner-v1') $racingPane
+    Check 'earlier close releases its own shell' ($released -eq 'absent')
     $text=[string](Rpc 'session.text' @{all=$true} $id)
     $text | Set-Content (Join-Path $artifact 'restarted.txt')
     Check 'owner restart does not duplicate imported history' (([regex]::Matches($text,[regex]::Escape($marker))).Count -eq 1)
