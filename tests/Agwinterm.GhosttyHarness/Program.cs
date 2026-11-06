@@ -756,6 +756,20 @@ using (var core = new GhosttyTerminalCore(80, 24))
     try { cancelTask.GetAwaiter().GetResult(); } catch (OperationCanceledException) { observed = true; }
     Check(observed, "large-history search stops after cancellation");
 }
+using (var closingCore = new GhosttyTerminalCore(16, 8))
+{
+    object ownerLock = new();
+    Task<GhosttyTerminalCore.SearchResult> pending;
+    lock (ownerLock)
+    {
+        pending = closingCore.SearchAsync("closed", ownerLock, CancellationToken.None);
+        closingCore.Dispose();
+    }
+    bool closed = false;
+    try { pending.GetAwaiter().GetResult(); }
+    catch (ObjectDisposedException) { closed = true; }
+    Check(closed, "pending search refuses a closed owner before accessing native state");
+}
 using (var core = new GhosttyTerminalCore(16, 8))
 {
     core.Feed(Encoding.UTF8.GetBytes("\x1b[?2027hStraße ẞ ﬃ K İ\r\nSTRASSE\r\n"));

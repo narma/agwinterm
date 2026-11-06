@@ -197,3 +197,21 @@ Raw samples are in `host-completion-v28-search-load/results/evidence/owner-searc
 The installed and preview v28 migration runs preserved the last window's
 live shell across rapid closes. The real Mac, WSL/ZMX and origin suites
 also passed on v28.
+
+The v30 candidate passed all seven routed UI suites in each mode
+(Navigation, Ghostty, Command, Clipboard, Presentation, Accessibility and
+Quick), 112 host contract checks, and both real upgrade fixtures. In a
+fresh Hyper-V guest, a normal user launch of cmd was handed to the running
+window by Windows. The original pane remained hosted, the handed-off pane
+used a direct owner, and its child echoed interactive input. The guest's
+bootstrap uses an elevated token, so the fixture runs the per-user COM
+activation under its limited interactive token.
+
+The standalone native fixture passed 240 checks, including search during
+owner disposal. Real Mac recovery, WSL/ZMX survival and WSL origin export
+passed on v30. Standalone portable extraction verified the runnable CLI,
+native payload hashes, and both Linux helper architectures. The installer
+SHA-256 is `466F8B28208EE00600BC2275B5593AB8341F27F62D013BDB3C301BB8641ABEAB`
+and the portable SHA-256 is `657FD3941644F1B5E16FB61C8AF9BC9511F686D9615A55AF91AE5ACC2F0E090A`.
+The pinned measurement inputs and individual run reports live under
+`artifacts/single-owner/host-completion-v30-final`.

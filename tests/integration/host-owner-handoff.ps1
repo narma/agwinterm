@@ -4,6 +4,48 @@ if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test HostOwnerHandoff -Parameters $P
 if ($env:AGWINTERM_HYPERV_UI -ne '1' -or -not (& "$PSScriptRoot/hyperv-ui-context.ps1")) {
     throw 'Default-terminal registration is permitted only in the disposable worker VM.'
 }
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+$principal=[Security.Principal.WindowsPrincipal]::new($identity)
+if($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    # The worker bootstrap runs elevated. Exercise per-user COM activation
+    # from the same ordinary interactive token that an Explorer launch uses.
+    if($env:AGWINTERM_HANDOFF_LIMITED){throw 'Guest did not supply a limited interactive token'}
+    $task='AgwintermHandoff-'+[guid]::NewGuid().ToString('N')
+    $log=Join-Path $env:TEMP "$task.log"
+    $context=@{script=$PSCommandPath;exe=$Exe;ctl=$Ctl;log=$log;environment=@{}}
+    foreach($key in 'AGWINTERM_HYPERV_UI','AGWINTERM_HYPERV_RUN_ID','DOTNET_ROOT','DOTNET_ROOT_X64','PATH'){
+        $context.environment[$key]=[Environment]::GetEnvironmentVariable($key)
+    }
+    $payload=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($context|ConvertTo-Json -Depth 3)))
+    $runner=@'
+$ErrorActionPreference='Stop'
+$ctx=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__PAYLOAD__'))|ConvertFrom-Json -AsHashtable
+foreach($key in $ctx.environment.Keys){[Environment]::SetEnvironmentVariable($key,$ctx.environment[$key])}
+$env:AGWINTERM_HANDOFF_LIMITED='1'
+try { & $ctx.script -Exe $ctx.exe -Ctl $ctx.ctl *> $ctx.log; exit 0 }
+catch { $_ | Out-String | Add-Content $ctx.log; exit 1 }
+'@
+    $command=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($runner.Replace('__PAYLOAD__',$payload)))
+    $action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'pwsh.exe') -Argument "-NoProfile -WindowStyle Hidden -EncodedCommand $command"
+    $guestUser=New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
+    $null=Register-ScheduledTask -TaskName $task -Action $action -Principal $guestUser
+    try {
+        Start-ScheduledTask -TaskName $task
+        $deadline=[DateTime]::UtcNow.AddMinutes(3)
+        do {
+            Start-Sleep -Seconds 1
+            $info=Get-ScheduledTaskInfo -TaskName $task
+            $state=(Get-ScheduledTask -TaskName $task).State
+            if([DateTime]::UtcNow -ge $deadline){throw 'Limited-token handoff check timed out'}
+        } while($info.LastRunTime.Year -lt 2000 -or $state -in 'Running','Queued')
+        if(Test-Path $log){Get-Content $log}
+        if($info.LastTaskResult -ne 0){throw "Limited-token handoff failed ($($info.LastTaskResult))"}
+    } finally {
+        Stop-ScheduledTask -TaskName $task
+        Unregister-ScheduledTask -TaskName $task -Confirm:$false
+    }
+    return
+}
 . "$PSScriptRoot/../ui/lib.ps1"
 $directory=Split-Path ([IO.Path]::GetFullPath($Exe))
 $pipe='agwinterm-handoff-'+[guid]::NewGuid().ToString('N')

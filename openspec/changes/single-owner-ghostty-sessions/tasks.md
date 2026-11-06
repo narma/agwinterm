@@ -18,16 +18,16 @@
 ## 3. Hosted text and input prototype
 
 - [x] 3.1 Extend proto negotiation and generated bindings with presentation/input versions, incarnation/epoch/sequence fields and bounded payload validation; verify malformed frames, unsupported peers and legacy v2 wire compatibility.
-- [ ] 3.2 Implement host viewport capture and background publication without pipe writes under the feed lock; verify delta bases, atomic attach, resize generations, final output and synchronized-output holds.
+- [x] 3.2 Implement host viewport capture and background publication without pipe writes under the feed lock; verify delta bases, atomic attach, resize generations, final output and synchronized-output holds.
 - [x] 3.3 Implement the bounded UI frame cache without constructing or feeding Ghostty; verify one host owner/zero UI live cores and identical grapheme/style/link/cursor readback on a text fixture.
 - [x] 3.4 Implement ordered semantic input channel and owner encoding/PTY writer with explicit overflow/disconnect results; verify no duplicate response, no per-key round trip, no lost release and no input replay after connection loss.
 - [x] 3.5 Add slow-reader and output-flood tests; verify bounded queues, input service between feed turns and recovery by a full viewport after dropped/superseded deltas.
-- [ ] 3.6 Run the early A/C text/input latency and throughput experiment; document chosen encoding, queue byte caps, lock budgets and whether improvement/non-regression gates pass before adding richer payloads.
+- [x] 3.6 Run the early A/C text/input latency and throughput experiment; document chosen encoding, queue byte caps, lock budgets and whether improvement/non-regression gates pass before adding richer payloads.
 
 ## 4. History, selection, effects and accessibility
 
 - [ ] 4.1 Implement bounded history viewport queries, tracked selection/anchor operations and copy extraction in owner; verify wide graphemes, soft wrap, reflow, alternate-screen and concurrent-output selection in both modes.
-- [ ] 4.2 Move search to owner snapshot workers with cancellation/results limits and generation checks; verify Unicode folding, stale results, closed sessions and input latency while searching a large history.
+- [x] 4.2 Move search to owner snapshot workers with cancellation/results limits and generation checks; verify Unicode folding, stale results, closed sessions and input latency while searching a large history.
 - [ ] 4.3 Migrate UIA and SurfaceText/control reads to consistent cached or bounded query results; verify screen-reader ranges, command-output boundaries and all-history readback without blocking UI paint.
 - [x] 4.4 Route display injection, clear/reset/theme and persistence operations to owner; verify current control API side effects, save/restore history fidelity and no saved command/buffer replay into adopted sessions; document any identified compatibility difference before rollout.
 - [x] 4.5 Forward ordered host effects and durable metadata, with owner-only terminal replies/completion persistence; verify OSC clipboard policy, title/cwd, progress, bell/notification behavior and no duplicate ephemeral effects after reconnect.
