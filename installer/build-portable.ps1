@@ -31,6 +31,7 @@ $nativePayload = Join-Path $stage 'native-payload'
 if ($LASTEXITCODE -ne 0) { throw 'portable native payload publish failed' }
 Copy-Item (Join-Path $nativePayload 'conpty.dll') $tools
 Copy-Item (Join-Path $nativePayload 'x64/OpenConsole.exe') $tools
+& (Join-Path $here 'publish-host.ps1') -Destination $tools -Version $ver
 & $dotnet publish (Join-Path $root 'src/Agwinterm.Ctl/Agwinterm.Ctl.csproj') `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true `
   -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=$ver -o $tools
@@ -39,7 +40,7 @@ if ($LASTEXITCODE -ne 0) { throw 'portable CLI publish failed' }
 if ($LASTEXITCODE -ne 0) { throw 'portable Windows hook build failed' }
 & (Join-Path $root 'tools/stage-wsl-hooks.ps1') -Destination $tools
 $archive = Join-Path $stage 'tools.zip'
-$toolFiles = @('agwintermctl.exe', 'agwinterm-hook.exe', 'agwinterm-hook-linux-x64', 'agwinterm-hook-linux-arm64',
+$toolFiles = @('Agwinterm.Host.exe', 'agwintermctl.exe', 'agwinterm-hook.exe', 'agwinterm-hook-linux-x64', 'agwinterm-hook-linux-arm64',
   'ghostty-vt.dll', 'agwinterm_ghostty.dll', 'ghostty-vt.provenance.json', 'ghostty-NOTICES.txt', 'conpty.dll', 'OpenConsole.exe') |
   ForEach-Object { Join-Path $tools $_ }
 Compress-Archive -LiteralPath $toolFiles -DestinationPath $archive
@@ -53,7 +54,7 @@ Write-Host "== publish single-file portable exe (v$ver) ==" -ForegroundColor Cya
   -p:SatelliteResourceLanguages=en `
   -p:DebugType=none `
   -p:Version=$ver `
-  "-p:PortableToolsArchive=$archive" `
+  -p:SeparateHostPayload=true "-p:PortableToolsArchive=$archive" `
   -o $stage
 if ($LASTEXITCODE -ne 0) { throw "portable publish failed" }
 

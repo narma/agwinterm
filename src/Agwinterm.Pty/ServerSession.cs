@@ -7,7 +7,7 @@ namespace Agwinterm.Pty;
 /// <summary>
 /// The pty-host session backend (#105, Phase 2b): sessions live in the <c>--pty-host</c> process;
 /// the UI holds <see cref="ServerSession"/> handles. Selected by <c>session-host = server</c>.
-/// Spawns the host on demand (same exe, host role) and connects lazily — construction is cheap and
+/// Spawns the host on demand and connects lazily — construction is cheap and
 /// never touches the wire; the first <see cref="Create"/> does.
 /// </summary>
 public sealed class ServerSessionBackend : ISessionBackend, IDisposable

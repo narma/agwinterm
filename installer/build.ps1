@@ -36,8 +36,14 @@ $common = @("-c","Release","-r","win-x64","--self-contained","true","-p:PublishS
 
 Write-Host "== publish Agwinterm.Win32 (app) ==" -ForegroundColor Cyan
 & (Join-Path $root 'native/ghostty-vt/stage.ps1') -Destination $stage
-& $dotnet publish (Join-Path $root "src\Agwinterm.Win32\Agwinterm.Win32.csproj") @common
+& $dotnet publish (Join-Path $root "src\Agwinterm.Win32\Agwinterm.Win32.csproj") @common -p:SeparateHostPayload=true
 if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
+
+$hostDir = Join-Path $stage 'host'
+& (Join-Path $here 'publish-host.ps1') -Destination $hostDir -Version $ver
+foreach ($native in 'agwinterm_ghostty.dll','ghostty-vt.dll','ghostty-vt.provenance.json','conpty.dll','x64/OpenConsole.exe') {
+    Copy-Item -LiteralPath (Join-Path $stage $native) -Destination $hostDir
+}
 
 Write-Host "== publish Agwinterm.Ctl (agwintermctl) ==" -ForegroundColor Cyan
 & $dotnet publish (Join-Path $root "src\Agwinterm.Ctl\Agwinterm.Ctl.csproj") @common

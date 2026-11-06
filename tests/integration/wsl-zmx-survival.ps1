@@ -128,7 +128,7 @@ try {
     if (-not $initial) { throw 'Sentinel did not start' }
     if ($ProfileLive -and !$UpgradeToGhostty) { Assert-GhosttyLive ((Ctl @('tree')).workspaces[0].sessions[0].id) }
     Write-Host "INITIAL $initial"
-    $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+    $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Host.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
     if ($hosts.Count -ne 1) { throw "Expected exactly one isolated PTY host, got $($hosts.Count)" }
     $hostProcess = Get-Process -Id $hosts[0].ProcessId
     if (-not [ZmxTestWindow]::Close($ui.Id)) { throw 'Cannot request graceful test UI quit' }
@@ -199,7 +199,7 @@ try {
             $paneId = @($row.liveSessions.PSObject.Properties.Name)[0]
             $before = $row.liveSessions.$paneId
             $promptToken = (Saved-Pane $paneId).PromptToken
-            $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+            $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Host.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
             if ($retryHosts.Count -ne 1) { throw 'Expected one fixture host before live-UI retry' }
             Stop-Process -Id $retryHosts[0].ProcessId -Force
             for ($i=0; $i -lt 100; $i++) {
@@ -335,7 +335,7 @@ try {
             & "$PSScriptRoot/zmx/layout-controls.ps1"
         }
         $ui.Kill(); $ui.WaitForExit()
-        $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+        $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Host.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
         foreach ($entry in $hosts) { Stop-Process -Id $entry.ProcessId }
     }
 } finally {

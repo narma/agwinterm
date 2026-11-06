@@ -391,7 +391,7 @@ public static class RemoteAskProbe {
     }
     Write-Host 'PASS exact-ticket UI restart'
     if ((Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Expected Ghostty default after remote restore' }
-    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Host.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
     if ($hosts.Count -ne 1) { throw 'Expected exactly one test-owned PTY host' }
     Stop-Process -Id $hosts[0].ProcessId -Force
     Start-Sleep -Seconds 3
@@ -401,7 +401,7 @@ public static class RemoteAskProbe {
     }
     Write-Host 'PASS PTY-host loss reconnects the same workloads as follower'
     for ($outage=0;$outage -lt 6;$outage++) {
-    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Host.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
     $transports=@(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" | Where-Object { $_.ParentProcessId -eq $hosts[0].ProcessId -and $_.CommandLine.Contains($Bridge) })
     if (-not $transports.Count) { throw 'Test-owned SSH transport was not found' }
     Stop-Process -Id $transports[0].ProcessId -Force

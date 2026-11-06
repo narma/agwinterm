@@ -634,23 +634,26 @@ internal partial class Program : ISessionHost, IWindowHost
         // Publish the resolved instance id so child processes and shared (Pty) helpers resolve the same
         // data dir — and a nested agwinterm inherits the dev/release identity of the one that launched it.
         Environment.SetEnvironmentVariable("AGWINTERM_APP_ID", _appId);
-        // The pty-host ROLE (#105): same exe, no window — a headless server owning terminal sessions
-        // so they survive UI restarts/crashes. The UI (Phase 2b) spawns and talks to it; nothing
-        // below (D2D, window class, control server) applies to this process.
+        // Compatibility with launchers that still invoke the GUI in host mode.
         if (_argPtyHost)
         {
-            _config = LoadOrCreateConfig();
-            ResolveEmulatorCore();
-            ConPtyApi.Select(_argConpty == "bundled" || _argConpty is null && _config.Conpty == "bundled");
-            using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId);
-            ptyHost.Completion.Wait();
+            var start = new ProcessStartInfo(HostExePath) { UseShellExecute = false, CreateNoWindow = true };
+            start.ArgumentList.Add("--pty-host");
+            start.ArgumentList.Add("--pipe");
+            start.ArgumentList.Add(_argPipe ?? _appId);
+            if (_argConpty != null)
+            {
+                start.ArgumentList.Add("--conpty");
+                start.ArgumentList.Add(_argConpty);
+            }
+            Process.Start(start)?.Dispose();
             return;
         }
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         // Process-global setup (config/themes/keymap + window class + shared D2D/DWrite objects).
         _config = LoadOrCreateConfig();
         ConPtyApi.Select(_config.Conpty != "inbox");
-        _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
+        _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, HostExePath, _config.Conpty, _config.EmulatorCore);
         ResolveEmulatorCore();
         _allThemes = LoadThemes();
         _theme = FindTheme(_config.Theme);

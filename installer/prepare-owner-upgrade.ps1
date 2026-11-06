@@ -4,6 +4,7 @@
 param(
     [Parameter(Mandatory)][string]$InstallDir,
     [string]$ReportPath,
+    [switch]$GuiOnly,
     [ValidateRange(5,300)][int]$WaitSeconds=60
 )
 $ErrorActionPreference='Stop'
@@ -11,13 +12,17 @@ try {
     $InstallDir=[IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
     $gui=Join-Path $InstallDir 'Agwinterm.Win32.exe'
     $rust=Join-Path $InstallDir 'agwinterm-ptyhost.exe'
+    $sessionHost=Join-Path $InstallDir 'host\Agwinterm.Host.exe'
     function InstalledProcesses {
-        @(Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe' OR Name='agwinterm-ptyhost.exe'" |
-            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $gui -or $_.ExecutablePath -ieq $rust) })
+        @(Get-CimInstance Win32_Process -Filter "Name='Agwinterm.Win32.exe' OR Name='agwinterm-ptyhost.exe' OR Name='Agwinterm.Host.exe'" |
+            Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $gui -or $_.ExecutablePath -ieq $rust -or
+                (-not $GuiOnly -and $_.ExecutablePath -ieq $sessionHost)) })
     }
     $initial=@(InstalledProcesses)
     $uis=@($initial | Where-Object { $_.ExecutablePath -ieq $gui -and $_.CommandLine -notmatch '(?:^|\s)--pty-host(?:\s|$)' })
     $hosts=@($initial | Where-Object { $_ -notin $uis })
+    if($GuiOnly -and $hosts.Count){throw 'Legacy host detected. Finish its workloads and run the full installer once.'}
+    if($GuiOnly -and -not $initial.Count){exit 0}
     if($hosts.Count -gt 0 -and $uis.Count -eq 0){throw 'An old session host is running without its UI. Open the installed version once, then retry the upgrade so it can save current state.'}
     Add-Type @'
 using System;
@@ -138,7 +143,8 @@ public static class OwnerUpgradePipe {
     }
     foreach($pipe in $groups.Keys) {
         $group=$groups[$pipe]
-        foreach($window in $group.Windows) { $null=Request $group $pipe @{cmd='window.close';target=$window.id} }
+        if($GuiOnly){$null=Request $group $pipe @{cmd='app.close-for-update'}}
+        else {foreach($window in $group.Windows) { $null=Request $group $pipe @{cmd='window.close';target=$window.id} }}
     }
     $deadline=[DateTime]::UtcNow.AddSeconds($WaitSeconds)
     do {
@@ -147,6 +153,11 @@ public static class OwnerUpgradePipe {
         Start-Sleep -Milliseconds 100
     } while([DateTime]::UtcNow -lt $deadline)
     if($remaining.Count){throw "Old UI did not close. Installation unchanged; backup: $backupRoot"}
+    if($GuiOnly){
+        if(@(InstalledProcesses).Count){throw 'Application restarted during GUI update; retry after closing it.'}
+        Write-Output "State backup: $backupRoot"
+        exit 0
+    }
     # Old Windows processes are intentionally ended on this upgrade. Exact path,
     # PID and creation time must still match the checkpointed inventory.
     foreach($process in @(InstalledProcesses)) {

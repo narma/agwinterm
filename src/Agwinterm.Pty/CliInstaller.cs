@@ -10,7 +10,17 @@ namespace Agwinterm.Pty;
 public static class CliInstaller
 {
     /// <summary>The directory holding agwintermctl.exe (it sits next to Agwinterm.Win32.exe / the ctl exe).</summary>
-    public static string CliDir() => PortableTools.DirectoryPath;
+    public static string CliDir()
+    {
+        string dir = PortableTools.DirectoryPath;
+        // Installed hosts keep their loaded runtime in host/. Shell integrations
+        // still use the CLI and hooks from the main installation directory.
+        var location = new DirectoryInfo(dir);
+        return string.Equals(Path.GetFileName(Environment.ProcessPath), "Agwinterm.Host.exe", StringComparison.OrdinalIgnoreCase) &&
+            location.Name.Equals("host", StringComparison.OrdinalIgnoreCase) &&
+            location.Parent is { } parent && File.Exists(Path.Combine(parent.FullName, "Agwinterm.Win32.exe"))
+            ? parent.FullName : dir;
+    }
 
     /// <summary>Extract the portable toolset without opening the terminal or modifying PATH.</summary>
     public static void ExtractPortableTools(string root) => PortableTools.ExtractEmbedded(root);

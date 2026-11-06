@@ -46,8 +46,8 @@ contracts remain required. Hosted ZMX and remote import must accept the new
 The version-1 ZMX readiness payload still reports the historical
 `host: "server-rust"` label to clients. Both the Linux helper and the
 Windows inventory emit that wire value. The effective Windows session
-backend for this configuration is `server`, with the UI executable started
-in its separate `--pty-host` role.
+backend for this configuration is `server`. The GUI starts `Agwinterm.Host.exe`
+on demand and reconnects to its existing pipe after a GUI-only update.
 
 Upgrade compatibility means saved-state import, not attaching to old Windows
 hosts. The installer must checkpoint the previous UI, preserve a backup, close

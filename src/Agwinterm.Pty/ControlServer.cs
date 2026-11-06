@@ -664,6 +664,9 @@ public sealed partial class ControlServer : IDisposable
                     return Ok(host.RestartClaudeYolo(target));
                 case "claude.update":
                     return Ok(host.UpdateClaude());
+                case "app.close-for-update":
+                    host.CloseForUpdate();
+                    return Ok("closing");
                 case "app.update":
                     return Ok(host.UpdateApp());
                 case "workspace.focus": host.WorkspaceFocus(GetString(args, "op") ?? "toggle"); return Ok("focus");
