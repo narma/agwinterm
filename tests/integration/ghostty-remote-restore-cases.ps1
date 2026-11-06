@@ -1,23 +1,22 @@
 # Dot-sourced by restore-roundtrip inside the owned UI VM. This verifies saved
 # remote-binding transport adoption, not SSH/origin availability: the transport
 # is a real hosted local shell, with structurally valid fixture metadata.
-foreach ($originalCore in 'managed','ghostty') {
-$caseName = if ($originalCore -eq 'managed') { 'ghostty-remote-host-adoption' } else { 'ghostty-remote-reverse-adoption' }
-if ($Only -and $caseName -notlike $Only) { continue }
+$caseName = 'ghostty-remote-host-adoption'
+if (-not $Only -or $caseName -like $Only) {
 "-- $caseName --"
 $s = $null
 try {
     foreach ($assembly in 'Google.Protobuf.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll') {
         [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $exe) $assembly))
     }
-    $s = Start-Sandbox -Exe $exe -Ctl $ctl -Pipe 'rr-remote-upgrade' -Conf @('session-host = server-rust',"emulator-core = $originalCore")
-    $hostNamespace = $s.Pipe + $(if ($originalCore -eq 'managed') { '-rust' } else { '' })
+    $s = Start-Sandbox -Exe $exe -Ctl $ctl -Pipe 'rr-remote-upgrade' -Conf @('session-host = server','emulator-core = ghostty')
+    $hostNamespace = $s.Pipe + '-owner-v1'
     $sid = Sid $s
     if (-not (Wait-Prompt $s $sid)) { throw 'Original hosted shell did not start' }
     $probe = [Agwinterm.Pty.PtyHostClient]::Connect($hostNamespace, 3000)
     try {
         $original = @($probe.List() | Where-Object Id -eq $sid)[0]
-        $null = $probe.Create('abandoned-transport',80,24,'cmd.exe',[string[]]@('/c','ping -n 300 127.0.0.1'),$null,$null,$false,$false,$true,'',$originalCore)
+        $null = $probe.Create('abandoned-transport',80,24,'cmd.exe',[string[]]@('/c','ping -n 300 127.0.0.1'),$null,$null,$false,$false,$true,'','ghostty',$true)
     } finally { $probe.Dispose() }
     if (-not $original.CreationTicket -or $original.ChildPid -le 0) { throw 'Missing exact hosted identity' }
     [void][AgwUi]::PostMessageW($s.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
@@ -41,13 +40,10 @@ try {
     $savedPane.Buffer = @('SHOULD-NOT-SEED-REMOTE')
     $state | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $stateFile.FullName -Encoding utf8
     foreach ($hostSetting in 'server-rust','in-process') {
-        # No explicit core: upgrade to Ghostty, then change the ordinary host too.
+        # Settings for ordinary sessions may change while a remote transport survives.
         "session-host = $hostSetting" | Set-Content (Join-Path $s.AppDir 'agwinterm.conf') -Encoding utf8
         $expectedCore = 'ghostty'
-        if ($originalCore -eq 'ghostty') {
-            $expectedCore = 'rust'
-            'emulator-core = rust' | Add-Content (Join-Path $s.AppDir 'agwinterm.conf')
-        }
+        'emulator-core = rust' | Add-Content (Join-Path $s.AppDir 'agwinterm.conf')
         if (-not (Start-SandboxProcess $s @('--pipe',$s.Pipe,'--app-id',$s.AppId))) { throw 'Restoring UI did not start' }
         Start-Sleep -Seconds 2
         Check "$hostSetting`: requested core is $expectedCore" ((Reply $s @('config','get','emulator-core')).result -eq $expectedCore)

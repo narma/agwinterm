@@ -118,7 +118,11 @@ try {
     for($attempt=0;$attempt -lt 50 -and @((Rpc 'window.list').windows | Where-Object open).Count -gt 1;$attempt++){Start-Sleep -Milliseconds 100}
     & (Join-Path $directory 'ghostty-server-tests/Agwinterm.GhosttyServerHarness.exe') --check-window-history (Join-Path $appDir "windows/$secondWindow.json") $closingPane $closeMarker
     Check 'closing one of two windows saves its latest owner history' ($LASTEXITCODE -eq 0)
-    $null=Restart-Sandbox $s
+    # The process's cached MainWindowHandle can refer to the second window
+    # we just closed. Address the surviving window by its durable identity.
+    $null=Rpc 'window.close' @{} $firstWindow
+    Check 'closing the remaining restored window exits the new UI' ($s.Proc.WaitForExit(20000))
+    Check 'new UI restarts with the same saved state' (Start-SandboxProcess $s @('--pipe',$controlPipe,'--app-id',$appId))
     $text=[string](Rpc 'session.text' @{all=$true} $id)
     $text | Set-Content (Join-Path $artifact 'restarted.txt')
     Check 'owner restart does not duplicate imported history' (([regex]::Matches($text,[regex]::Escape($marker))).Count -eq 1)

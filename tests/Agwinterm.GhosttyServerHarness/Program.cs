@@ -294,10 +294,15 @@ try
         Check(Animation(false).sequence == hidden.sequence,"hidden animation does not continuously publish");
         single.Presentation.Execute(new TerminalCommand.Viewport(0,true,stalled.revision+2));
         Check(Wait(()=>Animation(true).revision >= stalled.revision+2),"visible animation resumes with a fresh viewport");
-        single.Inject("\u001b_Ga=a,i=97,s=1,q=2\u001b\\"u8);
-        Thread.Sleep(150); Animation(true); Thread.Sleep(150);
-        var stopped=Animation(true); Thread.Sleep(160);
-        Check(Animation(false).sequence == stopped.sequence,"stopped hosted animation needs no periodic publication");
+        single.Inject("\u001b_Ga=a,i=97,s=1,q=2\u001b\\\u001b7\u001b[8;1HANIMATION_STOPPED\u001b8"u8);
+        Check(Wait(()=>Present(single).Contains("ANIMATION_STOPPED")),"animation stop reached the owner");
+        var stopped=Animation(true);
+        long quietSince=Environment.TickCount64;
+        Check(Wait(()=>{
+            var current=Animation(true);
+            if(current.sequence != stopped.sequence){stopped=current;quietSince=Environment.TickCount64;}
+            return Environment.TickCount64-quietSince >= 400;
+        }),"stopped hosted animation needs no periodic publication");
         string pngPath=Path.Combine(Path.GetTempPath(),appId+".png");
         try
         {

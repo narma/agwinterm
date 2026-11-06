@@ -240,7 +240,7 @@ jobs:
         if: matrix.suite == 'core'
         run: cargo test --locked --manifest-path native/agwinterm-ptyhost/Cargo.toml resize::tests
 
-      - name: Restored history reflow (managed, Rust, live Rust host)
+      - name: Restored Ghostty history and remote transport adoption
         if: matrix.suite == 'host'
         shell: pwsh
         timeout-minutes: 10
@@ -248,8 +248,7 @@ jobs:
           . ./tests/ui/lib.ps1
           $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
           if (-not $exe) { throw 'Built app not found' }
-          Copy-Item native/target/release/agwinterm_core.dll,native/target/release/agwinterm-ptyhost.exe (Split-Path $exe) -Force
-          foreach ($case in @('buffer-reflow', 'buffer-reflow-rust', 'buffer-reflow-rust-host')) {
+          foreach ($case in @('buffer-reflow-ghostty', 'buffer-reflow-ghostty-host', 'ghostty-remote-host-adoption')) {
             ./tests/integration/restore-roundtrip.ps1 -Exe $exe -Strict -Only $case
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

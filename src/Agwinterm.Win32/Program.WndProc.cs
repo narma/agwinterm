@@ -734,8 +734,8 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_CLOSE:
-                CloseWindowQuestion();
-                return DefWindowProcW(hwnd, msg, wParam, lParam);
+                CloseLibraryWindow();
+                return IntPtr.Zero;
 
             case WM_DESTROY:
                 _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
@@ -755,7 +755,7 @@ internal partial class Program
                 lock (_windowIndex) quitting = _updateQuitting || _byId.Count <= 1;
                 // Persist before teardown; even with other windows open, an
                 // owner-backed history export must finish before its session closes.
-                SaveState(captureCommands: true, sync: quitting);
+                if (!_closeSaveComplete) SaveState(captureCommands: true, sync: quitting);
                 // App-quit (last window, or an update-quit closing all of them) DETACHES panes —
                 // server-hosted sessions keep running and the next start adopts them (#105 2c).
                 // An explicit window close (others remain) still disposes = kills, like a pane

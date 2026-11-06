@@ -1708,6 +1708,7 @@ internal partial class Program
     /// holds its history, finish the export before close disposes that owner.</summary>
     private bool SaveState(bool captureCommands = false, bool sync = false)
     {
+        if (_closeSavePending && !captureCommands) return false;
         foreach (var session in AllSessions()) ObserveLayout(session);
         string? json = BuildStateSnapshot(out _, captureCommands);
         if (json is null) return false;
@@ -1717,9 +1718,13 @@ internal partial class Program
         {
             try { json=CompleteOwnerBuffers(json,ownerSessions).GetAwaiter().GetResult(); }
             catch(Exception ex) { Trace.WriteLine("Final owner checkpoint failed: "+ex.Message); return false; }
-            bool ok = _stateWriter.Publish(StatePath, json, stamp, out _);
-            SaveIndex(sync: true);
-            return ok;
+            if (sync)
+            {
+                bool ok = _stateWriter.Publish(StatePath, json, stamp, out _);
+                SaveIndex(sync: true);
+                return ok;
+            }
+            ownerSessions.Clear(); // already captured; background writes need no live sessions
         }
         QueueOwnerSave(json,stamp,ownerSessions);
         SaveIndex();

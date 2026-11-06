@@ -4,7 +4,8 @@ param([Parameter(Mandatory)][string]$Exe,[Parameter(Mandatory)][string]$Director
     [ValidateSet('latency','bulk','soak','trace')][string[]]$Phases=@('latency','bulk','soak','trace'),
     [ValidateSet('server','in-process')][string[]]$Modes=@('server','in-process'),
     [ValidateSet('idle','fixed-output','ascii','unicode','history','tui')][string[]]$Workloads=@('idle','fixed-output'),
-    [ValidateSet('single-key','marker-burst')][string]$InputPattern='single-key')
+    [ValidateSet('single-key','marker-burst')][string]$InputPattern='single-key',
+    [switch]$DiscardStaging)
 $ErrorActionPreference='Stop'
 $root=Join-Path $PSScriptRoot '..'
 $worker=Join-Path $root 'tests/integration/hyperv-ui.ps1'
@@ -35,6 +36,19 @@ function Run([string]$test,[hashtable]$settings,[string]$path){
     }
     & $worker -Test $test -Exe $Exe -TestParameters $settings -TimeoutSeconds 1800 -OutputDirectory $path | Out-Host
     if($LASTEXITCODE){throw "$test failed in $path"}
+    if($DiscardStaging){
+        # The guest input is a copy of the pinned packages and runtimes.
+        # Keep the run plan, guest results and raw traces.
+        $run=(Resolve-Path -LiteralPath $path).Path
+        $stage=(Resolve-Path -LiteralPath (Join-Path $run 'input')).Path
+        if(-not $run.StartsWith($Directory.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase) -or
+            [IO.Directory]::GetParent($stage).FullName -ne $run -or [IO.Path]::GetFileName($stage) -ne 'input' -or
+            (Get-Item -LiteralPath $stage).Attributes -band [IO.FileAttributes]::ReparsePoint){
+            throw "Unexpected staging path $stage"
+        }
+        Copy-Item -LiteralPath (Join-Path $stage 'run.json') -Destination (Join-Path $run 'guest-plan.json')
+        Remove-Item -LiteralPath $stage -Recurse -Force
+    }
 }
 foreach($phase in $Phases){
     if($phase -eq 'soak'){

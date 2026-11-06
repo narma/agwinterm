@@ -77,7 +77,7 @@ internal static class Win32
     }
 
     public const int MK_LBUTTON = 0x0001;
-    public const int SW_SHOW = 5;
+    public const int SW_HIDE = 0, SW_SHOW = 5;
 
     // Phase 3: inline rename (child EDIT), context menus, double-click.
     public const uint WM_LBUTTONDBLCLK = 0x0203;

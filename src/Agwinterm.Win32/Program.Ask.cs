@@ -140,7 +140,7 @@ internal partial class Program : IAskHost
     {
         // Owned windows are destroyed before the owner's WM_DESTROY notification.
         CloseWindowQuestion();
-        DestroyWindow(_hwnd);
+        if (!DeferCloseForOwnerHistory()) DestroyWindow(_hwnd);
     }
 
     private bool QuestionMessage(uint msg, IntPtr w, IntPtr l)
