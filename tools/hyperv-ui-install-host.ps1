@@ -15,6 +15,15 @@ Import-Module Hyper-V
 $BaseVhd = (Resolve-Path -LiteralPath $BaseVhd).Path
 $image = Get-VHD -Path $BaseVhd
 if ($image.Attached -or $image.VhdType -notin @('Dynamic','Fixed') -or [IO.Path]::GetExtension($BaseVhd) -ne '.vhdx') { throw 'Use the detached, prepared standalone VHDX.' }
+function Assert-JobAllowsUpdate([IO.DirectoryInfo]$Job) {
+    # Preserve marked recovery jobs and their stopped VMs in place.
+    if (Test-Path -LiteralPath (Join-Path $Job.FullName 'recovery-required.json')) {
+        $run = Get-Content -LiteralPath (Join-Path $Job.FullName 'run/hyperv-run.json') -Raw | ConvertFrom-Json
+        $vm = Get-VM -Id ([guid]$run.vmId) -ErrorAction Stop
+        if ($vm.Name -eq "agwinterm-ui-$($run.runId)" -and $vm.State -eq 'Off') { return }
+    }
+    throw "Wait until UI host job $($Job.FullName) has finished before updating."
+}
 function Write-Status([string]$Phase, [string]$Detail='') {
     Write-Host "$Phase $Detail"
     if ($StatusPath) { @{phase=$Phase;detail=$Detail;utc=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $StatusPath }
@@ -38,15 +47,7 @@ try {
             $slotPath = Join-Path $root "jobs/slot-$slot"
             if (-not (Test-Path -LiteralPath $slotPath)) { continue }
             foreach ($job in Get-ChildItem -LiteralPath $slotPath -Directory -ErrorAction Stop) {
-                # A worker can retain a failed job for recovery indefinitely.
-                # Leave its files and registered VM in place during an update.
-                $marker = Join-Path $job.FullName 'recovery-required.json'
-                if (Test-Path -LiteralPath $marker) {
-                    $run = Get-Content -LiteralPath (Join-Path $job.FullName 'run/hyperv-run.json') -Raw | ConvertFrom-Json
-                    $vm = Get-VM -Id ([guid]$run.vmId) -ErrorAction Stop
-                    if ($vm.Name -eq "agwinterm-ui-$($run.runId)" -and $vm.State -eq 'Off') { continue }
-                }
-                throw "Wait until UI host job $($job.Name) in slot $slot has finished before updating."
+                Assert-JobAllowsUpdate $job
             }
         }
         foreach ($slot in 0,1) { Stop-ScheduledTask -TaskPath '\AgwintermUi\' -TaskName "Slot$slot" -ErrorAction SilentlyContinue }

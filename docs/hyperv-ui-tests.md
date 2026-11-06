@@ -350,8 +350,8 @@ Installed workers preserve any job containing `run/vm` or
 recovery; they are not automatically deleted. Inspect the job's
 `run/hyperv-run.json`, recover evidence, and stop/remove only its recorded VM.
 After detaching its disks, remove that exact job directory. Retained running VMs
-still count against the shared limit. Updating an existing host also requires
-these retained jobs to be handled first.
+still count against the shared limit. A host update can proceed with a retained
+job in place when it has a recovery marker and its recorded VM is confirmed off.
 
 Normally the VM and its temporary disks are removed after export, on both passing
 and failing tests. Use `-KeepVM` to retain the **stopped** VM and disks for manual

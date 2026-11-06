@@ -233,6 +233,25 @@ try {
     Check 'worker preserves retained disks and marks administrator recovery' ((Test-Path "$recoveryJob/run/vm/payload.vhdx") -and (Test-Path "$recoveryJob/recovery-required.json"))
     Remove-OwnedJob $recoveryJob
     Check 'worker restart cleanup preserves recovery evidence' ((Get-Content "$recoveryJob/run/vm/payload.vhdx") -eq 'unexported evidence')
+    $installerAst = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot/../../tools/hyperv-ui-install-host.ps1", [ref]$null, [ref]$null)
+    $updateAst = $installerAst.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Assert-JobAllowsUpdate'}, $true)
+    . ([scriptblock]::Create($updateAst.Extent.Text))
+    $runId = [guid]::NewGuid()
+    $vmId = [guid]::NewGuid()
+    $retainedVM = [pscustomobject]@{Id=$vmId; Name="agwinterm-ui-$runId"; State='Off'}
+    $script:vms[$vmId] = $retainedVM
+    @{runId=$runId; vmId=$vmId} | ConvertTo-Json | Set-Content "$recoveryJob/run/hyperv-run.json"
+    $jobDir = Get-Item $recoveryJob
+    Assert-JobAllowsUpdate $jobDir
+    Check 'update accepts a stopped recovery VM and preserves its evidence' ((Get-Content "$recoveryJob/run/vm/payload.vhdx") -eq 'unexported evidence')
+    $retainedVM.State = 'Running'
+    Refuses 'active recovery VMs block updates' { Assert-JobAllowsUpdate $jobDir } '*Wait until*'
+    $retainedVM.State = 'Off'
+    $retainedVM.Name = 'unrelated-vm'
+    Refuses 'mismatched recovery VMs block updates' { Assert-JobAllowsUpdate $jobDir } '*Wait until*'
+    $retainedVM.Name = "agwinterm-ui-$runId"
+    Remove-Item -LiteralPath "$recoveryJob/recovery-required.json"
+    Refuses 'unmarked jobs block updates even when their VM is off' { Assert-JobAllowsUpdate $jobDir } '*Wait until*'
     $markedJob = Join-Path $slotRoot ([guid]::NewGuid().ToString('N'))
     $null = New-Item -ItemType Directory -Path $markedJob
     '{}' | Set-Content "$markedJob/recovery-required.json"
