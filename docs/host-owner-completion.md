@@ -1,8 +1,39 @@
 # Host-owner completion and upgrade
 
-Work branch: `codex/host-owner-ghostty-completion`. Integration target selected by
-the user: `codex/ghostty-vt-foundation` (`83d82b1`), rather than the fork's default
-branch. This is a work-in-progress record, not rollout approval.
+PR #36 targets `codex/ghostty-vt-foundation`, from which the host-owner
+branch was created at `83d82b1`. On 2026-11-06 the maintainer approved
+squash integration with a reduced performance gate. Historical experiment
+results below retain their original sample counts and confidence verdicts.
+
+## Integration evidence
+
+The v31 candidate passed migration from installed 0.20.19 and the Ghostty
+preview, real Windows default-terminal handoff, and all seven Windows UI
+suites in both hosted and local modes. The Mac SSH, WSL/ZMX survival and
+WSL origin-export suites passed on the same application build. Windows CI
+ran 118 hosted contracts, including a fresh attachment recovering an image
+over 1 MiB, alternate-screen selection and completed-command output.
+
+| Pinned v31 comparison | Legacy hosted | Host-owner |
+| --- | ---: | ---: |
+| Continuous ASCII, child input p50 / p95 / p99, ms | 0.224 / 0.914 / 1.809 | 0.570 / 1.615 / 2.738 |
+| Continuous ASCII, EndDraw p50 / p95 / p99, ms | 9.57 / 16.53 / 21.37 | 4.64 / 9.09 / 16.31 |
+| Bulk output, MiB/s | 5.15 | 10.47 |
+| Combined CPU per 128 MiB, seconds | 32.62 | 7.05 |
+| Combined peak private memory, MiB | 99.30 | 83.78 |
+
+The ASCII results use five alternating pairs and 10,000 measured echoes
+per variant. Their confidence gates are inconclusive. The installer
+SHA-256 is `D5F24244108EB3A612B48B392C246767F5BF6259B904F498D28ACA682C1B27C4`.
+The portable SHA-256 is `8B91DF38BF5011A036C4D923B331467D269ABEAABF085D2A1E64E5CF1E5F0124`.
+Raw samples, package hashes, run configurations and paired intervals are
+under `artifacts/single-owner/host-completion-v31-final`.
+
+The maintainer accepted the measured input/throughput tradeoff. Exhaustive
+burst and workload permutations, additional noise runs and a trace-overhead
+sweep can continue separately. The first v30 32-session run had an
+unexplained timeout. Its full 20-minute repeat delivered 17,836 correlated
+echoes with the same production binaries. Both runs remain in the record.
 
 ## Compatibility scope
 

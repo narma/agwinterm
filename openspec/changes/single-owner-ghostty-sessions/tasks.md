@@ -1,5 +1,14 @@
 # Tasks
 
+## Integration scope
+
+On 2026-11-06 the maintainer approved merging the host-owner implementation
+into its foundation branch using primary before/after measurements, migration
+from both previous versions, Windows/WSL/Mac feature checks and a clean final
+review. Open performance matrix and audit items below track follow-up work.
+Confidence gates retain their measured outcomes. See
+`docs/host-owner-completion.md` for evidence and the 32-session timeout.
+
 ## 1. Baselines and measurement fixtures
 
 - [x] 1.1 Add opt-in live-terminal/feed/allocation counters that distinguish owners, legacy replicas and temporary captures; verify current hosted sessions report two live instances and serverless sessions one, with zero after disposal.
@@ -26,15 +35,15 @@
 
 ## 4. History, selection, effects and accessibility
 
-- [ ] 4.1 Implement bounded history viewport queries, tracked selection/anchor operations and copy extraction in owner; verify wide graphemes, soft wrap, reflow, alternate-screen and concurrent-output selection in both modes.
+- [x] 4.1 Implement bounded history viewport queries, tracked selection/anchor operations and copy extraction in owner; verify wide graphemes, soft wrap, reflow, alternate-screen and concurrent-output selection in both modes.
 - [x] 4.2 Move search to owner snapshot workers with cancellation/results limits and generation checks; verify Unicode folding, stale results, closed sessions and input latency while searching a large history.
-- [ ] 4.3 Migrate UIA and SurfaceText/control reads to consistent cached or bounded query results; verify screen-reader ranges, command-output boundaries and all-history readback without blocking UI paint.
+- [x] 4.3 Migrate UIA and SurfaceText/control reads to consistent cached or bounded query results; verify screen-reader ranges, command-output boundaries and all-history readback without blocking UI paint.
 - [x] 4.4 Route display injection, clear/reset/theme and persistence operations to owner; verify current control API side effects, save/restore history fidelity and no saved command/buffer replay into adopted sessions; document any identified compatibility difference before rollout.
 - [x] 4.5 Forward ordered host effects and durable metadata, with owner-only terminal replies/completion persistence; verify OSC clipboard policy, title/cwd, progress, bell/notification behavior and no duplicate ephemeral effects after reconnect.
 
 ## 5. Graphics and complete UI migration
 
-- [ ] 5.1 Implement bounded image payload transfer, generation references, eviction/re-request and session-based UI caches; verify layers, placements, links, Unicode placeholders, oversized payload rejection and reconnect correctness.
+- [x] 5.1 Implement bounded image payload transfer, generation references, eviction/re-request and session-based UI caches; verify layers, placements, links, Unicode placeholders, oversized payload rejection and reconnect correctness.
 - [x] 5.2 Move animation state/deadlines to owner and preserve UI GPU/raster caches; verify static images cause no polling and animated images remain correct under hidden/visible transitions and stalled transport.
 - [ ] 5.3 Finish renderer, scroll, input, search, UIA, control and error-presentation migration; verify no new-path UI code casts to Ghostty or feeds terminal bytes, using the consumer checklist and live counters.
 - [ ] 5.4 Run paired serverless regression checks including default-terminal handoff, graphics, history and IME; deliver B/D results proving the common abstraction did not introduce IPC, another live core or measurable regressions beyond the gates.
@@ -42,8 +51,8 @@
 ## 6. Lifecycle and upgrade compatibility
 
 - [x] 6.1 Remove legacy managed/Rust backend choices and old Windows hosts from the shipped runtime; retain Ghostty hosted/serverless operation and the Rust Linux helper. Migrate old settings and verify effective owner diagnostics.
-- [ ] 6.2 Preserve creation tickets, cancellation fencing, attachment epochs and pipe disposal ownership; verify failures during create/attach/write/resize/exit, late callbacks and malformed/oversized requests do not leak or mutate replacement sessions.
-- [ ] 6.3 Test new-version UI quit/crash, host loss and reconnect with large history/images; preserve new-host process identity and final-output ordering. Separately test upgrade from installed 0.20.19 and Ghostty preview: save state, close old sessions, restore saved state without old-host attachment.
+- [x] 6.2 Preserve creation tickets, cancellation fencing, attachment epochs and pipe disposal ownership; verify failures during create/attach/write/resize/exit, late callbacks and malformed/oversized requests do not leak or mutate replacement sessions.
+- [x] 6.3 Test new-version UI quit/crash, host loss and reconnect with large history/images; preserve new-host process identity and final-output ordering. Separately test upgrade from installed 0.20.19 and Ghostty preview: save state, close old sessions, restore saved state without old-host attachment.
 - [x] 6.4 Run WSL/private-desktop and available real remote recovery suites; verify exact surviving transport adoption, daemon incarnation and no replay, documenting unavailable real environments separately from synthetic coverage.
 - [x] 6.5 Implement and document save-before-close installer migration, state backup and failure recovery. Verify layout/history/settings fidelity, explicit loss of running process execution, and safe retry if save or shutdown fails.
 
@@ -51,9 +60,9 @@
 
 - [ ] 7.1 Run sequential paired A/C and B/D latency/throughput/CPU/memory matrix on pinned worker resources; deliver raw samples, per-run distributions, confidence bounds, configuration hashes and explicit pass/fail/inconclusive for every gate.
 - [ ] 7.2 Run at least 60 minutes of output/resize/search/attach churn with 1/8/32-session workloads within worker limits; verify bounded memory/queues, no missing input/output and stable tail latency.
-- [ ] 7.3 Investigate any missed hosted latency-improvement target or regression using stage/lock/queue timings; deliver a revised measured result, keeping the path experimental until acceptance is resolved.
-- [ ] 7.4 Run relevant full local/CI checks and inspect/wait for clean Greptile feedback on the final implementation commit; deliver validation evidence with unresolved environment limits clearly identified.
-- [ ] 7.5 Enable the new path for new Ghostty hosted sessions after acceptance, retain serverless operation and old saved-state import, and update migration/performance documentation; verify final configuration routing and one-instance diagnostics in packaged builds.
+- [x] 7.3 Investigate any missed hosted latency-improvement target or regression using stage/lock/queue timings; deliver a revised measured result, keeping the path experimental until acceptance is resolved.
+- [x] 7.4 Run relevant full local/CI checks and inspect/wait for clean Greptile feedback on the final implementation commit; deliver validation evidence with unresolved environment limits clearly identified.
+- [x] 7.5 Enable the new path for new Ghostty hosted sessions after acceptance, retain serverless operation and old saved-state import, and update migration/performance documentation; verify final configuration routing and one-instance diagnostics in packaged builds.
 
 ## Workflow follow-up
 
