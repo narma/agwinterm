@@ -109,7 +109,7 @@ internal partial class Program : IWslLiveHost
             var sessions = _liveOperations.ListAsync(profile, _appId).GetAwaiter().GetResult();
             if (command == "zmx.list") return new { sessions = sessions.Select(s => new { daemon = s.Daemon, incarnation = s.Incarnation,
                 ownership = s.Ownership, attachments = s.Attachments, endpoint = s.Binding.Endpoint }),
-                readiness = "ready", provider = "wsl-zmx", host = "server-rust", remoteAttach = false, presentation = false };
+                readiness = "ready", provider = "wsl-zmx", host = "server", remoteAttach = false, presentation = false };
             var chosen = sessions.SingleOrDefault(s => s.Daemon == args.GetProperty("daemon").GetString()
                 && s.Incarnation == args.GetProperty("incarnation").GetString()) ?? throw new InvalidOperationException("Discovered incarnation no longer matches");
             var binding = _liveOperations.BorrowAsync(chosen.Binding).GetAwaiter().GetResult();
@@ -208,7 +208,9 @@ internal partial class Program : IWslLiveHost
                 if (outcome != "terminated") throw new WslRecoveryException("uncertain", "Termination is not confirmed");
                 return InvokeOnUiQueued<object>(() =>
                 {
-                    p.S.Dispose();
+                    // The pane remains visible (and resizable) after termination. Its native
+                    // replica must live until the pane itself is replaced or closed.
+                    if (p.S is ServerSession transport) transport.Stop();
                     p.LiveBinding = JsonSerializer.SerializeToElement(binding with { Recovery = "missing", TransportTicket = null });
                     p.LiveClosing = false;
                     p.LiveRecovery.Reopen();
@@ -345,7 +347,12 @@ internal partial class Program : IWslLiveHost
 
     private void ShowLiveError(Pane pane, string message)
     {
-        lock (pane.S.SyncRoot) pane.S.Emulator.Feed(Encoding.UTF8.GetBytes("\r\n[WSL live session] " + message + "\r\n"));
+        lock (pane.S.SyncRoot)
+        {
+            if(pane.S.Emulator is PresentedTerminalView view)
+                view.ShowError("[WSL live session] " + message);
+            else pane.S.Emulator.Feed(Encoding.UTF8.GetBytes("\r\n[WSL live session] " + message + "\r\n"));
+        }
         pane.LiveSaveError = message;
         RequestRedraw();
     }
@@ -355,15 +362,14 @@ internal partial class Program : IWslLiveHost
         lock (pane.S.SyncRoot)
         {
             pane.LiveRole = new ZmxRoleState(nonce ?? Guid.NewGuid().ToString("N"));
-            if (pane.S.Emulator is not TerminalEmulator terminal) return;
             bool Consume(string title)
             {
                 if (!title.StartsWith("zmx-role;", StringComparison.Ordinal)) return false;
                 if (ZmxRoleNotice.Parse(title) is { } notice) pane.LiveRole.Apply(notice);
                 return true;
             }
-            if (Consume(terminal.Title)) terminal.OscDispatch(2, "");
-            terminal.TitleFilter = Consume;
+            if (pane.S.Emulator is GhosttyTerminalCore ghostty) ghostty.SetTitleFilter(Consume);
+            else if (pane.S.Emulator is PresentedTerminalView presented) presented.SetTitleFilter(Consume);
         }
     }
 
@@ -405,7 +411,7 @@ internal partial class Program : IWslLiveHost
                 verbatimCommandLine: true).ConfigureAwait(false);
             if (!pane.LiveRecovery.IsCurrent(generation)) return;
             if (pane.S is not ServerSession server || server.HasExited || string.IsNullOrEmpty(server.CreationTicket))
-                throw new InvalidOperationException("Rust WSL attachment could not start");
+                throw new InvalidOperationException("WSL attachment could not start");
             await LiveUiAsync(() =>
             {
                 if (!pane.LiveRecovery.IsCurrent(generation)) return;

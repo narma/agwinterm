@@ -1,7 +1,18 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
 param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
-      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance')][string]$Suite='Hud')
+      [ValidateSet('managed','rust','ghostty')][string]$EmulatorCore='ghostty',
+      [ValidateSet('in-process','server')][string]$LatencyHost='in-process',
+      [ValidateSet('in-process','server')][string]$SessionHost='in-process',
+      [ValidateRange(1,100000)][int]$LatencySamples=100,
+      [ValidateSet('idle','ascii','unicode','tui','history','fixed-output','fixed-bulk')][string]$LatencyWorkload='idle',
+      [ValidateSet('off','counters','full')][string]$LatencyTraceMode='full',
+      [ValidateRange(1,2048)][int]$LatencyBulkMiB=128,
+      [ValidateSet('legacy','single-owner')][string]$LatencyPresentation='legacy',
+      [ValidateSet('','before','after')][string]$LatencyVariant='',
+      [switch]$SingleOwner,
+      [ValidateSet('marker-burst','single-key')][string]$LatencyInputPattern='marker-burst',
+      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','TerminalLatency','Ghostty')][string]$Suite='Hud')
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test Hud -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -51,6 +62,7 @@ public sealed class HudOwnedJob {
     [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr p,uint e);
     [DllImport("kernel32.dll")] static extern bool TerminateJobObject(IntPtr j,uint e);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h,uint ms);
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool GetExitCodeProcess(IntPtr h,out uint code);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);
     [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);
@@ -69,6 +81,11 @@ public sealed class HudOwnedJob {
         if(!GetGUIThreadInfo(t,ref info))throw new Exception("GetGUIThreadInfo");return info.rect;
     }
     IntPtr job,process; bool assigned; public uint Pid { get; private set; }
+    public uint WaitExit(uint milliseconds) {
+        if(WaitForSingleObject(process,milliseconds)!=0)throw new TimeoutException("Owned process did not exit");
+        if(!GetExitCodeProcess(process,out uint code))throw new Exception("GetExitCodeProcess");
+        return code;
+    }
     public void Start(string exe,string args,string cwd) {
         job=CreateJobObjectW(IntPtr.Zero,null); if(job==IntPtr.Zero)throw new Exception("CreateJobObject");
         var limit=new LIMIT(); limit.basic.flags=0x2000; // kill-on-close, no breakaway permission
@@ -136,7 +153,21 @@ public sealed class HudOwnedJob {
     New-Item -ItemType Directory $appDir|Out-Null
     # Every pane uses a harmless cmd /d shell: never the user's PowerShell profile or agent hooks.
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
-    @('session-host = in-process','claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
+    @("session-host = $SessionHost",'claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
+    if ($Suite -eq 'TerminalLatency') {
+        $echoChild = Join-Path (Split-Path ([IO.Path]::GetFullPath($Exe))) 'echo-fixture/Agwinterm.EchoFixture.exe'
+        if (-not (Test-Path $echoChild)) { throw 'Publish the compiled echo fixture in the app echo-fixture directory first.' }
+        [string[]]$echoArgs=if($LatencyWorkload -eq 'fixed-bulk'){@($LatencyWorkload,[string]$LatencyBulkMiB)}else{@($LatencyWorkload)}
+        @{default='Echo';profiles=@(@{name='Echo';command=$echoChild;args=$echoArgs;cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
+        @("session-host = $LatencyHost",'cursor-blink = false','font-family = Consolas') | Add-Content (Join-Path $appDir 'agwinterm.conf')
+    }
+    $selectedCore = if ($Suite -eq 'Ghostty') { 'ghostty' } else { $EmulatorCore }
+    # Ghostty acceptance also exercises the absent-setting rollout path.
+    if ($Suite -ne 'Ghostty') { "emulator-core = $selectedCore" | Add-Content (Join-Path $appDir 'agwinterm.conf') }
+    if ($Suite -in 'TerminalRendering','TerminalPerformance') {
+        # A missing-default-font toast can disappear between pixel comparisons.
+        'font-family = Consolas' | Add-Content (Join-Path $appDir 'agwinterm.conf')
+    }
     'map f12 = close_pane'|Set-Content (Join-Path $appDir 'keymap.conf')
     if($Suite-eq 'Clipboard'){'map f8 = paste'|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'WorkingSets'){'map f8 = toggle_workspace_filter'|Add-Content (Join-Path $appDir 'keymap.conf')}
@@ -155,12 +186,17 @@ public sealed class HudOwnedJob {
           'leader = f10','map leader a | b = next_workspace')|Add-Content (Join-Path $appDir 'keymap.conf')
     }
     $savedEnv=@{}
-    foreach($name in 'AGWINTERM_APP_ID','AGWINTERM_PIPE','AGWINTERM_SESSION_ID','AGWINTERM_PANE_ID','AGWINTERM_DUMP','AGWINTERM_PERF','AGWINTERM_IMGLOG'){
+    foreach($name in 'AGWINTERM_APP_ID','AGWINTERM_PIPE','AGWINTERM_SESSION_ID','AGWINTERM_PANE_ID','AGWINTERM_DUMP','AGWINTERM_PERF','AGWINTERM_IMGLOG','AGWINTERM_LATENCY_TRACE','AGWINTERM_GHOSTTY_COUNTERS','AGWINTERM_SINGLE_OWNER','AGWINTERM_LATENCY_INPUT'){
         $savedEnv[$name]=[Environment]::GetEnvironmentVariable($name)
         [Environment]::SetEnvironmentVariable($name,$null)
     }
     $env:AGWINTERM_APP_ID=$appId+'-fallback'
     if($Suite-eq 'TerminalPerformance'){$env:AGWINTERM_PERF=Join-Path $artifact 'frames.log'}
+    if($Suite-eq 'TerminalLatency' -and $LatencyWorkload -ne 'fixed-bulk' -and $LatencyTraceMode -ne 'full'){throw 'T0-T8 echo latency requires full tracing; use fixed-bulk for trace overhead.'}
+    if($Suite-eq 'TerminalLatency' -and $LatencyTraceMode -eq 'full'){$env:AGWINTERM_LATENCY_TRACE=Join-Path $artifact 'latency';[void](New-Item -ItemType Directory $env:AGWINTERM_LATENCY_TRACE)}
+    if($Suite-eq 'TerminalLatency'){$env:AGWINTERM_LATENCY_INPUT=$LatencyInputPattern}
+    if($Suite-eq 'TerminalLatency' -and $LatencyTraceMode -ne 'off'){$env:AGWINTERM_GHOSTTY_COUNTERS='1'}
+    if($SingleOwner -or ($Suite-eq 'TerminalLatency' -and $LatencyPresentation -eq 'single-owner')){$env:AGWINTERM_SINGLE_OWNER='1'}
     $job=[HudOwnedJob]::new()
     $job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe --no-restore",$root)
     function Rpc([string]$verb,$params=@{},[string]$target='active',[switch]$AllowError,[string]$Window='active',[switch]$NoTarget){
@@ -235,6 +271,11 @@ public sealed class HudOwnedJob {
     elseif($Suite-eq 'Clipboard') { . "$PSScriptRoot/clipboard-ui-cases.ps1" }
     elseif($Suite-eq 'TerminalRendering') { . "$PSScriptRoot/terminal-rendering-ui-cases.ps1" }
     elseif($Suite-eq 'TerminalPerformance') { . "$PSScriptRoot/terminal-performance-ui-cases.ps1" }
+    elseif($Suite-eq 'TerminalLatency') {
+        if($LatencyWorkload -eq 'fixed-bulk'){ . "$PSScriptRoot/session-bulk-ui-cases.ps1" }
+        else { . "$PSScriptRoot/terminal-latency-ui-cases.ps1" }
+    }
+    elseif($Suite-eq 'Ghostty') { . "$PSScriptRoot/ghostty-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {
     $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
@@ -336,6 +377,13 @@ public sealed class HudOwnedJob {
 finally {
     if($job){
         try{
+            if ($Suite -eq 'TerminalLatency' -and $LatencyHost -eq 'server' -and $echoChild -and $pipe) {
+                $hostPipe=if($LatencyPresentation -eq 'single-owner') {
+                    if($LatencyVariant -eq 'before'){$pipe+'-presentation-v1'}else{$pipe+'-owner-v1'}
+                }else{$pipe}
+                & $echoChild --shutdown-host $hostPipe
+                if ($LASTEXITCODE -ne 0) { throw 'Isolated latency host cleanup failed' }
+            }
             if($hwnd){[void][HudOwnedJob]::PostMessageW($hwnd,0x10,[IntPtr]::Zero,[IntPtr]::Zero)}
             $job.Finish();'Cleanup: owned job has zero live processes; no name-based cleanup.'
             if($verifyQuickShutdown){

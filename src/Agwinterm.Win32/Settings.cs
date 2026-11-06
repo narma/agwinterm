@@ -115,11 +115,8 @@ internal partial class Program
         Tog(0, "confirm-close-session", "Confirm before closing");
         // pty-host opt-in (#105): server mode keeps shells alive across UI restarts/updates/crashes.
         Drop(0, "session-host", "Session host (shells survive restarts)",
-            new[] { "In-process (default)", "Pty-host server (experimental)", "Pty-host server: Rust (experimental)" },
-            new[] { "in-process", "server", "server-rust" });
-        // Rust core opt-in: new sessions parse/render state in native/agwinterm-core.
-        Drop(0, "emulator-core", "Terminal core (new sessions)",
-            new[] { "Managed (default)", "Rust (experimental)" }, new[] { "managed", "rust" });
+            new[] { "In-process", "Session host (survives UI restarts)" },
+            new[] { "in-process", "server" });
         Sec(0, "Shell");
         Tog(0, "shell-integration", "Shell integration (live cwd)");
         // fresh-env: rebuild each new tab's env from the registry (new installs visible, no restart).
@@ -670,6 +667,12 @@ internal partial class Program
     /// <summary>Panel key handling; returns true if the key was consumed.</summary>
     private bool SettingsKey(int vk)
     {
+        if (vk == 'C' && KeyDown(VK_CONTROL) && !KeyDown(VK_MENU) && _toastText is { } message)
+        {
+            ClipboardSet(message);
+            _uia.Announce("Settings message copied");
+            return true;
+        }
         if (_ddRow is not null)
         {
             switch (vk)

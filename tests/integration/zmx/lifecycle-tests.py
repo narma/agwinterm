@@ -112,14 +112,14 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
         duplicate_external = reply(start(borrowed))
         assert external["identity"] == identity and duplicate_external["guard"] == external["guard"]
         refused({"verb": "terminate", "ledger": request["ledger"], "operation": external_operation, "identity": identity})
-        refused({"verb": "restart", "ledger": request["ledger"], "operation": external_operation,
+        refused({"verb": "restart", "promptToken": None, "ledger": request["ledger"], "operation": external_operation,
                  "newOperation": str(uuid.uuid4()), "identity": identity, "source": "shell", "command": None})
         print("PASS borrowed binding shares a lease on retries and never grants termination/restart authority", flush=True)
         listed = reply(start({"verb": "inventory", "executable": sys.argv[1], "socketDirectory": str(root / "s")}))
         assert len(listed["sessions"]) == 1 and listed["sessions"][0]["identity"] == identity
         attachment = {"verb": "attach", "executable": sys.argv[1], "socketDirectory": str(root / "s"),
                       "name": original["name"], "identity": identity, "nonce": "test-nonce"}
-        refused({"verb": "restart", "ledger": request["ledger"], "operation": operation,
+        refused({"verb": "restart", "promptToken": None, "ledger": request["ledger"], "operation": operation,
                  "newOperation": str(uuid.uuid4()), "identity": identity, "source": "shell", "command": None})
         screen_request = {"verb": "screen", "executable": sys.argv[1], "socketDirectory": str(root / "s"),
                           "name": original["name"], "identity": identity, "all": False}
@@ -183,7 +183,7 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
         print("PASS inventory is read-only; stale/malformed/missing attachment refuses; lost termination reply reconciles", flush=True)
         print("PASS termination releases lease; repeated create never resurrects", flush=True)
         for source in ("shell", "agent", "pin", "captured"):
-            restart_request = {"verb": "restart", "ledger": request["ledger"], "operation": operation,
+            restart_request = {"verb": "restart", "promptToken": None, "ledger": request["ledger"], "operation": operation,
                                "newOperation": str(uuid.uuid4()), "identity": identity, "source": source,
                                "command": None if source == "shell" else "[[ -n $BASH_VERSION ]] && shopt -q extglob && " + shlex.quote(sys.executable) + " -c " + shlex.quote(
                                    "from pathlib import Path; import time; Path('" + source + "-once').open('x').write('1'); time.sleep(300)")}
@@ -202,7 +202,7 @@ with tempfile.TemporaryDirectory(prefix="aw-life-") as directory:
                              "operation": restart_request["newOperation"], "identity": restarted["identity"]}))
             assert reply(start(restart_request))["state"] == "terminated"
         print("PASS live restart refuses; four explicit sources each run once with new identity; retries never relaunch", flush=True)
-        chained_request = {"verb": "restart", "ledger": request["ledger"],
+        chained_request = {"verb": "restart", "promptToken": None, "ledger": request["ledger"],
                            "operation": restart_request["newOperation"], "newOperation": str(uuid.uuid4()),
                            "identity": restarted["identity"], "source": "shell", "command": None}
         chained = reply(start(chained_request))

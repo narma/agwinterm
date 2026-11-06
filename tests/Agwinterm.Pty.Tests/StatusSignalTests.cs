@@ -10,7 +10,7 @@ public class StatusSignalTests
     [InlineData(true)]
     public void BothBackendsPublishImmutableTransitionsAndRetainLegacyNotifications(bool hosted)
     {
-        using var backend = new ServerSessionBackend("test-status-" + Guid.NewGuid().ToString("N"), null);
+        using var backend = new ServerSessionBackend("test-status-" + Guid.NewGuid().ToString("N"), null, singleOwner: false);
         using ISession session = hosted ? new ServerSession(backend, "P", 80, 24) : new TerminalSession(80, 24);
         var values = new List<(StatusSnapshot Value, bool Changed)>();
         using var subscription = session.StatusSignal!.Subscribe((value, changed) => values.Add((value, changed)));

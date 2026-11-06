@@ -4,7 +4,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <!-- Rust-parity oracle passes FfiCell* across the C ABI (RustParityTests). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
@@ -23,5 +22,8 @@
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true"
                       Private="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../TerminalReference/*.cs" />
   </ItemGroup>
 </Project>

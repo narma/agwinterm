@@ -54,7 +54,7 @@ public static class WslLiveProfiles
         if (!config.Enabled) return null;
         if (!WslIntegration.IsWsl(profile.Command)) return "ZMX requires a WSL profile";
         if (surface != WslLiveSurface.Ordinary) return "ZMX requires an ordinary session pane";
-        if (host != "server-rust") return "ZMX requires the Rust PTY host";
+        if (host is not ("server" or "server-rust")) return "ZMX requires a session host";
         if (!WslLiveValidation.LinuxPath(config.Executable)) return "ZMX executable must be an absolute Linux path";
         return null;
     }

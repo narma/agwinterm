@@ -16,6 +16,80 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ghostty-contract:
+    name: Ghostty Windows native contract
+    runs-on: windows-latest
+    env:
+      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/artifacts/ghostty-zig-global
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      # No restore prefix: a compiled bundle is usable only for these exact inputs.
+      # Tests run below even on an exact hit; only native compilation is skipped.
+      - name: Cache native Ghostty bundle
+        id: ghostty-native
+        uses: actions/cache@v5
+        with:
+          path: |
+            artifacts/ghostty-build/bin
+            artifacts/ghostty-build/search-tests/bin
+            artifacts/ghostty-build/provenance.json
+            artifacts/ghostty-build/licenses
+          key: ghostty-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json', 'native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**', '.github/workflows/ci.yml') }}
+      - name: Cache pinned build toolchain
+        if: steps.ghostty-native.outputs.cache-hit != 'true'
+        uses: actions/cache@v5
+        with:
+          path: artifacts/toolchains
+          key: ghostty-zig-windows-${{ hashFiles('native/ghostty-vt/pin.json') }}
+      # Clone before restoring the local Zig cache into that directory: git clone
+      # refuses a destination that contains only restored cache files.
+      - name: Prepare pinned Ghostty source
+        if: steps.ghostty-native.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./native/ghostty-vt/build.ps1 -PrepareOnly
+      - name: Cache Ghostty packages and compiler outputs
+        if: steps.ghostty-native.outputs.cache-hit != 'true'
+        uses: actions/cache@v5
+        with:
+          path: |
+            artifacts/ghostty-source/.zig-cache
+            artifacts/ghostty-source/zig-pkg
+            artifacts/ghostty-zig-global
+          key: ghostty-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json') }}-${{ hashFiles('native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**') }}
+          restore-keys: |
+            ghostty-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json') }}-
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build pinned Ghostty and adapter
+        if: steps.ghostty-native.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./native/ghostty-vt/build.ps1 -BuildSearchTests
+      - name: Execute upstream Debug search tests
+        shell: pwsh
+        run: |
+          $timer = [Diagnostics.Stopwatch]::StartNew()
+          & ./artifacts/ghostty-build/search-tests/bin/ghostty-vt-c-test.exe
+          if ($LASTEXITCODE -ne 0) { throw "Ghostty search tests failed: $LASTEXITCODE" }
+          Write-Host ("Ghostty Debug search test execution: {0:N2}s" -f $timer.Elapsed.TotalSeconds)
+      - name: Exercise the native contract
+        shell: pwsh
+        run: dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin
+      - name: Upload build provenance
+        uses: actions/upload-artifact@v6
+        with:
+          name: ghostty-windows-provenance
+          path: |
+            artifacts/ghostty-build/provenance.json
+            artifacts/ghostty-build/licenses
+
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
 
@@ -44,15 +118,29 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: native -> target
-      - name: Build portable with both Linux architectures
+      - name: Cache Ghostty release package
+        # Exact release package: includes notices and checks its own input/file hashes.
+        # This cache is independent of the Debug search executable used by the contract job.
+        uses: actions/cache@v5
+        with:
+          path: artifacts/ghostty-release-native
+          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
+      - name: Publish portable with both Linux architectures
         shell: pwsh
         run: ./installer/build-portable.ps1
       - name: Verify the standalone portable payload
         shell: pwsh
         run: ./tests/integration/portable-tools.ps1
+      - name: Share the verified Ghostty runtime with Windows tests
+        uses: actions/upload-artifact@v6
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
+          if-no-files-found: error
 
   windows-tests:
     name: windows (${{ matrix.suite }})
+    needs: portable
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -71,6 +159,10 @@ jobs:
             cache: ui
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -123,32 +215,8 @@ jobs:
         if: matrix.suite == 'core'
         run: dotnet build tests/WebViewHost.Gate/WebViewHost.Gate.csproj -c Release
 
-      - name: Check agwinterm-core ABI agreement
-        if: matrix.suite == 'core'
-        # The C ABI is declared three times (Rust const, C# RequiredAbi, lite kRequiredAbi) and a
-        # drift is otherwise only caught at load, by whoever runs the mismatched pair. Cheap to
-        # check, and it becomes the cross-repo gate once agliteterm ships from its own repository.
-        shell: pwsh
-        run: ./tools/check-abi.ps1
 
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: native -> target
-          # New groups reuse the already warm dependency caches.
-          key: ${{ matrix.cache }}
-
-      - name: Build Rust core (arms the parity oracle)
-        # RustParityTests skip silently when the crate dll is absent; building it here makes
-        # the C#↔Rust differential oracles (wcwidth, screen, parser, emulator, images) a
-        # hard merge gate.
-        run: cargo build --locked --release --manifest-path native/Cargo.toml
-
-      - name: Host resize transaction regressions (no child processes)
-        if: matrix.suite == 'core'
-        run: cargo test --locked --manifest-path native/agwinterm-ptyhost/Cargo.toml resize::tests
-
-      - name: Restored history reflow (managed, Rust, live Rust host)
+      - name: Restored Ghostty history and remote transport adoption
         if: matrix.suite == 'host'
         shell: pwsh
         timeout-minutes: 10
@@ -156,11 +224,24 @@ jobs:
           . ./tests/ui/lib.ps1
           $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
           if (-not $exe) { throw 'Built app not found' }
-          Copy-Item native/target/release/agwinterm_core.dll,native/target/release/agwinterm-ptyhost.exe (Split-Path $exe) -Force
-          foreach ($case in @('buffer-reflow', 'buffer-reflow-rust', 'buffer-reflow-rust-host')) {
+          foreach ($case in @('buffer-reflow-ghostty', 'buffer-reflow-ghostty-host', 'ghostty-remote-host-adoption')) {
             ./tests/integration/restore-roundtrip.ps1 -Exe $exe -Strict -Only $case
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+
+      - name: Hosted Ghostty presentation and reconnect contracts
+        if: matrix.suite == 'host'
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          . ./tests/ui/lib.ps1
+          $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
+          if (-not $exe) { throw 'Built app not found' }
+          $harness = Join-Path $pwd 'artifacts/host-owner-ci-contracts'
+          dotnet publish tests/Agwinterm.GhosttyServerHarness -c Release --no-self-contained -o $harness
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & (Join-Path $harness 'Agwinterm.GhosttyServerHarness.exe') (Split-Path $exe)
+          exit $LASTEXITCODE
 
       # The control API is a cross-product contract now: agliteterm ships from its own repository
       # promising to speak this dialect, and its CI runs THIS spec against its own client. Running
@@ -398,11 +479,16 @@ jobs:
 
   net11-publish:
     name: .NET 11 RC3 publish
+    needs: portable
     runs-on: windows-latest
     env:
       AgwintermNet11: 'true'
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
       - name: Select .NET 11 RC3
         shell: pwsh
         run: |

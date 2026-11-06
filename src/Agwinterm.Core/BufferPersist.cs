@@ -14,6 +14,20 @@ public static class BufferPersist
 {
     public const uint Version = 1;
 
+    /// <summary>Import legacy plain rows as inert data, without a parser or live terminal.</summary>
+    public static byte[] FromPlainText(IEnumerable<string> lines,int columns)
+    {
+        var buffer=new PBuffer { Version=Version,Cols=(uint)Math.Clamp(columns,1,32768) };
+        foreach(string line in lines.TakeLast(500))
+        {
+            var row=new PRow();
+            foreach(var rune in line.EnumerateRunes().Take(32768))
+                row.Cells.Add(new PCell { Rune=System.Text.Rune.IsControl(rune) ? 32 : rune.Value,Width=1 });
+            buffer.Rows.Add(row);
+        }
+        return buffer.ToByteArray();
+    }
+
     private static uint Pack(Color c) => ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
     private static Color Unpack(uint v) => new((byte)(v >> 16), (byte)(v >> 8), (byte)v);
 
@@ -32,15 +46,18 @@ public static class BufferPersist
         BgRgb = Pack(c.BgSpec.Rgb),
         HyperlinkUri = c.Hyperlink?.Uri ?? "",
         HyperlinkParameters = c.Hyperlink?.Parameters ?? "",
+        Grapheme = c.Grapheme ?? "",
     };
 
-    private static Cell FromP(PCell p) => new(
+    internal static Cell FromP(PCell p) => new(
         p.Rune, Unpack(p.Fg), Unpack(p.Bg), (CellAttributes)p.Attrs, (byte)p.Width,
         new ColorSpec((ColorSpecKind)p.FgKind, (byte)p.FgIndex, Unpack(p.FgRgb)),
         new ColorSpec((ColorSpecKind)p.BgKind, (byte)p.BgIndex, Unpack(p.BgRgb)),
-        p.HyperlinkUri.Length == 0 ? null : new TerminalHyperlink(p.HyperlinkUri, p.HyperlinkParameters));
+        p.HyperlinkUri.Length == 0 ? null : new TerminalHyperlink(p.HyperlinkUri, p.HyperlinkParameters),
+        p.Grapheme.Length == 0 ? null : p.Grapheme);
 
-    private static bool RowNeeded(IReadOnlyList<PCell> _) => true;
+    private static bool IsEmpty(Cell cell) => cell.Rune is 0 or 32 && cell.Grapheme is null && cell.Hyperlink is null
+        && cell.Attributes == CellAttributes.None && cell.FgSpec.Kind == ColorSpecKind.Default && cell.BgSpec.Kind == ColorSpecKind.Default;
 
     /// <summary>Capture buffer rows as an attributed blob. <paramref name="includeVisible"/> controls
     /// whether the live grid is appended after the scrollback (true for full save/restore; false for
@@ -48,8 +65,8 @@ public static class BufferPersist
     /// history should be seeded). Trailing empty cells per row are dropped; it round-trips exactly.</summary>
     public static byte[] Serialize(ITerminalCore core, int maxRows = 500, bool includeVisible = true)
     {
-        if (core is RustTerminalCore rust) return rust.SaveBuffer(maxRows, includeVisible);
-        var emu = (TerminalEmulator)core;
+        var emu = core;
+        maxRows = Math.Clamp(maxRows, 0, 100000);
         var buf = new PBuffer { Version = Version, Cols = (uint)emu.Screen.Cols };
         int cols = emu.Screen.Cols;
 
@@ -57,16 +74,17 @@ public static class BufferPersist
         void AddRow(int width, int wrapLength, Func<int, Cell> cellAt)
         {
             int len = width;
-            while (len > 0 && cellAt(len - 1) == Cell.Empty) len--;   // trim trailing empties
+            while (len > 0 && IsEmpty(cellAt(len - 1))) len--;   // native empty cells use rune 0
             var pr = new PRow { SoftWrapped = wrapLength >= 0, WrapLength = (uint)Math.Max(0, wrapLength) };
             for (int c = 0; c < len; c++) pr.Cells.Add(ToP(cellAt(c)));
             rows.Add(pr);
         }
 
-        for (int h = 0; h < emu.HistoryCount; h++)
+        for (int h = Math.Max(0, emu.HistoryCount - maxRows); h < emu.HistoryCount; h++)
         {
             int hi = h;
-            AddRow(emu.GetHistoryRowLength(hi), emu.GetHistoryWrapLength(hi), c => emu.GetHistoryCell(hi, c));
+            AddRow(emu.GetHistoryRowLength(hi),
+                emu.GetRowWrapLength(hi), c => emu.GetHistoryCell(hi, c));
         }
         if (includeVisible)
             for (int r = 0; r < emu.Screen.Rows; r++)
@@ -85,6 +103,7 @@ public static class BufferPersist
     public static bool TryParse(byte[] blob, out PBuffer buffer)
     {
         buffer = new PBuffer();
+        if (blob.Length > 64 * 1024 * 1024) return false;
         try
         {
             buffer = PBuffer.Parser.ParseFrom(blob);
@@ -97,15 +116,6 @@ public static class BufferPersist
     /// in older blobs means a hard line boundary; guessing would merge unrelated output.</summary>
     public static void Restore(ITerminalCore core, PBuffer buffer)
     {
-        if (core is RustTerminalCore rust) { rust.RestoreBuffer(buffer.ToByteArray()); return; }
-        var emu = (TerminalEmulator)core;
-        var rows = new List<Cell[]>(buffer.Rows.Count);
-        foreach (var pr in buffer.Rows)
-        {
-            var row = new Cell[pr.Cells.Count];
-            for (int c = 0; c < pr.Cells.Count; c++) row[c] = FromP(pr.Cells[c]);
-            rows.Add(row);
-        }
-        emu.SeedScrollbackAttributed(rows, buffer.Rows.Select(pr => pr.SoftWrapped ? checked((int)Math.Min(pr.WrapLength, 32768u)) : -1).ToArray());
+        core.RestoreHistory(buffer);
     }
 }

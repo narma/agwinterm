@@ -1,4 +1,6 @@
-param([string]$Exe, [string]$Ctl, [Parameter(Mandatory)][string]$LanguageSource)
+param([string]$Exe, [string]$Ctl, [Parameter(Mandatory)][string]$LanguageSource,
+    [ValidateSet('Ghostty')][string]$TerminalCore,
+    [ValidateSet('in-process','server')][string]$SessionHost='in-process')
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WebImeAcceptance -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 if ($env:AGWINTERM_HYPERV_UI -ne '1' -or -not (& "$PSScriptRoot/hyperv-ui-context.ps1")) { throw 'IME setup requires a disposable Hyper-V guest' }
@@ -62,6 +64,24 @@ public static class ImeKeys {
  [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint id,ref GuiInfo info);
  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int size,bool repaint);
  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+ [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
+ [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect r);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+ [StructLayout(LayoutKind.Sequential)] struct Point { public int X,Y; }
+ [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h,ref Point p);
+ public static int[] CaretPosition(IntPtr h) {
+   var info=new GuiInfo{Size=Marshal.SizeOf<GuiInfo>()};
+   if(!GetGUIThreadInfo(GetWindowThreadProcessId(h,out _),ref info)||info.Caret==IntPtr.Zero)throw new Exception("No terminal system caret");
+   var point=new Point{X=info.Left,Y=info.Top};if(!ClientToScreen(info.Caret,ref point))throw new Exception("Caret mapping failed");
+   return new[]{point.X,point.Y};
+ }
+ public static string[] CandidateWindows() {
+   var windows=new System.Collections.Generic.List<string>();
+   EnumWindows((h,p)=>{var c=new StringBuilder(256);GetClassName(h,c,256);string name=c.ToString();
+     if(IsWindowVisible(h) && (name.Contains("IME",StringComparison.OrdinalIgnoreCase)||name.Contains("Candidate",StringComparison.OrdinalIgnoreCase)) && GetWindowRect(h,out var r))
+       windows.Add(name+":"+r.Left+","+r.Top+","+r.Right+","+r.Bottom);
+     return true;},IntPtr.Zero);return windows.ToArray();
+ }
  public static IntPtr Find(int pid) { IntPtr found=IntPtr.Zero; EnumWindows((h,p)=>{GetWindowThreadProcessId(h,out uint id);var s=new StringBuilder(256);GetClassName(h,s,256);var title=new StringBuilder(256);GetWindowText(h,title,256);if(id==pid && s.ToString()=="AgwintermWin32" && title.ToString()!="agwinterm quick terminal"){found=h;return false;}return true;},IntPtr.Zero);return found; }
  public static void Focus(IntPtr h) { SetForegroundWindow(h);for(int i=0;i<50 && GetForegroundWindow()!=h;i++)System.Threading.Thread.Sleep(20);if(GetForegroundWindow()!=h)throw new Exception("Owned IME window is not foreground"); }
  public static void Key(byte k) { Send(k,false);System.Threading.Thread.Sleep(40);Send(k,true);System.Threading.Thread.Sleep(80); }
@@ -86,6 +106,10 @@ public static class ImeKeys {
     $identity='agwinterm-ime-'+[guid]::NewGuid().ToString('N')
     $data=Join-Path $env:LOCALAPPDATA $identity
     $null=New-Item -ItemType Directory -Path $data
+    "session-host = $SessionHost" | Set-Content (Join-Path $data 'agwinterm.conf')
+    if ($TerminalCore) {
+        "emulator-core = $($TerminalCore.ToLowerInvariant())" | Add-Content (Join-Path $data 'agwinterm.conf')
+    }
     @{default='Test';profiles=@(@{name='Test';command='cmd.exe';args=@('/d','/q','/k','echo AW_IME_READY');cwd=($env:SystemDrive+'\')})} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $data 'profiles.json')
     'map f10 = action_palette' | Set-Content (Join-Path $data 'keymap.conf')
     $source=Join-Path $data 'ime.html'
@@ -240,6 +264,7 @@ public static class ImeKeys {
     $null=Call @('session','overlay','close','--pane','left','--target',$owner)
     Require ((Call @('session','text','--target',$paneIds[0])).result -ceq $leftBefore) 'pane IME input does not reach its terminal'
     Require ((Call @('session','text','--target',$paneIds[1])).result -ceq $rightBefore) 'pane IME input does not reach the other pane'
+    if ($TerminalCore) { . "$PSScriptRoot/ghostty-ime-ui-cases.ps1" }
     $report.outcome='PASS'
 } catch { $report.error=$_.ToString();throw }
 finally {

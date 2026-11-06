@@ -1,6 +1,6 @@
 param([string]$Distro='Ubuntu', [Parameter(Mandatory)][string]$LinuxUser, [Parameter(Mandatory)][string]$Destination,
     [Parameter(Mandatory)][string]$AgentSocket, [Parameter(Mandatory)][string]$OriginSocket,
-    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge, [bool]$PassiveOnly=$false)
+    [Parameter(Mandatory)][string]$Bridge, [string]$TerminalFixture, [string]$FaultBridge, [bool]$PassiveOnly=$false, [switch]$UpgradeToGhostty)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslAgtermRemote -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -77,6 +77,7 @@ function Await-Presentation([scriptblock]$Check) {
 try {
     $null=New-Item -ItemType Directory -Path $state
     @('session-host = server-rust','restore-commands = true','restore-buffer = true') | Set-Content (Join-Path $state 'agwinterm.conf')
+    if ($UpgradeToGhostty) { 'emulator-core = rust' | Add-Content (Join-Path $state 'agwinterm.conf') }
     Start-Ui
     $window=[string]((Ctl @('window','list')).windows | Where-Object active)[0].id
     $remote=@('--distribution',$Distro,'--user',$LinuxUser,'--host',$Destination,'--agent-socket',$AgentSocket,'--origin-socket',$OriginSocket)
@@ -370,6 +371,10 @@ public static class RemoteAskProbe {
         Write-Host "PASS borrowed import/input/read $pane role=$($live.role)"
     }
     $ui.Kill(); $ui.WaitForExit()
+    if ($UpgradeToGhostty) {
+        $conf=Join-Path $state 'agwinterm.conf'
+        @(Get-Content $conf | Where-Object { $_ -notmatch '^emulator-core\s*=' }) | Set-Content $conf
+    }
     foreach ($file in Get-ChildItem (Join-Path $state 'windows') -Filter '*.json') {
         $checkpoint=Get-Content $file.FullName -Raw | ConvertFrom-Json -Depth 100
         foreach ($saved in $checkpoint.Workspaces.Sessions.Panes | Where-Object { $_.LiveBinding.Provider -eq 'agterm-ssh' }) {
@@ -381,21 +386,22 @@ public static class RemoteAskProbe {
     Start-Ui
     foreach ($item in $import.panes) {
         $live=Await-Pane $item.paneId
-        if ($live.recovery -ne 'host-adopted') { throw 'UI restart did not adopt the exact Rust transport' }
+        if ($live.recovery -ne 'host-adopted') { throw 'UI restart did not adopt the exact hosted transport' }
         if ((Ctl @('session','text','--target',$item.paneId)) -like '*SHOULD-NOT-*') { throw 'Remote restore injected saved commands/buffer' }
     }
     Write-Host 'PASS exact-ticket UI restart'
-    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
-    if ($hosts.Count -ne 1) { throw 'Expected exactly one test-owned Rust host' }
+    if ((Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Expected Ghostty default after remote restore' }
+    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+    if ($hosts.Count -ne 1) { throw 'Expected exactly one test-owned PTY host' }
     Stop-Process -Id $hosts[0].ProcessId -Force
     Start-Sleep -Seconds 3
     foreach ($item in $import.panes) {
         $live=Await-Pane $item.paneId
-        if ($live.recovery -ne 'remote-reattached' -or $live.role -ne 'follower') { throw 'Rust-host recovery must reattach as follower' }
+        if ($live.recovery -ne 'remote-reattached' -or $live.role -ne 'follower') { throw 'PTY-host recovery must reattach as follower' }
     }
-    Write-Host 'PASS Rust-host loss reconnects the same workloads as follower'
+    Write-Host 'PASS PTY-host loss reconnects the same workloads as follower'
     for ($outage=0;$outage -lt 6;$outage++) {
-    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
+    $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
     $transports=@(Get-CimInstance Win32_Process -Filter "Name = 'wsl.exe'" | Where-Object { $_.ParentProcessId -eq $hosts[0].ProcessId -and $_.CommandLine.Contains($Bridge) })
     if (-not $transports.Count) { throw 'Test-owned SSH transport was not found' }
     Stop-Process -Id $transports[0].ProcessId -Force
@@ -507,7 +513,7 @@ public static class RemoteAskProbe {
     if (-not ($after.Sessions | Where-Object { $_.Session.Id -eq $candidate.Session.Id })) { throw 'Absent-origin Recent mutated real origin' }
     Write-Host 'PASS absent-origin Recent stays unavailable and preserves original work'
     if ($TerminalFixture) {
-        & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture (Join-Path (Split-Path $exe) 'agwinterm-ptyhost.exe')
+        & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture $exe
         if ($LASTEXITCODE -ne 0) { throw 'Remote terminal continuity harness failed' }
     }
 } finally {

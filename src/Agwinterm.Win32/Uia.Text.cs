@@ -16,6 +16,7 @@ partial class Uia
     internal sealed class TextSnapshot
     {
         public required string[] Lines;
+        public Agwinterm.Core.TerminalTextLine[]? CellLines;
         public required int[] LineStart;      // LineStart[i] = char offset of Lines[i]; LineStart[n] = total+1
         public int TotalLength;
         public int CaretOffset;
@@ -23,6 +24,14 @@ partial class Uia
         public double ScreenX, ScreenY, CellW, CellH;   // top-left of the on-screen grid (screen px) + cell size
 
         public string Text => string.Join('\n', Lines);
+        private int[]? _characterOffsets;
+        public int[] CharacterOffsets => _characterOffsets ??=
+            [.. System.Globalization.StringInfo.ParseCombiningCharacters(Text), TotalLength];
+        public int CharacterIndex(int offset)
+        {
+            int index = Array.BinarySearch(CharacterOffsets, Math.Clamp(offset, 0, TotalLength));
+            return index >= 0 ? index : Math.Max(0, ~index - 1);
+        }
         public (int line, int col) LineColOf(int off)
         {
             off = Math.Clamp(off, 0, TotalLength);
@@ -143,7 +152,8 @@ internal partial class UiaTerminal : ITextProvider
         int row = (int)((point.Y - s.ScreenY) / Math.Max(1, s.CellH));
         int col = (int)((point.X - s.ScreenX) / Math.Max(1, s.CellW));
         int line = Math.Clamp(s.FirstVisibleLine + Math.Max(0, row), 0, s.Lines.Length - 1);
-        int off = s.LineStart[line] + Math.Clamp(col, 0, s.Lines[line].Length);
+        int off = s.LineStart[line] + (s.CellLines is { } maps
+            ? maps[line].OffsetAtColumn(col) : Math.Clamp(col, 0, s.Lines[line].Length));
         return Uia.AsInterface(new UiaTextRange(Owner, off, off), Uia.IID_ITextRangeProvider);
     }
 
@@ -181,8 +191,10 @@ internal partial class UiaTextRange : ITextRangeProvider
         switch (unit)
         {
             case TextUnit.Character:
-                _end = Math.Min(_start + 1, s.TotalLength);
-                if (_end == _start && _start > 0) _start--;
+                int character = s.CharacterIndex(_start);
+                if (character == s.CharacterOffsets.Length - 1 && character > 0) character--;
+                _start = s.CharacterOffsets[character];
+                _end = s.CharacterOffsets[Math.Min(character + 1, s.CharacterOffsets.Length - 1)];
                 break;
             case TextUnit.Word:
                 {
@@ -241,6 +253,12 @@ internal partial class UiaTextRange : ITextRangeProvider
             int cs = ln == l0 ? c0 : 0;
             int ce = ln == l1 ? c1 : s.Lines[ln].Length;
             if (ce < cs) ce = cs;
+            if (s.CellLines is { } maps)
+            {
+                bool empty = ce == cs;
+                cs = maps[ln].ColumnAtOffset(cs);
+                ce = empty ? cs : maps[ln].ColumnAtOffset(ce, end: true);
+            }
             double x = s.ScreenX + cs * s.CellW;
             double y = s.ScreenY + screenRow * s.CellH;
             double w = Math.Max(ce == cs ? 1 : (ce - cs) * s.CellW, 1);   // caret (degenerate) → 1px sliver
@@ -266,10 +284,10 @@ internal partial class UiaTextRange : ITextRangeProvider
         var s = Owner.Snap();
         if (unit == TextUnit.Character)
         {
-            int target = Math.Clamp(_start + count, 0, s.TotalLength);
-            int moved = target - _start;
-            _start = _end = target;
-            return moved;
+            int index = s.CharacterIndex(_start);
+            int next = (int)Math.Clamp((long)index + count, 0, s.CharacterOffsets.Length - 1);
+            _start = _end = s.CharacterOffsets[next];
+            return next - index;
         }
         // Line (and coarser): step whole lines.
         var (ln, _) = s.LineColOf(_start);
@@ -285,17 +303,22 @@ internal partial class UiaTextRange : ITextRangeProvider
         var s = Owner.Snap();
         int cur = endpoint == TextPatternRangeEndpoint.Start ? _start : _end;
         int target;
-        if (unit == TextUnit.Character) target = Math.Clamp(cur + count, 0, s.TotalLength);
+        int charactersMoved = 0;
+        if (unit == TextUnit.Character)
+        {
+            int index = s.CharacterIndex(cur);
+            int next = (int)Math.Clamp((long)index + count, 0, s.CharacterOffsets.Length - 1);
+            target = s.CharacterOffsets[next]; charactersMoved = next - index;
+        }
         else
         {
             var (ln, _) = s.LineColOf(cur);
             int newLn = Math.Clamp(ln + count, 0, s.Lines.Length - 1);
             target = count >= 0 ? s.LineStart[newLn] + s.Lines[newLn].Length : s.LineStart[newLn];
         }
-        int moved = target - cur;
         if (endpoint == TextPatternRangeEndpoint.Start) { _start = target; if (_end < _start) _end = _start; }
         else { _end = target; if (_start > _end) _start = _end; }
-        return unit == TextUnit.Character ? moved : Math.Sign(count) * Math.Abs(count);
+        return unit == TextUnit.Character ? charactersMoved : Math.Sign(count) * Math.Abs(count);
     }
 
     public void MoveEndpointByRange(TextPatternRangeEndpoint endpoint, ITextRangeProvider targetRange, TextPatternRangeEndpoint targetEndpoint)

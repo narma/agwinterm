@@ -43,7 +43,20 @@ public sealed unsafe class ConPtyApi
     /// <paramref name="dir"/> (default: this process's base directory) unless
     /// <paramref name="bundled"/> is false (<c>conpty = inbox</c>) or it is missing, then the inbox
     /// conhost.</summary>
-    public static ConPtyApi Select(bool bundled, string? dir = null) => _current = Resolve(bundled, dir ?? AppContext.BaseDirectory);
+    public static ConPtyApi Select(bool bundled, string? dir = null) => _current = Resolve(bundled, dir ?? PortableTools.DirectoryPath);
+
+    private static readonly Lazy<ConPtyApi> _requiredBundled = new(() => RequireBundled(PortableTools.DirectoryPath));
+
+    // Ghostty owns reflow. Inbox's resize repaint would apply it a second time.
+    internal static ConPtyApi ForCore(ConPtyApi selected, bool requiresReflow) =>
+        requiresReflow && !selected.Bundled ? _requiredBundled.Value : selected;
+
+    internal static ConPtyApi RequireBundled(string directory)
+    {
+        string? error = TryLoadBundled(directory, out var api);
+        return api ?? throw new InvalidOperationException(
+            "Ghostty requires bundled ConPTY: " + error);
+    }
 
     internal static ConPtyApi Resolve(bool bundled, string dir)
     {

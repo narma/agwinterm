@@ -70,7 +70,7 @@ public class StatusChangedAtTests
     {
         // Status is a UI-process concept the host knows nothing about, so no host is needed here:
         // an unstarted ServerSession never touches the wire.
-        using var backend = new ServerSessionBackend("agwinterm-test-" + Guid.NewGuid().ToString("N")[..8], exePath: null);
+        using var backend = new ServerSessionBackend("agwinterm-test-" + Guid.NewGuid().ToString("N")[..8], exePath: null, singleOwner: false);
         using var session = new ServerSession(backend, "pane-1", 80, 24);
         session.SetStatus(AgentStatus.Blocked);
         session.BackdateStatus(Now - 600);

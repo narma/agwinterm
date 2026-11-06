@@ -49,7 +49,7 @@ internal partial class Program
                 if ((int)wParam == _quickHotkeyId && _quickHotkeyId != 0) QuickOp("toggle", global: true);
                 return IntPtr.Zero;
             }
-            if (msg == WM_DESTROY) { _soloGlyphs.Dispose(); _uia.Dispose(); _uiGone.Cancel(); EndObservation(); return IntPtr.Zero; }
+            if (msg == WM_DESTROY) { _soloBitmaps.Dispose(); _soloGlyphs.Dispose(); _uia.Dispose(); _uiGone.Cancel(); EndObservation(); return IntPtr.Zero; }
         }
         switch (msg)
         {
@@ -178,11 +178,25 @@ internal partial class Program
                 EndPaint(hwnd, ref ps);
                 return IntPtr.Zero;
 
+            case WM_IME_STARTCOMPOSITION:
+                _imeComposing = !_chromeFocus;
+                _imePosition = null;
+                EnsureCaret();
+                UpdateCaretPos();
+                break; // DefWindowProc still owns composition and committed WM_CHAR.
+            case WM_IME_ENDCOMPOSITION:
+                _imeComposing = false;
+                _imePosition = null;
+                break;
             case WM_SETFOCUS:
                 EnsureCaret();
                 return IntPtr.Zero;
 
             case WM_KILLFOCUS:
+                _imeComposing = false;
+                _imePosition = null;
+                foreach (int key in _ghosttyKeysDown.Keys.ToArray()) GhosttyKeyUp(key);
+                _ghosttyCharsToSkip = 0; _ghosttyHighSurrogate = '\0';
                 if (_isQuickWindow) ReleaseQuickKeys();
                 _altArmed = false;
                 DropCaret();
@@ -193,8 +207,15 @@ internal partial class Program
                     System.Threading.Interlocked.Exchange(ref _redrawPending, 0);
                     // Frame cap (RedrawMinIntervalMs): paint immediately when quiet; under sustained
                     // output defer to a one-shot timer so floods render at ~66fps instead of per chunk.
+                    // During input, newly received hosted frames can paint
+                    // immediately. The frame credit still bounds publication.
                     long since = Environment.TickCount64 - _lastPaintTick;
-                    if (since >= RedrawMinIntervalMs) InvalidateRect(hwnd, IntPtr.Zero, false);
+                    bool urgent=Interlocked.Exchange(ref _urgentRedrawPending,0) != 0;
+                    if (urgent || since >= RedrawMinIntervalMs)
+                    {
+                        if(_redrawTimerArmed) { KillTimer(hwnd,(IntPtr)RedrawTimer); _redrawTimerArmed=false; }
+                        InvalidateRect(hwnd, IntPtr.Zero, false);
+                    }
                     else if (!_redrawTimerArmed)
                     {
                         _redrawTimerArmed = true;
@@ -322,7 +343,9 @@ internal partial class Program
                 else
                 {
                     _altArmed = false;
-                    if (msg == WM_SYSKEYDOWN && ((long)lParam & 0x20000000) != 0 && MenuBarMnemonic((int)wParam)) { _menuAteChar = true; return IntPtr.Zero; }
+                    if (msg == WM_SYSKEYDOWN && ((long)lParam & 0x20000000) != 0
+                        && _ghosttyKeyText is not { AltGr: true }
+                        && MenuBarMnemonic((int)wParam)) { _menuAteChar = true; return IntPtr.Zero; }
                 }
                 if (_dragging && (int)wParam == VK_ESCAPE)
                 {
@@ -352,6 +375,7 @@ internal partial class Program
             case WM_SYSKEYUP:
                 // win32-input-mode: emit the paired key-UP (Alt releases arrive as WM_SYSKEYUP).
                 Win32KeyUp((int)wParam);
+                GhosttyKeyUp((int)wParam);
                 if (msg == WM_SYSKEYUP && (int)wParam == VK_MENU && _altArmed)
                 {
                     // A lone Alt tap: the bar takes the keyboard focus (or gives it back), and the tap
@@ -388,9 +412,14 @@ internal partial class Program
                 }
                 break;
 
+            case WM_SYSCHAR:
+                if (_ghosttyCharsToSkip > 0) { _ghosttyCharsToSkip--; return IntPtr.Zero; }
+                break;
+
             case WM_CHAR:
                 {
                     char c = (char)wParam;
+                    if (_ghosttyCharsToSkip > 0) { _ghosttyCharsToSkip--; return IntPtr.Zero; }
                     if (_kittyAteChar) { _kittyAteChar = false; return IntPtr.Zero; }   // OnKeyDown already CSI-u-encoded this key
                     if (_menuAteChar || _menuLevels.Count > 0 || _menuBarFocus >= 0) { _menuAteChar = false; return IntPtr.Zero; }   // the menu's key-down made this char (MenuBar.cs)
                     if (CloseExitedOverlayOnKey()) return IntPtr.Zero;   // the any-key close of an exited --wait overlay (cover, else the focused pane's — P5)
@@ -410,6 +439,7 @@ internal partial class Program
                         if (c >= 0x20 && c != 0x7f) { _searchQuery += c; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); RequestRedraw(); }
                         return IntPtr.Zero;
                     }
+                    if (_chromeFocus) return IntPtr.Zero;
                     // win32-input-mode encodes the char in the key-down sequence's Uc field, so
                     // sending it again here would duplicate it for this pane. Checked HERE, below the
                     // overlay handlers, not above them: while the action palette / settings dropdown /
@@ -418,6 +448,9 @@ internal partial class Program
                     // ConPTY enables, so any pane running Claude Code did it. The overlay opened,
                     // arrows and Enter worked (those are handled in OnKeyDown, above this path), but
                     // no text ever arrived.
+                    // Ghostty suppresses only characters paired with an encoded key-down.
+                    // Unpaired WM_CHAR (IME/Unicode injection) still needs to reach ConPTY.
+                    if (c >= 0x20 && c != 0x7f && TryGhosttyCharacter(c)) return IntPtr.Zero;
                     if (ActiveSurface()?.S.Emulator.Win32InputMode == true) return IntPtr.Zero;
                     if (c >= 0x20 && c != 0x7f) Send(c.ToString());
                     return IntPtr.Zero;
@@ -628,7 +661,8 @@ internal partial class Program
                     }
                     var em = _session?.Emulator;
                     if (em is not null && em.MouseReportsMotion && InContent(lParam))
-                        SendMousePx(32 + (((long)wParam & MK_LBUTTON) != 0 ? 0 : 3), lParam, true);
+                        SendMousePx(32 + (((long)wParam & MK_LBUTTON) != 0 ? 0 :
+                            ((long)wParam & 0x10) != 0 ? 1 : ((long)wParam & 2) != 0 ? 2 : 3), lParam, true);
                     return IntPtr.Zero;
                 }
 
@@ -682,8 +716,11 @@ internal partial class Program
                 if (!_windowActive) { _altArmed = false; LeaveMenuBar(); }   // an Alt+Tab away is not a lone Alt tap
                 // Focus reporting (DECSET ?1004): on a real focus transition, tell the active pane's
                 // app the terminal gained (ESC[I) or lost (ESC[O) focus, so it can pause/resume.
-                if (_windowActive != wasActive && _session is { } fs && fs.Emulator.FocusReporting)
-                    SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
+                if (_windowActive != wasActive && _session is { } fs)
+                {
+                    if (HasSemanticInput(fs)) SubmitOwnerInput(fs,new TerminalInput.Focus(_windowActive));
+                    else if (fs.Emulator.FocusReporting) SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
+                }
                 if (_config.UnfocusedDim > 0) RequestRedraw();
                 if (_isQuickWindow && !_windowActive && _quickVisible && !_quickPinned
                     && (lParam == IntPtr.Zero || GetAncestor(lParam, 3 /* GA_ROOTOWNER */) != _hwnd)) DismissQuick(blur: true);
@@ -697,10 +734,15 @@ internal partial class Program
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
 
             case WM_CLOSE:
-                CloseWindowQuestion();
-                return DefWindowProcW(hwnd, msg, wParam, lParam);
+                CloseLibraryWindow();
+                return IntPtr.Zero;
 
             case WM_DESTROY:
+                _searchCancellation?.Cancel(); _searchCancellation?.Dispose(); _searchCancellation = null;
+                _searchAnchor?.Dispose(); _searchAnchor = null;
+                _nativeFind?.Dispose(); _nativeFind = null;
+                DisposeGhosttyRendering();
+                _soloBitmaps.Dispose();
                 _soloGlyphs.Dispose();
                 foreach (var pending in _softWebCloses.ToArray()) FinalizeSoftWebClose(pending);
                 foreach (var (_, page) in _webPages) CloseWebPage(page.Owner, page.Pane);
@@ -710,11 +752,10 @@ internal partial class Program
                 EndObservation();
                 RemoveTrayIcon();                 // drop the shell tray balloon icon
                 bool quitting;
-                lock (_windowIndex) quitting = _updateQuitting || _byId.Count <= 1;
-                // Persist this window's tree before tearing down its sessions — written NOW only when
-                // the process is about to go; a window closing beside others enqueues, because a
-                // synchronous write here would stall the UI thread every window shares (#294).
-                SaveState(captureCommands: true, sync: quitting);
+                lock (_windowIndex) quitting = _updateQuitting || (_detachOnClose ?? (_byId.Count <= 1));
+                // Persist before teardown; even with other windows open, an
+                // owner-backed history export must finish before its session closes.
+                if (!_closeSaveComplete) SaveState(captureCommands: true, sync: quitting);
                 // App-quit (last window, or an update-quit closing all of them) DETACHES panes —
                 // server-hosted sessions keep running and the next start adopts them (#105 2c).
                 // An explicit window close (others remain) still disposes = kills, like a pane
@@ -744,7 +785,7 @@ internal partial class Program
                     // (this was the last open window) -> keep IsOpen=true so it reopens next launch.
                     // Update-quit closes every window in sequence — those must ALL reopen after the
                     // relaunch, so it never marks any of them closed.
-                    if (meta is not null && !lastWindow && !_updateQuitting) meta.IsOpen = false;
+                    if (meta is not null && !quitting) meta.IsOpen = false;
                     if (ReferenceEquals(Frontmost, this))
                     {
                         var nf = _byId.Values.FirstOrDefault();

@@ -176,11 +176,11 @@ try {
 finally {
     if($process -and -not $process.HasExited){$process.Kill($true);$process.WaitForExit()}
     if($identity){
-        # Rust hosts deliberately survive a normal window close. End only the
+        # Session hosts deliberately survive a normal window close. End only the
         # private fixture host after testing restoration, so the VM runner's
         # process-tree wait can finish without changing application semantics.
-        $pipePattern='--pipe\s+"?'+[regex]::Escape($identity+'-rust')+'"?(\s|$)'
-        $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object CommandLine -match $pipePattern)
+        $pipePattern='--pipe\s+"?'+[regex]::Escape($identity+'-owner-v1')+'"?(\s|$)'
+        $hosts=@(Get-CimInstance Win32_Process -Filter "Name = 'Agwinterm.Win32.exe'" | Where-Object CommandLine -match $pipePattern)
         foreach($hostProcess in $hosts){
             $owned=Get-Process -Id $hostProcess.ProcessId -ErrorAction SilentlyContinue
             if($owned){$owned.Kill($true);$null=$owned.WaitForExit(10000)}

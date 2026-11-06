@@ -4,6 +4,33 @@ namespace Agwinterm.Pty.Tests;
 
 public class SessionBackendTests
 {
+    [Theory]
+    [InlineData("", "ghostty")]
+    [InlineData("emulator-core = ghostty", "ghostty")]
+    [InlineData("emulator-core = rust", "ghostty")]
+    [InlineData("emulator-core = managed", "ghostty")]
+    public void LiveTransport_UsesHostCompatibleWithSelectedCore(string setting, string expectedCore)
+    {
+        var config = Agwinterm.Core.TerminalConfig.Parse("session-host = server-rust\n" + setting);
+        using var live = SessionBackends.ResolveLive(config, "isolated-live", null);
+        Assert.Equal("server", config.ConfiguredSessionHost);
+        Assert.Equal("server", live.Name);
+        Assert.Equal(expectedCore, live.ReplicaCore);
+        Assert.Contains("--pipe \"isolated-live-owner-v1\"", live.SpawnArgs);
+        Assert.Equal("server",
+            SessionBackends.Resolve(config.SessionHost, "isolated-live", null).Name);
+    }
+
+    [Fact]
+    public void SavedLiveBinding_UsesGhosttyHostEvenWhenOrdinaryHostIsInProcess()
+    {
+        var config = new Agwinterm.Core.TerminalConfig { SessionHost = "in-process" };
+        using var live = SessionBackends.ResolveLive(config, "saved-live", null);
+        Assert.Equal("server", live.Name);
+        Assert.Equal("ghostty", live.ReplicaCore);
+        Assert.Equal("in-process", config.SessionHost);
+    }
+
     [Fact]
     public void InProcessBackend_CreatesWorkingSessions()
     {
@@ -28,29 +55,29 @@ public class SessionBackendTests
     }
 
     [Fact]
-    public void Resolve_ServerRust_PicksServerRustBackend()
+    public void Resolve_ServerRust_MigratesToGhosttyHost()
     {
         var b = SessionBackends.Resolve("server-rust", "x", null);
         Assert.IsType<ServerSessionBackend>(b);
-        Assert.Equal("server-rust", b.Name);   // distinct name drives the toast + reap pipe
+        Assert.Equal("server", b.Name);
         // Case-insensitive, like the other values.
-        Assert.Equal("server-rust", SessionBackends.Resolve("SERVER-RUST", "x", null).Name);
+        Assert.Equal("server", SessionBackends.Resolve("SERVER-RUST", "x", null).Name);
     }
 
     [Fact]
     public void Resolve_PassesTheConptyKeyToThePtyHosts()
     {
         // A pty-host picks its ConPTY once, when it starts (#339), and without the flag keeps the inbox one.
-        Assert.Equal("--pipe \"x-rust\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "bundled")).SpawnArgs);
-        Assert.Equal("--pipe \"x-rust\" --conpty inbox", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "inbox")).SpawnArgs);
-        Assert.Equal("--pty-host --pipe \"x\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server", "x", null, "bundled")).SpawnArgs);
+        Assert.Equal("--pty-host --pipe \"x-owner-v1\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "bundled")).SpawnArgs);
+        Assert.Equal("--pty-host --pipe \"x-owner-v1\" --conpty inbox", ((ServerSessionBackend)SessionBackends.Resolve("server-rust", "x", null, "inbox")).SpawnArgs);
+        Assert.Equal("--pty-host --pipe \"x-owner-v1\" --conpty bundled", ((ServerSessionBackend)SessionBackends.Resolve("server", "x", null, "bundled")).SpawnArgs);
     }
 
     [Fact]
     public void ServerBackend_WithNoHostAndNoExe_FailsAtCreate()
     {
         // Failure surfaces at Create — the one place the UI can catch it and fall back in-process.
-        using var backend = new ServerSessionBackend("agwinterm-test-nohost-" + Guid.NewGuid().ToString("N")[..8], exePath: null);
+        using var backend = new ServerSessionBackend("agwinterm-test-nohost-" + Guid.NewGuid().ToString("N")[..8], exePath: null, singleOwner: false);
         Assert.Throws<InvalidOperationException>(() => backend.Create("t3", 80, 24));
     }
 

@@ -1,7 +1,8 @@
 using System.Text.Json;
+using Agwinterm.Core;
 using Agwinterm.Pty;
 
-if (args.Length != 4) throw new ArgumentException("distribution Linux-executable Rust-host-executable terminal-fixture required");
+if (args.Length != 4) throw new ArgumentException("distribution Linux-executable Windows-host-executable terminal-fixture required");
 string id = "aw-live-" + Guid.NewGuid().ToString("N");
 var profile = new ShellProfile { Name = "live-test", Command = "wsl.exe", Cwd = "/tmp",
     Args = ["-d", args[0], "--exec", "/bin/sh", "-c",
@@ -10,7 +11,7 @@ var profile = new ShellProfile { Name = "live-test", Command = "wsl.exe", Cwd = 
 var operations = new WslLiveOperations();
 WslLiveBinding? binding = null;
 ServerSession? first = null, second = null;
-using var backend = new ServerSessionBackend(id, args[2], "--pipe " + id, "server-rust");
+using var backend = (ServerSessionBackend)SessionBackends.Resolve("server", id, args[2], "bundled");
 try
 {
     binding = await operations.CreateAsync(profile, id, "pane", "/tmp", new Dictionary<string, string>(), saved =>
@@ -31,7 +32,7 @@ try
     first = (ServerSession)backend.Create("pane", 80, 24);
     string[] argv = WslLiveOperations.AttachmentArgs(binding, "first");
     await first.StartAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs, verbatimCommandLine: true);
-    if (first.HasExited || string.IsNullOrEmpty(first.CreationTicket)) throw new Exception("Rust transport failed");
+    if (first.HasExited || string.IsNullOrEmpty(first.CreationTicket)) throw new Exception("Ghostty transport failed");
     binding = binding with { TransportTicket = first.CreationTicket };
     var incarnation = binding.Identity;
     int? clientPid = first.ChildProcessId;
@@ -40,7 +41,7 @@ try
     if (second.TryAdopt("wrong-ticket")) throw new Exception("mismatched transport adopted");
     if (!second.TryAdopt(binding.TransportTicket) || second.ChildProcessId != clientPid)
         throw new Exception("matching transport not adopted");
-    Console.WriteLine("PASS exact Rust ticket adopts the same Windows WSL client");
+    Console.WriteLine("PASS exact Ghostty ticket adopts the same Windows WSL client");
     second.Dispose();
     second = null;
     binding = await operations.ReconcileAsync(binding);
@@ -49,7 +50,7 @@ try
     argv = WslLiveOperations.AttachmentArgs(binding, "reattached");
     await second.StartAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs, verbatimCommandLine: true);
     if (second.HasExited) throw new Exception("reattachment failed");
-    Console.WriteLine("PASS fresh Rust transport reattaches the same Linux incarnation " + JsonSerializer.Serialize(incarnation));
+    Console.WriteLine("PASS fresh Ghostty transport reattaches the same Linux incarnation " + JsonSerializer.Serialize(incarnation));
     if (await operations.TerminateAsync(binding) != "terminated") throw new Exception("termination unconfirmed");
     binding = await operations.ReconcileAsync(binding);
     if (binding.Recovery != "missing") throw new Exception("loss not reported");
@@ -84,7 +85,7 @@ try
     Console.WriteLine("PASS durable restart rollback, subsequent explicit restart, and ended lost-reply recovery");
     second.Dispose(); second = null;
     var cycleClock = System.Diagnostics.Stopwatch.StartNew();
-    using (var inventory = PtyHostClient.Connect(id))
+    using (var inventory = PtyHostClient.Connect(id + "-owner-v1"))
     {
         int baselineTransports = inventory.List().Count;
         for (int cycle = 0; cycle < 3; cycle++)
@@ -133,19 +134,19 @@ try
                     + " actual " + actual.RootElement.GetProperty(property.Name).GetRawText()[..Math.Min(500, actual.RootElement.GetProperty(property.Name).GetRawText().Length)]);
         throw;
     }
-    Console.WriteLine("PASS Rust adoption preserves alternate screen, Unicode/wide cells, colors, cursor and input modes");
+    Console.WriteLine("PASS Ghostty adoption preserves alternate screen, Unicode/wide cells, colors, cursor and input modes");
     await operations.TypeAsync(binding, "n");
     await Wait(() => { lock (second.SyncRoot) return !second.Emulator.IsAltScreen && second.Emulator.DumpBuffer().Any(l => l.Contains("NORMAL-RESTORED")); });
-    AssertHistory(second, "Rust adoption");
+    AssertHistory(second, "Ghostty adoption");
     await operations.TypeAsync(binding, "a");
     await Wait(() => { lock (second.SyncRoot) return second.Emulator.IsAltScreen; });
     first = (ServerSession)backend.Create("terminal-follower", 60, 18);
     await Attach(first, binding, "terminal-follower", false);
     await Wait(() => { lock (first.SyncRoot) return first.Emulator.DumpRow(0).Contains("COLOR-"); });
-    using (var orphanClient = PtyHostClient.Connect(id))
+    using (var orphanClient = PtyHostClient.Connect(id + "-owner-v1"))
     {
         var orphanArgs = WslLiveOperations.AttachmentArgs(binding, "unclaimed-test");
-        orphanClient.Create("unclaimed-test", 80, 24, "wsl.exe", new SessionCommand("wsl.exe", orphanArgs).QuotedArgs, verbatim: true);
+        orphanClient.Create("unclaimed-test", 80, 24, "wsl.exe", new SessionCommand("wsl.exe", orphanArgs).QuotedArgs, verbatim: true, emulatorCore: "ghostty", singleOwner: true);
         backend.ReapUnclaimedStartupSessions();
         await Wait(() => orphanClient.List().All(s => s.Id != "unclaimed-test"));
         if ((await operations.ReconcileAsync(binding)).Identity != binding.Identity) throw new Exception("orphan cleanup changed workload");
@@ -177,9 +178,9 @@ finally
     first?.Dispose();
     second?.Dispose();
     if (binding?.Identity is not null) await operations.TerminateAsync(binding);
-    using var host = PtyHostClient.Connect(id);
+    using var host = PtyHostClient.Connect(id + "-owner-v1");
     using var hostProcess = System.Diagnostics.Process.GetProcessById((int)host.HostPid);
-    Console.WriteLine("RESOURCE Rust host workingSetBytes=" + hostProcess.WorkingSet64 + " peakWorkingSetBytes=" + hostProcess.PeakWorkingSet64);
+    Console.WriteLine("RESOURCE Ghostty host workingSetBytes=" + hostProcess.WorkingSet64 + " peakWorkingSetBytes=" + hostProcess.PeakWorkingSet64);
     hostProcess.Kill();
 }
 
@@ -188,11 +189,28 @@ async Task Attach(ServerSession session, WslLiveBinding current, string nonce, b
     var command = WslLiveOperations.AttachmentArgs(current, nonce, claim);
     await session.StartAsync("wsl.exe", new SessionCommand("wsl.exe", command).QuotedArgs, verbatimCommandLine: true);
 }
-static async Task Wait(Func<bool> condition)
+async Task Wait(Func<bool> condition)
 {
     var deadline = DateTime.UtcNow.AddSeconds(10);
-    while (DateTime.UtcNow < deadline) { if (condition()) return; await Task.Delay(50); }
+    while (DateTime.UtcNow < deadline)
+    {
+        Acknowledge(first);
+        Acknowledge(second);
+        if (condition()) return;
+        await Task.Delay(50);
+    }
     throw new Exception("terminal state did not converge");
+}
+static void Acknowledge(ServerSession? session)
+{
+    if (session?.Emulator is not PresentedTerminalView view) return;
+    ulong sequence;
+    lock (session.SyncRoot)
+    {
+        using var frame = view.AcquireFrame();
+        sequence = frame?.Identity.Sequence ?? 0;
+    }
+    if (sequence != 0) session.AcknowledgeFrame(sequence);
 }
 static string Snapshot(ServerSession session)
 {
@@ -206,8 +224,7 @@ static string Snapshot(ServerSession session)
 
 static void AssertHistory(ServerSession session, string path)
 {
-    string text;
-    lock (session.SyncRoot) text = string.Join('\n', session.Emulator.DumpBuffer());
+    string text = SurfaceText.Dump(session, new OverlayTextArgs(All: true, Lines: 0));
     for (int i = 0; i < 90; i++)
         if (text.Split("HISTORY-" + i.ToString("D3")).Length != 2)
             throw new Exception(path + " lost/duplicated visible history line " + i + ": " + text);

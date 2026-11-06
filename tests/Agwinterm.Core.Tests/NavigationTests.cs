@@ -4,6 +4,12 @@ namespace Agwinterm.Core.Tests;
 
 public class NavigationTests
 {
+    [Fact] public void F2ReachesTerminalUnlessExplicitlyBoundByUser()
+    {
+        Assert.False(Keymap.Parse("").Bindings.ContainsKey("f2"));
+        Assert.Equal("rename_session", Keymap.Parse("map f2 = rename_session").Bindings["f2"]);
+    }
+
     [Fact] public void DefaultBindingsCannotBeMutatedByConsumers()
     {
         var collection = Assert.IsAssignableFrom<IList<(string Chord, string Action)>>(Keymap.DefaultBindings);

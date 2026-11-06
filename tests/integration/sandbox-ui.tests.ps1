@@ -129,6 +129,10 @@ try {
     'fixture' | Set-Content (Join-Path $temporary 'python/python.exe')
     $definitions = Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1"
     foreach ($testName in $definitions.Keys) {
+        if ($testName -eq 'PtyProcessContracts') {
+            Refuses 'process contracts require a real test SDK in the host staging directory' { & $runner @parameters -Test $testName -PrepareOnly } '*requires a host SDK with VSTest*'
+            continue
+        }
         if ($definitions[$testName].Wsl) {
             Refuses "$testName explains private desktop routing instead of staging a VM" { & $runner @parameters -Test $testName -PrepareOnly } '*private desktop*'
             continue

@@ -1,5 +1,5 @@
 # Build the agwinterm installer: installer\Output\agwinterm-setup-<ver>.exe
-# (Agwinterm.Win32 + agwintermctl + the Rust pty-host and core dll).
+# (Agwinterm.Win32 + agwintermctl + Ghostty and the Rust integration helpers).
 #
 # The lite terminal is no longer built here — it became its own product, agliteterm, and ships from
 # github.com/yeroo/agliteterm. Releases still CARRY a frozen agwinterm-lite-setup asset so installs
@@ -35,6 +35,7 @@ $ver = $Matches[1]
 $common = @("-c","Release","-r","win-x64","--self-contained","true","-p:PublishSingleFile=false","-p:PublishReadyToRun=true","-p:Version=$ver","-o",$stage)
 
 Write-Host "== publish Agwinterm.Win32 (app) ==" -ForegroundColor Cyan
+& (Join-Path $root 'native/ghostty-vt/stage.ps1') -Destination $stage
 & $dotnet publish (Join-Path $root "src\Agwinterm.Win32\Agwinterm.Win32.csproj") @common
 if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
 
@@ -42,14 +43,10 @@ Write-Host "== publish Agwinterm.Ctl (agwintermctl) ==" -ForegroundColor Cyan
 & $dotnet publish (Join-Path $root "src\Agwinterm.Ctl\Agwinterm.Ctl.csproj") @common
 if ($LASTEXITCODE -ne 0) { throw "ctl publish failed" }
 
-# Rust emulator core + pty-host: built once, copied into BOTH stages.
-Write-Host "== build agwinterm-core + pty-host (Rust) ==" -ForegroundColor Cyan
-& cargo build --release --manifest-path (Join-Path $root "native\Cargo.toml")
+# Keep the Rust hook/helper; the retired Windows host/core are not shipped.
+Write-Host "== build Windows integration hook (Rust) ==" -ForegroundColor Cyan
+& cargo build --locked --release --manifest-path (Join-Path $root "native\Cargo.toml") -p agwinterm-hook
 if ($LASTEXITCODE -ne 0) { throw "cargo build (native) failed" }
-$coreDll = Join-Path $root "native\target\release\agwinterm_core.dll"
-$ptyExe  = Join-Path $root "native\target\release\agwinterm-ptyhost.exe"
-Copy-Item $coreDll $stage -Force
-Copy-Item $ptyExe  $stage -Force
 & (Join-Path $root 'tools/stage-wsl-hooks.ps1') -Destination $stage
 # The app loads the Meslo Nerd Font by name from its exe dir. It used to live in lite/assets and
 # moved to assets/fonts/ when lite left this repository — it is the MAIN app's font too, and a
@@ -60,7 +57,7 @@ Copy-Item (Join-Path $here 'install-webview2.cmd') $stage -Force
 
 # sanity: required payload present
 if (-not (Test-Path (Join-Path $stage 'WebView2Loader.dll'))) { throw 'stage missing WebView2Loader.dll' }
-foreach ($f in @("Agwinterm.Win32.exe","agwintermctl.exe","agwinterm_core.dll","agwinterm-ptyhost.exe","agwinterm-hook.exe","agwinterm-hook-linux-x64","agwinterm-hook-linux-arm64","conpty.dll","x64\OpenConsole.exe","MesloLGLDZNerdFont-Regular.ttf","assets\agwinterm.ico")) {
+foreach ($f in @("Agwinterm.Win32.exe","agwintermctl.exe","ghostty-vt.dll","agwinterm_ghostty.dll","agwinterm-hook.exe","agwinterm-hook-linux-x64","agwinterm-hook-linux-arm64","conpty.dll","x64\OpenConsole.exe","MesloLGLDZNerdFont-Regular.ttf","assets\agwinterm.ico")) {
   if (-not (Test-Path (Join-Path $stage $f))) { throw "stage missing $f" }
 }
 if (-not (Get-ChildItem (Join-Path $stage "themes") -Filter *.conf -ErrorAction SilentlyContinue)) { throw "stage missing themes\*.conf" }

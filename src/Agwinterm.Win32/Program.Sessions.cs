@@ -17,6 +17,50 @@ namespace Agwinterm.Win32;
 /// <summary>Session/workspace management: panes, MRU, covers, overlays, splits, reopen-closed, watermarks.</summary>
 internal partial class Program
 {
+    private static ServerSessionBackend? _liveSessionBackend;
+    private static (string Core, string Conpty)? _liveBackendConfig;
+
+    private static ServerSessionBackend LiveSessionBackend()
+    {
+        var key = (_config.EmulatorCore, _config.Conpty);
+        if (_liveSessionBackend is null || _liveBackendConfig != key)
+        {
+            // Existing panes retain their backend when settings change, just as
+            // ordinary panes do. Never dispose a backend still owning live handles.
+            _liveSessionBackend = SessionBackends.ResolveLive(_config, _argPipe ?? _appId, AppExePath);
+            _liveBackendConfig = key;
+        }
+        return _liveSessionBackend;
+    }
+
+    private static ServerSession? TryAdoptExisting(ServerSessionBackend backend, string id, int cols, int rows,
+        string? ticket = null, bool cancelUnattached = false)
+    {
+        ServerSession? candidate = null;
+        try
+        {
+            candidate = (ServerSession)backend.Create(id, cols, rows);
+            if (candidate.TryAdopt(ticket, cancelUnattached)) return candidate;
+        }
+        catch { /* The ordinary restore path remains available if the host is gone. */ }
+        candidate?.Dispose();
+        return null;
+    }
+    private void ScheduleSyncRedraw(Pane pane)
+    {
+        if (Interlocked.CompareExchange(ref pane.SyncRedrawPending, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            // Expire a stalled producer even with cursor blinking disabled.
+            await Task.Delay(1050);
+            Interlocked.Exchange(ref pane.SyncRedrawPending, 0);
+            if (!IsSurfaceVisible(pane)) return;
+            RequestRedraw();
+            // A newer hold may have begun before this deadline. Schedule its
+            // expiry too; concurrent output can safely win the pending flag.
+            if (pane.S.Emulator.SynchronizedOutput) ScheduleSyncRedraw(pane);
+        });
+    }
     // ---- Session/workspace management (UI thread) ----
 
     private List<Ses> AllSessions()
@@ -78,20 +122,21 @@ internal partial class Program
         if (liveRequested)
         {
             if (!hasLiveBinding)
-                liveError = WslLiveProfiles.Validate(liveProfile!, _sessionBackend.Name,
+                liveError = WslLiveProfiles.Validate(liveProfile!, _config.ConfiguredSessionHost,
                     _isQuickWindow ? WslLiveSurface.Quick : handoff is not null ? WslLiveSurface.Handoff
                     : shellWrap || paneId.Contains(":scratch:", StringComparison.Ordinal) ? WslLiveSurface.Program : WslLiveSurface.Ordinary);
-            if (_sessionBackend.Name != "server-rust") liveError = "WSL live sessions require the Rust PTY host";
             if (deElevate || sessionCommand is not null || !string.IsNullOrWhiteSpace(command))
                 liveError = "This launch surface does not support WSL live sessions";
             try
             {
                 if (liveError is not null) throw new InvalidOperationException(liveError);
-                session = (restoredRemote is not null || restoredLive is not null) && _sessionBackend is ServerSessionBackend remoteBackend
-                    ? remoteBackend.CreateExistingOnlyTransport(paneId, cols, rows)
-                    : _sessionBackend.Create(paneId, cols, rows);
+                var liveBackend = LiveSessionBackend();
+                session = restoredRemote is not null || restoredLive is not null
+                    ? liveBackend.CreateExistingOnlyTransport(paneId, cols, rows)
+                    : liveBackend.Create(paneId, cols, rows);
                 adopted = (restoredRemote?.TransportTicket ?? restoredLive?.TransportTicket) is { Length: > 0 } ticket
                     && session is ServerSession liveServer && liveServer.TryAdopt(ticket, cancelUnattached: restoredRemote is not null);
+
             }
             catch (Exception ex)
             {
@@ -114,9 +159,12 @@ internal partial class Program
                 session = InProcessSessionBackend.Instance.Create(paneId, cols, rows);
                 ShowToast("pty-host unavailable (" + ex.Message + ") — session created in-process", 5000);
             }
+
         // Under the session lock: with the Rust core this setter now crosses into native code and
         // re-syncs the mirrors, and an ADOPTED session's reader thread is already feeding by now.
         lock (session.SyncRoot) session.Emulator.ScrollbackMax = _config.Scrollback;
+        if(adopted && session.Presentation is { IsRemote:true } presentation)
+            presentation.Execute(new TerminalCommand.ScrollbackLimit(_config.Scrollback));
         if (handoff is { } initialHandoff) SeedHandoffTitle(session, initialHandoff.Title);
         string promptToken = completion?.Token ?? ((adopted || hasLiveBinding) && _restoredPromptTokens.TryGetValue(paneId, out string? savedToken)
             && ShellCompletion.ValidToken(savedToken) ? savedToken : Guid.NewGuid().ToString("N"));
@@ -147,7 +195,10 @@ internal partial class Program
             // partial redraw never reaches the screen — the closing 2026l chunk clears the mode and
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
             // blink interval, so a crash that leaves ?2026 open can't freeze the pane for long.
-            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput) RequestRedraw();
+            if (IsSurfaceVisible(pane) && !session.Emulator.SynchronizedOutput)
+                  RequestRedraw(session is ServerSession { UsesPresentation:true } &&
+                      Interlocked.Read(ref pane.InputPaintDeadline) > Environment.TickCount64);
+            else if (session.Emulator is GhosttyTerminalCore && IsSurfaceVisible(pane)) ScheduleSyncRedraw(pane);
         };
         // On a transition INTO blocked, play the configured blocked-sound (best-effort, off the UI thread).
         AgentStatus lastStatus = session.Status;
@@ -170,9 +221,16 @@ internal partial class Program
             explicitSoundStatus = session.Status;
             Post(() => RouteStatusSound(pane, name, blockedDefault: false));
         };
-        session.Emulator.Host = new PaneHost(this, pane, session);   // the host-action seam (see IHostActions)
+        var paneHost=new PaneHost(this,pane,session);
+        if(session.Presentation is LocalSessionPresentation localPresentation) localPresentation.SetHost(paneHost);
+        else lock(session.SyncRoot) session.Emulator.Host=paneHost;
+        // TryAdopt may have completed before the pane's host/theme existed.
+        if (session is ServerSession themedServer) themedServer.UpdateTheme();
         session.Exited += code => Post(() =>
         {
+            // An exit may already be queued when explicit termination confirms the
+            // workload is missing. Never turn that result into a reconnect request.
+            if (session is ServerSession { Stopped: true }) return;
             OnPaneProcessExited(pane);   // split survivor promotion (agterm #121)
             NotifyProfileShellExit(pane, code);
             TryEnterExitHold(pane);
@@ -203,6 +261,8 @@ internal partial class Program
             ["FORCE_HYPERLINK"] = Environment.GetEnvironmentVariable("FORCE_HYPERLINK") ?? "1",
             // The theme a pty-host answers OSC 10/11 with while no UI is attached (#339).
             [ThemeColors.EnvVar] = ThemeColors.Format(_theme.DefaultForeground, _theme.DefaultBackground),
+            [ThemeColors.PaletteEnvVar] = ThemeColors.FormatPalette(_theme.Palette),
+            [ThemeColors.CursorEnvVar] = ThemeColors.FormatColor(_theme.Cursor),
         };
         if (extraEnv is not null) foreach (var kv in extraEnv) env[kv.Key] = kv.Value; // custom-command $AGW_* context
         if (liveRequested)
@@ -333,7 +393,7 @@ internal partial class Program
             }
             // Scrollback (survives ConPTY's initial screen erase — an Inject would be wiped) +
             // toast for immediate visibility.
-            session.MutateLocked(e => e.SeedScrollback(new[]
+            if(session is not ServerSession { UsesPresentation:true }) session.MutateLocked(e => e.SeedScrollback(new[]
             {
                 $"[agwinterm] profile exe not found: {prof?.Command}",
                 $"  fell back to {cmd} (fix the profile in profiles.json)",
@@ -389,6 +449,9 @@ internal partial class Program
             SessionInput.TryWrite(_s, Encoding.UTF8.GetBytes(reply));
         }
         public (Color Foreground, Color Background)? DefaultColors => (_theme.DefaultForeground, _pane.DefaultBackground ?? _theme.DefaultBackground);
+        public IReadOnlyList<Color>? DefaultPalette => _theme.Palette;
+        public Color? DefaultCursorColor => _theme.Cursor;
+        public (CursorStyle Style, bool Blink)? DefaultCursor => (_config.CursorStyle, _config.CursorBlink);
         public void Bell() => _app.Post(() => _app.RingBell(_pane));                                     // BEL -> beep/flash per config
         public void CommandFinished(string token, long sequence)
         {
@@ -723,7 +786,9 @@ internal partial class Program
         // than the window). Leave this PTY alone rather than telling it it's 1x1.
         if (w < cw || h < ch) return;
         int cols = Math.Max(1, (int)(w / cw)), rows = Math.Max(1, (int)(h / ch));
-        if (term.S.Cols != cols) term.ClearSel(); // restored history can reflow into different physical rows
+        // Ghostty tracks both endpoints through native reflow. Legacy selections
+        // still use physical row coordinates and must be discarded on width changes.
+        if (term.S.Cols != cols && term.SelNative is null && term.SelOwner is null) term.ClearSel();
         if (term.S.Cols != cols || term.S.Rows != rows) term.S.Resize(cols, rows);
         term.ScrollOffset = Math.Clamp(term.ScrollOffset, 0, term.S.Emulator.HistoryCount);
     }
@@ -1815,7 +1880,7 @@ internal partial class Program
         if (ses is null || ses.Panes.Count != 1) return;
         pane.AwaitingExitAck = true;
         string msg = Environment.NewLine + Environment.NewLine + "The session has ended (exit " + exitCode + ")." + Environment.NewLine + "Press Enter to close the session." + Environment.NewLine;
-        lock (pane.S.SyncRoot) pane.S.Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg));
+        pane.S.Inject(System.Text.Encoding.UTF8.GetBytes(msg));
         RequestRedraw();
     }
 

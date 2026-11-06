@@ -66,16 +66,19 @@ public sealed class ScreenBuffer
         Array.Copy(_cells, row * Cols, dest, 0, Math.Min(Cols, dest.Length));
     }
 
+    /// <summary>Copy a captured viewport without allocating or exposing mutable storage.</summary>
+    public void CopyCellsTo(Span<Cell> destination) => _cells.AsSpan().CopyTo(destination);
+
     /// <summary>Refresh selection's compact text-only frame, reporting any change. Reading the
     /// flat array avoids per-cell coordinate checks; no bookkeeping is added to terminal writes.</summary>
-    internal bool CopyTextTo(Span<uint> destination)
+    internal bool CopyTextTo(Span<uint> destination, SelectionTextMap? map = null, bool add = false)
     {
         if (destination.Length != _cells.Length) throw new ArgumentException("Frame size mismatch", nameof(destination));
         bool changed = false;
         for (int i = 0; i < _cells.Length; i++)
         {
             // Unicode scalar: 21 bits; cell width: 8 bits. Colours do not identify selected text.
-            uint text = (uint)_cells[i].Rune | ((uint)_cells[i].Width << 21);
+            uint text = map is null ? (uint)_cells[i].Rune | ((uint)_cells[i].Width << 21) : map.Encode(_cells[i], add);
             changed |= destination[i] != text;
             destination[i] = text;
         }
@@ -83,11 +86,11 @@ public sealed class ScreenBuffer
     }
 
     /// <summary>Cheap rejection of a missing selected word without copying an entire frame.</summary>
-    internal bool TextMatches(int row, int from, ReadOnlySpan<uint> text)
+    internal bool TextMatches(int row, int from, ReadOnlySpan<uint> text, SelectionTextMap? map = null)
     {
         var cells = _cells.AsSpan(row * Cols + from, text.Length);
         for (int i = 0; i < text.Length; i++)
-            if (((uint)cells[i].Rune | ((uint)cells[i].Width << 21)) != text[i]) return false;
+            if ((map is null ? (uint)cells[i].Rune | ((uint)cells[i].Width << 21) : map.Encode(cells[i])) != text[i]) return false;
         return true;
     }
 

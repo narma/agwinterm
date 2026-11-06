@@ -1,13 +1,12 @@
 param([string]$Distro = 'Ubuntu', [Parameter(Mandatory)][string]$BuildDirectory, [switch]$DiagnosticKeepalive, [switch]$LifetimeGuard, [switch]$ProfileLive, [switch]$LifecycleControls,
-    [string]$PeerDistro, [string]$PeerUser, [string]$PeerExecutable)
+    [string]$PeerDistro, [string]$PeerUser, [string]$PeerExecutable, [switch]$UpgradeToGhostty)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslZmxSurvival -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
 $ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
-$hostExe = Join-Path (Split-Path $exe) 'agwinterm-ptyhost.exe'
-foreach ($file in @($exe,$ctl,$hostExe)) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing test build: $file" } }
+foreach ($file in @($exe,$ctl)) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing test build: $file" } }
 $linuxScript = (& wsl.exe -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'zmx/workload.py')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve sentinel path' }
 $id = 'agwinterm-zmx-test-' + [guid]::NewGuid().ToString('N')
@@ -72,6 +71,19 @@ function Start-Ui {
     }
     throw 'Test UI did not become ready'
 }
+function Assert-GhosttyLive([string]$PaneId) {
+    # The native full case-fold matcher proves the actual live replica is Ghostty,
+    # rather than merely checking the preference or whether a DLL was loaded.
+    $null=Ctl @('session','write',"`r`nGHOSTTY-LIVE-Straße`r`n",'--target',$PaneId)
+    $found=Ctl @('session','search','STRASSE','--target',$PaneId)
+    for($i=0;$i -lt 100 -and $found -eq 'searching…';$i++) {
+        Start-Sleep -Milliseconds 50
+        $found=Ctl @('session','search','--target',$PaneId)
+    }
+    if ($found -ne '1 of 1') { throw "Live session is not using native Ghostty search: $found" }
+    $null=Ctl @('session','search','--close','--target',$PaneId)
+    Write-Host 'PASS live WSL replica uses Ghostty native Unicode search'
+}
 function Set-ReplayFixture([string]$Kind) {
     foreach ($file in Get-ChildItem (Join-Path $state 'windows') -Filter '*.json') {
         $checkpoint = Get-Content $file.FullName -Raw | ConvertFrom-Json -Depth 100
@@ -105,25 +117,33 @@ try {
         $profiles | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $state 'profiles.json')
     }
     'session-host = server-rust' | Set-Content (Join-Path $state 'agwinterm.conf')
+    if ($UpgradeToGhostty) { 'emulator-core = rust' | Add-Content (Join-Path $state 'agwinterm.conf') }
     if ($ProfileLive) { @('restore-commands = true','restore-buffer = true') | Add-Content (Join-Path $state 'agwinterm.conf') }
     Start-Ui
+    if (!$UpgradeToGhostty -and (Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Expected implicit Ghostty default' }
     $initial = $null
     for ($i=0; $i -lt 40; $i++) {
         try { $initial = Inspect; break } catch { Start-Sleep -Milliseconds 250 }
     }
     if (-not $initial) { throw 'Sentinel did not start' }
+    if ($ProfileLive -and !$UpgradeToGhostty) { Assert-GhosttyLive ((Ctl @('tree')).workspaces[0].sessions[0].id) }
     Write-Host "INITIAL $initial"
-    $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
-    if ($hosts.Count -ne 1) { throw "Expected exactly one isolated Rust host, got $($hosts.Count)" }
+    $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
+    if ($hosts.Count -ne 1) { throw "Expected exactly one isolated PTY host, got $($hosts.Count)" }
     $hostProcess = Get-Process -Id $hosts[0].ProcessId
     if (-not [ZmxTestWindow]::Close($ui.Id)) { throw 'Cannot request graceful test UI quit' }
     if (-not $ui.WaitForExit(15000)) { throw 'Test UI quit timed out' }
+    if ($UpgradeToGhostty) {
+        $conf=Join-Path $state 'agwinterm.conf'
+        @(Get-Content $conf | Where-Object { $_ -notmatch '^emulator-core\s*=' }) | Set-Content $conf
+    }
     if ((Inspect) -ne $initial) { throw 'Identity changed after UI quit' }
     Write-Host 'PASS same Linux incarnation after UI quit'
     if ($ProfileLive) {
         foreach ($kind in @('agent','pin','captured')) {
             Set-ReplayFixture $kind
             Start-Ui
+            if ((Ctl @('config','get','emulator-core')) -ne 'ghostty') { throw 'Restore did not use implicit Ghostty default' }
             Start-Sleep -Seconds 3
             & wsl.exe -d $Distro --exec python3 $linuxScript assert-zero-input $recordDir
             if ($LASTEXITCODE -ne 0) { throw "Unexpected $kind replay during host adoption" }
@@ -157,8 +177,8 @@ try {
     $hostProcess.Kill(); $hostProcess.WaitForExit()
     # Allow WSL idle shutdown to happen; no keepalive or probe during this interval.
     Start-Sleep -Seconds 60
-    if ((Inspect) -ne $initial) { throw 'Identity changed after Rust host loss' }
-    Write-Host 'PASS same Linux incarnation after isolated Rust host loss and idle interval'
+    if ((Inspect) -ne $initial) { throw 'Identity changed after PTY host loss' }
+    Write-Host 'PASS same Linux incarnation after isolated PTY host loss and idle interval'
     if ($ProfileLive) {
         Start-Ui
         $restored = $false
@@ -173,12 +193,13 @@ try {
         & wsl.exe -d $Distro --exec python3 $linuxScript assert-zero-input $recordDir
         if ($LASTEXITCODE -ne 0) { throw 'Unexpected replay during daemon reattachment' }
         Write-Host 'PASS actual profile recovery reattaches same incarnation after host loss'
+        Assert-GhosttyLive ((Ctl @('tree')).workspaces[0].sessions[0].id)
         if ($LifecycleControls) {
             $row = (Ctl @('tree')).workspaces[0].sessions[0]
             $paneId = @($row.liveSessions.PSObject.Properties.Name)[0]
             $before = $row.liveSessions.$paneId
             $promptToken = (Saved-Pane $paneId).PromptToken
-            $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
+            $retryHosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
             if ($retryHosts.Count -ne 1) { throw 'Expected one fixture host before live-UI retry' }
             Stop-Process -Id $retryHosts[0].ProcessId -Force
             for ($i=0; $i -lt 100; $i++) {
@@ -193,7 +214,7 @@ try {
                 Start-Sleep -Milliseconds 100
             }
             if ($retried.recovery -ne 'zmx-reattached' -or (Inspect) -ne $initial) { throw 'Local retry after host loss did not preserve workload' }
-            Write-Host 'PASS local existing-only retry after Rust-host loss while UI remains open'
+            Write-Host 'PASS local existing-only retry after PTY-host loss while UI remains open'
             if ((Saved-Pane $paneId).PromptToken -ne $promptToken) { throw 'Retry changed the live shell completion capability' }
             Write-Host 'PASS retry preserves the workload completion capability'
             $listed = Ctl @('zmx','list','--profile','ZMX survival')
@@ -237,6 +258,9 @@ try {
             $pin = "exec python3 '$linuxScript' run '$freshRecord'"
             $null = Ctl @('session','restore','--target',$paneId,'--command',$pin)
             $null = Ctl @('zmx','terminate','--target',$paneId,'--force')
+            # Let cancelled-reader/child-exit callbacks run before checking the
+            # durable result: a late EOF must not overwrite confirmed termination.
+            Start-Sleep -Seconds 3
             $missing = (Ctl @('tree')).workspaces[0].sessions[0].liveSessions.$paneId
             if ($missing.recovery -ne 'missing') { throw 'Terminate did not report missing' }
             $bad = & $ctl zmx restart --target $paneId --source agent --pipe $id --json
@@ -311,7 +335,7 @@ try {
             & "$PSScriptRoot/zmx/layout-controls.ps1"
         }
         $ui.Kill(); $ui.WaitForExit()
-        $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe'" | Where-Object { $_.CommandLine.Contains($id) })
+        $hosts = @(Get-CimInstance Win32_Process -Filter "Name = 'agwinterm-ptyhost.exe' OR Name = 'Agwinterm.Win32.exe'" | Where-Object { $_.CommandLine.Contains($id) -and ($_.Name -eq 'agwinterm-ptyhost.exe' -or $_.CommandLine -match '--pty-host') })
         foreach ($entry in $hosts) { Stop-Process -Id $entry.ProcessId }
     }
 } finally {

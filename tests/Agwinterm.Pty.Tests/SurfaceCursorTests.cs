@@ -26,7 +26,7 @@ public class SurfaceCursorTests
         // A fresh install runs `--default-session-host server-rust`, so this is the backend the verb
         // meets in the field. The replica is fed from the host's raw stream; Inject is that feed, and
         // no host is needed because an unstarted ServerSession never touches the wire.
-        using var backend = new ServerSessionBackend("agwinterm-test-" + Guid.NewGuid().ToString("N")[..8], exePath: null);
+        using var backend = new ServerSessionBackend("agwinterm-test-" + Guid.NewGuid().ToString("N")[..8], exePath: null, singleOwner: false);
         using var session = new ServerSession(backend, "pane-1", 80, 24);
         using var server = new ControlServer(session);
 

@@ -3,9 +3,11 @@ using System.Text.Json;
 using Agwinterm.Win32;
 using Vortice.DirectWrite;
 
-// Host-free: DirectWrite layouts only; no windows, render targets, or input are created.
+// Host-free: DirectWrite layouts and offscreen WIC targets only; no windows or input.
 using var factory = DWrite.DWriteCreateFactory<IDWriteFactory>();
 using var format = factory.CreateTextFormat("Consolas", 14f);
+RasterChecks.Run(factory, format);
+if (args.Contains("--raster-only")) return;
 using var bold = factory.CreateTextFormat("Consolas", null, FontWeight.Bold, FontStyle.Normal, FontStretch.Normal, 14f, "en-us");
 using var cache = new SoloGlyphCache();
 var a = cache.Get(factory, 0x1f534, format, 18, 18);
@@ -28,6 +30,12 @@ Assert(a.Layout.NativePointer == IntPtr.Zero && cache.Count == 0, "font-reset di
 Assert(cache.Get(factory, 0x1f534, format, 18, 18).Layout.NativePointer != IntPtr.Zero, "reuse after font reset");
 cache.Clear();
 Console.WriteLine("PASS 9 cache lifetime/key checks");
+var cluster = cache.Get(factory, "👩🏽‍💻", format, 18, 18);
+Assert(ReferenceEquals(cluster, cache.Get(factory, "👩🏽‍💻", format, 18, 18)), "cluster layout reuse");
+Assert(!ReferenceEquals(cluster, cache.Get(factory, "👩💻", format, 18, 18)), "complete cluster in cache key");
+cache.Clear();
+Assert(cluster.Layout.NativePointer == IntPtr.Zero, "cluster layout disposal");
+Console.WriteLine("PASS 3 cluster cache checks");
 
 // Include the separate surrogate cells produced by legacy text-only SeedScrollback.
 foreach (int rune in new[] { 0x1f534, 0x4e2d, 0x23fa, 0x2714, 0xd83d, 0xdd34 })
@@ -35,12 +43,17 @@ foreach (int rune in new[] { 0x1f534, 0x4e2d, 0x23fa, 0x2714, 0xd83d, 0xdd34 })
         foreach (float width in new[] { 9f, 18f })
             foreach (float height in new[] { 18f, 22f })
             {
-                var expected = OriginalPrepare(factory, rune, face, width, height);
                 var actual = cache.Get(factory, rune, face, width, height);
-                Assert((actual.Scale, actual.Dx, actual.Dy) == expected, "original ink fit preserved");
+                if (!actual.HasInk) continue;
+                var ink = actual.Layout.OverhangMetrics;
+                Assert(actual.Scale > 0 && actual.Scale <= 1, "ink is never enlarged");
+                Assert(actual.Dx - ink.Left * actual.Scale >= -0.001f &&
+                    actual.Dy - ink.Top * actual.Scale >= -0.001f &&
+                    actual.Dx + (width + ink.Right) * actual.Scale <= width + 0.001f &&
+                    actual.Dy + (height + ink.Bottom) * actual.Scale <= height + 0.001f, "ink fits its cell rectangle");
             }
 cache.Clear();
-Console.WriteLine("PASS 48 original-fit comparisons (including legacy surrogate cells)");
+Console.WriteLine("PASS 48 ink containment checks (including legacy surrogate cells)");
 
 int[] icons = [0x1f534, 0x4e2d, 0x1f535, 0x754c, 0x23fa, 0x2714];
 var results = new List<object>();
@@ -89,6 +102,7 @@ if (args.Length == 1) File.WriteAllText(args[0], json);
 
 // Preparation copied from PR 675b9db's DrawSoloGlyph, excluding draw/transform/clip calls.
 // Return the fit so the compiler must preserve its arithmetic; neither path renders pixels.
+// This timing baseline retains the old padding; pixel acceptance lives in the VM suite.
 static (float Scale, float Dx, float Dy) OriginalPrepare(IDWriteFactory factory, int rune,
     IDWriteTextFormat format, float width, float height)
 {

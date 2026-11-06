@@ -1,0 +1,439 @@
+diff --git a/src/terminal/search/active.zig b/src/terminal/search/active.zig
+index b37f46d2b..83fddf750 100644
+--- a/src/terminal/search/active.zig
++++ b/src/terminal/search/active.zig
+@@ -23,11 +23,19 @@ pub const ActiveSearch = struct {
+     pub fn init(
+         alloc: Allocator,
+         needle: []const u8,
++    ) Allocator.Error!ActiveSearch {
++        return initMode(alloc, needle, false);
++    }
++
++    pub fn initMode(
++        alloc: Allocator,
++        needle: []const u8,
++        unicode: bool,
+     ) Allocator.Error!ActiveSearch {
+         // We just do a forward search since the active area is usually
+         // pretty small so search results are instant anyways. This avoids
+         // a small amount of work to reverse things.
+-        var window: SlidingWindow = try .init(alloc, .forward, needle);
++        var window: SlidingWindow = try .initMode(alloc, .forward, needle, unicode);
+         errdefer window.deinit();
+         return .{ .window = window };
+     }
+@@ -60,38 +68,37 @@ pub const ActiveSearch = struct {
+         // or history to load.
+         if (self.window.needle.len == 0) return null;
+ 
+-        // First up, add enough pages to cover the active area.
++        // Locate the first active page without formatting in reverse order:
++        // this window searches forwards, including across page boundaries.
+         var rem: usize = list.rows;
+         var node_ = list.pages.last;
+-        var last_node: ?*PageList.List.Node = null;
++        var first: ?*PageList.List.Node = null;
+         while (node_) |node| : (node_ = node.prev) {
+-            _ = try self.window.append(node);
+-            last_node = node;
+-
+-            // If we reached our target amount, then this is the last
+-            // page that contains the active area. We go to the previous
+-            // page once more since its the first page of our required
+-            // overlap.
+-            if (rem <= node.rows()) {
+-                node_ = node.prev;
+-                break;
+-            }
+-
++            first = node;
++            if (rem <= node.rows()) break;
+             rem -= node.rows();
+         }
+-
+-        // Next, add enough overlap to cover needle.len - 1 bytes (if it
+-        // exists) so we can cover the overlap.
+-        while (node_) |node| : (node_ = node.prev) {
+-            // We could be more accurate here and count bytes since the
+-            // last wrap but its complicated and unlikely multiple pages
+-            // wrap so this should be fine.
+-            const appended = try self.window.appendIfWrapped(node) orelse break;
+-            if (appended.content_len >= self.window.needle.len - 1) break;
++        const active_first = first orelse return null;
++
++        // Include enough wrapped prefix for matches spanning into mutable
++        // active pages. Return the actual earliest included page so history
++        // does not independently report the same prefix-page matches.
++        if (self.window.needle.len > 1) {
++            var remaining = self.window.needle.len - 1;
++            node_ = active_first.prev;
++            while (node_) |node| : (node_ = node.prev) {
++                const added = try self.window.appendIfWrapped(node) orelse break;
++                first = node;
++                remaining -|= added.content_len;
++                if (remaining == 0) break;
++            }
++            self.window.clearAndRetainCapacity();
+         }
+-
+-        // Return the last node we added to our window.
+-        return last_node;
++        node_ = first;
++        while (node_) |node| : (node_ = node.next) {
++            _ = try self.window.append(node);
++        }
++        return first;
+     }
+ 
+     /// Find the next match for the needle in the active area. This returns
+diff --git a/src/terminal/search/pagelist.zig b/src/terminal/search/pagelist.zig
+index 80c0bf593..72eab7c6c 100644
+--- a/src/terminal/search/pagelist.zig
++++ b/src/terminal/search/pagelist.zig
+@@ -50,6 +50,16 @@ pub const PageListSearch = struct {
+         needle: []const u8,
+         list: *PageList,
+         start: *PageList.List.Node,
++    ) Allocator.Error!PageListSearch {
++        return initMode(alloc, needle, list, start, false);
++    }
++
++    pub fn initMode(
++        alloc: Allocator,
++        needle: []const u8,
++        list: *PageList,
++        start: *PageList.List.Node,
++        unicode: bool,
+     ) Allocator.Error!PageListSearch {
+         // We put a tracked pin into the node that we're starting from.
+         // By using a tracked pin, we can keep our pagelist references safe
+@@ -63,7 +73,7 @@ pub const PageListSearch = struct {
+         errdefer list.untrackPin(pin);
+ 
+         // Create our sliding window we'll use for searching.
+-        var window: SlidingWindow = try .init(alloc, .reverse, needle);
++        var window: SlidingWindow = try .initMode(alloc, .reverse, needle, unicode);
+         errdefer window.deinit();
+ 
+         // We always feed our initial page data into the window, because
+diff --git a/src/terminal/search/screen.zig b/src/terminal/search/screen.zig
+index 308a388e6..aee289daa 100644
+--- a/src/terminal/search/screen.zig
++++ b/src/terminal/search/screen.zig
+@@ -90,6 +90,8 @@ pub const ScreenSearch = struct {
+         /// the top of the new active area and the previous start point
+         /// to determine if we need to search more history.
+         start_pin: *Pin,
++        // Copied by feed; tick must not dereference a concurrently moved/freed pin.
++        skip_node: *PageList.List.Node,
+ 
+         pub fn deinit(self: *HistorySearch, screen: *Screen) void {
+             self.searcher.deinit();
+@@ -139,12 +141,21 @@ pub const ScreenSearch = struct {
+         alloc: Allocator,
+         screen: *Screen,
+         needle_unowned: []const u8,
++    ) Allocator.Error!ScreenSearch {
++        return initMode(alloc, screen, needle_unowned, false);
++    }
++
++    pub fn initMode(
++        alloc: Allocator,
++        screen: *Screen,
++        needle_unowned: []const u8,
++        unicode: bool,
+     ) Allocator.Error!ScreenSearch {
+         var result: ScreenSearch = .{
+             .screen = screen,
+             .rows = screen.pages.rows,
+             .cols = screen.pages.cols,
+-            .active = try .init(alloc, needle_unowned),
++            .active = try .initMode(alloc, needle_unowned, unicode),
+             .history = null,
+             .state = .active,
+             .active_results = .empty,
+@@ -195,7 +206,7 @@ pub const ScreenSearch = struct {
+     /// The needle that this search is using.
+     pub fn needle(self: *const ScreenSearch) []const u8 {
+         assert(self.active.window.direction == .forward);
+-        return self.active.window.needle;
++        return self.active.window.original_needle;
+     }
+ 
+     /// Returns the total number of matches found so far.
+@@ -216,10 +227,11 @@ pub const ScreenSearch = struct {
+             return false;
+         }
+ 
+-        const new: ScreenSearch = try .init(
++        const new: ScreenSearch = try .initMode(
+             self.allocator(),
+             self.screen,
+             self.needle(),
++            self.active.window.unicode,
+         );
+ 
+         self.deinit();
+@@ -388,7 +400,7 @@ pub const ScreenSearch = struct {
+         self.selected = null;
+     }
+ 
+-    fn pruneHistory(self: *ScreenSearch) void {
++    pub fn pruneHistory(self: *ScreenSearch) void {
+         // Go through our history results in order (newest to oldest) to find
+         // any result that contains an invalid serial.
+         var i: usize = 0;
+@@ -472,7 +484,7 @@ pub const ScreenSearch = struct {
+         while (history.searcher.next()) |hl| {
+             // Ignore selections that are found within the starting
+             // node since those are covered by the active area search.
+-            if (hl.chunks.items(.node)[0] == history.start_pin.node) continue;
++            if (hl.chunks.items(.node)[0] == history.skip_node) continue;
+ 
+             // Same note as tickActive for error handling.
+             var hl_cloned = try hl.clone(alloc);
+@@ -557,11 +569,12 @@ pub const ScreenSearch = struct {
+                 // No history search yet, but we now have history. So let's
+                 // initialize.
+ 
+-                var search: PageListSearch = try .init(
++                var search: PageListSearch = try .initMode(
+                     alloc,
+                     self.needle(),
+                     list,
+                     history_node,
++                    self.active.window.unicode,
+                 );
+                 errdefer search.deinit();
+ 
+@@ -571,6 +584,7 @@ pub const ScreenSearch = struct {
+                 self.history = .{
+                     .searcher = search,
+                     .start_pin = pin,
++                    .skip_node = history_node,
+                 };
+ 
+                 // We don't need to update any history since we had no history
+@@ -587,10 +601,11 @@ pub const ScreenSearch = struct {
+             // collect all the results into a new list. We ASSUME that
+             // reloadActive is being called frequently enough that there isn't
+             // a massive amount of history to search here.
+-            var window: SlidingWindow = try .init(
++            var window: SlidingWindow = try .initMode(
+                 alloc,
+                 .forward,
+                 self.needle(),
++                self.active.window.unicode,
+             );
+             defer window.deinit();
+             while (true) {
+diff --git a/src/terminal/search/sliding_window.zig b/src/terminal/search/sliding_window.zig
+index 7300f0027..3baf0ad04 100644
+--- a/src/terminal/search/sliding_window.zig
++++ b/src/terminal/search/sliding_window.zig
+@@ -63,8 +63,14 @@ pub const SlidingWindow = struct {
+     /// do enough to prune it.
+     data_offset: usize = 0,
+ 
++    // Full folding can match several offsets within one original cell.
++    // Keep only distinct ranges before they enter the result collections.
++    previous_match: ?MatchKey = null,
++
+     /// The needle we're searching for. Does own the memory.
+     needle: []const u8,
++    original_needle: []const u8,
++    unicode: bool,
+ 
+     /// The search direction. If the direction is forward then pages should
+     /// be appended in forward linked list order from the PageList. If the
+@@ -83,6 +89,13 @@ pub const SlidingWindow = struct {
+     /// ends on another. The length is always `needle.len * 2`.
+     overlap_buf: []u8,
+ 
++    const MatchKey = struct {
++        first: FlattenedHighlight.Chunk,
++        last: FlattenedHighlight.Chunk,
++        top_x: size.CellCountInt,
++        bot_x: size.CellCountInt,
++    };
++
+     const Direction = enum { forward, reverse };
+     const DataBuf = CircBuf(u8, 0);
+     const MetaBuf = CircBuf(Meta, undefined);
+@@ -112,6 +125,15 @@ pub const SlidingWindow = struct {
+         alloc: Allocator,
+         direction: Direction,
+         needle_unowned: []const u8,
++    ) Allocator.Error!SlidingWindow {
++        return initMode(alloc, direction, needle_unowned, false);
++    }
++
++    pub fn initMode(
++        alloc: Allocator,
++        direction: Direction,
++        needle_unowned: []const u8,
++        unicode: bool,
+     ) Allocator.Error!SlidingWindow {
+         var data = try DataBuf.init(alloc, 0);
+         errdefer data.deinit(alloc);
+@@ -119,13 +141,15 @@ pub const SlidingWindow = struct {
+         var meta = try MetaBuf.init(alloc, 0);
+         errdefer meta.deinit(alloc);
+ 
+-        const needle = try alloc.dupe(u8, needle_unowned);
++        const needle = if (unicode) try @import("case_fold.zig").fold(alloc, needle_unowned, null, null) else try alloc.dupe(u8, needle_unowned);
+         errdefer alloc.free(needle);
+         switch (direction) {
+             .forward => {},
+             .reverse => std.mem.reverse(u8, needle),
+         }
+ 
++        const original = if (unicode) try alloc.dupe(u8, needle_unowned) else needle;
++        errdefer if (unicode) alloc.free(original);
+         const overlap_buf = try alloc.alloc(u8, needle.len * 2);
+         errdefer alloc.free(overlap_buf);
+ 
+@@ -135,12 +159,15 @@ pub const SlidingWindow = struct {
+             .meta = meta,
+             .chunk_buf = .empty,
+             .needle = needle,
++            .original_needle = original,
++            .unicode = unicode,
+             .direction = direction,
+             .overlap_buf = overlap_buf,
+         };
+     }
+ 
+     pub fn deinit(self: *SlidingWindow) void {
++        if (self.unicode) self.alloc.free(self.original_needle);
+         self.alloc.free(self.overlap_buf);
+         self.alloc.free(self.needle);
+         self.chunk_buf.deinit(self.alloc);
+@@ -158,6 +185,7 @@ pub const SlidingWindow = struct {
+         self.meta.clear();
+         self.data.clear();
+         self.data_offset = 0;
++        self.previous_match = null;
+     }
+ 
+     /// Search the window for the next occurrence of the needle. As
+@@ -176,6 +204,24 @@ pub const SlidingWindow = struct {
+     /// or `append()`. If the caller wants to retain the flattened highlight
+     /// then they should clone it.
+     pub fn next(self: *SlidingWindow) ?FlattenedHighlight {
++        while (self.nextRaw()) |match| {
++            if (!self.unicode) return match;
++            const key: MatchKey = .{
++                .first = match.chunks.get(0),
++                .last = match.chunks.get(match.chunks.len - 1),
++                .top_x = match.top_x,
++                .bot_x = match.bot_x,
++            };
++            if (self.previous_match) |previous| {
++                if (std.meta.eql(previous, key)) continue;
++            }
++            self.previous_match = key;
++            return match;
++        }
++        return null;
++    }
++
++    fn nextRaw(self: *SlidingWindow) ?FlattenedHighlight {
+         // An empty needle represents an inactive search. Searching for it
+         // would otherwise produce a zero-length match, which highlight()
+         // cannot represent because its end offset is inclusive.
+@@ -640,7 +686,16 @@ pub const SlidingWindow = struct {
+ 
+         // If our written data is empty, then there is nothing to
+         // add to our data set.
+-        const written = encoded.written();
++        var folded_map: std.ArrayList(point.Coordinate) = .empty;
++        defer folded_map.deinit(self.alloc);
++        const ascii = self.unicode and @import("case_fold.zig").asciiOnly(encoded.written());
++        if (ascii) _ = std.ascii.lowerString(encoded.written(), encoded.written());
++        const folded = if (self.unicode and !ascii) try @import("case_fold.zig").fold(
++            self.alloc, encoded.written(), meta.cell_map.items, &folded_map,
++        ) else null;
++        defer if (folded) |bytes| self.alloc.free(bytes);
++        if (folded != null) std.mem.swap(std.ArrayList(point.Coordinate), &meta.cell_map, &folded_map);
++        const written = folded orelse encoded.written();
+         if (written.len == 0) {
+             self.assertIntegrity();
+             return .{
+diff --git a/src/terminal/search/terminal.zig b/src/terminal/search/terminal.zig
+index e10d2aa1c..3b08269f3 100644
+--- a/src/terminal/search/terminal.zig
++++ b/src/terminal/search/terminal.zig
+@@ -83,7 +83,15 @@ pub const TerminalSearch = struct {
+         alloc: Allocator,
+         needle_unowned: []const u8,
+     ) Allocator.Error!TerminalSearch {
+-        var vp: ViewportSearch = try .init(alloc, needle_unowned);
++        return initMode(alloc, needle_unowned, false);
++    }
++
++    pub fn initMode(
++        alloc: Allocator,
++        needle_unowned: []const u8,
++        unicode: bool,
++    ) Allocator.Error!TerminalSearch {
++        var vp: ViewportSearch = try .initMode(alloc, needle_unowned, unicode);
+         errdefer vp.deinit();
+ 
+         // We use dirty tracking for active area changes. Start with it
+@@ -291,10 +299,11 @@ pub const TerminalSearch = struct {
+             var it = t.screens.all.iterator();
+             while (it.next()) |entry| {
+                 if (self.screens.contains(entry.key)) continue;
+-                const screen_search = ScreenSearch.init(
++                const screen_search = ScreenSearch.initMode(
+                     alloc,
+                     entry.value.*,
+                     self.viewport.needle(),
++                    self.viewport.window.unicode,
+                 ) catch |err| switch (err) {
+                     error.OutOfMemory => {
+                         // OOM is probably going to sink the entire ship but
+@@ -354,6 +363,7 @@ pub const TerminalSearch = struct {
+                     ),
+                 };
+             }
++            if (entry.value.history) |*h| h.skip_node = h.start_pin.node;
+         }
+     }
+ 
+diff --git a/src/terminal/search/viewport.zig b/src/terminal/search/viewport.zig
+index 1652e574d..8ad2d74b5 100644
+--- a/src/terminal/search/viewport.zig
++++ b/src/terminal/search/viewport.zig
+@@ -35,11 +35,19 @@ pub const ViewportSearch = struct {
+     pub fn init(
+         alloc: Allocator,
+         needle_unowned: []const u8,
++    ) Allocator.Error!ViewportSearch {
++        return initMode(alloc, needle_unowned, false);
++    }
++
++    pub fn initMode(
++        alloc: Allocator,
++        needle_unowned: []const u8,
++        unicode: bool,
+     ) Allocator.Error!ViewportSearch {
+         // We just do a forward search since the viewport is usually
+         // pretty small so search results are instant anyways. This avoids
+         // a small amount of work to reverse things.
+-        var window: SlidingWindow = try .init(alloc, .forward, needle_unowned);
++        var window: SlidingWindow = try .initMode(alloc, .forward, needle_unowned, unicode);
+         errdefer window.deinit();
+         return .{
+             .window = window,
+@@ -62,7 +70,7 @@ pub const ViewportSearch = struct {
+     /// The needle that this search is using.
+     pub fn needle(self: *const ViewportSearch) []const u8 {
+         assert(self.window.direction == .forward);
+-        return self.window.needle;
++        return self.window.original_needle;
+     }
+ 
+     /// Update the sliding window to reflect the current viewport. This

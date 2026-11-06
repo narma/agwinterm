@@ -25,7 +25,9 @@ public class PortableToolsTests
     }
 
     private static readonly string[] Names =
-        ["agwintermctl.exe", "agwinterm-hook.exe", "agwinterm-hook-linux-x64", "agwinterm-hook-linux-arm64"];
+        ["agwintermctl.exe", "agwinterm-hook.exe", "agwinterm-hook-linux-x64", "agwinterm-hook-linux-arm64",
+         "ghostty-vt.dll", "agwinterm_ghostty.dll", "ghostty-vt.provenance.json", "ghostty-NOTICES.txt",
+         "conpty.dll", "OpenConsole.exe"];
 
     private static byte[] Payload(string version, bool incomplete = false)
     {

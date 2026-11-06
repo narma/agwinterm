@@ -62,7 +62,8 @@ internal partial class Program
             {
                 lock (_registry) if (!_registry.Values.Contains(this))
                     throw new InvalidOperationException("Selected local window closed");
-                if (_sessionBackend.Name != "server-rust" || _isQuickWindow) throw new InvalidOperationException("Remote import requires a Rust-hosted ordinary window");
+                if (_config.ConfiguredSessionHost != "server" || _isQuickWindow)
+                    throw new InvalidOperationException("Remote import requires a hosted ordinary window");
                 var ws = ActiveWorkspace();
                 var id = Guid.NewGuid().ToString();
                 var session = CreateSession(id, selected.Session.Name, null, ws, false,
@@ -151,7 +152,7 @@ internal partial class Program
             }).ConfigureAwait(false);
             if (!pane.LiveRecovery.IsCurrent(generation)) return;
             string[] argv = AgtermRemoteOperations.AttachmentArgs(binding, nonce, pane.LiveClaim);
-            if (pane.S is not ServerSession server) throw new IOException("Remote transport requires the Rust host");
+            if (pane.S is not ServerSession server) throw new IOException("Remote transport requires a PTY host");
             await server.StartCheckpointedAsync("wsl.exe", new SessionCommand("wsl.exe", argv).QuotedArgs,
                 ticket => LiveUiAsync(() =>
                 {

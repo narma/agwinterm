@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net$(AgwintermFrameworkMajor).0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/Agwinterm.Pty/Agwinterm.Pty.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../Agwinterm.Pty.Tests/ShmTestProducer.cs" Link="ShmTestProducer.cs" /></ItemGroup>
+</Project>

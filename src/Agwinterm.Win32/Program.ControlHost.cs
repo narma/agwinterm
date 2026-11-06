@@ -854,7 +854,19 @@ internal partial class Program
     {
         var pane = PaneForTarget(target);
         if (pane is null) return "";
-        TerminalEmulator.ShellMark? m;
+        if(pane.S.Presentation is { IsRemote:true } presentation)
+        {
+            TerminalFrameIdentity identity;
+            lock(pane.S.SyncRoot)
+            {
+                using var frame=((PresentedTerminalView)pane.S.Emulator).AcquireFrame();
+                if(frame is null) return "";
+                identity=frame.Identity;
+            }
+            var reply=presentation.QueryAsync(new(identity.Incarnation,identity.AttachmentEpoch,0,"last-output"),default).AsTask().GetAwaiter().GetResult();
+            return reply.Status == "ok" && reply.Rows.Count == 1 ? reply.Rows[0] : ISessionHost.RefusePrefix+"Command output unavailable: "+reply.Status;
+        }
+        ShellMark? m;
         lock (pane.S.SyncRoot) m = pane.S.Emulator.Marks.LastOrDefault(x => x.EndLine >= 0);
         if (m is null) return "no completed command marks (FTCS wrap not active?)";
         // Output begins after the command's input row: 133;C if the shell emits it, else the
@@ -863,13 +875,14 @@ internal partial class Program
         return from > m.EndLine - 1 ? "" : RowsText(pane, from, m.EndLine - 1);
     }
 
-    public string SessionCopy(string? target) => InvokeOnUi(() =>
+    public string SessionCopy(string? target)
     {
-        var pane = PaneForTarget(target);
-        // On the UI thread: reading a selection RECONCILES it (eviction may have renumbered or
-        // invalidated it), and selection state belongs to this thread.
-        return pane is not null ? SelectionText(pane) : "";
-    });
+        var (pane,owner)=InvokeOnUiQueued(()=> { var p=PaneForTarget(target); return (p,p?.SelOwner); });
+        if(owner is not null && !owner.Ready.IsCompleted && Environment.CurrentManagedThreadId != _uiaThreadId)
+            owner.Ready.GetAwaiter().GetResult();
+        return InvokeOnUi(()=>pane is not null && ReferenceEquals(PaneForTarget(target),pane) && ReferenceEquals(pane.SelOwner,owner)
+            ? SelectionText(pane) : "");
+    }
 
     // Selection/clipboard control API. Clipboard + selection are UI-thread concepts, so hop on-thread.
     // No pane for the target is the shared refusal (ISessionHost.RefusePrefix + SessionContexts.NoSession,
@@ -880,16 +893,24 @@ internal partial class Program
         SelectAll(p); return HasLiveSel(p) ? "selected all" : "empty";
     });
 
-    public string SelectionCopy(string? target) => InvokeOnUi(() =>
+    public string SelectionCopy(string? target)
     {
+        var (original,owner)=InvokeOnUiQueued(()=> { var p=PaneForTarget(target); return (p,p?.SelOwner); });
+        if(owner is not null && !owner.Ready.IsCompleted && Environment.CurrentManagedThreadId != _uiaThreadId)
+            owner.Ready.GetAwaiter().GetResult();
+        return InvokeOnUi(() =>
+        {
         var p = PaneForTarget(target); if (p is null) return ISessionHost.RefusePrefix + SessionContexts.NoSession;
+        if(!ReferenceEquals(p,original) || !ReferenceEquals(p.SelOwner,owner)) return ISessionHost.RefusePrefix+"Selection changed";
+        if(owner is { Ready.IsCompleted:false }) return ISessionHost.RefusePrefix+"Selection is still being captured";
         if (!HasLiveSel(p)) return "no selection";
         // Report what actually happened: a live selection over cells a TUI has blanked copies
         // nothing and leaves the clipboard alone, and an agent acting on this reply must not be
         // told otherwise. Length is not the measure — SelectionText joins hard-ended rows with CRLF whether
         // or not a row held text.
         return CopySelection(p, out string copied) ? $"copied {copied.Length} chars" : "nothing to copy";
-    });
+        });
+    }
 
     public string SelectionClear(string? target) => InvokeOnUi(() =>
     {
@@ -933,9 +954,8 @@ internal partial class Program
         return SessionPastes.Reply(payload);
     });
 
-    // Search operates on the active pane's find bar (a UI-thread concept); run it synchronously
-    // on the UI thread and return the "N of M" status. (target is accepted for API shape; v1
-    // searches the active session.)
+    // The find bar belongs to the UI; Ghostty scans run in the background. A status request
+    // (no query/action) polls the current scan without restarting it.
     public string SessionSearch(string? target, string? query, string? action) => InvokeOnUi(() =>
     {
         if (PaneForTarget(target) is null || ActiveSurface() is null)
@@ -945,7 +965,15 @@ internal partial class Program
         if (!string.IsNullOrEmpty(query)) { _searchQuery = query!; RecomputeSearch(); _searchCur = 0; ScrollToMatch(); }
         else if (action == "next") SearchStep(1);
         else if (action == "prev") SearchStep(-1);
-        else { RecomputeSearch(); ScrollToMatch(); }
+        else if (ActiveSurface() is { } pane)
+        {
+            if (pane.S.Emulator is GhosttyTerminalCore or PresentedTerminalView) RefreshSearch(pane);
+            else
+            {
+                RecomputeSearch(preserveSelection: ReferenceEquals(_searchPane, pane) && ReferenceEquals(_searchCore, pane.S.Emulator));
+                ScrollToMatch();
+            }
+        }
         RequestRedraw();
         return SearchStatus();
     });
@@ -1286,6 +1314,7 @@ internal partial class Program
         if (!TryCapturePaneCommands(snap, 15000, out var byPid))
             return RestoreCaptureResult.Refuse(RestoreCaptureReply.QueryFailed);
 
+        var ownerBuffers=new Dictionary<string,ServerSession>();
         var (result, json, stamp, landedCount) = InvokeOnUiQueued(() =>
         {
             var landed = new List<CapturedPane>(snap.Count);
@@ -1305,6 +1334,7 @@ internal partial class Program
             if (landed.Count > 0)
             {
                 reserved = _stateWriter.Reserve();
+                ownerBuffers=CaptureOwnerBufferSessions();
                 if ((snapshot = BuildStateSnapshot(out string? buildWhy)) is null)
                     return (RestoreCaptureResult.Refuse(RestoreCaptureReply.NotSaved(landed.Count, buildWhy)), (string?)null, 0L, landed.Count);
                 SaveIndex();
@@ -1315,6 +1345,9 @@ internal partial class Program
         // what did happen: the slots are in memory (tree shows them) and are left as captured —
         // rolling them back would make the tree disagree with a query that read the processes
         // correctly (#246; lite's restore.capture refuses the same way).
+        if(json is not null)
+            try { json=CompleteOwnerBuffers(json,ownerBuffers).GetAwaiter().GetResult(); }
+            catch(Exception ex) { return RestoreCaptureResult.Refuse(RestoreCaptureReply.NotSaved(landedCount,ex.Message)); }
         if (json is not null && !PublishState(json, stamp, out string? why))
             return RestoreCaptureResult.Refuse(RestoreCaptureReply.NotSaved(landedCount, why));
         return result;

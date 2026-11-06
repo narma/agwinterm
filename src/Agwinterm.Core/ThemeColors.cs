@@ -8,6 +8,20 @@ namespace Agwinterm.Core;
 public static class ThemeColors
 {
     public const string EnvVar = "AGWINTERM_THEME_COLORS";
+    public const string PaletteEnvVar = "AGWINTERM_THEME_PALETTE";
+    public const string CursorEnvVar = "AGWINTERM_THEME_CURSOR";
+    public static string FormatColor(Color color) => $"{color.R:x2}{color.G:x2}{color.B:x2}";
+    public static string FormatPalette(IReadOnlyList<Color> palette) => string.Join(';', palette.Select(FormatColor));
+    public static Color? ParseColor(string? value) => value is not null && TryHex(value, out var color) ? color : null;
+    public static Color[]? ParsePalette(string? value)
+    {
+        if (value is null || value.Length > 1791) return null;
+        var parts = value.Split(';');
+        if (parts.Length is not (16 or 256)) return null;
+        var colors = new Color[parts.Length];
+        for (int i = 0; i < parts.Length; i++) if (!TryHex(parts[i], out colors[i])) return null;
+        return colors;
+    }
 
     public static string Format(Color fg, Color bg) => $"{fg.R:x2}{fg.G:x2}{fg.B:x2};{bg.R:x2}{bg.G:x2}{bg.B:x2}";
 

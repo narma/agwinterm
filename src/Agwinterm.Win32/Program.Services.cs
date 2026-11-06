@@ -648,7 +648,8 @@ internal partial class Program
         // Wrapped inside the content area: a reload's toast carries every note of the keys it applied
         // (a refused hotkey, a backend switch), and a single unbounded line ran off both edges.
         float maxW = Math.Max(120f, (cw - _sidebarW) - 32f);
-        using var layout = _dwrite.CreateTextLayout(_toastText, _uiFont, Math.Max(1f, maxW - 32f), Math.Max(1f, ch - 48f));
+        string displayText = _setOpen ? _toastText + "\nCtrl+C to copy" : _toastText;
+        using var layout = _dwrite.CreateTextLayout(displayText, _uiFont, Math.Max(1f, maxW - 32f), Math.Max(1f, ch - 48f));
         layout.WordWrapping = WordWrapping.Wrap;
         float tw = Math.Min(maxW, layout.Metrics.Width + 32f), th = Math.Max(34f, layout.Metrics.Height + 16f);
         layout.MaxWidth = Math.Max(1f, tw - 32f); layout.MaxHeight = th;
@@ -679,7 +680,44 @@ internal partial class Program
 
     // ---- Theming ----
 
-    private void ApplyTheme(Theme t) { _theme = t; RecomputeChrome(); RequestRedraw(); }
+    private void ApplyTheme(Theme t)
+    {
+        _theme = t;
+        RefreshTerminalThemes();
+        RecomputeChrome(); RequestRedraw();
+    }
+
+    private void RefreshTerminalThemes()
+    {
+        var windows = new HashSet<Program>(_registry.Values) { this };
+        if (_quickHost is { } quick) windows.Add(quick);
+        foreach (var window in windows)
+        {
+            foreach (var pane in window.ThemeSurfaces())
+                if (pane.S is ServerSession server) server.UpdateTheme();
+            window.RequestRedraw();
+        }
+    }
+
+    private IEnumerable<Pane> ThemeSurfaces()
+    {
+        var pending = new Stack<Pane>();
+        foreach (var session in AllSessions())
+        {
+            foreach (var pane in session.AllPanes) pending.Push(pane);
+            if (session.Scratch is { } scratch) pending.Push(scratch);
+            if (session.Overlay.Term is { } overlay) pending.Push(overlay);
+        }
+        if (_quick is { } quick) pending.Push(quick);
+        if (_cover is { } cover) pending.Push(cover);
+        var visited = new HashSet<Pane>();
+        while (pending.TryPop(out var pane))
+        {
+            if (!visited.Add(pane)) continue;
+            yield return pane;
+            if (pane.Overlay.Term is { } overlay) pending.Push(overlay);
+        }
+    }
 
     /// <summary>Resolve the effective theme when "follow Windows light/dark" is on: pick theme-light or
     /// theme-dark per the current OS setting; when off, fall back to the single manual <c>theme</c>.
@@ -1073,7 +1111,7 @@ internal partial class Program
         "notification-flash" => _config.NotificationFlash,
         "claude-update-check" => _config.ClaudeUpdateCheck ? "true" : "false",
         "update-check" => _config.UpdateCheck ? "true" : "false",
-        "session-host" => _config.SessionHost,
+        "session-host" => _config.ConfiguredSessionHost,
         "fresh-env" => _config.FreshEnv ? "true" : "false",
         "emulator-core" => _config.EmulatorCore,
         "paste-protection" => _config.PasteProtection ? "true" : "false",
@@ -1172,20 +1210,17 @@ internal partial class Program
         {
             // Live switch (#105 2d): NEW sessions use the chosen backend immediately; existing panes
             // keep the one they were born with (both kinds coexist fine) and converge on restart.
-            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
-            Note(_config.SessionHost switch
-            {
-                "server" => "server mode ON (experimental) — new sessions survive UI restarts; restart agwinterm to move existing ones",
-                "server-rust" => "Rust server mode ON (experimental) — new sessions live in the Rust pty-host; restart agwinterm to move existing ones",
-                _ => "in-process mode — new sessions run in the window process; restart agwinterm to convert existing ones",
-            });
+            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
+            Note(_config.SessionHost == "server"
+                ? "Session host enabled — new shells survive UI restarts."
+                : "In-process mode — new shells run in the window process.");
         }
-        if (Has("conpty"))
+        if (Has("conpty") || Has("emulator-core"))
         {
             // New in-process sessions use the chosen ConPTY now. A running pty-host keeps the one it
             // started with; the next one it starts gets the new key.
             var api = ConPtyApi.Select(_config.Conpty != "inbox");
-            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
+            _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
             Note($"conpty — new sessions use {api.Description}; a running pty-host keeps its own until it restarts");
         }
         if (Has("emulator-core"))
@@ -1193,9 +1228,11 @@ internal partial class Program
             // Live switch, same semantics as session-host: NEW sessions get the chosen core;
             // existing panes keep the one they were born with and converge on restart.
             ResolveEmulatorCore();
-            Note(_emulatorCoreNote ?? "emulator-core = managed — new sessions use the C# emulator");
+            Note(_emulatorCoreNote ?? "Ghostty is the terminal backend");
             _emulatorCoreNote = null;   // startup path only announces once
         }
+        if (Has("cursor-style") || Has("cursor-blink"))
+            RefreshTerminalThemes();
         if (Has("cursor-blink-ms"))
             foreach (var window in _registry.Values.ToArray())
                 if (window._hwnd != IntPtr.Zero) SetTimer(window._hwnd, (IntPtr)1, (uint)_config.CursorBlinkMs, IntPtr.Zero);
@@ -1674,20 +1711,29 @@ internal partial class Program
     /// one slot, one reader, so a `restore capture` checkpoint survives the ordinary saves in between (P3).
     /// With <paramref name="sync"/> — the last window out, or an update-quit — it is written before
     /// returning: the process goes right after, and a snapshot still queued is older and fenced out.
-    /// Closing one window of several enqueues like any other save: a synchronous write there would
-    /// stall the UI thread every window shares.</summary>
+    /// Closing one of several windows normally enqueues the save. When an owner
+    /// holds its history, finish the export before close disposes that owner.</summary>
     private bool SaveState(bool captureCommands = false, bool sync = false)
     {
+        if (_closeSavePending && !captureCommands) return false;
         foreach (var session in AllSessions()) ObserveLayout(session);
         string? json = BuildStateSnapshot(out _, captureCommands);
         if (json is null) return false;
-        if (sync)
+        var ownerSessions=CaptureOwnerBufferSessions();
+        long stamp=_stateWriter.Reserve();
+        if (sync || (captureCommands && ownerSessions.Count != 0))
         {
-            bool ok = _stateWriter.Publish(StatePath, json, out _);
-            SaveIndex(sync: true);
-            return ok;
+            try { json=CompleteOwnerBuffers(json,ownerSessions).GetAwaiter().GetResult(); }
+            catch(Exception ex) { Trace.WriteLine("Final owner checkpoint failed: "+ex.Message); return false; }
+            if (sync)
+            {
+                bool ok = _stateWriter.Publish(StatePath, json, stamp, out _);
+                SaveIndex(sync: true);
+                return ok;
+            }
+            ownerSessions.Clear(); // already captured; background writes need no live sessions
         }
-        _stateWriter.Enqueue(StatePath, json);
+        QueueOwnerSave(json,stamp,ownerSessions);
         SaveIndex();
         return true;
     }
@@ -1762,15 +1808,13 @@ internal partial class Program
                         string cmd = p.CapturedCommand ?? "";   // the durable slot; "" on disk = none (RestoreState)
                         List<string>? buf = null;
                         string? blob = null;
-                        if (_config.RestoreBuffer)
+                        if (_config.RestoreBuffer && p.S is not ServerSession { UsesPresentation:true })
                             try
                             {
                                 lock (p.S.SyncRoot)
                                 {
                                     buf = p.S.Emulator.DumpBuffer().TakeLast(500).ToList();   // plain-text fallback
-                                    // Managed and Rust cores share the full-fidelity attributed buffer schema.
-                                    if (p.S.Emulator is TerminalEmulator or RustTerminalCore)
-                                        blob = Convert.ToBase64String(BufferPersist.Serialize(p.S.Emulator));
+                                    blob = Convert.ToBase64String(BufferPersist.Serialize(p.S.Emulator));
                                 }
                             }
                             catch { }
@@ -1968,14 +2012,31 @@ internal partial class Program
                             {
                                 var pane = ses.Panes[i];
                                 if (SuppressesRestoreReplay(pane)) continue;
+                                if(pane.S is ServerSession { UsesPresentation:true } owner)
+                                {
+                                    byte[]? saved=null;
+                                    if(pl[i].BufferBlob is { Length:>0 } encoded)
+                                        try { var bytes=Convert.FromBase64String(encoded); if(BufferPersist.TryParse(bytes,out _)) saved=bytes; }
+                                        catch(FormatException) { }
+                                    if(saved is null && pl[i].Buffer is { Count:>0 } plain)
+                                    {
+                                        // Convert old plain state without parsing its text as terminal commands.
+                                        saved=BufferPersist.FromPlainText(plain,owner.Cols);
+                                    }
+                                    if(saved is not null) owner.ImportBufferAsync(saved).GetAwaiter().GetResult();
+                                    continue;
+                                }
                                 // Prefer the full-fidelity attributed blob; fall back to plain text.
-                                if (pl[i].BufferBlob is { Length: > 0 } b64 && pane.S.Emulator is TerminalEmulator or RustTerminalCore
+                                if (pl[i].BufferBlob is { Length: > 0 } b64
                                     && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))
                                 {
                                     lock (pane.S.SyncRoot)
                                     {
+                                        if (pane.S.Emulator is GhosttyTerminalCore)
+                                            pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
                                         BufferPersist.Restore(pane.S.Emulator, pbuf);
-                                        pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
+                                        if (pane.S.Emulator is not GhosttyTerminalCore)
+                                            pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
                                     }
                                 }
                                 else if (pl[i].Buffer is { Count: > 0 } b)
@@ -2126,7 +2187,7 @@ internal partial class Program
     }
 
     // The first-run config template. Honors --default-session-host (the installer passes
-    // "server-rust" so a fresh install defaults new sessions to the Rust pty-host) without
+    // "server" so a fresh install uses the Ghostty-capable .NET pty-host) without
     // touching the compiled global default — existing configs are never rewritten, and the
     // Settings UI stays authoritative from then on. Unknown values leave the template as-is.
     private static string SeedConfigText()

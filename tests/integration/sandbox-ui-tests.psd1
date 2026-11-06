@@ -1,5 +1,13 @@
 @{
-    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite') }
+    HostOwnerSearchLoad = @{ Path='tests/integration/host-owner-search-load.ps1'; Exe=$true; Options=@() }
+    HostOwnerHandoff = @{ Path='tests/integration/host-owner-handoff.ps1'; Exe=$true; Ctl=$true; Options=@() }
+    PtyProcessContracts = @{ Path='tests/integration/pty-process-contracts.ps1'; Exe=$false; Options=@() }
+    HostOwnerSoak = @{ Path='tests/integration/host-owner-soak.ps1'; Exe=$true; Strict=$false; Options=@('Sessions','Minutes') }
+    HostOwnerUpgrade = @{ Path='tests/integration/host-owner-upgrade.ps1'; Exe=$true; Strict=$false; Options=@('Contracts','Preview') }
+    HostOwnerContracts = @{ Path='tests/integration/host-owner-contracts.ps1'; Exe=$true; Strict=$false; Options=@() }
+    SessionBulk = @{ Path='tests/integration/session-bulk-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','MiB','Comparison','LatencyHost','LatencyPresentation','LatencyCandidate','AllCandidates','RevisionComparison') }
+    SessionPerformance = @{ Path='tests/integration/session-performance-ui.ps1'; Exe=$true; Strict=$false; Options=@('Pairs','PairOffset','LatencySamples','LatencyWorkload','LatencyHost','LatencyInputPattern','LatencyCandidate','AllCandidates','RevisionComparison') }
+    Hud = @{ Path='tests/integration/hud-ui.ps1'; Exe=$true; Strict=$true; Options=@('Suite','SessionHost','EmulatorCore','LatencyHost','LatencySamples','LatencyWorkload','LatencyPresentation','LatencyVariant','LatencyInputPattern','LatencyTraceMode','LatencyBulkMiB','SingleOwner') }
     Win32Control = @{ Path='tests/integration/win32-control.ps1'; Exe=$true; Strict=$true; Options=@() }
     Conformance = @{ Path='tests/conformance/conformance.ps1'; Exe=$true; Strict=$true; Options=@(); OptionalInputs=@('Spec') }
     RestoreRoundtrip = @{ Path='tests/integration/restore-roundtrip.ps1'; Exe=$true; Strict=$true; Options=@('Only') }
@@ -14,12 +22,13 @@
     WebPageMeasurements = @{ Path='tools/web-page-measurements.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@(); Outputs=@('Output') }
     WslControl = @{ Path='tests/integration/wsl-control.ps1'; Wsl=$true; Options=@('Distro','NativeHooks','LinuxUser','NoPython','Portable') }
     WslBenchmark = @{ Path='tests/integration/wsl-hook-bench.ps1'; Wsl=$true; Options=@() }
+    WslTuiRendering = @{ Path='tests/integration/wsl-tui-rendering.ps1'; Wsl=$true; Options=@('Distro','AppDirectory','OutputDirectory','Core','Conpty','Scenario','Seconds') }
     WslZmxDependency = @{ Path='tests/integration/wsl-zmx-dependency.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
-    WslZmxSurvival = @{ Path='tests/integration/wsl-zmx-survival.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory','DiagnosticKeepalive','LifetimeGuard','ProfileLive','LifecycleControls','PeerDistro','PeerUser','PeerExecutable') }
-    WslAgtermRemote = @{ Path='tests/integration/wsl-agterm-remote.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','Destination','AgentSocket','OriginSocket','Bridge','TerminalFixture','FaultBridge','PassiveOnly') }
+    WslZmxSurvival = @{ Path='tests/integration/wsl-zmx-survival.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory','DiagnosticKeepalive','LifetimeGuard','ProfileLive','LifecycleControls','PeerDistro','PeerUser','PeerExecutable','UpgradeToGhostty') }
+    WslAgtermRemote = @{ Path='tests/integration/wsl-agterm-remote.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','Destination','AgentSocket','OriginSocket','Bridge','TerminalFixture','FaultBridge','PassiveOnly','UpgradeToGhostty') }
     WslOriginExport = @{ Path='tests/integration/wsl-origin-export.ps1'; Wsl=$true; Options=@('Distro','LinuxUser','BuildDirectory','Destination','AgentSocket','MacAgentSocket','MacApp','PeerHost','ManualQuestion','ManualJob','Accessibility') }
     WslZmxIdentity = @{ Path='tests/integration/wsl-zmx-identity.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }
     WebStartupBaseline = @{ Path='tools/web-startup-baseline.ps1'; Exe=$true; Options=@('Runs'); OptionalInputs=@('Installer','Portable'); Outputs=@('Output') }
     WebReleaseAcceptance = @{ Path='tests/integration/web-release-acceptance.ps1'; Python=$true; Options=@('Mode','Runtime'); OptionalInputs=@('Installer','Portable') }
-    WebImeAcceptance = @{ Path='tests/integration/web-ime-acceptance.ps1'; Exe=$true; Ctl=$true; Options=@(); Inputs=@('LanguageSource') }
+    WebImeAcceptance = @{ Path='tests/integration/web-ime-acceptance.ps1'; Exe=$true; Ctl=$true; Options=@('TerminalCore','SessionHost'); Inputs=@('LanguageSource') }
 }

@@ -16,6 +16,10 @@ namespace Agwinterm.Pty;
 /// </summary>
 public interface ISession : IDisposable
 {
+    /// <summary>Owner-independent Ghostty presentation and operations, when this
+    /// session supports the new contract. Null identifies an unmigrated/legacy
+    /// adapter; callers must not silently substitute a live replica on failure.</summary>
+    ISessionPresentation? Presentation => null;
     /// <summary>The screen model this session renders from. In-process: the live emulator; a
     /// server backend supplies a client-side replica with the same contract.</summary>
     ITerminalCore Emulator { get; }

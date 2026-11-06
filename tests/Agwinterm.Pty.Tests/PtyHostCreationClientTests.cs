@@ -8,6 +8,15 @@ public class PtyHostCreationClientTests
 {
     private const string Ticket = "0123456789abcdef0123456789abcdef";
 
+    [Fact]
+    public void LiveThemeDoesNotSendUnknownCommandsToLegacyHosts()
+    {
+        using var stream = new ExchangeStream(_ => throw new InvalidOperationException("Unexpected request"));
+        using var client = new PtyHostClient(stream);
+        Assert.False(client.UpdateTheme("session", "112233;445566", "palette", "778899", Ticket));
+        Assert.Empty(stream.Requests);
+    }
+
     // Private in-memory framing only: no pipe, host, console, registry or desktop.
     private sealed class ExchangeStream(Func<Request, byte[]> reply) : Stream
     {

@@ -21,45 +21,34 @@ public sealed class InProcessSessionBackend : ISessionBackend
 {
     public static readonly InProcessSessionBackend Instance = new();
     public string Name => "in-process";
-    public ISession Create(string id, int cols, int rows) => new TerminalSession(cols, rows);
+    public ISession Create(string id, int cols, int rows)
+    {
+        var session=new TerminalSession(cols,rows);
+        if(session.Emulator is Agwinterm.Core.GhosttyTerminalCore)
+            session.EnablePresentation();
+        return session;
+    }
 }
 
 public static class SessionBackends
 {
-    /// <summary>Resolve the configured <c>session-host</c> value to a backend:
-    ///  - "server": the C# pty-host (the same exe, <c>--pty-host</c> role).
-    ///  - "server-rust": the standalone Rust pty-host binary (agwinterm-ptyhost.exe next to the
-    ///    exe) — same protocol (protobuf v2, oracle-proven), but blocking-threaded so the .NET 10
-    ///    IOCP crash class (#118) is structurally absent. Uses a distinct pipe namespace
-    ///    (<c>&lt;appId&gt;-rust</c>) so it never collides with a C# host on the same instance.
-    ///  - anything else: in-process.
-    /// A missing Rust binary falls through to a null exe, so Create throws and the UI falls back to
-    /// in-process (same graceful path as an unreachable C# host). <paramref name="conpty"/> is the
-    /// <c>conpty</c> key, which a pty-host reads when it starts (#339).</summary>
-    public static ISessionBackend Resolve(string? configured, string appId, string? exePath, string? conpty = null)
+    /// <summary>Resolve hosted Ghostty or direct local operation. Old server-rust settings migrate to the same owner host.</summary>
+    public static ISessionBackend Resolve(string? configured, string appId, string? exePath, string? conpty = null,
+        string? replicaCore = null)
     {
         // Always explicit: a pty-host started without the flag keeps the inbox conhost.
         string conptyArg = conpty is null ? "" : conpty == "inbox" ? " --conpty inbox" : " --conpty bundled";
-        if (string.Equals(configured, "server", StringComparison.OrdinalIgnoreCase))
-            return new ServerSessionBackend(appId, exePath, $"--pty-host --pipe \"{appId}\"{conptyArg}");
-        if (string.Equals(configured, "server-rust", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(configured, "server", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(configured, "server-rust", StringComparison.OrdinalIgnoreCase))
         {
-            string rustAppId = appId + "-rust";
-            string? rustHost = FindRustHost(exePath);
-            return new ServerSessionBackend(rustAppId, rustHost, $"--pipe \"{rustAppId}\"{conptyArg}", name: "server-rust");
+            string serverId = appId + "-owner-v1";
+            return new ServerSessionBackend(serverId, exePath, $"--pty-host --pipe \"{serverId}\"{conptyArg}");
         }
         return InProcessSessionBackend.Instance;
     }
 
-    /// <summary>Locate agwinterm-ptyhost.exe next to the app exe (the installer ships it there).</summary>
-    private static string? FindRustHost(string? exePath)
-    {
-        try
-        {
-            string dir = exePath is not null ? Path.GetDirectoryName(exePath)! : AppContext.BaseDirectory;
-            string p = Path.Combine(dir, "agwinterm-ptyhost.exe");
-            return File.Exists(p) ? p : null;
-        }
-        catch { return null; }
-    }
+    // WSL and remote live transports use the same Ghostty owner host.
+    public static ServerSessionBackend ResolveLive(Agwinterm.Core.TerminalConfig config, string appId, string? exePath)
+        => (ServerSessionBackend)Resolve("server",
+            appId, exePath, config.Conpty, config.EmulatorCore);
 }

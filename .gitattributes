@@ -3,6 +3,9 @@
 # user's core.autocrlf says.
 *.sh text eol=lf
 
+# Patch context must match upstream LF sources on Windows checkouts too.
+*.patch text eol=lf
+
 # Batch files are the mirror image: cmd.exe mis-parses a multi-line if-block in
 # an LF-only file, so these must be CRLF.
 *.cmd text eol=crlf

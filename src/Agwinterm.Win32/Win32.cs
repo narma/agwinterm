@@ -17,6 +17,7 @@ internal static class Win32
     public const uint WM_KEYDOWN = 0x0100;
     public const uint WM_KEYUP = 0x0101;
     public const uint WM_CHAR = 0x0102;
+    public const uint WM_IME_STARTCOMPOSITION = 0x010D, WM_IME_ENDCOMPOSITION = 0x010E;
     public const uint WM_SYSKEYDOWN = 0x0104;
     public const uint WM_SYSKEYUP = 0x0105;
     public const uint WM_SYSCOMMAND = 0x0112;
@@ -76,7 +77,7 @@ internal static class Win32
     }
 
     public const int MK_LBUTTON = 0x0001;
-    public const int SW_SHOW = 5;
+    public const int SW_HIDE = 0, SW_SHOW = 5;
 
     // Phase 3: inline rename (child EDIT), context menus, double-click.
     public const uint WM_LBUTTONDBLCLK = 0x0203;
@@ -450,6 +451,14 @@ internal static class Win32
     [DllImport("user32.dll")] public static extern bool SetCaretPos(int x, int y);
     [DllImport("user32.dll")] public static extern bool HideCaret(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool DestroyCaret();
+    [StructLayout(LayoutKind.Sequential)]
+    public struct COMPOSITIONFORM { public uint style; public POINT position; public RECT area; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct CANDIDATEFORM { public uint index, style; public POINT position; public RECT area; }
+    [DllImport("imm32.dll")] public static extern IntPtr ImmGetContext(IntPtr hwnd);
+    [DllImport("imm32.dll")] public static extern bool ImmReleaseContext(IntPtr hwnd, IntPtr context);
+    [DllImport("imm32.dll")] public static extern bool ImmSetCompositionWindow(IntPtr context, in COMPOSITIONFORM form);
+    [DllImport("imm32.dll")] public static extern bool ImmSetCandidateWindow(IntPtr context, in CANDIDATEFORM form);
 
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT lpPoint);

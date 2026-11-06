@@ -24,21 +24,21 @@ namespace Agwinterm.Core.Persist {
     static PersistReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg1wZXJzaXN0LnByb3RvEhFhZ3dpbnRlcm0ucGVyc2lzdCLmAQoFUENlbGwS",
+            "Cg1wZXJzaXN0LnByb3RvEhFhZ3dpbnRlcm0ucGVyc2lzdCL4AQoFUENlbGwS",
             "DAoEcnVuZRgBIAEoBRIKCgJmZxgCIAEoDRIKCgJiZxgDIAEoDRINCgVhdHRy",
             "cxgEIAEoDRINCgV3aWR0aBgFIAEoDRIPCgdmZ19raW5kGAYgASgNEhAKCGZn",
             "X2luZGV4GAcgASgNEg4KBmZnX3JnYhgIIAEoDRIPCgdiZ19raW5kGAkgASgN",
             "EhAKCGJnX2luZGV4GAogASgNEg4KBmJnX3JnYhgLIAEoDRIVCg1oeXBlcmxp",
-            "bmtfdXJpGAwgASgJEhwKFGh5cGVybGlua19wYXJhbWV0ZXJzGA0gASgJIloK",
-            "BFBSb3cSFAoMc29mdF93cmFwcGVkGAIgASgIEhMKC3dyYXBfbGVuZ3RoGAMg",
-            "ASgNEicKBWNlbGxzGAEgAygLMhguYWd3aW50ZXJtLnBlcnNpc3QuUENlbGwi",
-            "TwoHUEJ1ZmZlchIPCgd2ZXJzaW9uGAEgASgNEgwKBGNvbHMYAiABKA0SJQoE",
-            "cm93cxgDIAMoCzIXLmFnd2ludGVybS5wZXJzaXN0LlBSb3dCGaoCFkFnd2lu",
-            "dGVybS5Db3JlLlBlcnNpc3RiBnByb3RvMw=="));
+            "bmtfdXJpGAwgASgJEhwKFGh5cGVybGlua19wYXJhbWV0ZXJzGA0gASgJEhAK",
+            "CGdyYXBoZW1lGA4gASgJIloKBFBSb3cSFAoMc29mdF93cmFwcGVkGAIgASgI",
+            "EhMKC3dyYXBfbGVuZ3RoGAMgASgNEicKBWNlbGxzGAEgAygLMhguYWd3aW50",
+            "ZXJtLnBlcnNpc3QuUENlbGwiTwoHUEJ1ZmZlchIPCgd2ZXJzaW9uGAEgASgN",
+            "EgwKBGNvbHMYAiABKA0SJQoEcm93cxgDIAMoCzIXLmFnd2ludGVybS5wZXJz",
+            "aXN0LlBSb3dCGaoCFkFnd2ludGVybS5Db3JlLlBlcnNpc3RiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb", "HyperlinkUri", "HyperlinkParameters" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb", "HyperlinkUri", "HyperlinkParameters", "Grapheme" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PRow), global::Agwinterm.Core.Persist.PRow.Parser, new[]{ "SoftWrapped", "WrapLength", "Cells" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PBuffer), global::Agwinterm.Core.Persist.PBuffer.Parser, new[]{ "Version", "Cols", "Rows" }, null, null, null, null)
           }));
@@ -100,6 +100,7 @@ namespace Agwinterm.Core.Persist {
       bgRgb_ = other.bgRgb_;
       hyperlinkUri_ = other.hyperlinkUri_;
       hyperlinkParameters_ = other.hyperlinkParameters_;
+      grapheme_ = other.grapheme_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -271,6 +272,21 @@ namespace Agwinterm.Core.Persist {
       }
     }
 
+    /// <summary>Field number for the "grapheme" field.</summary>
+    public const int GraphemeFieldNumber = 14;
+    private string grapheme_ = "";
+    /// <summary>
+    /// complete cluster; absent in older blobs means the scalar rune
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Grapheme {
+      get { return grapheme_; }
+      set {
+        grapheme_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -299,6 +315,7 @@ namespace Agwinterm.Core.Persist {
       if (BgRgb != other.BgRgb) return false;
       if (HyperlinkUri != other.HyperlinkUri) return false;
       if (HyperlinkParameters != other.HyperlinkParameters) return false;
+      if (Grapheme != other.Grapheme) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -319,6 +336,7 @@ namespace Agwinterm.Core.Persist {
       if (BgRgb != 0) hash ^= BgRgb.GetHashCode();
       if (HyperlinkUri.Length != 0) hash ^= HyperlinkUri.GetHashCode();
       if (HyperlinkParameters.Length != 0) hash ^= HyperlinkParameters.GetHashCode();
+      if (Grapheme.Length != 0) hash ^= Grapheme.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -389,6 +407,10 @@ namespace Agwinterm.Core.Persist {
         output.WriteRawTag(106);
         output.WriteString(HyperlinkParameters);
       }
+      if (Grapheme.Length != 0) {
+        output.WriteRawTag(114);
+        output.WriteString(Grapheme);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -451,6 +473,10 @@ namespace Agwinterm.Core.Persist {
         output.WriteRawTag(106);
         output.WriteString(HyperlinkParameters);
       }
+      if (Grapheme.Length != 0) {
+        output.WriteRawTag(114);
+        output.WriteString(Grapheme);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -499,6 +525,9 @@ namespace Agwinterm.Core.Persist {
       }
       if (HyperlinkParameters.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(HyperlinkParameters);
+      }
+      if (Grapheme.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Grapheme);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -550,6 +579,9 @@ namespace Agwinterm.Core.Persist {
       }
       if (other.HyperlinkParameters.Length != 0) {
         HyperlinkParameters = other.HyperlinkParameters;
+      }
+      if (other.Grapheme.Length != 0) {
+        Grapheme = other.Grapheme;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -622,6 +654,10 @@ namespace Agwinterm.Core.Persist {
             HyperlinkParameters = input.ReadString();
             break;
           }
+          case 114: {
+            Grapheme = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -691,6 +727,10 @@ namespace Agwinterm.Core.Persist {
           }
           case 106: {
             HyperlinkParameters = input.ReadString();
+            break;
+          }
+          case 114: {
+            Grapheme = input.ReadString();
             break;
           }
         }

@@ -27,7 +27,7 @@ dotnet test  Agwinterm.slnx -c Release          # Core + Pty unit tests
 dotnet run --project src/Agwinterm.Win32 -c Release
 ```
 
-The Rust side (`native/`: the `agwinterm-core` emulator and the `agwinterm-ptyhost` server) is optional for day-to-day work and needed for `emulator-core = rust`, `session-host = server-rust`, the installer, and CI's parity oracle. It needs a stable Rust toolchain:
+Windows uses the bundled Ghostty VT library. Build the hooks and WSL/ZMX and remote helpers with the Rust workspace:
 
 ```powershell
 cargo build --release --manifest-path native/Cargo.toml
@@ -37,8 +37,7 @@ cargo build --release --manifest-path native/Cargo.toml
 |---|---|
 | `dotnet build Agwinterm.slnx -c Release` | build everything managed |
 | `dotnet test Agwinterm.slnx -c Release` | host-free `Agwinterm.Core` tests and the `Agwinterm.Pty` tests |
-| `cargo build --release --manifest-path native/Cargo.toml` | the Rust core and pty-host |
-| `./tools/check-abi.ps1` | the Rust core's C ABI is declared in more than one place; this checks they agree |
+| `cargo build --release --manifest-path native/Cargo.toml` | the platform-native hooks and session helpers |
 | `./installer/build.ps1` | the Inno Setup installer (needs Inno Setup 6 and the Rust build) |
 | `./installer/build-portable.ps1` | the portable single-file exe |
 
@@ -171,4 +170,4 @@ Releases are the maintainer's: a `v*` tag on `main` builds the installer, the po
 
 ## The contract with agliteterm
 
-`tests/conformance/control-api.json` is the canonical spec for the control-API subset [agliteterm](https://github.com/yeroo/agliteterm) shares, and **both repositories run it in CI**. agliteterm builds against an ABI-pinned `agwinterm_core.dll` published from this repo and refuses to build if the published `abiVersion` is not the one it requires, so an ABI change in `native/agwinterm-core` is a release-coordinated change in both repositories: run `./tools/check-abi.ps1`, and say in the PR that the ABI moved.
+`tests/conformance/control-api.json` is the canonical spec for the control-API subset [agliteterm](https://github.com/yeroo/agliteterm) shares, and **both repositories run it in CI**. Release 0.30.1 retires the separate Windows Rust core, host and ABI manifest. Consumers of those assets can pin an earlier release.

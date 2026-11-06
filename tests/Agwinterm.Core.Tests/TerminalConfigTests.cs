@@ -10,7 +10,7 @@ public class TerminalConfigTests
         var recognized = new HashSet<string>(StringComparer.Ordinal);
         var config = TerminalConfig.Parse("bell = none\nconpty = inbox\nfont-size = invalid\nunknown-option = true", recognized);
         Assert.Equal("none", config.Bell);
-        Assert.Equal("inbox", config.Conpty);
+        Assert.Equal("bundled", config.Conpty);
         Assert.Equal(new[] { "bell", "conpty", "font-size" }, recognized.OrderBy(k => k));
         Assert.Equal(new TerminalConfig().FontSize, config.FontSize);
     }
@@ -26,6 +26,8 @@ public class TerminalConfigTests
         Assert.Equal(530, c.CursorBlinkMs);
         Assert.True(c.PasteProtection);   // WT/Ghostty default: warn on risky pastes
         Assert.True(c.ClipboardWrite);    // OSC 52 writes allowed by default
+        Assert.Equal("ghostty", c.EmulatorCore);
+        Assert.Equal("ghostty", TerminalConfig.Parse(TerminalConfig.DefaultText).EmulatorCore);
     }
 
     [Fact]
@@ -92,13 +94,49 @@ public class TerminalConfigTests
     }
 
     [Fact]
-    public void Conpty_DefaultsToInbox_ParsesBundled_RejectsUnknown()
+    public void LegacySettingsMigrateToGhosttyHost()
     {
-        Assert.Equal("inbox", TerminalConfig.Parse("").Conpty);
+        var config = TerminalConfig.Parse("session-host = server-rust");
+        Assert.Equal("ghostty", config.EmulatorCore);
+        Assert.Equal("server", config.SessionHost);
+        foreach (var core in new[] { "managed", "rust" })
+        {
+            config.EmulatorCore = core;
+            Assert.Equal("server", config.SessionHost);
+            Assert.Equal("server", TerminalConfig.Parse($"emulator-core = {core}\nsession-host = server-rust").SessionHost);
+        }
+        config.EmulatorCore = "ghostty";
+        Assert.Equal("server", config.SessionHost);
+    }
+
+    [Fact]
+    public void LegacyCoreAndConptySettingsMigrateToGhosttyBundled()
+    {
+        Assert.Equal("bundled", TerminalConfig.Parse("").Conpty);
         Assert.Equal("bundled", TerminalConfig.Parse("conpty = bundled").Conpty);
-        Assert.Equal("inbox", TerminalConfig.Parse("conpty = inbox").Conpty);
-        Assert.Equal("inbox", TerminalConfig.Parse("conpty = bogus").Conpty);
-        Assert.Equal("inbox", TerminalConfig.Parse(TerminalConfig.DefaultText).Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse("conpty = inbox").Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse(TerminalConfig.DefaultText).Conpty);
+        foreach (var core in new[] { "managed", "rust" })
+        {
+            var config = TerminalConfig.Parse($"emulator-core = {core}\nconpty = inbox");
+            Assert.Equal("ghostty", config.EmulatorCore);
+            Assert.Equal("bundled", config.Conpty);
+            Assert.Equal("bundled", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bogus").Conpty);
+            Assert.Equal("bundled", TerminalConfig.Parse($"emulator-core = {core}\nconpty = bundled").Conpty);
+        }
+    }
+
+    [Fact]
+    public void GhosttyRequiresBundledRegardlessOfKeyOrderOrLiveChanges()
+    {
+        Assert.Equal("bundled", TerminalConfig.Parse("conpty = inbox\nemulator-core = ghostty").Conpty);
+        Assert.Equal("bundled", TerminalConfig.Parse("emulator-core = ghostty\nconpty = inbox").Conpty);
+        var config = new TerminalConfig { Conpty = "inbox", EmulatorCore = "ghostty" };
+        Assert.Equal("bundled", config.Conpty);
+        config.EmulatorCore = "managed";
+        Assert.Equal("bundled", config.Conpty);
+        config.EmulatorCore = "rust";
+        Assert.Equal("bundled", config.Conpty);
     }
 
     [Fact]

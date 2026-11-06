@@ -464,7 +464,7 @@ internal partial class Program
             if (IsElevated()) A("New Non-Elevated Session", "", () => CreateSession(Guid.NewGuid().ToString(), null, null, ses.Ws, true, deElevate: true));
             A("Open Directory…", "", () => { var d = PickFolder(); if (d is not null) CreateSession(Guid.NewGuid().ToString(), null, d, ses.Ws, true); });
             A("Duplicate Session", "", () => DuplicateSession(ses));   // same cwd + profile (#234)
-            A("Rename", "F2", () => StartRename(ses));
+            A("Rename", "", () => StartRename(ses));
             A(ses.Flagged ? "Unflag Session" : "Flag Session", "", () => FlagOp(ses, "toggle"));
             List<Workspace> targets;
             lock (_workspaces) targets = _workspaces.Where(w => !ReferenceEquals(w, ses.Ws)).ToList();
@@ -898,7 +898,7 @@ internal partial class Program
                     A("Toggle Read-Only Pane", "", () => { if (ActiveSurface() is { } rp) { rp.ReadOnly = !rp.ReadOnly; ShowToast(rp.ReadOnly ? "pane read-only ON" : "pane read-only off"); RequestRedraw(); } });
                     A("Close Window", "", CloseLibraryWindow);
                     A("Switch Window…", "", () => TogglePalette(PaletteKind.Windows));
-                    A("Rename Active Session", "F2", () => { if (_active is not null) StartRename(_active); });
+                    A("Rename Active Session", "", () => { if (_active is not null) StartRename(_active); });
                     A("Close Pane / Session", "Ctrl+Shift+W", CloseActivePane);
                     A("Split Pane", "Ctrl+D", () => SplitOp("toggle"));
                     // Labelled for the active session's axis: the walk is the same, the words are not.

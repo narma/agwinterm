@@ -5,7 +5,7 @@ using Porta.Pty;
 namespace Agwinterm.Pty;
 
 /// <summary>
-/// Wires a ConPTY-backed child process to a headless <see cref="TerminalEmulator"/>:
+/// Wires a ConPTY-backed child process to a headless <see cref="GhosttyTerminalCore"/>:
 /// spawns the process, pumps its output into the emulator on a reader loop, and
 /// exposes a thread-safe view of the resulting grid.
 /// </summary>
@@ -13,10 +13,21 @@ public sealed class TerminalSession : ISession
 {
     private readonly object _sync = new();
     private IPtyConnection? _connection;
+    private bool _disposed; // guarded by _sync, including core destruction
     private long _pumpBytes;   // bytes the pump has fed so far; the exit watchers' settle window reads it
     private int _pumpInFlight; // 1 while a chunk is read but not yet fed + tapped (the feed can block on _sync)
 
     public ITerminalCore Emulator { get; }
+    private LocalSessionPresentation? _presentation;
+    public ISessionPresentation? Presentation => Volatile.Read(ref _presentation);
+    internal LocalSessionPresentation EnablePresentation()
+    {
+        lock(_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed,this);
+            return _presentation ??= new(this);
+        }
+    }
     public int Cols { get; private set; }
     public int Rows { get; private set; }
 
@@ -30,6 +41,8 @@ public sealed class TerminalSession : ISession
     /// The copy is made only while subscribed. Raised on the pump thread — a slow handler stalls
     /// THIS session's feed, so consumers must be quick or buffer themselves.</summary>
     public event Action<byte[]>? RawOutput;
+    private readonly TerminalLatencyTrace.MarkerReader? _latencyInput = TerminalLatencyTrace.Enabled ? new() : null;
+    private readonly TerminalLatencyTrace.MarkerReader? _latencyOutput = TerminalLatencyTrace.Enabled ? new() : null;
 
     /// <summary>Push-based agent status (set via the control API), and a change notification.</summary>
     public StatusSignal StatusSignal { get; } = new();
@@ -74,21 +87,41 @@ public sealed class TerminalSession : ISession
     /// <summary>Lock held while the emulator is mutated; renderers should lock this while reading the grid.</summary>
     public object SyncRoot => _sync;
 
-    /// <summary>When set (UI process, `emulator-core = rust`), new sessions build their
-    /// terminal core through this instead of the managed <see cref="TerminalEmulator"/>.</summary>
+    /// <summary>When set by the UI process, new sessions build their configured native
+    /// terminal core through this with the configured <see cref="GhosttyTerminalCore"/>.</summary>
     public static Func<int, int, ITerminalCore>? CoreFactory;
+    internal static ITerminalCore CreateCore(int cols, int rows, string? core = null)
+    {
+        if (string.IsNullOrEmpty(core) || core == "managed")
+        {
+            if (CoreFactory is { } factory) return factory(cols, rows);
+            core = "ghostty";
+        }
+        if (core == "ghostty")
+        {
+            if (!GhosttyTerminalCore.TryLoad(PortableTools.DirectoryPath, out var error)) throw new InvalidOperationException(error);
+            return new GhosttyTerminalCore(cols, rows);
+        }
+        throw new ArgumentException("Unknown terminal core: " + core, nameof(core));
+    }
+    internal static string CoreName(ITerminalCore core) => core switch
+    { GhosttyTerminalCore => "ghostty", _ => "managed" };
 
-    public TerminalSession(int cols, int rows)
+    public TerminalSession(int cols, int rows) : this(cols, rows, null) { }
+
+    public TerminalSession(int cols, int rows, string? core)
     {
         Cols = cols;
         Rows = rows;
-        // The emulator-core seam (`emulator-core = rust`): the UI process installs a factory;
-        // headless contexts (tests, the pty-host process) stay on the managed core.
-        Emulator = CoreFactory?.Invoke(cols, rows) ?? new TerminalEmulator(cols, rows);
+        // Both the UI and headless host install the configured core factory.
+        Emulator = CreateCore(cols, rows, core);
     }
 
     /// <summary>The ConPTY this session is created on; null = <see cref="ConPtyApi.Current"/>.</summary>
     public ConPtyApi? Conpty { get; init; }
+
+    private ConPtyApi SessionConpty => ConPtyApi.ForCore(Conpty ?? ConPtyApi.Current,
+        Emulator is GhosttyTerminalCore);
 
     /// <summary>True once the session runs on the shipped ConPTY, which passes output through and so
     /// does not repaint the viewport on a resize.</summary>
@@ -99,7 +132,7 @@ public sealed class TerminalSession : ISession
     /// path stays on Porta.Pty.</summary>
     private Task<IPtyConnection> SpawnAsync(PtyOptions options, CancellationToken ct)
     {
-        var api = Conpty ?? ConPtyApi.Current;
+        var api = SessionConpty;
         if (!api.Bundled) return PtyProvider.SpawnAsync(options, ct);
         OnBundledConpty = true;
         IPtyConnection conn = ConPtyConnection.Spawn(api, CommandLineOf(options.App, options.CommandLine, options.VerbatimCommandLine),
@@ -132,13 +165,14 @@ public sealed class TerminalSession : ISession
             VerbatimCommandLine = verbatimCommandLine,
         };
 
-        _connection = await SpawnAsync(options, ct).ConfigureAwait(false);
+        var connection = await SpawnAsync(options, ct).ConfigureAwait(false);
+        PublishConnection(connection);
 
         using var readerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        Task readerTask = PumpAsync(_connection.ReaderStream, readerCts.Token);
+        Task readerTask = PumpAsync(connection.ReaderStream, readerCts.Token);
 
         // Wait for the child to exit on a background thread (WaitForExit is blocking).
-        await Task.Run(() => _connection.WaitForExit(Timeout.Infinite), ct).ConfigureAwait(false);
+        await Task.Run(() => connection.WaitForExit(Timeout.Infinite), ct).ConfigureAwait(false);
         MarkInputClosed();
 
         // Let the reader drain output already buffered in the pipe, then stop it.
@@ -146,7 +180,7 @@ public sealed class TerminalSession : ISession
         await readerCts.CancelAsync().ConfigureAwait(false);
         try { await readerTask.ConfigureAwait(false); } catch { /* reader cancelled */ }
 
-        return _connection.ExitCode;
+        return connection.ExitCode;
     }
 
     private async Task PumpAsync(Stream stream, CancellationToken ct)
@@ -158,11 +192,12 @@ public sealed class TerminalSession : ISession
             {
                 int n = await stream.ReadAsync(buffer.AsMemory(), ct).ConfigureAwait(false);
                 if (n <= 0) break;
-                lock (_sync) Emulator.Feed(buffer.AsSpan(0, n));
+                if (!FeedOutput(buffer.AsSpan(0, n))) break;
             }
         }
         catch (OperationCanceledException) { }
         catch (IOException) { }
+        catch (ObjectDisposedException) { }
     }
 
     /// <summary>Quote one argument per the CommandLineToArgvW rules, so a joined command line round-trips
@@ -231,7 +266,7 @@ public sealed class TerminalSession : ISession
             IPtyConnection dc;
             try
             {
-                var api = Conpty ?? ConPtyApi.Current;
+                var api = SessionConpty;
                 dc = ConPtyConnection.Spawn(api, cmd, string.IsNullOrEmpty(cwd) ? Environment.CurrentDirectory : cwd,
                     env, Cols, Rows, deElevate: true);
                 OnBundledConpty = api.Bundled;
@@ -241,12 +276,12 @@ public sealed class TerminalSession : ISession
                 // Surface the failure in the pane instead of leaving it dead (or crashing on the unobserved task).
                 // The pty-host's form (StartOrThrowAsync) lets it throw, the same as the ordinary spawn below.
                 var msg = $"\r\n\x1b[31m[agwinterm] could not start a non-elevated session:\x1b[0m\r\n  {ex.Message}\r\n";
-                lock (_sync) Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg));
+                FeedOutput(System.Text.Encoding.UTF8.GetBytes(msg));
                 OutputReceived?.Invoke();
                 MarkInputClosed(); ExitCode = 1; HasExited = true;
                 return;
             }
-            _connection = dc;
+            PublishConnection(dc);
             _ = StartPump(dc.ReaderStream);
             _ = Task.Run(() =>
             {
@@ -284,12 +319,12 @@ public sealed class TerminalSession : ISession
             // overlay watcher keyed on HasExited never saw an end (#227 r2). Not for the pty-host
             // (StartOrThrowAsync): there the throw IS the client's diagnostic.
             var msg = $"\r\n\x1b[31m[agwinterm] could not start the session:\x1b[0m\r\n  {ex.Message}\r\n";
-            lock (_sync) Emulator.Feed(System.Text.Encoding.UTF8.GetBytes(msg));
+            FeedOutput(System.Text.Encoding.UTF8.GetBytes(msg));
             OutputReceived?.Invoke();
             MarkInputClosed(); ExitCode = 1; HasExited = true;
             return;
         }
-        _connection = conn;
+        PublishConnection(conn);
         _ = StartPump(conn.ReaderStream);
         // Watch for the child exiting so overlays (and anyone else) get the real ConPTY exit code,
         // reliably even for programs that finish faster than a PID poll could catch them.
@@ -378,16 +413,32 @@ public sealed class TerminalSession : ISession
                 int n = stream.Read(buffer, 0, buffer.Length);
                 if (n <= 0) break;
                 Volatile.Write(ref _pumpInFlight, 1);
-                if (DumpPath is not null)
-                    lock (_sync) System.IO.File.AppendAllBytes(DumpPath, buffer.AsSpan(0, n).ToArray());
                 // The tap runs under the same lock as the feed, so a reattach that snapshots the
                 // screen under it gets each chunk once: in the snapshot or through the tap.
+                long waitingSince = TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 lock (_sync)
                 {
-                    Emulator.Feed(buffer.AsSpan(0, n));
-                    if (RawOutput is { } tap) tap(buffer[..n]);
+                    using var timing = new TerminalLatencyTrace.LockTiming(waitingSince, 20);
+                    if (_disposed) break;
+                    int consumed = 0;
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    do
+                    {
+                        if (DumpPath is not null) System.IO.File.AppendAllBytes(DumpPath, buffer.AsSpan(0, n).ToArray());
+                        Emulator.Feed(buffer.AsSpan(0, n));
+                        _latencyOutput?.Output(buffer.AsSpan(0, n));
+                        if (RawOutput is { } tap) tap(buffer[..n]);
+                        Interlocked.Add(ref _pumpBytes, n); // after feed and tap
+                        consumed += n;
+                        // A curses repaint often spans multiple pipe reads. Publish
+                        // the currently available burst together, rather than letting
+                        // paint observe its insert/delete-line intermediate states.
+                        // Bound both work and lock time under continuous output.
+                        if (consumed >= 256 * 1024 || System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds >= 4 ||
+                            !PipeReadAvailability.HasData(stream)) break;
+                        n = stream.Read(buffer, 0, buffer.Length);
+                    } while (n > 0);
                 }
-                Interlocked.Add(ref _pumpBytes, n);   // after the feed and the tap: "settled" means both have it
                 Volatile.Write(ref _pumpInFlight, 0);
                 OutputReceived?.Invoke();
             }
@@ -395,6 +446,7 @@ public sealed class TerminalSession : ISession
         catch (IOException) { }
         catch (OperationCanceledException) { }
         catch (ObjectDisposedException) { }   // Dispose() closed the stream mid-read — normal shutdown
+        finally { Volatile.Write(ref _pumpInFlight, 0); }
     }
 
     /// <summary>
@@ -404,7 +456,7 @@ public sealed class TerminalSession : ISession
     /// </summary>
     public void Inject(ReadOnlySpan<byte> bytes)
     {
-        lock (_sync) Emulator.Feed(bytes);
+        lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Feed(bytes); }
         OutputReceived?.Invoke();
     }
 
@@ -414,27 +466,47 @@ public sealed class TerminalSession : ISession
     /// </summary>
     public void MutateLocked(Action<ITerminalCore> mutate)
     {
-        lock (_sync) mutate(Emulator);
+        lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); mutate(Emulator); }
         OutputReceived?.Invoke();
     }
 
     /// <summary>Send bytes (e.g. keystrokes) to the child's input.</summary>
     public void Write(ReadOnlySpan<byte> bytes)
     {
+        if (Presentation is { } presentation)
+        {
+            var accepted = presentation.Submit(new TerminalInput.Raw(bytes.ToArray()));
+            if (accepted != TerminalInputAcceptance.Accepted) throw new IOException($"Session input was not accepted: {accepted}.");
+            return;
+        }
+        WriteOwner(bytes);
+    }
+
+    // Only the ordered owner writer bypasses the semantic queue.
+    internal void WriteOwner(ReadOnlySpan<byte> bytes)
+    {
         if (InputClosed) throw new IOException("Session input is closed.");
         var stream = _connection?.WriterStream ?? throw new InvalidOperationException("Session not started.");
-        try { stream.Write(bytes); stream.Flush(); }
+        long sample = _latencyInput?.Input(bytes) ?? 0;
+        TerminalLatencyTrace.Record(2, sample);
+        try { stream.Write(bytes); stream.Flush(); TerminalLatencyTrace.Record(3, sample); }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         { MarkInputClosed(); throw; }
     }
 
     public void Resize(int cols, int rows)
     {
+        if(cols <= 0 || rows <= 0) return;
+        if(Presentation is LocalSessionPresentation presentation) presentation.Resize(cols,rows);
+        else ResizeOwner(cols,rows);
+    }
+    internal void ResizeOwner(int cols,int rows)
+    {
         if (cols <= 0 || rows <= 0) return;
-        lock (_sync) Emulator.Resize(cols, rows);
+        lock (_sync) { ObjectDisposedException.ThrowIf(_disposed, this); Emulator.Resize(cols, rows); }
         Cols = cols;
         Rows = rows;
-        _connection?.Resize(cols, rows);
+        if(!HasExited) _connection?.Resize(cols, rows);
     }
 
     /// <summary>Thread-safe snapshot of a single grid row's text.</summary>
@@ -457,23 +529,56 @@ public sealed class TerminalSession : ISession
     internal bool DisposeHosted()
     {
         MarkInputClosed();
+        _presentation?.Dispose(); // capture gate must never be acquired under _sync
         var connection = _connection;
-        if (connection is null) return true; // creation failed before obtaining a connection
+        if (connection is null) { DisposeCore(); return true; } // creation failed before obtaining a connection
         if (!HostedCleanup.TryComplete(connection.WaitForExit, connection.Kill, connection.Dispose)) return false;
         _connection = null;
+        DisposeCore();
         return true;
     }
 
     public void Dispose()
     {
         MarkInputClosed();
-        var c = _connection;
-        _connection = null;
+        _presentation?.Dispose();
+        IPtyConnection? c;
+        lock (_sync) { c = _connection; _connection = null; DisposeCore(); }
         try { c?.Kill(); } catch { /* already exited */ }
         // Dispose closes the pseudoconsole + pipes. Without it the ConPTY output pipe never EOFs
         // (killing the child is not enough), so the pump task stays blocked in ReadAsync forever —
         // leaking one thread-pool thread (~1MB stack) plus the ConPTY/pipe/process handles per
         // closed session. Found by tools/profile-memory.ps1.
         try { c?.Dispose(); } catch { }
+    }
+
+    private bool FeedOutput(ReadOnlySpan<byte> bytes)
+    {
+        lock (_sync)
+        {
+            if (_disposed) return false;
+            Emulator.Feed(bytes); return true;
+        }
+    }
+    private void PublishConnection(IPtyConnection connection)
+    {
+        lock (_sync)
+        {
+            if (!_disposed) { _connection = connection; return; }
+        }
+        // A slow spawn may finish after its pane was closed. It never gains
+        // ownership of an already-destroyed core or leaves a child running.
+        try { connection.Kill(); } catch { }
+        try { connection.Dispose(); } catch { }
+        throw new ObjectDisposedException(nameof(TerminalSession));
+    }
+    private void DisposeCore()
+    {
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            (Emulator as IDisposable)?.Dispose();
+        }
     }
 }

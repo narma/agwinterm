@@ -244,7 +244,7 @@ internal partial class Program : ISessionHost, IWindowHost
     // In-terminal search (find bar over the active pane's buffer + scrollback).
     private bool _searchActive;
     private string _searchQuery = "";
-    private readonly List<(int Line, int Col0, int Col1)> _searchMatches = new(); // absolute line index (history ++ live)
+    private readonly List<(int Line, int Col0, int EndLine, int Col1)> _searchMatches = new(); // absolute grid endpoints
     private int _searchCur;
 
     // Keymap: chord (canonical string) -> action id or "command:<Label>"; custom commands from keymap.conf.
@@ -317,6 +317,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <see cref="Ses.Axis"/>: left→right when vertical, top→bottom when horizontal.</summary>
     private sealed class Pane
     {
+        public long InputPaintDeadline; // only subsequent owner frames can request a paint
         public required string Id;
         public required ISession S;
         public JsonElement LiveBinding;
@@ -372,6 +373,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public float Ratio = 1f;   // this pane's OWN share of the session's extent along its axis (width when vertical, height when horizontal); PaneLayout normalises by the sum
         public int ScrollOffset;   // lines scrolled up from the live bottom (0 = live; clamped to HistoryCount)
         public long LastScrollGen; // emulator ScrollGeneration last seen on output (detects real scroll vs in-place repaint)
+        public int SyncRedrawPending;
         public int Unread;         // unread desktop-notification count (OSC 9/777 / notify) since last visit
         public NotificationCategory UnreadCategory; // highest priority among unread notifications
         public bool ReadOnly;      // block keyboard input to this pane (protect a running agent from stray keys)
@@ -393,8 +395,19 @@ internal partial class Program : ISessionHost, IWindowHost
         public bool SelAlt, SelTrackable;
         public bool BlockSel;   // rectangular (Alt+drag) selection: clip each row to [minCol,maxCol]
         public ContentSelection? SelContent;
+        public GhosttySelection? SelNative;
+        public OwnerSelection? SelOwner;
         public bool SelContentVisible = true;
-        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; }
+        public void ReleaseSelectionAnchors()
+        {
+            SelOwner?.Dispose(); SelOwner=null;
+            if (SelNative is null) return;
+            lock (S.SyncRoot)
+            {
+                SelNative?.Dispose(); SelNative = null;
+            }
+        }
+        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); }
         public int UiaAnnouncedAbs = -1;   // absolute buffer line (history + cursor row) last spoken to a screen reader
     }
 
@@ -505,6 +518,7 @@ internal partial class Program : ISessionHost, IWindowHost
     private bool _cursorOn = true;
     private readonly StringBuilder _run = new(256);   // reused per text run (no per-cell alloc)
     private int _redrawPending;                       // coalesces redraw requests into one paint
+    private int _urgentRedrawPending;
     // Frame cap for output-driven repaints: under sustained PTY output, paint at most ~66fps instead
     // of back-to-back full renders (which saturate a core and starve the pump via grid-lock contention).
     // The first frame after a quiet period still paints immediately — no interactive latency cost.
@@ -622,10 +636,12 @@ internal partial class Program : ISessionHost, IWindowHost
         Environment.SetEnvironmentVariable("AGWINTERM_APP_ID", _appId);
         // The pty-host ROLE (#105): same exe, no window — a headless server owning terminal sessions
         // so they survive UI restarts/crashes. The UI (Phase 2b) spawns and talks to it; nothing
-        // below (config, D2D, window class, control server) applies to this process.
+        // below (D2D, window class, control server) applies to this process.
         if (_argPtyHost)
         {
-            ConPtyApi.Select(_argConpty == "bundled");   // no flag = inbox, as for the Rust host
+            _config = LoadOrCreateConfig();
+            ResolveEmulatorCore();
+            ConPtyApi.Select(_argConpty == "bundled" || _argConpty is null && _config.Conpty == "bundled");
             using var ptyHost = new Agwinterm.Pty.PtyHostServer(_argPipe ?? _appId);
             ptyHost.Completion.Wait();
             return;
@@ -634,7 +650,7 @@ internal partial class Program : ISessionHost, IWindowHost
         // Process-global setup (config/themes/keymap + window class + shared D2D/DWrite objects).
         _config = LoadOrCreateConfig();
         ConPtyApi.Select(_config.Conpty != "inbox");
-        _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty);
+        _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, AppExePath, _config.Conpty, _config.EmulatorCore);
         ResolveEmulatorCore();
         _allThemes = LoadThemes();
         _theme = FindTheme(_config.Theme);
@@ -698,18 +714,17 @@ internal partial class Program : ISessionHost, IWindowHost
             front!.Post(() => front.ShowToast(note, 6000));
         if (_fontFallbackNote is { } fontNote)
             front!.Post(() => front.ShowToast(fontNote, 8000));
-        // Server mode is experimental (#105) — say so once at startup, so a flipped knob is never
-        // a silent mystery ("why is there a second agwinterm process?").
-        if (_sessionBackend is ServerSessionBackend sb)
+        if (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null)
         {
-            string host = sb.Name == "server-rust" ? "the Rust pty-host binary" : "the pty-host process";
-            front!.Post(() => front.ShowToast($"session-host = {sb.Name} (experimental) — sessions live in {host}", 6000));
             // All restore handles have already claimed their hosted IDs in the backend. New
             // handles claim before async creation too, not after publication in the UI tree.
+            // Reap unclaimed sessions in the current owner namespace.
+            string hostNamespace = (_argPipe ?? _appId)+"-owner-v1";
             _ = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(30));
-                sb.ReapUnclaimedStartupSessions();
+                using var nativeHost = new ServerSessionBackend(hostNamespace, null);
+                nativeHost.ReapUnclaimedStartupSessions();
             });
         }
 
@@ -717,8 +732,16 @@ internal partial class Program : ISessionHost, IWindowHost
         {
             if (DispatchWebContinuation(msg)) continue;
             if (_registry.Values.Distinct().Any(window => window._webPages.Count != 0 && window.WebNavigationKey(msg))) continue;
-            TranslateMessage(ref msg);
-            DispatchMessageW(ref msg);
+            _registry.TryGetValue(msg.hwnd, out var inputWindow);
+            if (inputWindow is not null && msg.message is WM_KEYDOWN or WM_SYSKEYDOWN
+                && inputWindow.ActiveSurface() is { } inputSurface && HasOwnerInput(inputSurface.S))
+                inputWindow._ghosttyKeyText = ReadNativeKeyText((int)msg.wParam);
+            try
+            {
+                TranslateMessage(ref msg);
+                DispatchMessageW(ref msg);
+            }
+            finally { if (inputWindow is not null) inputWindow._ghosttyKeyText = null; }
         }
     }
 
@@ -849,35 +872,14 @@ internal partial class Program : ISessionHost, IWindowHost
     private static IDWriteFont? _familyFont;
     private static readonly Dictionary<int, bool> _glyphInFont = new();
 
-    // Deferred startup toast when `emulator-core = rust` couldn't load (shown once a window exists).
     private static string? _emulatorCoreNote;
 
-    /// <summary>Wire `emulator-core = rust`: probe the native dll (next to the exe, then the
-    /// dev-tree cargo output), verify the ABI handshake, and install the session core factory.
-    /// Any failure falls back to the managed emulator — visibly, never silently.</summary>
     private static void ResolveEmulatorCore()
     {
-        if (_config.EmulatorCore != "rust") { Agwinterm.Pty.TerminalSession.CoreFactory = null; return; }
-        string? err = null;
-        foreach (var dll in new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "agwinterm_core.dll"),
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "..",
-                "native", "agwinterm-core", "target", "release", "agwinterm_core.dll"),
-        })
-        {
-            if (RustEmulatorCore.TryLoad(Path.GetFullPath(dll), out err))
-            {
-                Agwinterm.Pty.TerminalSession.CoreFactory = (c, r) => new RustTerminalCore(c, r);
-                _emulatorCoreNote = "emulator-core = rust (EXPERIMENTAL) — new sessions run the native core";
-                return;
-            }
-            if (err is not null && !err.StartsWith("native core not found")) break;   // found but bad → stop probing
-        }
-        Agwinterm.Pty.TerminalSession.CoreFactory = null;
-        _emulatorCoreNote = "emulator-core = rust unavailable (" + (err ?? "unknown") + ") — using managed";
+        if (!GhosttyTerminalCore.TryLoad(CliInstaller.CliDir(), out string? error))
+            throw new InvalidOperationException("Ghostty terminal backend is unavailable: " + error);
+        TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows, _config.CursorStyle, _config.CursorBlink);
     }
-
     private static void ResolveFamilyFont()
     {
         _glyphInFont.Clear();
@@ -1235,20 +1237,41 @@ internal partial class Program : ISessionHost, IWindowHost
         lock (p.S.SyncRoot)
         {
             var em = p.S.Emulator;
-            int hist = em.HistoryCount, rows = em.Screen.Rows;
+            if(em is PresentedTerminalView presented)
+            {
+                using var frame=presented.AcquireFrame();
+                if(frame is null) return null;
+                var viewportLines=new TerminalTextLine[frame.State.Rows];
+                var viewportCells=new Cell[frame.State.Columns];
+                for(int row=0;row<viewportLines.Length;row++)
+                {
+                    for(int col=0;col<viewportCells.Length;col++) viewportCells[col]=frame[row,col];
+                    viewportLines[row]=new TerminalTextLine(viewportCells);
+                }
+                return OwnerUiaSnapshot(frame.State,viewportLines,frame.State.HistoryRows-frame.State.ScrollOffset,
+                    origin.x,origin.y,cw*Scale,ch*Scale);
+            }
+            int hist = em.IsAltScreen ? 0 : em.HistoryCount, rows = em.Screen.Rows, cols = em.Screen.Cols;
             const int MaxHist = 2000;                       // bound the document the reader walks
             int keepHist = Math.Min(hist, MaxHist);
             int histStart = hist - keepHist;
             int n = keepHist + rows;
             var lines = new string[n];
-            for (int i = 0; i < keepHist; i++) lines[i] = em.DumpHistoryRow(histStart + i);
-            for (int r = 0; r < rows; r++) lines[keepHist + r] = em.DumpRow(r);
+            var cellLines = new TerminalTextLine[n];
+            var cells = new Cell[cols];
+            for (int i = 0; i < n; i++)
+            {
+                for (int col = 0; col < cols; col++)
+                    cells[col] = i < keepHist ? em.GetHistoryCell(histStart + i, col) : em.Screen[i - keepHist, col];
+                cellLines[i] = new TerminalTextLine(cells);
+                lines[i] = cellLines[i].Text;
+            }
             var starts = new int[n + 1];
             for (int i = 0; i < n; i++) starts[i + 1] = starts[i] + lines[i].Length + 1;   // +1 = '\n' joiner
             int total = n > 0 ? starts[n] - 1 : 0;          // no trailing newline after the last line
 
             int caretLine = keepHist + Math.Clamp(em.CursorRow, 0, rows - 1);
-            int caretCol = Math.Min(em.CursorCol, lines[caretLine].Length);
+            int caretCol = cellLines[caretLine].OffsetAtColumn(em.CursorCol);
             int caretOff = starts[caretLine] + caretCol;
 
             int off = em.IsAltScreen ? 0 : Math.Clamp(p.ScrollOffset, 0, hist);
@@ -1257,6 +1280,7 @@ internal partial class Program : ISessionHost, IWindowHost
             return new Uia.TextSnapshot
             {
                 Lines = lines,
+                CellLines = cellLines,
                 LineStart = starts,
                 TotalLength = total,
                 CaretOffset = caretOff,
@@ -1306,7 +1330,7 @@ internal partial class Program : ISessionHost, IWindowHost
     }
 
     /// <summary>Keyboard handling while the sidebar zone has focus (F6). Up/Down walk sessions, Enter/Space
-    /// opens one, Escape/F6 returns to the terminal. Swallows everything else so it can't reach the shell.</summary>
+    /// opens one, F2 renames it, Escape/F6 returns to the terminal. Swallows everything else so it can't reach the shell.</summary>
     private bool SidebarZoneKey(int vk)
     {
         var list = AllSessions();
@@ -1319,6 +1343,7 @@ internal partial class Program : ISessionHost, IWindowHost
             case VK_UP: _focusRow = list[Math.Max(idx - 1, 0)]; AnnounceFocusRow(); RequestRedraw(); return true;
             case VK_HOME: _focusRow = list[0]; AnnounceFocusRow(); RequestRedraw(); return true;
             case VK_END: _focusRow = list[^1]; AnnounceFocusRow(); RequestRedraw(); return true;
+            case 0x71 /* F2 */: StartRename(list[idx]); return true;
             case VK_RETURN:
             case VK_SPACE:
                 if (_focusRow is not null) SetActive(_focusRow);
@@ -1333,12 +1358,14 @@ internal partial class Program : ISessionHost, IWindowHost
     // We render our own cursor, so the system caret is created HIDDEN — it exists only so assistive
     // tech can read the text-cursor position (via GetCaretPos / the caret's location-change events).
     private bool _caretOwned;
+    private bool _imeComposing;
+    private (int X, int Y, int Height)? _imePosition;
 
     private void EnsureCaret()
     {
         if (_caretOwned || _hwnd == IntPtr.Zero) return;
         var (_, _, cw, ch) = ActivePaneView();
-        if (CreateCaret(_hwnd, IntPtr.Zero, Math.Max(1, (int)cw), Math.Max(1, (int)ch)))
+        if (CreateCaret(_hwnd, IntPtr.Zero, Math.Max(1, ToDevice(cw)), Math.Max(1, ToDevice(ch))))
         {
             _caretOwned = true;
             HideCaret(_hwnd);   // don't double-draw over our rendered cursor
@@ -1362,7 +1389,22 @@ internal partial class Program : ISessionHost, IWindowHost
         if (p is null) return;
         int col, row;
         lock (p.S.SyncRoot) { col = p.S.Emulator.CursorCol; row = p.S.Emulator.CursorRow; }
-        SetCaretPos((int)(ox + col * cw), (int)(oy + row * ch));
+        int x = ToDevice(ox + col * cw), y = ToDevice(oy + row * ch), height = Math.Max(1, ToDevice(ch));
+        SetCaretPos(x, y);
+        if (!_imeComposing || _imePosition == (x, y, height)) return;
+        nint context = ImmGetContext(_hwnd);
+        if (context == 0) return;
+        try
+        {
+            // IMM coordinates are client-relative; the system keeps the candidate
+            // list outside this caret cell. A hidden caret alone does not anchor Pinyin.
+            var composition = new COMPOSITIONFORM { style = 2, position = new POINT { x = x, y = y } }; // CFS_POINT
+            var candidate = new CANDIDATEFORM { style = 0x80, position = new POINT { x = x, y = y },
+                area = new RECT { left = x, top = y, right = x + Math.Max(1, ToDevice(cw)), bottom = y + height } }; // CFS_EXCLUDE
+            if (ImmSetCompositionWindow(context, in composition) && ImmSetCandidateWindow(context, in candidate))
+                _imePosition = (x, y, height);
+        }
+        finally { ImmReleaseContext(_hwnd, context); }
     }
 
     /// <summary>Apply a font-family / default-font-size change live: rebuild the base format, dispose and
@@ -1387,6 +1429,7 @@ internal partial class Program : ISessionHost, IWindowHost
         foreach (var window in windows)
         {
             window._soloGlyphs.Clear(); // layouts retain the old font formats and cell geometry
+            window._soloBitmaps.Clear();
             if (window._hwnd == IntPtr.Zero) continue;
             var surfaces = new HashSet<Pane>();
             foreach (var session in window.AllSessions())
@@ -1524,7 +1567,7 @@ internal partial class Program : ISessionHost, IWindowHost
                 return sb.ToString().TrimEnd() is { Length: > 0 } t ? t : "terminal";
             }
         });
-        _uia.GetTextSnapshot = () => ReadUia(() => { _uia.EnsureAlive(); return BuildUiaTextSnapshot(); });
+        _uia.GetTextSnapshot = ReadOwnerAwareUiaSnapshot;
         _uia.GetTree = () => ReadUia(() => { _uia.EnsureAlive(); return BuildUiaTree(); });
         _uia.OnSetFocus = (kind, index) => Post(() => { if (!_uia.IsClosed) HandleUiaSetFocus(kind, index); });
         _uia.OnInvoke = (kind, index) => Post(() => { if (!_uia.IsClosed) HandleUiaInvoke(kind, index); });
