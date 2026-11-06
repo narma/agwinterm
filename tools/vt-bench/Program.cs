@@ -5,35 +5,17 @@ using System.Text;
 using System.Text.Json;
 using Agwinterm.Core;
 
-// One backend per process: native loading, GC and working-set history must not
-// contaminate a comparison between engines. No PTY or desktop UI is created.
-if (args.Length is < 2 or > 3 || args[0] is not ("managed" or "rust" or "ghostty") ||
-    (args[0] != "managed" && args.Length != 3))
+if (args.Length != 3 || args[0] != "ghostty")
 {
-    Console.Error.WriteLine("Usage: vt-bench managed OUTPUT.json | vt-bench rust OUTPUT.json ABSOLUTE_DLL_PATH | vt-bench ghostty OUTPUT.json DLL_DIRECTORY");
+    Console.Error.WriteLine("Usage: vt-bench ghostty OUTPUT.json DLL_DIRECTORY");
     return 2;
 }
-string backend = args[0];
-string? nativeHash = null;
-if (backend == "rust")
-{
-    string dll = Path.GetFullPath(args[2]);
-    if (!RustEmulatorCore.TryLoad(dll, out var error))
-        throw new InvalidOperationException(error); // Never benchmark an accidental managed fallback.
-    nativeHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(dll)));
-}
-if (backend == "ghostty")
-{
-    string directory = Path.GetFullPath(args[2]);
-    if (!GhosttyTerminalCore.TryLoad(directory, out var error)) throw new InvalidOperationException(error);
-    nativeHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.dll"))));
-}
-ITerminalCore Create(int cols, int rows) => backend switch
-{
-    "rust" => new RustTerminalCore(cols, rows),
-    "ghostty" => new GhosttyTerminalCore(cols, rows),
-    _ => new TerminalEmulator(cols, rows),
-};
+const string backend = "ghostty";
+string directory = Path.GetFullPath(args[2]);
+if (!GhosttyTerminalCore.TryLoad(directory, out var error)) throw new InvalidOperationException(error);
+string nativeHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.dll"))));
+using var provenance = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.provenance.json")));
+int nativeAbi = provenance.RootElement.GetProperty("abi").GetInt32();
 var results = new List<object>();
 using var process = Process.GetCurrentProcess();
 foreach (var (cols, rows) in new[] { (120, 40), (240, 100), (400, 200) })
@@ -55,7 +37,7 @@ foreach (int chunkSize in new[] { 64, 4096 })
         {
             for (int n = 0; n < sessions; n++)
             {
-                var core = Create(cols, rows);
+                var core = new GhosttyTerminalCore(cols, rows);
                 cores.Add(core);
                 core.ScrollbackMax = 5000;
             }
@@ -93,7 +75,7 @@ foreach (int chunkSize in new[] { 64, 4096 })
 }
 var report = new
 {
-    schemaVersion = 1, backend, nativeHash, nativeAbi = backend == "rust" ? RustEmulatorCore.RequiredAbi : (uint?)null,
+    schemaVersion = 1, backend, nativeHash, nativeAbi,
     utc = DateTimeOffset.UtcNow, runtime = RuntimeInformation.FrameworkDescription,
     os = RuntimeInformation.OSDescription, architecture = RuntimeInformation.ProcessArchitecture.ToString(),
     cpuThreads = Environment.ProcessorCount,

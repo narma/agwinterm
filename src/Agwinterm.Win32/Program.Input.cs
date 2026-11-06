@@ -1243,8 +1243,15 @@ internal partial class Program
         }
         if (HasSemanticInput(pane.S))
         {
-            if (SubmitOwnerInput(pane.S,new TerminalInput.Paste(t)) == TerminalInputAcceptance.Accepted)
+            var result = SubmitOwnerInput(pane.S, new TerminalInput.Paste(t));
+            if (result == TerminalInputAcceptance.Accepted)
             { pane.ScrollOffset = 0; pane.S.NotifyActivity(); RequestRedraw(); }
+            else
+            {
+                string reason = result == TerminalInputAcceptance.Rejected ? "Paste exceeds the available input capacity." : $"Input was not accepted ({result}).";
+                if (!interactive) throw new IOException(reason);
+                ShowToast(reason);
+            }
             return;
         }
         byte[] bytes;

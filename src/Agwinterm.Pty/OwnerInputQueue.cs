@@ -10,6 +10,11 @@ namespace Agwinterm.Pty;
 internal sealed class OwnerInputQueue : IDisposable
 {
     internal const int MaximumBytes = 1024 * 1024;
+    // Keep a paste atomic and reject it before assigning a sequence number or
+    // closing input. Reserve space for the record header and its owner identity.
+    internal static bool PasteFits(string text) =>
+        text.Length <= (MaximumBytes - 64) / 2 && Encoding.UTF8.GetByteCount(text) <= MaximumBytes - 256;
+
     private readonly record struct Item(TerminalInput Input, int Bytes, long Enqueued);
     private readonly Channel<Item> _queue = Channel.CreateBounded<Item>(new BoundedChannelOptions(4096)
     { SingleReader = false, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
@@ -41,6 +46,7 @@ internal sealed class OwnerInputQueue : IDisposable
             throw new ArgumentException("Unsupported ordered terminal command.",nameof(input));
         if(input is not (TerminalInput.Key or TerminalInput.Mouse or TerminalInput.Text or TerminalInput.Paste or TerminalInput.Focus or TerminalInput.Raw or TerminalInput.Command))
             throw new ArgumentException("Unsupported owner input.",nameof(input));
+        if (input is TerminalInput.Paste candidate && !PasteFits(candidate.Value)) return TerminalInputAcceptance.Rejected;
         int size = input switch
         {
             TerminalInput.Raw raw => raw.Bytes.Length,
@@ -53,12 +59,12 @@ internal sealed class OwnerInputQueue : IDisposable
         lock (_gate)
         {
             if (_closed || _session.InputClosed && !(input is TerminalInput.Command && _session.HasExited)) return TerminalInputAcceptance.Closed;
-            if (size > MaximumBytes-_bytes) return Overflow();
+            if (size > MaximumBytes-_bytes) return input is TerminalInput.Paste ? TerminalInputAcceptance.Rejected : Overflow();
             // The caller may reuse raw storage immediately after acceptance.
             if (input is TerminalInput.Raw raw) input = new TerminalInput.Raw(raw.Bytes.ToArray());
             if (input is TerminalInput.Command { Value:TerminalCommand.InjectOutput injectCommand })
                 input = new TerminalInput.Command(new TerminalCommand.InjectOutput(injectCommand.Bytes.ToArray()));
-            if (!_queue.Writer.TryWrite(new(input,size,TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0))) return Overflow();
+            if (!_queue.Writer.TryWrite(new(input,size,TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0))) return input is TerminalInput.Paste ? TerminalInputAcceptance.Rejected : Overflow();
             _bytes += size;
             return TerminalInputAcceptance.Accepted;
         }

@@ -310,6 +310,8 @@ try
         gate.Set(); Check(ready.WaitOne(15000),"presentation child restores primary screen");
         Check(Wait(()=>{ Present(reattached); lock(reattached.SyncRoot) return !reattached.Emulator.IsAltScreen && reattached.Emulator.HistoryCount > 0; }),
             "presentation carries primary screen and history metadata");
+        string liveText = SurfaceText.Dump(reattached, OverlayTextArgs.Screen);
+        string liveStyles = SurfaceText.DumpStyled(reattached, OverlayTextArgs.Screen);
         using(var oldViewport=reattached.Presentation!.Capture(5,11,23)) { }
         Check(Wait(()=>
         {
@@ -320,6 +322,9 @@ try
                 return frame is not null && frame.Identity.ViewportRevision > 0 && frame.State.ScrollOffset == 5;
             }
         }),"semantic viewport update publishes scroll state in a new generation");
+        Check(SurfaceText.Dump(reattached, OverlayTextArgs.Screen) == liveText &&
+            SurfaceText.DumpStyled(reattached, OverlayTextArgs.Screen) == liveStyles,
+            "scrolled owner view preserves live plain and styled control reads");
         ulong beforeResize;
         lock(reattached.SyncRoot)
         {

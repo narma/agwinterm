@@ -200,21 +200,26 @@ internal sealed class HostPresentationChannel
         void SubmitInputs(bool waitForWriter=false)
         {
             if(inputs.Count == 0 && _session.InputClosed) return;
-            lock(_acceptanceGate)
+            foreach (var input in inputs)
             {
-                _cancel.Token.ThrowIfCancellationRequested();
-                foreach(var input in inputs)
+                while (true)
                 {
-                    // A key already in the pipe may arrive just after child
-                    // exit. It cannot reach a child and must not tear down the
-                    // still-readable terminal view or its history queries.
-                    // ConPTY closes input before the final-output settle period.
-                    // A last key during that interval must not revoke the query
-                    // pipe before the final frame can be delivered.
-                    if(_session.InputClosed && input is not TerminalInput.Command) continue;
-                    var accepted=_input.Submit(input);
-                    if(accepted == TerminalInputAcceptance.Closed && _session.InputClosed && input is not TerminalInput.Command) continue;
-                    if(accepted != TerminalInputAcceptance.Accepted) throw new IOException("Owner rejected input: "+accepted);
+                    TerminalInputAcceptance accepted;
+                    lock (_acceptanceGate)
+                    {
+                        _cancel.Token.ThrowIfCancellationRequested();
+                        // Preserve readback if a key arrives during final output after child exit.
+                        if (_session.InputClosed && input is not TerminalInput.Command) break;
+                        accepted = _input.Submit(input);
+                    }
+                    if (accepted == TerminalInputAcceptance.Accepted) break;
+                    if (accepted == TerminalInputAcceptance.Closed && _session.InputClosed && input is not TerminalInput.Command) break;
+                    if (accepted != TerminalInputAcceptance.Rejected || input is not TerminalInput.Paste)
+                        throw new IOException("Owner rejected input: " + accepted);
+                    // A validated paste fits in an empty queue. Drain previous input outside
+                    // the attachment gate so detach can cancel it while the PTY is blocked.
+                    var result = _input.SubmitAndDrain([], waitForWriter: true);
+                    if (result != TerminalInputAcceptance.Accepted) throw new IOException("Owner writer closed: " + result);
                 }
             }
             var drained=_input.SubmitAndDrain([],waitForWriter);

@@ -25,6 +25,9 @@ try {
         $expected = (Get-FileHash -LiteralPath (Join-Path $repo "installer/stage-portable/tools/$name")).Hash
         if ($actual -ne $expected) { throw "Portable tool differs from build input: $name" }
     }
+    foreach ($retired in @("agwinterm_core.dll", "agwinterm-ptyhost.exe")) {
+        if (Test-Path -LiteralPath (Join-Path $tools $retired)) { throw "Retired Windows component in portable toolset: $retired" }
+    }
     foreach ($pair in @(@('x64', 62), @('arm64', 183))) {
         $bytes = [IO.File]::ReadAllBytes((Join-Path $tools "agwinterm-hook-linux-$($pair[0])"))
         if ($bytes[0] -ne 127 -or [Text.Encoding]::ASCII.GetString($bytes, 1, 3) -ne 'ELF' -or

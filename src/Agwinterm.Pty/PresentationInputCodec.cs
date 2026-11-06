@@ -71,6 +71,7 @@ internal static class PresentationInputCodec
             throw new InvalidDataException("Invalid input identity, order or payload.");
         if(p.Kind == 1 && System.Text.Encoding.UTF8.GetByteCount(p.Text) > 4096)
             throw new InvalidDataException("Key text exceeds the native encoder limit.");
+        if (p.Kind == 3 && !OwnerInputQueue.PasteFits(p.Text)) throw new InvalidDataException("Paste exceeds the owner input limit.");
         TerminalInput input = p.Kind switch
         {
             9 => DecodeCommand(p.OwnerCommand),

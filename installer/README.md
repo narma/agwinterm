@@ -6,8 +6,7 @@ Builds **per-user** Windows installers — end users need **no** .NET runtime in
   self-contained publish. Its shortcuts seed `--default-session-host server` on first run.
   Hosted sessions share a separate application host process; each terminal has one Ghostty
   owner. Direct in-process sessions remain available.
-- **`agwinterm-lite-setup-<ver>.exe`** — the lightweight `agwinterm-lite` (C++/GDI) client for
-  old / low-RAM machines, standalone. Always rides the Rust pty-host.
+- **`agwinterm-lite-setup-0.17.4.exe`** is the frozen handover installer carried forward for users upgrading to agliteterm.
 
 The full installer ships Ghostty and the Rust Linux helpers. It removes the retired Windows
 Rust host and core from the full application's directory. The separate lite installation
@@ -88,28 +87,9 @@ For day-to-day GUI development, double-click `installer\update-gui.cmd`, or run:
 .\installer\update-gui.ps1 -IncludeCli
 ```
 
-The script publishes the current .NET GUI to a fresh folder, waits up to 120 seconds
-for you to close the installed GUI normally, backs up changed files, updates them,
-verifies their hashes, and launches the GUI again. Use `-WaitSeconds 600` for more time.
-It never kills processes. Close the GUI in your usual session-preserving way; closing
-individual windows while other windows remain can terminate those windows' sessions.
-Only server-hosted sessions can survive a GUI exit; in-process sessions cannot.
+The script publishes the GUI into a fresh directory and runs the same upgrade preparation as the installer. It checkpoints saved windows and enabled history, closes the installed UI and ends its host. Finish running Windows workloads before updating.
 
-The Rust pty-host, native Rust core, ConPTY/OpenConsole and hooks stay untouched.
-The CLI stays untouched unless `-IncludeCli` is supplied; then GUI and CLI are
-published together and use the same lock checks, backup and rollback.
-The changed GUI assemblies, managed dependencies, .NET runtime, themes, and assets
-come from `dotnet publish`. No Inno Setup or Rust build is needed. Backups and publish
-output remain under `artifacts/gui-update/`; a copy/verification failure attempts to
-restore previous files and reports any rollback failure. A locked file aborts the
-preflight before any installed file is changed. A running C# `--pty-host` uses the GUI
-executable and must exit before that executable can be updated.
-
-Use this for GUI changes compatible with the installed Rust core and host protocol.
-For changes to the native core/ABI, host/protocol, ConPTY, hooks, or CLI, use the full
-build and installer instead, after finishing the sessions that depend on those files.
-This script requires an existing installation; it does not create shortcuts or update
-the Windows uninstall registration.
+The updater backs up changed files, verifies replacements and removes the retired Windows Rust host and core. It updates the CLI when invoked with `-IncludeCli`. Backups and build output are under `artifacts/gui-update/`. Use the full installer for changes to hooks or Windows installation registration.
 
 ## Silent install / uninstall
 

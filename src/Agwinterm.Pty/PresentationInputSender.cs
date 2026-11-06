@@ -32,11 +32,13 @@ internal sealed class PresentationInputSender : IDisposable
             if (_closed) return TerminalInputAcceptance.Closed;
             if (Agwinterm.Core.TerminalLatencyTrace.Enabled && input is TerminalInput.Key { VirtualKey:13, Action: > 0 })
                 Agwinterm.Core.TerminalLatencyTrace.Record(9,++_latencyEnter);
+            if (input is TerminalInput.Paste paste && !OwnerInputQueue.PasteFits(paste.Value)) return TerminalInputAcceptance.Rejected;
             byte[] bytes;
             try { bytes=PresentationInputCodec.Encode(input,_incarnation,_epoch,checked(_sequence+1)); }
             catch(InvalidDataException) { CloseLocked(); return TerminalInputAcceptance.Overflow; }
             if(bytes.Length > OwnerInputQueue.MaximumBytes-_bytes)
-            { CloseLocked(); return TerminalInputAcceptance.Overflow; }
+            { if (input is TerminalInput.Paste) return TerminalInputAcceptance.Rejected;
+              CloseLocked(); return TerminalInputAcceptance.Overflow; }
             bool started=false;
             // Only the persistent UI thread may start IO here. A transient caller
             // could exit while IO is pending; Windows would abort that operation.
@@ -53,7 +55,8 @@ internal sealed class PresentationInputSender : IDisposable
                 { Failure=ex; CloseLocked(); return TerminalInputAcceptance.DeliveryUncertain; }
             }
             if(!_queue.Writer.TryWrite(new(bytes,started)))
-            { CloseLocked(); return started ? TerminalInputAcceptance.DeliveryUncertain : TerminalInputAcceptance.Overflow; }
+            { if (!started && input is TerminalInput.Paste) return TerminalInputAcceptance.Rejected;
+              CloseLocked(); return started ? TerminalInputAcceptance.DeliveryUncertain : TerminalInputAcceptance.Overflow; }
             // Reserve the writer for queued records too, before releasing the
             // gate. A fast UI key must not overtake an older queued frame credit.
             _writing=true;

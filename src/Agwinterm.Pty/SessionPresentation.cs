@@ -18,7 +18,7 @@ public abstract record TerminalInput
         int ScrollOffset, bool Visible) : TerminalInput;
 }
 
-public enum TerminalInputAcceptance { Accepted, Closed, Overflow, DeliveryUncertain }
+public enum TerminalInputAcceptance { Accepted, Closed, Overflow, DeliveryUncertain, Rejected }
 public abstract record TerminalCommand
 {
     public sealed record Resize(int Columns, int Rows, int CellWidth, int CellHeight, ulong ViewportRevision) : TerminalCommand;

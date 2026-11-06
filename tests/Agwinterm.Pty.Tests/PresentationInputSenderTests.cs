@@ -41,6 +41,19 @@ public class PresentationInputSenderTests
         sender.Dispose(); await sender.Completion.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task OversizePasteLeavesTheNextInputAtSequenceOne()
+    {
+        var stream = new RecordingWriter(1);
+        using var sender = new PresentationInputSender(stream, "owner", 1);
+        Assert.Equal(TerminalInputAcceptance.Rejected, sender.Submit(new TerminalInput.Paste(new string('a', 600_000))));
+        Assert.Equal(TerminalInputAcceptance.Accepted, sender.Submit(new TerminalInput.Text("next")));
+        await stream.Finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using var record = new MemoryStream(stream.ToArray());
+        var decoded = await PresentationInputCodec.ReadAsync(record, "owner", 1, 0, default);
+        Assert.Equal(new TerminalInput.Text("next"), decoded.Input);
+    }
+
     private sealed class BlockedWriter : MemoryStream
     {
         public readonly TaskCompletionSource Started=new(TaskCreationOptions.RunContinuationsAsynchronously);

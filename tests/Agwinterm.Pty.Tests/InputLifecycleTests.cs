@@ -24,6 +24,7 @@ public class InputLifecycleTests
         try
         {
             Assert.Equal(TerminalInputAcceptance.Accepted,session.SubmitInput(new TerminalInput.Focus(true)));
+            Assert.Equal(TerminalInputAcceptance.Rejected, session.SubmitInput(new TerminalInput.Paste(new string('a', 600_000))));
             Assert.False(session.InputClosed);
             TerminalInputAcceptance result=TerminalInputAcceptance.Accepted;
             for(int i=0;i<5000 && result == TerminalInputAcceptance.Accepted;i++)

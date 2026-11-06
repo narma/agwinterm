@@ -681,11 +681,13 @@ public sealed partial class ServerSession : ISession
             {
                 // Window focus and typing can precede the asynchronous attachment.
                 // Retain a bounded, owned copy; never resend after an attachment fails.
+                if (input is TerminalInput.Paste paste && !OwnerInputQueue.PasteFits(paste.Value)) return TerminalInputAcceptance.Rejected;
                 int bytes;
-                try { bytes=PresentationInputCodec.Encode(input,"startup",1,1).Length; }
+                try { bytes=PresentationInputCodec.Encode(input,"00000000000000000000000000000000",ulong.MaxValue,ulong.MaxValue).Length; }
                 catch(InvalidDataException) { MarkInputClosed(); return TerminalInputAcceptance.Overflow; }
                 if(_startupInput.Count >= 4096 || bytes > OwnerInputQueue.MaximumBytes-_startupInputBytes)
-                { _startupInput.Clear(); _startupInputBytes=0; MarkInputClosed(); return TerminalInputAcceptance.Overflow; }
+                { if (input is TerminalInput.Paste) return TerminalInputAcceptance.Rejected;
+                  _startupInput.Clear(); _startupInputBytes=0; MarkInputClosed(); return TerminalInputAcceptance.Overflow; }
                 input=input switch {
                     TerminalInput.Raw raw=>new TerminalInput.Raw(raw.Bytes.ToArray()),
                     TerminalInput.Command { Value:TerminalCommand.InjectOutput output }=>new TerminalInput.Command(new TerminalCommand.InjectOutput(output.Bytes.ToArray())),
@@ -695,7 +697,7 @@ public sealed partial class ServerSession : ISession
                 return TerminalInputAcceptance.Accepted;
             }
             var result = _presentationInput.Submit(input,persistentUiThread);
-            if (result != TerminalInputAcceptance.Accepted) MarkInputClosed();
+            if (result is not (TerminalInputAcceptance.Accepted or TerminalInputAcceptance.Rejected)) MarkInputClosed();
             return result;
         }
     }
