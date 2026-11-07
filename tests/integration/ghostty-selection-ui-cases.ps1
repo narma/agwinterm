@@ -7,6 +7,21 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class GhosttySelectionWindow {
+ public delegate bool WindowEnum(IntPtr h,IntPtr data);
+ [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent,WindowEnum callback,IntPtr data);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h,System.Text.StringBuilder text,int size);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")] public static extern IntPtr ReadText(IntPtr h,uint message,IntPtr w,System.Text.StringBuilder text);
+ public static IntPtr FileNameEdit(IntPtr dialog) {
+   IntPtr result=IntPtr.Zero;
+   EnumChildWindows(dialog,(h,d)=> {
+     var cls=new System.Text.StringBuilder(256); GetClassName(h,cls,256);
+     if(cls.ToString()!="Edit") return true;
+     var text=new System.Text.StringBuilder(1024); ReadText(h,0xD,(IntPtr)1024,text);
+     if(text.ToString().StartsWith("selection.",StringComparison.Ordinal)) { result=h; return false; }
+     return true;
+   },IntPtr.Zero);
+   return result;
+ }
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
@@ -207,9 +222,7 @@ try {
                 CheckSelection 'Canceling export preserves the selected snapshot' 'FIRST command output'
                 continue
             }
-            $combo=[GhosttySelectionWindow]::FindWindowEx($save,[IntPtr]::Zero,'ComboBoxEx32',$null)
-            $combo=[GhosttySelectionWindow]::FindWindowEx($combo,[IntPtr]::Zero,'ComboBox',$null)
-            $edit=[GhosttySelectionWindow]::FindWindowEx($combo,[IntPtr]::Zero,'Edit',$null)
+            $edit=[GhosttySelectionWindow]::FileNameEdit($save)
             if($edit -eq [IntPtr]::Zero){throw 'Export filename edit was not found'}
             $path=Join-Path $artifact "вывод команды.$format"
             [void][GhosttySelectionWindow]::SendText($edit,0xC,[IntPtr]::Zero,$path)
