@@ -1,6 +1,6 @@
 param([string]$Distro='Ubuntu', [Parameter(Mandatory)][string]$AppDirectory,
     [Parameter(Mandatory)][string]$CtlDirectory, [ValidateSet('in-process','server')][string]$SessionHost='in-process')
-$ErrorActionPreference='Stop'
+$ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslCapabilities -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id='agwinterm-capabilities-'+[guid]::NewGuid().ToString('N')
@@ -41,7 +41,11 @@ printf '\033P+q524742\033\\'
 IFS= read -r -t 5 -d '\' reply
 test "$reply" = $'\033P1+r524742=38\033'
 printf 'RGB=PASS\n' >&3
-printf '\033P+q626C696E6B;544E\033\\'
+printf '\033P+q626C696E6B\033\\'
+IFS= read -r -t 5 -d '\' reply
+test "$reply" = $'\033P1+r626C696E6B=1B5B356D\033'
+printf 'BLINK=PASS\n' >&3
+printf '\033P+q544E\033\\'
 if IFS= read -r -t 1 -n 1 reply; then exit 13; fi
 printf 'FILTER=PASS\nDONE\n' >&3
 sleep 15

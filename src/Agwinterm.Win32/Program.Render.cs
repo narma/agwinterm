@@ -341,10 +341,22 @@ internal partial class Program
     // D2DERR_RECREATE_TARGET: the device is lost and every device-bound resource must be rebuilt.
     private const int D2DERR_RECREATE_TARGET = unchecked((int)0x8899000C);
 
+    private const int TextBlinkTimer = 15;
+    private bool _textBlinkOn = true, _textBlinkVisible, _textBlinkArmed;
+    private void UpdateTextBlinkTimer()
+    {
+        bool active = _textBlinkVisible && !IsIconic(_hwnd);
+        if (active == _textBlinkArmed) return;
+        _textBlinkArmed = active;
+        if (active) SetTimer(_hwnd,(IntPtr)TextBlinkTimer,500,IntPtr.Zero);
+        else { KillTimer(_hwnd,(IntPtr)TextBlinkTimer); _textBlinkOn = true; }
+    }
+
     private void Render()
     {
         UpdateWebPresentation();
         if (_rt is null || _brush is null) return;
+        _textBlinkVisible = false;
         long tStart = Stopwatch.GetTimestamp();
         _uploadCount = 0; _uploadMs = 0;
         _soloDrawMs = 0; _soloDrawCount = 0;
@@ -358,6 +370,7 @@ internal partial class Program
         try
         {
             RenderBody();
+            UpdateTextBlinkTimer();
             PruneHiddenImageOwners();
             PruneGhosttyImages();
             if (_perfLog is not null) bodyMs = Stopwatch.GetElapsedTime(tStart).TotalMilliseconds;
@@ -402,7 +415,7 @@ internal partial class Program
 
     /// <summary>The SGR attributes the renderer styles text with (colour attrs resolve in EffectiveFg/Bg).</summary>
     private const CellAttributes StyleMask =
-        CellAttributes.Bold | CellAttributes.Italic | CellAttributes.Underline | CellAttributes.Strikethrough | CellAttributes.Overline;
+        CellAttributes.Bold | CellAttributes.Italic | CellAttributes.Underline | CellAttributes.Strikethrough | CellAttributes.Overline | CellAttributes.Blink;
     /// <summary>The subset drawn as decoration lines — the only styling visible on a blank cell.</summary>
     private const CellAttributes LineMask = CellAttributes.Underline | CellAttributes.Strikethrough | CellAttributes.Overline;
 
@@ -720,6 +733,11 @@ internal partial class Program
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
+                    if (cell.Attributes.HasFlag(CellAttributes.Blink))
+                    {
+                        _textBlinkVisible = true;
+                        if (!_textBlinkOn) { c++; continue; }
+                    }
                     Color runFg = EffectiveFg(cell, localBackground, resolvedColors);
                     CellAttributes runStyle = DisplayStyle(cell);
                     if (cell.Grapheme is { } cluster)
@@ -777,7 +795,8 @@ internal partial class Program
                         if (!blank && !GridTrue(cc.Rune)) break;   // fallback glyph → its own solo draw
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
-                        if (cc.UnderlineStyle != cell.UnderlineStyle || cc.UnderlineColor != cell.UnderlineColor) break;
+                        if (cc.UnderlineStyle != cell.UnderlineStyle || cc.UnderlineColor != cell.UnderlineColor ||
+                            (cc.Attributes & CellAttributes.Blink) != (cell.Attributes & CellAttributes.Blink)) break;
                         if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask) || (runStyle & LineMask) != 0 && EffectiveFg(cc, localBackground, resolvedColors) != runFg) break; }
                         else if (EffectiveFg(cc, localBackground, resolvedColors) != runFg || DisplayStyle(cc) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);

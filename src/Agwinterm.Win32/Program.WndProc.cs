@@ -237,6 +237,13 @@ internal partial class Program
                 return IntPtr.Zero;
 
             case WM_TIMER:
+                if ((int)wParam == TextBlinkTimer)
+                {
+                    if (!_textBlinkArmed) return IntPtr.Zero;
+                    if (IsIconic(hwnd)) { _textBlinkVisible = false; UpdateTextBlinkTimer(); }
+                    else { _textBlinkOn = !_textBlinkOn; RequestRedraw(); }
+                    return IntPtr.Zero;
+                }
                 if ((int)wParam == HudTimer) { HudTick(); return IntPtr.Zero; }
                 if ((int)wParam == 2) { _toastText = null; _toastTarget = null; KillTimer(hwnd, (IntPtr)2); InvalidateRect(hwnd, IntPtr.Zero, false); return IntPtr.Zero; }
                 if ((int)wParam == SelAutoTimer) { SelAutoscrollTick(); return IntPtr.Zero; }

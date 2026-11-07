@@ -4847,7 +4847,7 @@ namespace Agwinterm.Pty.Proto {
     public const int PresentationRevisionFieldNumber = 6;
     private uint presentationRevision_;
     /// <summary>
-    /// 2 = decorated cells; exact revision required by viewport channel
+    /// 3 = blinking decorated cells; exact revision required by viewport channel
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]

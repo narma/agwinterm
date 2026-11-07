@@ -19,7 +19,8 @@ static uint32_t style_attributes(GhosttyStyle style) {
         ((style.flags & GHOSTTY_STYLE_FLAG_INVERSE) ? 8 : 0) |
         ((style.flags & GHOSTTY_STYLE_FLAG_FAINT) ? 16 : 0) |
         ((style.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 32 : 0) |
-        ((style.flags & GHOSTTY_STYLE_FLAG_OVERLINE) ? 64 : 0);
+        ((style.flags & GHOSTTY_STYLE_FLAG_OVERLINE) ? 64 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_BLINK) ? 128 : 0);
 }
 
 static void decoration(AgwVtCell* cell, GhosttyStyle style, const GhosttyColorRgb* palette) {
@@ -346,26 +347,12 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 9;
+    return 10;
 }
 const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
-    // libghostty 1.0 emits one complete XTGETTCAP response per callback. Its
-    // static map describes Ghostty's renderer. Text blinking is not rendered
-    // by Agwinterm, so keep only that capability suppressed.
-    // This filters generated replies, never application input or arbitrary DCS.
-    static const char* unsupported[] = {
-        "626C696E6B"
-    }; // blink (text blinking remains unsupported)
-    if (len >= 8 && !memcmp(data, "\033P1+r", 5)) {
-        for (size_t i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); i++) {
-            size_t n = strlen(unsupported[i]);
-            if (len >= 5 + n + 2 && !memcmp(data + 5, unsupported[i], n) &&
-                (data[5 + n] == '=' || data[5 + n] == '\033')) return;
-        }
-    }
     if (vt->event) vt->event(vt->context, 1, data, len);
 }
 static bool color_scheme(GhosttyTerminal terminal, void* context, GhosttyColorScheme* out) {

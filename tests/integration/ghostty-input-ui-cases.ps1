@@ -80,8 +80,11 @@ try {
     InputCheck 'DA capabilities reach the child through the session owner' ($esc+'[?62;22c'+$esc+'[>1;0;0c') {
         $null=Rpc 'session.write' @{text=($esc+'[c'+$esc+'[>c')} $inputSession
     }
-    InputCheck 'Unsupported renderer capabilities and unknown TN remain silent' '' {
-        $null=Rpc 'session.write' @{text=($esc+'P+q544E;626C696E6B'+$esc+'\')} $inputSession
+    InputCheck 'Unknown per-session TN remains silent' '' {
+        $null=Rpc 'session.write' @{text=($esc+'P+q544E'+$esc+'\')} $inputSession
+    }
+    InputCheck 'Blink capability reaches the child' ($esc+'P1+r626C696E6B=1B5B356D'+$esc+'\') {
+        $null=Rpc 'session.write' @{text=($esc+'P+q626C696E6B'+$esc+'\')} $inputSession
     }
     InputCheck 'Truecolor capability survives session transport' ($esc+'P1+r524742=38'+$esc+'\') {
         $null=Rpc 'session.write' @{text=($esc+'P+q524742'+$esc+'\')} $inputSession

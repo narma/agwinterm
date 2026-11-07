@@ -49,7 +49,8 @@ internal static class GhosttyHistory
     }
     private static readonly (CellAttributes Flag, int Code)[] Styles =
         [(CellAttributes.Bold, 1), (CellAttributes.Dim, 2), (CellAttributes.Italic, 3),
-         (CellAttributes.Underline, 4), (CellAttributes.Inverse, 7), (CellAttributes.Strikethrough, 9), (CellAttributes.Overline, 53)];
+         (CellAttributes.Underline, 4), (CellAttributes.Inverse, 7), (CellAttributes.Strikethrough, 9), (CellAttributes.Overline, 53),
+         (CellAttributes.Blink, 5)];
     private static void Plain(StringBuilder text, string value)
     {
         if (value.Length > 65536) throw new InvalidDataException("History string exceeds the size limit.");

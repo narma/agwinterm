@@ -7,6 +7,20 @@ namespace Agwinterm.Pty.Tests;
 public class PresentationFrameCodecTests
 {
     [Fact]
+    public void BlinkOnlyDeltaKeepsOldSnapshotAndRejectsPreBlinkFrames()
+    {
+        var cell=Cell.Empty with { Rune='X', Attributes=CellAttributes.Blink|CellAttributes.Underline };
+        using var first=Frame(1,cell); using var a=first.Acquire();
+        using var decoded=Decode(PresentationFrameCodec.Encode(a)).Frame; using var old=decoded.Acquire();
+        Assert.Equal(cell,old[0,0]);
+        using var second=Frame(2,cell with {Attributes=CellAttributes.Underline}); using var b=second.Acquire();
+        using var delta=Decode(PresentationFrameCodec.Encode(b,a),old).Frame; using var current=delta.Acquire();
+        Assert.Equal(CellAttributes.Underline,current[0,0].Attributes);
+        Assert.True(old[0,0].Attributes.HasFlag(CellAttributes.Blink));
+        var bytes=PresentationFrameCodec.Encode(a); bytes[9]=2;
+        Assert.Throws<InvalidDataException>(()=>Decode(bytes));
+    }
+    [Fact]
     public void DecorationOnlyDeltaPreservesOldFrameAndRejectsOldRevision()
     {
         var cell=Cell.Empty with { Attributes=CellAttributes.Underline|CellAttributes.Overline,

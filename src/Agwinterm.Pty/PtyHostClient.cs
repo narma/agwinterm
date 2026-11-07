@@ -92,7 +92,7 @@ public sealed class PtyHostClient : IDisposable
         string? cwd = null, IReadOnlyDictionary<string, string>? env = null, bool verbatim = false, bool deElevate = false,
         bool freshEnv = true, string creationTicket = "", string emulatorCore = "", bool singleOwner = false)
     {
-        if (singleOwner && PresentationRevision != PresentationFrameCodec.Revision) throw new NotSupportedException("Host does not support single-owner presentation revision 2");
+        if (singleOwner && PresentationRevision != PresentationFrameCodec.Revision) throw new NotSupportedException("Host does not support single-owner presentation revision 3");
         if (cols < 0 || rows < 0 || cols > 10000 || rows > 10000)
             throw new ArgumentOutOfRangeException(nameof(cols), "create cols/rows must be in 0..10000 (zero selects defaults)");
         var create = new Create

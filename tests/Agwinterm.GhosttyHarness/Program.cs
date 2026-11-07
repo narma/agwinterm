@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 8;
+    oldAbi["abi"] = 9;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without decoration fields is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without blinking text is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -294,8 +294,8 @@ using (var identity = new GhosttyVt(20,5))
     identity.Feed("\u001b[c\u001b[>c\u001b[=c"u8);
     Check(host.Replies == "\u001b[?62;22c\u001b[>1;0;0c\u001bP!|00000000\u001b\\", "DA reports conservative VT220 color capabilities without Sixel");
     host.Replies = "";
-    identity.Feed("\u001bP+q544E;626C696E6B\u001b\\"u8);
-    Check(host.Replies == "", "TN and unsupported renderer capabilities are not advertised");
+    identity.Feed("\u001bP+q544E\u001b\\"u8);
+    Check(host.Replies == "", "unknown per-session TN is not advertised");
     identity.Feed("\u001bP+q436F;524742;5463;4245;4D73;53796E63\u001b\\"u8);
     Check(host.Replies.Contains("1+r436F=323536") && host.Replies.Contains("1+r524742=38") &&
         host.Replies.Contains("1+r5463\u001b\\") && host.Replies.Contains("1+r4245=") &&
@@ -304,7 +304,26 @@ using (var identity = new GhosttyVt(20,5))
     host.Replies = "";
     foreach (byte value in "\u001bP+q626C696E6B;524742;544E\u001b\\"u8)
         identity.Feed(new byte[] { value });
-    Check(host.Replies == "\u001bP1+r524742=38\u001b\\", "fragmented mixed capability query preserves only its supported reply");
+    Check(host.Replies == "\u001bP1+r626C696E6B=1B5B356D\u001b\\\u001bP1+r524742=38\u001b\\", "fragmented query advertises blink and RGB while leaving TN unset");
+}
+
+using (var blinking = new GhosttyTerminalCore(20,5))
+using (var restoredBlink = new GhosttyTerminalCore(20,5))
+{
+    blinking.Feed("\u001b[5;4:3;53mA \u001b[6mB\u001b[25mC\u001b[5mD\u001b[0mE"u8);
+    Check(Enumerable.Range(0,3).All(c=>blinking.Screen[0,c].Attributes.HasFlag(CellAttributes.Blink)),
+        "SGR 5 and 6 preserve blink on text and decorated blanks");
+    Check(!blinking.Screen[0,3].Attributes.HasFlag(CellAttributes.Blink) && !blinking.Screen[0,5].Attributes.HasFlag(CellAttributes.Blink),
+        "SGR 25 and 0 reset blinking independently");
+    blinking.BeginPaint(); var held = blinking.CompletePaint();
+    using var selection = blinking.CreateSelection(0,0,0,5,false);
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(blinking),out var saved), "blinking history serializes");
+    BufferPersist.Restore(restoredBlink,saved);
+    Check(restoredBlink.GetHistoryCell(0,0).Attributes.HasFlag(CellAttributes.Blink) &&
+        restoredBlink.GetHistoryCell(0,0).UnderlineStyle == UnderlineStyle.Curly, "history import preserves blink and decorations together");
+    blinking.Feed("\u001b[H\u001b[0mX"u8);
+    Check(held[0,0].Attributes.HasFlag(CellAttributes.Blink) && !blinking.Screen[0,0].Attributes.HasFlag(CellAttributes.Blink) &&
+        selection!.Text == "A BCDE", "blink presentation never changes retained cells or selected text");
 }
 
 using (var decorated = new GhosttyTerminalCore(20,5))

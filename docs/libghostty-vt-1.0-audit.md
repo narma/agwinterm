@@ -136,3 +136,30 @@ were built with .NET 11, ReadyToRun and runtime-async. Evidence:
 `artifacts/decorations-local-final/results/stdout.log`,
 `artifacts/decorations-hosted-final/results/stdout.log`,
 `artifacts/decorations-wsl-local/test.log`, `artifacts/decorations-wsl-hosted/test.log`.
+
+## Text blinking
+
+SGR 5/6 blink now travels from native cells through hosted full/delta frames and
+saved history (adapter ABI 10, frame revision 3). The GUI toggles foreground and
+decorations every 500 ms independently of cursor blink; backgrounds, selected
+text and immutable frame data are unchanged. The timer stops when no rendered
+cells need blinking or the window is minimized. No PTY output or owner frame
+traffic is needed for an idle blink phase. SGR 25/0 clears the attribute.
+
+The `blink` XTGETTCAP response is restored and the last reply filter is removed.
+Native contracts cover SGR 5/6/25/0, history restore and retained selections;
+transport contracts cover blink-only deltas and old-frame immutability.
+VM pixel checks sample idle on/off phases with cursor blinking disabled and a
+10-second cursor interval, preserve backgrounds/nonblinking text, and verify
+that SGR 25 stops the animation. The hosted CI harness uses the current
+acknowledged clipboard callback; the WSL entry point matches the routing guard.
+
+Validation: 317 native contracts, 448 core tests, 38 presentation tests and 132
+routing checks passed. Hyper-V passed 158 UI checks in each of local and hosted
+modes, including the full 87-check server harness. Private-desktop WSL probes
+passed default TERM, profile overrides and loopback SSH in both modes. GUI,
+host and CLI were published with .NET 11, ReadyToRun and runtime-async.
+Evidence: `artifacts/blink-harness.log`, `artifacts/blink-core`,
+`artifacts/blink-unit`, `artifacts/blink-routing.log`,
+`artifacts/blink-local-ui/results`, `artifacts/blink-hosted-ui/results`,
+`artifacts/blink-wsl-local/test.log`, `artifacts/blink-wsl-hosted/test.log`.
