@@ -157,17 +157,17 @@ try {
     $shellOutput=$esc+'[2J'+$esc+'[3J'+$esc+'[H'+$esc+"]133;A`a$ "+$esc+"]133;B`afirst`r`n"+$esc+"]133;C`aFIRST command output`r`n"+$esc+"]133;D;0`a"+$esc+"]133;A`a$ "+$esc+"]133;B`asecond`r`n"+$esc+"]133;C`aSECOND command output`r`n"+$esc+"]133;D;0`a"+$esc+"]133;A`a$ "+$esc+"]133;B`a"
     $null=Rpc 'session.write' @{text=$shellOutput} $selectionSession
     Start-Sleep -Milliseconds 500
-    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x75,[IntPtr]1)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x72,[IntPtr]1)
     CheckSelection 'Command action selects latest output without prompt or input' 'SECOND command output'
     Set-Clipboard -Value 'before-command-copy'
-    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x76,[IntPtr]1)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x73,[IntPtr]1)
     for($poll=0;$poll -lt 50;$poll++) { $outputCopy=[string](Get-Clipboard); if($outputCopy -ceq 'SECOND command output'){break}; Start-Sleep -Milliseconds 100 }
     Check 'Command output copy reaches Windows clipboard' ($outputCopy -ceq 'SECOND command output')
     # Cursor is now on row 4; keep mouse coordinates relative to the grid origin.
     $caret=[HudOwnedJob]::CaretRect($hwnd); $caret.top-=$cellH*4; $caret.left-=$cellW*2
     SelectionMouse 0x201 1 2; SelectionMouse 0x200 1 4; SelectionMouse 0x202 1 4 0
     CheckSelection 'Older command is targeted by an existing selection' 'RST'
-    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x75,[IntPtr]1)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x72,[IntPtr]1)
     CheckSelection 'Command action expands older output through native bounds' 'FIRST command output'
     [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x77,[IntPtr]1)
     for($poll=0;$poll -lt 50;$poll++) { $html=[GhosttySelectionWindow]::Html(); if($html.Contains('FIRST command output')){break}; Start-Sleep -Milliseconds 100 }
