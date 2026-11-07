@@ -69,13 +69,15 @@ public sealed class PtyHostServer : IDisposable
         public int ProgressState, ProgressValue;
         public string RoleNotice="";
         public readonly ProgramStatusRecords ProgramStatuses = new();
-        public Func<bool>? HasStatusViewer;
         public void ProgramStatusCommandFinished()
         { ProgramStatuses.FinishCommand(); EffectSink?.Invoke(new() { Kind=9 }); }
         public void ProgramStatusChanged(ProgramStatus report)
         {
-            ProgramStatuses.Apply(report, detached: HasStatusViewer?.Invoke() != true);
-            EffectSink?.Invoke(new() { Kind=8,Text=System.Text.Json.JsonSerializer.Serialize(report) });
+            // Retain until receipt even for a live attachment: it can disconnect
+            // between publication and client delivery.
+            ProgramStatuses.Apply(report, retainCompletion: true);
+            EffectSink?.Invoke(new() { Kind=8,Title=report.Id,CompletionSequence=ProgramStatuses.CompletionToken(report.Id),
+                Text=System.Text.Json.JsonSerializer.Serialize(report) });
         }
         public bool ConsumeTitle(string title)
         {
@@ -249,7 +251,6 @@ public sealed class PtyHostServer : IDisposable
             {
                 hosted.Input = new OwnerInputQueue(session);
                 hosted.Replies.EffectSink = effect => hosted.Presentation?.PublishEffect(effect);
-                hosted.Replies.HasStatusViewer = () => hosted.Presentation is { Completion.IsCompleted: false };
                 ((GhosttyTerminalCore)session.Emulator).SetTitleFilter(hosted.Replies.ConsumeTitle);
                 hosted.Replies.ResponseSink = reply =>
                 {

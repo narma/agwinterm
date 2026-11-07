@@ -44,7 +44,7 @@ public sealed class ProgramStatusRecords
         foreach (string id in _records.Values.Where(r => r.State is "working" or "blocked").Select(r => r.Id).ToArray())
         { _records.Remove(id); _updated.Remove(id); _unseenCompletions.Remove(id); }
     }
-    public void Apply(ProgramStatus report, bool detached = false)
+    public void Apply(ProgramStatus report, bool retainCompletion = false)
     {
         if (report.State == "clear")
         {
@@ -59,7 +59,7 @@ public sealed class ProgramStatusRecords
             _records.Remove(oldest); _updated.Remove(oldest); _unseenCompletions.Remove(oldest);
         }
         if (report.State != "idle") _unseenCompletions.Remove(report.Id);
-        if (detached && (report.State == "done" || report.State == "idle" &&
+        if (retainCompletion && (report.State == "done" || report.State == "idle" &&
             _records.TryGetValue(report.Id, out var previous) && previous.State == "working"))
             _unseenCompletions[report.Id] = _sequence + 1;
         _records[report.Id] = report;
@@ -84,4 +84,5 @@ public sealed class ProgramStatusRecords
     {
         if (_unseenCompletions.GetValueOrDefault(id) == completion) _unseenCompletions.Remove(id);
     }
+    public long CompletionToken(string id) => _unseenCompletions.GetValueOrDefault(id);
 }

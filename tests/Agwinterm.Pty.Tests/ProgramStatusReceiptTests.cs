@@ -12,8 +12,8 @@ public class ProgramStatusReceiptTests
         using var session = new TerminalSession(80,24);
         using var frames = new GhosttyFrameSource((GhosttyTerminalCore)session.Emulator,session.SyncRoot,"owner",3,new());
         var records = new ProgramStatusRecords();
-        records.Apply(new("done","worker","","","",null,null),detached:true);
-        records.Apply(new("idle","worker","","","",null,null),detached:true);
+        records.Apply(new("done","worker","","","",null,null),retainCompletion:true);
+        records.Apply(new("idle","worker","","","",null,null),retainCompletion:true);
         long token = records.Replay()[0].Completion;
         Assert.Equal(2,records.Replay().Count); // an attach that never receives the replay
         string name = "agw-receipt-"+Guid.NewGuid().ToString("N");

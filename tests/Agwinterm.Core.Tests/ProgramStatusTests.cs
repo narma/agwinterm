@@ -107,24 +107,24 @@ public sealed class ProgramStatusTests
     public void DetachedCompletionReplaysUntilReceiptBeforeLatestIdleFields()
     {
         var records = new ProgramStatusRecords();
-        records.Apply(Report("done", "child"), detached: true);
-        records.Apply(Report("idle", "child", "codex"), detached: true);
+        records.Apply(Report("done", "child"), retainCompletion: true);
+        records.Apply(Report("idle", "child", "codex"), retainCompletion: true);
         var replay = records.Replay();
         Assert.Equal(new[] { "done", "idle" }, replay.Select(r => r.Report.State));
         Assert.All(replay, r => Assert.Equal("codex", r.Report.App));
         Assert.Equal(replay, records.Replay()); // a failed attach did not consume anything
         records.AcknowledgeCompletion("child", replay[0].Completion);
         Assert.Equal("idle", Assert.Single(records.Replay()).Report.State);
-        records.Apply(Report("working", "child"), detached: true);
-        records.Apply(Report("idle", "child"), detached: true);
+        records.Apply(Report("working", "child"), retainCompletion: true);
+        records.Apply(Report("idle", "child"), retainCompletion: true);
         records.AcknowledgeCompletion("child", replay[0].Completion); // stale attachment receipt
         Assert.Equal(new[] { "done", "idle" }, records.Replay().Select(r => r.Report.State));
-        records.Apply(Report("done", "child"), detached: true);
-        records.Apply(Report("working", "child"), detached: true);
+        records.Apply(Report("done", "child"), retainCompletion: true);
+        records.Apply(Report("working", "child"), retainCompletion: true);
         records.FinishCommand();
         Assert.Empty(records.Replay());
-        records.Apply(Report("done", "child"), detached: true);
-        records.Apply(Report("clear"), detached: true);
+        records.Apply(Report("done", "child"), retainCompletion: true);
+        records.Apply(Report("clear"), retainCompletion: true);
         Assert.Empty(records.Replay());
     }
 
