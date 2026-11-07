@@ -221,3 +221,11 @@ The VM focus fixture reads console `FOCUS_EVENT` records with VT input disabled;
 with VT input enabled, ConPTY converts focus back into VT characters only when
 the inner application subscribed. See Microsoft's
 [input buffer implementation](https://github.com/microsoft/terminal/blob/main/src/host/inputBuffer.cpp).
+
+Final VM acceptance passed 169 checks in each local/hosted mode, including the
+87-check server harness. Evidence: `artifacts/completeness-local-acceptance/results`
+and `artifacts/completeness-hosted-acceptance/results`. GUI/host/CLI publications
+used .NET 11, ReadyToRun and runtime-async. CI also exposed three old reflection
+fixtures that still treated the active input surface as a field; they now use
+its transition-aware property. All 18 affected input-routing cases passed
+(`artifacts/completeness-input/input.trx`).
