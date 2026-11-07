@@ -320,6 +320,11 @@ internal partial class Program : ISessionHost, IWindowHost
         public long InputPaintDeadline; // only subsequent owner frames can request a paint
         public required string Id;
         public required ISession S;
+        public readonly AgentActivity AgentActivity = new();
+        public int ProgramStatusThread;
+        public long LastProgramStatusVersion;
+        public readonly ProgramStatusRecords ProgramStatuses = new();
+        public readonly Dictionary<string, AgentActivity> ProgramActivities = new(StringComparer.Ordinal);
         public JsonElement LiveBinding;
         public string? LiveSaveError;
         public bool LiveClosing;
@@ -1143,6 +1148,14 @@ internal partial class Program : ISessionHost, IWindowHost
         float fy = ClientH() - FooterH;
         foreach (var (x0, x1, action) in _footerButtons)
             list.Add((action, ChromeButtonLabel(action), ScreenRect(x0, fy, x1 - x0, FooterH)));
+        if (_sidebarW > 0 && _agentsTop < fy)
+        {
+            list.Add(("agents-sort", "Sort agents", ScreenRect(_sidebarW - 38, _agentsTop, 38, 28)));
+            list.Add(("agents-collapse", _agentsCollapsed ? "Expand agents" : "Collapse agents", ScreenRect(0, _agentsTop, _sidebarW - 38, 28)));
+            foreach (var row in _agentRows)
+                list.Add(("agent-open:" + row.Row.Key, $"Agent {row.Row.Name}, {AgentStatusName(row.Row.Status)}, {row.Row.Detail}",
+                    ScreenRect(6, row.Top, _sidebarW - 12, row.Bottom - row.Top)));
+        }
         return list;
     }
 
@@ -1305,6 +1318,7 @@ internal partial class Program : ISessionHost, IWindowHost
 
     private void EnterChromeFocus()
     {
+        _agentsKeyboardFocus = false;
         if (_sidebarW <= 0) ToggleSidebar();   // reveal the sidebar so the focus ring is visible
         _chromeFocus = true;
         _focusRow = _active ?? AllSessions().FirstOrDefault();
@@ -1336,6 +1350,18 @@ internal partial class Program : ISessionHost, IWindowHost
     /// opens one, F2 renames it, Escape/F6 returns to the terminal. Swallows everything else so it can't reach the shell.</summary>
     private bool SidebarZoneKey(int vk)
     {
+        if (vk == VK_TAB)
+        {
+            _agentsKeyboardFocus = !_agentsKeyboardFocus;
+            if (_agentsKeyboardFocus)
+            {
+                _agentsCollapsed = false;
+                _agentKeyboardKey ??= AgentList().FirstOrDefault()?.Key;
+                _uia.Announce("Agents. Arrow keys to navigate, Enter to open, P to pin, S to sort.");
+            }
+            RequestRedraw(); return true;
+        }
+        if (_agentsKeyboardFocus) return AgentsKey(vk);
         var list = AllSessions();
         if (list.Count == 0) { ExitChromeFocus(); return true; }
         int idx = _focusRow is not null ? list.IndexOf(_focusRow) : 0;

@@ -80,7 +80,7 @@ public sealed class TerminalSession : ISession
     /// <summary>User activity (typing/focus) clears a blocked/completed status, matching agterm.</summary>
     public void NotifyActivity()
     {
-        if (Status is AgentStatus.Blocked or AgentStatus.Completed)
+        if (Status is AgentStatus.Completed)
             SetStatus(AgentStatus.Idle);
     }
 

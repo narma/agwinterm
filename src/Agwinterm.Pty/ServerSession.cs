@@ -232,7 +232,7 @@ public sealed partial class ServerSession : ISession
 
     public void NotifyActivity()
     {
-        if (Status is AgentStatus.Blocked or AgentStatus.Completed)
+        if (Status is AgentStatus.Completed)
             SetStatus(AgentStatus.Idle);
     }
 

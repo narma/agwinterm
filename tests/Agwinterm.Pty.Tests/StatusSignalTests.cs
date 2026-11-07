@@ -8,6 +8,20 @@ public class StatusSignalTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void UserActivityDoesNotDismissBlockedProducerStatus(bool hosted)
+    {
+        using var backend = new ServerSessionBackend("test-status-" + Guid.NewGuid().ToString("N"), null, singleOwner: false);
+        using ISession session = hosted ? new ServerSession(backend, "P", 80, 24) : new TerminalSession(80, 24);
+        session.SetStatus(AgentStatus.Blocked, autoReset: true);
+        session.NotifyActivity();
+        Assert.Equal(AgentStatus.Blocked, session.Status);
+        session.SetStatus(AgentStatus.Idle);
+        Assert.Equal(AgentStatus.Idle, session.Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void BothBackendsPublishImmutableTransitionsAndRetainLegacyNotifications(bool hosted)
     {
         using var backend = new ServerSessionBackend("test-status-" + Guid.NewGuid().ToString("N"), null, singleOwner: false);

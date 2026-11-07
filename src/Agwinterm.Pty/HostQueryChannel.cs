@@ -7,7 +7,8 @@ namespace Agwinterm.Pty;
 
 /// <summary>One bounded query at a time per attachment. A short-lived connection
 /// makes cancellation local to the query, without disturbing input or frames.</summary>
-internal sealed class HostQueryChannel(string name, TerminalSession session, string incarnation, ulong epoch, GhosttyFrameSource frames)
+internal sealed class HostQueryChannel(string name, TerminalSession session, string incarnation, ulong epoch,
+    GhosttyFrameSource frames, Action<string,long>? programStatusReceived = null)
 {
     public string PipeName => name;
     public async Task RunAsync(CancellationToken cancellation)
@@ -30,6 +31,20 @@ internal sealed class HostQueryChannel(string name, TerminalSession session, str
                 var disconnected = WatchDisconnect(pipe,deadline);
                 try
                 {
+                    if(request.Operation == "program-status-receipt")
+                    {
+                        var receipt = new PresentationQueryReply { Incarnation=incarnation,AttachmentEpoch=epoch,
+                            Generation=request.Generation,Status="stale" };
+                        if(request.Incarnation == incarnation && request.AttachmentEpoch == epoch &&
+                            request.Generation > 0 && request.Text.Length <= 256 && programStatusReceived is not null)
+                        {
+                            deadline.Token.ThrowIfCancellationRequested();
+                            programStatusReceived(request.Text,request.Generation);
+                            receipt.Status="ok";
+                        }
+                        await PresentationQueryWire.WriteAsync(pipe,receipt,deadline.Token).ConfigureAwait(false);
+                        continue;
+                    }
                     if(request.Operation.StartsWith("buffer-",StringComparison.Ordinal))
                     {
                         var bufferReply=new PresentationQueryReply { Incarnation=incarnation,AttachmentEpoch=epoch,Status="stale" };

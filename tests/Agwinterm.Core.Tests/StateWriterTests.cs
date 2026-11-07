@@ -159,6 +159,26 @@ public sealed class StateWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task Transient_windows_reader_does_not_drop_a_preference_save()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var writer = new StateWriter(TimeSpan.Zero);
+        try
+        {
+            Assert.True(writer.Publish(P("agents.json"), "old", out _));
+            using var reader = new FileStream(P("agents.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+            var publish = Task.Run(() => writer.Publish(P("agents.json"), "pinned", out _));
+            Assert.True(SpinWait.SpinUntil(() => File.Exists(P("agents.json.tmp")), 5000));
+            await Task.Delay(100); // a poller/scan holds the old file across the first rename
+            reader.Dispose();
+            Assert.True(await publish.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal("pinned", File.ReadAllText(P("agents.json")));
+            Assert.False(File.Exists(P("agents.json.tmp")));
+        }
+        finally { writer.Shutdown(TimeSpan.FromSeconds(5)); }
+    }
+
+    [Fact]
     public void A_failed_write_says_why_and_forgets_the_bytes()
     {
         var w = new StateWriter(TimeSpan.Zero, _log.Add);

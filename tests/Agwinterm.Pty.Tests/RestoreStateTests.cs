@@ -20,6 +20,20 @@ namespace Agwinterm.Pty.Tests;
 public partial class RestoreStateTests
 {
     [Fact]
+    public void AgentPreferencesRoundTripIndependentlyOfFlags()
+    {
+        var state = new AppState { AgentPins = ["pane/", "pane/worker"], AgentSort = "grouped", AgentsCollapsed = true };
+        Assert.True(RestoreState.TryDeserialize(RestoreState.Serialize(state), out var restored));
+        Assert.Equal(state.AgentPins, restored!.AgentPins);
+        Assert.Equal("grouped", restored.AgentSort);
+        Assert.True(restored.AgentsCollapsed);
+        string defaults = RestoreState.Serialize(new AppState());
+        Assert.DoesNotContain("AgentPins", defaults);
+        Assert.DoesNotContain("AgentSort", defaults);
+        Assert.DoesNotContain("AgentsCollapsed", defaults);
+    }
+
+    [Fact]
     public void HiddenSplit_RoundTripsBothPanePoliciesAndLayout()
     {
         var state = new AppState { Workspaces = [new WorkspaceState { Sessions = [new SessionState

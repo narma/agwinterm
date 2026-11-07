@@ -320,10 +320,10 @@ message PresentationEffect {
   string incarnation = 1;
   uint64 attachment_epoch = 2;
   uint64 sequence = 3;
-  uint32 kind = 4; // 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role; 7 current title and cwd
+  uint32 kind = 4; // 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role; 7 current title and cwd; 8 OSC 7501 record (JSON text); 9 program command ended
   string title = 5;
   string text = 6;
   int32 state = 7;
   int32 value = 8;
-  int64 completion_sequence = 9;
+  int64 completion_sequence = 9; // kind 5: shell completion; kind 8: replay receipt token (program-status-receipt query with generation=token and text=record ID)
 }

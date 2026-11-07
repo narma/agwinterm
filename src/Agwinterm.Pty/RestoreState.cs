@@ -87,6 +87,9 @@ public sealed class WorkspaceState
 }
 public sealed class AppState
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<string>? AgentPins { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AgentSort { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public bool? AgentsCollapsed { get; set; }
     public List<WorkspaceState> Workspaces { get; set; } = new();
     public string? ActiveId { get; set; }
     public float SidebarWidth { get; set; } = SidebarWidths.Default;
