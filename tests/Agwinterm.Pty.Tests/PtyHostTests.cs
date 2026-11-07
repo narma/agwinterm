@@ -19,7 +19,11 @@ public class PtyHostTests : IDisposable
 
     [Fact]
     public void CreationTickets_ReconcileLostRepliesAndGuardReusedIds()
-        => CreationProtocolAssertions.LostRepliesAndReusedId(_appId);
+    {
+        // Exercise both the first spawn and subsequent reuse in the same host.
+        for (int attempt = 0; attempt < 5; attempt++)
+            CreationProtocolAssertions.LostRepliesAndReusedId(_appId);
+    }
 
     [Fact]
     public Task CreationTickets_StartupSweepProtectsUnpublishedPane()
@@ -39,8 +43,8 @@ public class PtyHostTests : IDisposable
         };
         using var client = PtyHostClient.Connect(_appId);
         string ticket = client.PrepareCreate("barrier");
-        var create = Task.Run(() => Record.Exception(() => client.Create("barrier", 80, 24, "powershell.exe",
-            ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 120"], freshEnv: false, creationTicket: ticket)));
+        var create = Task.Run(() => Record.Exception(() => client.Create("barrier", 80, 24,
+            CreationProtocolAssertions.IdleApp, CreationProtocolAssertions.IdleArgs, freshEnv: false, creationTicket: ticket)));
         try
         {
             Assert.True(reached.Wait(10000), "real child must exist before cancellation");

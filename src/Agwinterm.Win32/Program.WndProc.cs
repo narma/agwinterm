@@ -164,6 +164,7 @@ internal partial class Program
                     if (pt.x < (int)_sidebarW && pt.y >= (int)TitleBarH)
                     {
                         var item = RowAt(pt.y);
+                        item = AgentAt(pt.x, pt.y) ?? item;
                         if (item is not null) ShowContextMenuWindow(item, sx, sy);   // screen coords
                         return IntPtr.Zero;
                     }
@@ -362,7 +363,7 @@ internal partial class Program
                 // (About, a close confirmation) pumps that char while the menu is already closed — from
                 // INSIDE OnKeyDown. So the decision is taken before the dispatch: a char-making key the
                 // menu or the bar owns eats its own char, once; withdrawn if the key-down was not consumed.
-                _menuAteChar = (_menuLevels.Count > 0 || _menuBarFocus >= 0) && KeyMakesChar((int)wParam);
+                _menuAteChar = (_chromeFocus || _menuLevels.Count > 0 || _menuBarFocus >= 0) && KeyMakesChar((int)wParam);
                 try
                 {
                     if (OnKeyDown((int)wParam)) return IntPtr.Zero;
@@ -508,6 +509,7 @@ internal partial class Program
                             return IntPtr.Zero;
                         }
                         // List row: begin click-vs-drag (act on release). Skip while renaming.
+                        if (AgentClick(mx, my)) return IntPtr.Zero;
                         if (_editHwnd == IntPtr.Zero)
                         {
                             _sbPress = true; _pressItem = RowAt(my); _pressX = mx; _pressY = my;
@@ -676,6 +678,11 @@ internal partial class Program
                     ScreenToClient(_hwnd, ref pt);
                     int deviceX = pt.x, deviceY = pt.y;
                     pt.x = ToDip(pt.x); pt.y = ToDip(pt.y);   // ...and they are compared against DIP layout
+                    if (pt.x < _sidebarW && pt.y >= _agentsTop && pt.y < ClientH() - FooterH)
+                    {
+                        _agentsScroll = Math.Clamp(_agentsScroll + (HiWord(wParam) > 0 ? -3 : 3), 0, _agentsMaxScroll);
+                        RequestRedraw(); return IntPtr.Zero;
+                    }
                     // Ctrl+wheel: font zoom (Windows-wide convention), on the active surface.
                     if (KeyDown(VK_CONTROL) && pt.x >= (int)_sidebarW && pt.y >= (int)TitleBarH)
                     {

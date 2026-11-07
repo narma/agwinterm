@@ -167,5 +167,7 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
         public void Bell() => Target?.Bell();
         public void CommandFinished(string token,long sequence) => Target?.CommandFinished(token,sequence);
         public void Unhandled(string kind,string detail) => Target?.Unhandled(kind,detail);
+        public void ProgramStatusChanged(ProgramStatus report) => Target?.ProgramStatusChanged(report);
+        public void ProgramStatusCommandFinished() => Target?.ProgramStatusCommandFinished();
     }
 }

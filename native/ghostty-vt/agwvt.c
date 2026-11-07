@@ -365,6 +365,22 @@ static void progress(GhosttyTerminal terminal, void* context, const GhosttyTermi
     int32_t data[2] = { value->state, value->progress };
     if (vt->event) vt->event(vt->context, 7, (const uint8_t*)data, sizeof(data));
 }
+static void program_status(GhosttyTerminal terminal, void* context, const GhosttyTerminalProgramStatus* value) {
+    (void)terminal; AgwVt* vt = context;
+    if (!vt->event) return;
+    /* Three scalar bytes, then four NUL-terminated UTF-8 strings. Ghostty
+       validates all protocol bounds and decoded text before this callback. */
+    uint8_t data[4096]; size_t at = 3;
+    data[0] = (uint8_t)value->state; data[1] = (uint8_t)value->kind;
+    data[2] = (uint8_t)value->progress;
+    GhosttyString strings[] = { value->id, value->app, value->title, value->message };
+    for (size_t i = 0; i < 4; i++) {
+        if (strings[i].len + 1 > sizeof(data) - at) return;
+        memcpy(data + at, strings[i].ptr, strings[i].len); at += strings[i].len;
+        data[at++] = 0;
+    }
+    vt->event(vt->context, 11, data, at);
+}
 static void unknown(GhosttyTerminal terminal, void* context, const GhosttyTerminalUnknownSequence* value) {
     (void)terminal; AgwVt* vt = context;
     if (!vt->event) return;
@@ -391,6 +407,8 @@ static void free_mark(TrackedMark* mark) {
 }
 static void semantic_prompt(GhosttyTerminal terminal, void* context, const GhosttyTerminalSemanticPrompt* event) {
     AgwVt* vt = context; GhosttyTerminalScreen screen;
+    if (event->kind == 1 && event->prompt_kind == GHOSTTY_SEMANTIC_PROMPT_PROMPT_PRIMARY && vt->event)
+        vt->event(vt->context, 12, NULL, 0);
     if (ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) || screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY) return;
     if (event->kind < 1 || event->kind > 4 || (event->kind == 1 && event->prompt_kind != GHOSTTY_SEMANTIC_PROMPT_PROMPT_PRIMARY)) return;
     uint16_t x, y; size_t history;
@@ -519,6 +537,7 @@ static int configure_terminal(AgwVt* vt, int initialize_colors) {
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_PWD_CHANGED, (const void*)pwd_changed);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION, (const void*)notification);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT, (const void*)progress);
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS, (const void*)program_status);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_UNKNOWN_SEQUENCE, (const void*)unknown);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE, (const void*)clipboard);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT, (const void*)semantic_prompt);

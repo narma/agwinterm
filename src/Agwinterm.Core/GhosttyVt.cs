@@ -264,6 +264,8 @@ public sealed unsafe class GhosttyVt : IDisposable
                     break;
                 case 9: Host?.ClipboardWrite(Encoding.UTF8.GetString(effect.Data)); break;
                 case 10: Volatile.Write(ref _holdDeadline, BitConverter.ToInt64(effect.Data)); break;
+                case 11: Host?.ProgramStatusChanged(ProgramStatus.FromNative(effect.Data)); break;
+                case 12: Host?.ProgramStatusCommandFinished(); break;
             }
         }
     }

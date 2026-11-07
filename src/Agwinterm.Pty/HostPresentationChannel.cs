@@ -33,6 +33,7 @@ internal sealed class HostPresentationChannel
     public string QueryPipeName { get; }
     public string EffectPipeName => _effects.PipeName;
     public void PublishEffect(Proto.PresentationEffect effect) => _effects.Publish(effect);
+    public Action<string,long>? ProgramStatusReceived;
     public Task Completion { get; private set; } = Task.CompletedTask;
 
     public HostPresentationChannel(string prefix, TerminalSession session, OwnerInputQueue input,
@@ -62,7 +63,8 @@ internal sealed class HostPresentationChannel
     private async Task RunAsync()
     {
         _session.OutputReceived+=Signal; _session.Exited+=OnExit;
-        Task queries=new HostQueryChannel(QueryPipeName,_session,_incarnation,_epoch,_frames).RunAsync(_cancel.Token);
+        Task queries=new HostQueryChannel(QueryPipeName,_session,_incarnation,_epoch,_frames,
+            (id,completion)=>ProgramStatusReceived?.Invoke(id,completion)).RunAsync(_cancel.Token);
         _effectWriter=_effects.RunAsync(_cancel.Token);
         try
         {

@@ -52,6 +52,14 @@ internal partial class Program
         _sidebarRows.Clear();
         _sidebarNames.Clear();
         _footerButtons.Clear();
+        _agentsTop = float.MaxValue;
+        _agentRows.Clear();
+        // Seeing a terminal acknowledges its completion even while the sidebar is hidden.
+        if (ActiveSurface() is { } viewed && AgentIsViewed(viewed))
+        {
+            viewed.AgentActivity.Display(true);
+            foreach (var activity in viewed.ProgramActivities.Values) activity.Display(true);
+        }
         if (_sidebarW <= 0) return;
 
         brush.Color = SbBg;
@@ -63,9 +71,11 @@ internal partial class Program
         float sbPx = System.Math.Clamp(_config.SidebarFontSize, 9, 20);
         float rowH = MathF.Max(_cellH + 8f, MathF.Ceiling(sbPx * 1.5f) + 6f);
         float y = TitleBarH + PadY;
+        float agentsTop = PrepareAgents(rowsBottom, rowH);
 
-        if (_sidebarMode == SidebarMode.Flagged) { DrawFlaggedList(rt, brush, ref y, rowH, rowsBottom); }
-        else { DrawTreeList(rt, brush, ref y, rowH, rowsBottom); }
+        if (_sidebarMode == SidebarMode.Flagged) { DrawFlaggedList(rt, brush, ref y, rowH, agentsTop); }
+        else { DrawTreeList(rt, brush, ref y, rowH, agentsTop); }
+        DrawAgents(rt, brush, rowH, rowsBottom);
 
         if (_dragging && _dragItem is not null) DrawDropIndicator(rt, brush);
         DrawSidebarFooter(rt, brush);
@@ -160,7 +170,7 @@ internal partial class Program
             rt.FillRectangle(new Rect(0, y, 3f, rowH), brush);
         }
         // F6 focus ring: the sidebar zone's focused row (keyboard navigation, without the mouse).
-        if (_chromeFocus && ReferenceEquals(_focusRow, s))
+        if (_chromeFocus && !_agentsKeyboardFocus && ReferenceEquals(_focusRow, s))
         {
             brush.Color = ChromeAccent;
             rt.DrawRectangle(new Rect(1.5f, y + 1.5f, _sidebarW - 3f, rowH - 3f), brush, 2f);
@@ -437,6 +447,8 @@ internal partial class Program
     /// <summary>The context-menu items for a sidebar row (mirrors agterm's session/workspace menus).</summary>
     private List<PalItem> BuildContextItems(object item)
     {
+        if (item is AgentRow || ReferenceEquals(item, _agentSortMarker) || ReferenceEquals(item, _agentHeadingMarker))
+            return AgentMenu(item);
         var list = new List<PalItem>();
         void A(string label, string hint, Action run) => list.Add(new PalItem { Label = label, Hint = hint, Search = label, Run = run });
         // Batch menu: right-clicking a session that's part of a multi-selection acts on the whole set.
@@ -1625,6 +1637,13 @@ internal partial class Program
 
     private void ChromeAction(string a)
     {
+        if (a.StartsWith("agent-open:", StringComparison.Ordinal))
+        {
+            if (AgentList().FirstOrDefault(row => row.Key == a[11..]) is { } agent) ActivateAgent(agent);
+            return;
+        }
+        if (a == "agents-sort") { GetCursorScreen(out int sx, out int sy); ShowMenuWindow(AgentMenu(_agentSortMarker), sx, sy); return; }
+        if (a == "agents-collapse") { _agentsCollapsed = !_agentsCollapsed; SaveState(); RequestRedraw(); return; }
         switch (a)
         {
             case "toggle": ToggleSidebar(); break;
