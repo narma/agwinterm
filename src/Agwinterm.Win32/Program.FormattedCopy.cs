@@ -11,38 +11,16 @@ internal partial class Program
     {
         try
         {
-            string plain, formatted;
             var owner=pane.SelOwner;
-            if(owner is not null)
-            {
-                string? value=await owner.FormatAsync(format).ConfigureAwait(false);
-                if(value is null) { Post(()=>ShowToast("Selection changed or is too large to export")); return; }
-                formatted=value; plain=owner.Text ?? "";
-            }
-            else
-            {
-                lock(pane.S.SyncRoot)
-                {
-                    if(pane.S.Emulator is not GhosttyTerminalCore core || core.SynchronizedOutput)
-                    { ShowToast("Select current terminal text to export formatting"); return; }
-                    int ar,ac,fr,fc;
-                    if(pane.SelNative is { } selection && selection.TryLocate(out ar,out ac,out fr,out fc))
-                        plain=selection.Text;
-                    else if(pane.SelContent is { } content && content.TryLocate(core.Screen,out int first))
-                    {
-                        int shift=core.HistoryCount+first-Math.Min(pane.SelAncLine,pane.SelFocLine);
-                        ar=pane.SelAncLine+shift; fr=pane.SelFocLine+shift;
-                        ac=pane.SelAncCol; fc=pane.SelFocCol; plain=content.Text;
-                        if(TerminalSelectionText.Read(core,ar,ac,fr,fc,pane.BlockSel) != plain)
-                        { ShowToast("Selection changed before it could be formatted"); return; }
-                    }
-                    else { ShowToast("Select current terminal text to export formatting"); return; }
-                    formatted=core.FormatSelection(ar,ac,fr,fc,pane.BlockSel,format);
-                }
-            }
+            var local=pane.SelFormats;
+            if(owner is not null) await owner.Ready.ConfigureAwait(false);
+            var snapshot=owner?.Formats ?? local;
+            string? formatted=snapshot?.Get(format);
+            if(formatted is null) { Post(()=>ShowToast("Formatting was not captured or exceeds the export limit")); return; }
+            string plain=snapshot!.Text;
             Post(()=>
             {
-                if(owner is not null && !ReferenceEquals(pane.SelOwner,owner)) return;
+                if(!ReferenceEquals(pane.SelOwner,owner) || !ReferenceEquals(pane.SelFormats,local) || !pane.HasSel) return;
                 if(format == 1) ClipboardSet(formatted);
                 else ClipboardSetHtml(plain,formatted);
             });

@@ -6,7 +6,8 @@ namespace Agwinterm.Pty;
 public sealed record TerminalSelectionRequest(string Id,int AnchorRow,int AnchorColumn,int FocusRow,int FocusColumn,bool Block,
     bool All=false,bool AlternateScreen=false,string? Unit=null,string Delimiters="",
     string? GestureId=null,int GestureBehavior=0,int GestureRow=0,int GestureColumn=0);
-public sealed record TerminalSelectionResult(string Id,bool Valid,int AnchorRow,int AnchorColumn,int FocusRow,int FocusColumn,string? Text);
+public sealed record TerminalSelectionResult(string Id,bool Valid,int AnchorRow,int AnchorColumn,int FocusRow,int FocusColumn,string? Text,
+    string? Vt=null,string? Html=null);
 
 internal sealed partial class OwnerQueries
 {
@@ -83,19 +84,17 @@ internal sealed partial class OwnerQueries
                 catch(InvalidDataException) { return Result("limit",core.Generation); }
                 ReleaseSelection(); _selection=next; _selectionId=request.Id;
                 return Result("ok",core.Generation,new(request.Id,true,request.AnchorRow,request.AnchorColumn,
-                    request.FocusRow,request.FocusColumn,next.Text));
+                    request.FocusRow,request.FocusColumn,next.Text,next.Formats.Vt,next.Formats.Html));
             }
             if(query.Operation is not ("selection-locate" or "selection-format")) return Result("unsupported",core.Generation);
             if(_selectionId != request.Id || _selection is null) return Result("stale",core.Generation);
             bool valid=_selection.TryLocate(out int ar,out int ac,out int fr,out int fc);
-            if(!valid) ReleaseSelection();
             if(query.Operation == "selection-format")
             {
-                if(!valid) return Result("stale",core.Generation);
                 if(query.RowCount is < 0 or > 2) return Result("invalid",core.Generation);
-                try { return Result("ok",core.Generation,new(request.Id,true,ar,ac,fr,fc,
-                    core.FormatSelection(ar,ac,fr,fc,request.Block,query.RowCount,query.ResultLimit))); }
-                catch(InvalidDataException) { return Result("limit",core.Generation); }
+                string? value=_selection.Formats.Get(query.RowCount);
+                if(value is null || System.Text.Encoding.UTF8.GetByteCount(value) > query.ResultLimit) return Result("limit",core.Generation);
+                return Result("ok",core.Generation,new(request.Id,valid,ar,ac,fr,fc,value));
             }
             return Result("ok",core.Generation,new(request.Id,valid,ar,ac,fr,fc,null));
         }

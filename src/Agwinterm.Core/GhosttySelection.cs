@@ -14,11 +14,13 @@ public sealed class GhosttySelection : IDisposable
     private bool _valid = true;
     private readonly int _maximumCharacters;
     public string Text { get; }
+    public SelectionFormats Formats { get; }
     internal GhosttySelection(GhosttyTerminalCore core, int ar, int ac, int fr, int fc, bool block,int maximumCharacters)
     {
         _core = core; _block = block; _alt = core.IsAltScreen; _version = core.TextVersion;
         _maximumCharacters=maximumCharacters;
         Text = TerminalSelectionText.Read(core, ar, ac, fr, fc, block,maximumCharacters);
+        Formats = SelectionFormats.Capture(core,ar,ac,fr,fc,block,Text);
         _anchor = core.TrackPoint(ar, ac);
         try { _focus = core.TrackPoint(fr, fc); }
         catch { _anchor.Dispose(); throw; }

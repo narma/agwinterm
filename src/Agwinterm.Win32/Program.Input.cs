@@ -197,6 +197,9 @@ internal partial class Program
             case "copy_selection": if (ActiveSurface() is { } sc && HasLiveSel(sc)) CopySelection(sc); break;
             case "copy_selection_html": if (ActiveSurface() is { } html && HasLiveSel(html)) _=CopyFormattedSelection(html,2); break;
             case "copy_selection_vt": if (ActiveSurface() is { } vt && HasLiveSel(vt)) _=CopyFormattedSelection(vt,1); break;
+            case "export_selection_text": if(ActiveSurface() is { } et && HasLiveSel(et)) _=ExportSelection(et,0); break;
+            case "export_selection_html": if(ActiveSurface() is { } eh && HasLiveSel(eh)) _=ExportSelection(eh,2); break;
+            case "export_selection_vt": if(ActiveSurface() is { } ev && HasLiveSel(ev)) _=ExportSelection(ev,1); break;
             case "paste": if (ActiveSurface() is { } sp2) PasteInto(sp2); break;
         }
     }
@@ -855,6 +858,7 @@ internal partial class Program
                     p.SelContent = new ContentSelection(frame, first - em.HistoryCount, Math.Clamp(from, 0, frame.Cols - 1),
                         last - em.HistoryCount, Math.Clamp(to, 0, frame.Cols - 1), p.BlockSel);
                     p.SelContentVisible = false;
+                    p.SelFormats=new(p.SelContent.Text,null,null);
                     return;
                 }
             }
@@ -871,6 +875,9 @@ internal partial class Program
             {
                 p.SelNative = ghostty.CreateSelection(p.SelAncLine, p.SelAncCol, p.SelFocLine, p.SelFocCol, p.BlockSel);
             }
+            if(p.SelNative is { } native) p.SelFormats=native.Formats;
+            else if(p.SelContent is { } content && em is GhosttyTerminalCore current)
+                p.SelFormats=SelectionFormats.Capture(current,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,content.Text);
         }
     }
 

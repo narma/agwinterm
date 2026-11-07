@@ -170,6 +170,7 @@ internal partial class Program
                 && c.Mode is "send" or "detached");
         return action is "quick_terminal" or "close_cover" or "close_pane" or "close_session"
             or "select_all" or "select_command_output" or "copy_command_output" or "copy_selection" or "copy_selection_html" or "copy_selection_vt" or "paste" or "mark_mode" or "toggle_search"
+            or "export_selection_text" or "export_selection_html" or "export_selection_vt"
             or "previous_prompt" or "next_prompt" or "toggle_read_only";
     }
 }

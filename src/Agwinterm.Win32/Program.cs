@@ -401,6 +401,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public bool BlockSel;   // rectangular (Alt+drag) selection: clip each row to [minCol,maxCol]
         public ContentSelection? SelContent;
         public GhosttySelection? SelNative;
+        public SelectionFormats? SelFormats;
         public OwnerSelection? SelOwner;
         public GhosttySelectionGesture? SelGesture;
         public string? SelGestureId;
@@ -408,6 +409,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public bool SelContentVisible = true;
         public void ReleaseSelectionAnchors()
         {
+            SelFormats=null;
             SelOwner?.Dispose(); SelOwner=null;
             if (SelNative is null) return;
             lock (S.SyncRoot)

@@ -14,6 +14,11 @@ public static class GhosttySelectionWindow {
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern bool RedrawWindow(IntPtr h,IntPtr rect,IntPtr region,uint flags);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string title);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent,IntPtr after,string cls,string title);
+ [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h,uint command);
+ [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h,uint message,IntPtr w,IntPtr l);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")] public static extern IntPtr SendText(IntPtr h,uint message,IntPtr w,string text);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterClipboardFormat(string name);
  [DllImport("user32.dll")] public static extern bool OpenClipboard(IntPtr owner);
  [DllImport("user32.dll")] public static extern bool CloseClipboard();
@@ -172,6 +177,54 @@ try {
     [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x77,[IntPtr]1)
     for($poll=0;$poll -lt 50;$poll++) { $html=[GhosttySelectionWindow]::Html(); if($html.Contains('FIRST command output')){break}; Start-Sleep -Milliseconds 100 }
     Check 'Selected command output supports HTML formatting' ($html.Contains('FIRST command output'))
+    # Capture first, then evict native rows before any formatted export.
+    $retainedHtml=$html
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[3J'+$esc+'[Hreplacement')} $selectionSession
+    Start-Sleep -Milliseconds 350
+    Set-Clipboard -Value 'after-eviction'
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x77,[IntPtr]1)
+    for($poll=0;$poll -lt 50;$poll++) { $html=[GhosttySelectionWindow]::Html(); if($html.Contains('FIRST command output')){break}; Start-Sleep -Milliseconds 100 }
+    Check 'HTML snapshot remains identical after source rows are erased' ($html -ceq $retainedHtml)
+    $keymapPath=Join-Path $appDir 'keymap.conf'
+    $savedKeymap=[IO.File]::ReadAllText($keymapPath)
+    try {
+        foreach($format in @('text','html','vt','cancel')) {
+            $action=if($format -eq 'cancel'){'text'}else{$format}
+            [IO.File]::WriteAllText($keymapPath,$savedKeymap+"`r`nmap f11 = export_selection_$action`r`n")
+            $null=Rpc 'keymap.reload' @{}
+            Start-Sleep -Milliseconds 200
+            [void][GhosttySelectionWindow]::PostMessageW($hwnd,0x100,[IntPtr]0x7A,[IntPtr]1)
+            $save=[IntPtr]::Zero
+            for($poll=0;$poll -lt 60;$poll++) {
+                $save=[GhosttySelectionWindow]::FindWindow('#32770','Export terminal selection')
+                if($save -ne [IntPtr]::Zero){break}; Start-Sleep -Milliseconds 100
+            }
+            if($save -eq [IntPtr]::Zero){throw "Missing $format export save dialog"}
+            if([GhosttySelectionWindow]::GetWindow($save,4) -ne $hwnd){throw 'Export dialog has an unexpected owner'}
+            if($format -eq 'cancel') {
+                [void][GhosttySelectionWindow]::PostMessageW($save,0x111,[IntPtr]2,[IntPtr]::Zero)
+                Start-Sleep -Milliseconds 150
+                CheckSelection 'Canceling export preserves the selected snapshot' 'FIRST command output'
+                continue
+            }
+            $combo=[GhosttySelectionWindow]::FindWindowEx($save,[IntPtr]::Zero,'ComboBoxEx32',$null)
+            $combo=[GhosttySelectionWindow]::FindWindowEx($combo,[IntPtr]::Zero,'ComboBox',$null)
+            $edit=[GhosttySelectionWindow]::FindWindowEx($combo,[IntPtr]::Zero,'Edit',$null)
+            if($edit -eq [IntPtr]::Zero){throw 'Export filename edit was not found'}
+            $path=Join-Path $artifact "вывод команды.$format"
+            [void][GhosttySelectionWindow]::SendText($edit,0xC,[IntPtr]::Zero,$path)
+            [void][GhosttySelectionWindow]::PostMessageW($save,0x111,[IntPtr]1,[IntPtr]::Zero)
+            for($poll=0;$poll -lt 60;$poll++) { if(Test-Path -LiteralPath $path){break}; Start-Sleep -Milliseconds 100 }
+            if(!(Test-Path -LiteralPath $path)){throw "Export did not create $path"}
+            $exported=[IO.File]::ReadAllText($path)
+            Check "Retained $format selection exports through the save dialog" ($exported.Contains('FIRST command output') -and !$exported.Contains('replacement'))
+            if($format -eq 'text'){Check 'Plain export is exact UTF-8 text' ($exported -ceq 'FIRST command output')}
+            if($format -eq 'html'){Check 'HTML export is a standalone UTF-8 document' ($exported.StartsWith('<!doctype html>') -and $exported.Contains('<meta charset="utf-8">'))}
+        }
+    } finally {
+        [IO.File]::WriteAllText($keymapPath,$savedKeymap)
+        $null=Rpc 'keymap.reload' @{}
+    }
 } finally {
     [void][GhosttySelectionWindow]::SetWindowPos($hwnd,[IntPtr]::Zero,0,0,($windowRect.Right-$windowRect.Left),($windowRect.Bottom-$windowRect.Top),6)
     $null=Rpc 'session.close' @{} $selectionSession

@@ -140,6 +140,19 @@ using(var outputCore=new GhosttyTerminalCore(40,5))
     Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output does not select unseen synchronized content");
 }
 
+using(var retainedCore=new GhosttyTerminalCore(40,5))
+{
+    retainedCore.Feed("\u001b[31mretained русский\u001b[0m"u8);
+    using var selected=retainedCore.CreateSelection(0,0,0,15,false);
+    var formats=selected.Formats;
+    Check(formats.Vt is not null && formats.Html is not null,"selection captures HTML and VT before history changes");
+    retainedCore.Feed("\u001b[2J\u001b[3J\u001b[Hreplacement"u8);
+    Check(!selected.TryLocate(out _,out _,out _,out _),"evicted selection loses live coordinates");
+    Check(selected.Formats == formats && formats.Html!.Contains("retained") && formats.Vt!.Contains("\u001b["),"formatted selection survives erased native rows");
+    Check(formats.FileContent(2)!.Contains("<meta charset=\"utf-8\">") && formats.FileContent(0) == selected.Text,
+        "exports provide UTF-8 HTML document and unchanged plain text");
+}
+
 using (var selectionCore = new GhosttyTerminalCore(5, 4))
 {
     selectionCore.Feed("abcdefgh"u8);

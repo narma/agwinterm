@@ -13,8 +13,26 @@ These actions require shell integration marks, refuse alternate-screen and
 synchronized-output frames, and leave the clipboard alone when no output can be
 selected. Hosted requests reject a changed frame; retry the action on the current
 frame. Copy retains the selection, so `copy_selection_html` and
-`copy_selection_vt` can format the same output afterwards. File export and
-formatted snapshots after history eviction remain separate work.
+`copy_selection_vt` can copy the same output afterwards.
+
+## Export and retained formatting
+
+**Export Selection as Text / HTML / VT** in the action palette opens the Windows
+save dialog. Keymap action names are `export_selection_text`,
+`export_selection_html` and `export_selection_vt`. All files are UTF-8 without a
+BOM; text preserves Windows line endings, HTML is a standalone document with
+styles and links, and VT contains terminal styling sequences. The save dialog
+confirms overwrites; cancellation leaves the selection and existing files alone.
+Writes use a temporary file beside the destination and publish only on success.
+
+HTML and VT are captured with the selected text, under the terminal owner lock.
+Hosted selection replies carry these immutable representations to the GUI.
+Clearing history, repainting a TUI, changing styles, or losing tracked coordinates
+does not change the captured formatting. A new selection replaces the snapshot.
+Each formatted representation is limited to 100,000 UTF-8 bytes; a larger
+representation is unavailable, without truncating it or losing plain text.
+Selections newly made on a frozen synchronized-output frame retain plain text
+only; an already captured formatted selection remains available during a freeze.
 
 ## Application clipboard access
 

@@ -22,10 +22,9 @@ internal partial class Program
         public async Task<string?> FormatAsync(int format)
         {
             await Ready.ConfigureAwait(false);
-            var result=await _presentation.QueryAsync(_query with {Operation="selection-format",RowCount=format},_cancel.Token).ConfigureAwait(false);
-            return result.Status == "ok" && result.Rows.Count == 1
-                ? JsonSerializer.Deserialize<TerminalSelectionResult>(result.Rows[0])?.Text : null;
+            return Formats?.Get(format);
         }
+        public SelectionFormats? Formats { get; private set; }
         public string? Text => Volatile.Read(ref _snapshot)?.Value.Text ?? _fallback;
         public OwnerSelection(ISessionPresentation presentation,TerminalFrameIdentity identity,
             TerminalSelectionRequest request,string? fallback,Action changed)
@@ -45,6 +44,7 @@ internal partial class Program
                 if(result.Status == "ok" && result.Rows.Count == 1 &&
                     JsonSerializer.Deserialize<TerminalSelectionResult>(result.Rows[0]) is { } value)
                 {
+                    if(create && value.Valid && value.Text is { } text) Formats=new(text,value.Vt,value.Html);
                     if(!create) value=value with { Text=Text };
                     if(Volatile.Read(ref _disposed) == 0) Volatile.Write(ref _snapshot,new(result.Generation,value));
                 }
