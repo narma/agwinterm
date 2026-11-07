@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Threading.Channels;
 using Porta.Pty;
 
 namespace Agwinterm.Pty;
@@ -59,42 +60,74 @@ internal sealed class WslPtyConnection : IPtyConnection
     public event EventHandler<PtyExitedEventArgs>? ProcessExited;
 #pragma warning restore CS0067
     public bool WaitForExit(int milliseconds) => _process.WaitForExit(milliseconds);
-    public void Resize(int cols, int rows)
-    {
-        try { _input.Resize(cols, rows); }
-        catch (IOException ex) when ((ex.HResult & 0xffff) is 109 or 232 or 233) { } // peer closed
-    }
+    public void Resize(int cols, int rows) => _input.Resize(cols, rows);
     public void Kill() => _process.Kill();
-    public void Dispose() => _process.Dispose();
-
-    private sealed class InputFrames(Stream pipe) : Stream
+    public void Dispose()
     {
+        _input.Dispose();
+        _process.Dispose();
+    }
+
+    internal sealed class InputFrames : Stream
+    {
+        private readonly Stream _pipe;
         private readonly object _sync = new();
+        private readonly Channel<(ushort Cols, ushort Rows)> _sizes = Channel.CreateBounded<(ushort, ushort)>(
+            new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest });
+
+        internal InputFrames(Stream pipe)
+        {
+            _pipe = pipe;
+            _ = PumpSizesAsync();
+        }
+
+        internal void Resize(int cols, int rows) =>
+            _sizes.Writer.TryWrite((checked((ushort)cols), checked((ushort)rows)));
+
+        private async Task PumpSizesAsync()
+        {
+            try
+            {
+                while (await _sizes.Reader.WaitToReadAsync().ConfigureAwait(false))
+                    lock (_sync) WritePendingSize();
+            }
+            catch (IOException) { /* launcher closed its input */ }
+            catch (ObjectDisposedException) { /* session ended */ }
+            finally { _sizes.Writer.TryComplete(); }
+        }
+
+        // Called under the wire lock by either writer. Input submitted after a
+        // resize sees the latest size first, even if the worker hasn't run yet.
+        private void WritePendingSize()
+        {
+            if (!_sizes.Reader.TryRead(out var size)) return;
+            Span<byte> frame = stackalloc byte[8];
+            frame[..4].Clear();
+            BinaryPrimitives.WriteUInt16BigEndian(frame[4..], size.Cols);
+            BinaryPrimitives.WriteUInt16BigEndian(frame[6..], size.Rows);
+            _pipe.Write(frame);
+            _pipe.Flush();
+        }
+
         public override void Write(ReadOnlySpan<byte> data)
         {
             if (data.IsEmpty) return;
             lock (_sync)
             {
+                WritePendingSize();
                 Span<byte> header = stackalloc byte[4];
                 BinaryPrimitives.WriteInt32BigEndian(header, data.Length);
-                pipe.Write(header);
-                pipe.Write(data);
+                _pipe.Write(header);
+                _pipe.Write(data);
             }
         }
-        internal void Resize(int cols, int rows)
+        protected override void Dispose(bool disposing)
         {
-            Span<byte> frame = stackalloc byte[8];
-            frame[..4].Clear();
-            BinaryPrimitives.WriteUInt16BigEndian(frame[4..], checked((ushort)cols));
-            BinaryPrimitives.WriteUInt16BigEndian(frame[6..], checked((ushort)rows));
-            lock (_sync)
-            {
-                pipe.Write(frame);
-                pipe.Flush();
-            }
+            if (disposing) _sizes.Writer.TryComplete();
+            base.Dispose(disposing);
         }
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
-        public override void Flush() { lock (_sync) pipe.Flush(); }
+        public override void Flush() { lock (_sync) _pipe.Flush(); }
         public override bool CanRead => false;
         public override bool CanSeek => false;
         public override bool CanWrite => true;
