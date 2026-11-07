@@ -110,6 +110,10 @@ Check 'hook completion is unread' (AgentWait {($a=FindAgent 'Hook worker') -and 
 
 # Keyboard traversal must scroll the panel rather than send input to the shell.
 for($n=0;$n-lt 25;$n++){ReportAgent $worker ('state=idle:id=worker'+$n.ToString('D2'))}
+# Display injection returns before owner effects reach the GUI. A trailing root
+# title is a FIFO barrier before keyboard navigation inspects the complete list.
+ReportAgent $worker 'state=idle:app=codex:title=V29ya2VycyByZWFkeQ=='
+if(-not (AgentWait {$null-ne (FindAgent 'Workers ready')})){throw 'Child reports did not reach the GUI'}
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x75,[IntPtr]1) # F6
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]9,[IntPtr]1) # Tab to agents
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x23,[IntPtr]1) # End

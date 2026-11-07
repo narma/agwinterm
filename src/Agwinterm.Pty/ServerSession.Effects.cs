@@ -10,6 +10,12 @@ public sealed partial class ServerSession
     {
         try
         {
+            var receipts = new ProgramStatusReceipts(async (id,completion) =>
+            {
+                var result = await QueryPresentationAsync(new(_creationTicket,_attachmentEpoch,
+                    completion,"program-status-receipt",Text:id),_readCancel.Token).ConfigureAwait(false);
+                return result.Status == "ok";
+            },_readCancel.Token);
             using var pipe=new NamedPipeClientStream(".",_effectPipe,PipeDirection.In,PipeOptions.Asynchronous);
             using var connect=CancellationTokenSource.CreateLinkedTokenSource(_readCancel.Token);
             connect.CancelAfter(TimeSpan.FromSeconds(10));
@@ -56,11 +62,7 @@ public sealed partial class ServerSession
                     }
                 }
                 if (effect.Kind == 8 && effect.CompletionSequence != 0)
-                {
-                    var receipt = await QueryPresentationAsync(new(effect.Incarnation,effect.AttachmentEpoch,
-                        effect.CompletionSequence,"program-status-receipt",Text:effect.Title),_readCancel.Token).ConfigureAwait(false);
-                    if (receipt.Status != "ok") throw new IOException("Program status receipt rejected.");
-                }
+                    receipts.Enqueue(effect.Title,effect.CompletionSequence);
                 if(effect.Kind == 7) OutputReceived?.Invoke();
             }
         }

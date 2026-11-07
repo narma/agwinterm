@@ -7,6 +7,32 @@ namespace Agwinterm.Pty.Tests;
 public class ProgramStatusReceiptTests
 {
     [Fact]
+    public async Task SlowOrTimedOutReceiptDoesNotBlockEffectsAndRetriesNewestToken()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int attempts=0;
+        var receipts = new ProgramStatusReceipts(async (_,token) => {
+            if(Interlocked.Increment(ref attempts) == 1)
+            {
+                entered.SetResult();
+                await release.Task.WaitAsync(timeout.Token);
+                throw new OperationCanceledException("Shared query gate timed out");
+            }
+            delivered.TrySetResult(token);
+            return true;
+        },timeout.Token,TimeSpan.FromMilliseconds(1));
+        receipts.Enqueue("worker",1);
+        await entered.Task.WaitAsync(timeout.Token);
+        receipts.Enqueue("worker",2); // effect ingestion keeps running while the sender is stalled
+        release.SetResult();
+        Assert.Equal(2,await delivered.Task.WaitAsync(timeout.Token));
+        timeout.Cancel();
+    }
+
+    [Fact]
     public async Task CompletionSurvivesFailedAttachAndOnlyMatchingReceiptConsumesIt()
     {
         using var session = new TerminalSession(80,24);
