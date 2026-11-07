@@ -120,6 +120,7 @@ struct AgwVt {
     GhosttyRenderStateRowIterator rows;
     GhosttyRenderStateRowCells cells;
     AgwVtEvent event;
+    AgwVtClipboard clipboard_callback;
     void* context;
     int updating;
     bool light_scheme;
@@ -333,7 +334,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 7;
+    return 8;
 }
 const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
@@ -409,12 +410,29 @@ static void unknown(GhosttyTerminal terminal, void* context, const GhosttyTermin
 }
 static void clipboard(GhosttyTerminal terminal, void* context, const GhosttyClipboardWrite* value) {
     (void)terminal; AgwVt* vt = context;
-    // Legacy OSC 52 text writes use the existing write-only host policy.
-    // Multi-representation writes need an atomic host API and are not acknowledged here.
-    if (vt->event && value->contents_len == 1) {
-        const GhosttyClipboardContent* content = &value->contents[0];
-        if (content->mime.len >= 10 && memcmp(content->mime.ptr, "text/plain", 10) == 0 && content->data.len <= 1024 * 1024)
-            vt->event(vt->context, 9, content->data.ptr, content->data.len);
+    if (vt->clipboard_callback) vt->clipboard_callback(vt->context, 0, value->location, value,
+        value->contents, value->contents_len, NULL, 0, 0);
+}
+static void clipboard_read(GhosttyTerminal terminal, void* context, const GhosttyClipboardRead* value) {
+    (void)terminal; AgwVt* vt = context;
+    if (vt->clipboard_callback) vt->clipboard_callback(vt->context, 1, value->location, value,
+        NULL, 0, value->mimes, value->mimes_len, value->list);
+}
+void agwvt_clipboard_callback(AgwVt* vt, AgwVtClipboard callback) { vt->clipboard_callback = callback; }
+void agwvt_clipboard_reply(const void* request, uint32_t read, uint32_t status,
+    const void* contents, size_t count, const void* available, size_t available_count) {
+    if (read) {
+        const GhosttyClipboardRead* value = request;
+        GhosttyClipboardReadReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardReadReply);
+        reply.result = status > 3 ? GHOSTTY_CLIPBOARD_READ_RESULT_IO_ERROR : (GhosttyClipboardReadResult)status;
+        reply.contents = contents; reply.contents_len = count;
+        reply.available = available; reply.available_len = available_count;
+        value->reply(value, &reply);
+    } else {
+        const GhosttyClipboardWrite* value = request;
+        GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
+        reply.result = status <= 5 ? (GhosttyClipboardWriteResult)status : GHOSTTY_CLIPBOARD_WRITE_RESULT_IO_ERROR;
+        value->reply(value, &reply);
     }
 }
 static int32_t mark_line(GhosttyTrackedGridRef ref) {
@@ -658,6 +676,9 @@ static int configure_terminal(AgwVt* vt, int initialize_colors) {
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_PROGRAM_STATUS, (const void*)program_status);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_UNKNOWN_SEQUENCE, (const void*)unknown);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE, (const void*)clipboard);
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ, (const void*)clipboard_read);
+    size_t clipboard_limit = 1024 * 1024;
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE_MAX_BYTES, &clipboard_limit);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT, (const void*)semantic_prompt);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_RENDER_HOLD, (const void*)render_hold);
     size_t unknown_limit = 4096;

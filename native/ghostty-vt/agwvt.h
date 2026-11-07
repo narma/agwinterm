@@ -8,6 +8,9 @@
 #endif
 
 typedef struct AgwVt AgwVt;
+typedef void (*AgwVtClipboard)(void*, uint32_t, uint32_t, const void*, const void*, size_t, const void*, size_t, uint32_t);
+AGWVT_API void agwvt_clipboard_callback(AgwVt*, AgwVtClipboard);
+AGWVT_API void agwvt_clipboard_reply(const void*, uint32_t, uint32_t, const void*, size_t, const void*, size_t);
 // All public fields are fixed-width, without C bool, enums or borrowed pointers.
 typedef struct {
     uint32_t rune, fg, bg, attrs, width;

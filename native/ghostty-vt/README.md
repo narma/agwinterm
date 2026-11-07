@@ -33,6 +33,13 @@ teardown disposes its core explicitly, including failed/late process starts.
 Callbacks copy bounded host effects into a managed queue; they never reenter
 the terminal or throw across the C boundary.
 
+Clipboard requests are the synchronous exception: OSC 52/5522 use a bounded
+MIME exchange and reply before the native callback returns. Hosted sessions use
+correlated duplex effects, independent of frame credit and terminal query locks.
+Reads and MIME listings require `clipboard-read=true`; writes honor
+`clipboard-write`. See [terminal clipboard protocols](../../docs/terminal-clipboard.md)
+for Windows format mappings, limits, cancellation and timeout behavior.
+
 Kitty direct payload storage is capped at 64 MiB per screen (within the shared
 256 MiB terminal allocation budget). PNG decoding uses Windows WIC, with at most
 16 million decoded pixels, and returns RGBA using Ghostty's supplied allocator.

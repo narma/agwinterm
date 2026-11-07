@@ -76,6 +76,7 @@ try {
     for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $inputSession)).Contains('INPUT-SINK-READY')){$ready=$true;break};Start-Sleep -Milliseconds 100}
     if(-not $ready){throw 'Input byte sink did not start'}
     $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
+    . "$PSScriptRoot/ghostty-clipboard-ui-cases.ps1"
     [void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
     Start-Sleep -Milliseconds 150
     if([GhosttyInputFixture]::GetForegroundWindow()-ne $hwnd){throw 'Input fixture does not own foreground'}

@@ -41,7 +41,7 @@ internal static unsafe partial class GhosttyNative
                 // revision alone cannot detect an accidentally replaced upstream DLL.
                 using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.provenance.json")));
                 var provenance = manifest.RootElement;
-                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 7)
+                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 8)
                     throw new InvalidOperationException("Ghostty build provenance does not match the expected revision/ABI.");
                 foreach (string filename in new[] { "ghostty-vt.dll", "agwinterm_ghostty.dll" })
                 {
@@ -57,7 +57,7 @@ internal static unsafe partial class GhosttyNative
                 var abi = (delegate* unmanaged[Cdecl]<uint*, uint*, uint>)NativeLibrary.GetExport(library, "agwvt_abi");
                 var revision = (delegate* unmanaged[Cdecl]<byte*>)NativeLibrary.GetExport(library, "agwvt_revision");
                 uint cellSize, infoSize;
-                if (abi(&cellSize, &infoSize) != 7 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
+                if (abi(&cellSize, &infoSize) != 8 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
                     Marshal.PtrToStringUTF8((nint)revision()) != Revision)
                     throw new InvalidOperationException("Ghostty adapter ABI, layout or upstream revision mismatch; rebuild both DLLs together.");
                 foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore", "images", "image_pixels" })
@@ -119,6 +119,7 @@ internal static unsafe partial class GhosttyNative
     }
     internal sealed class Events
     {
+        internal WeakReference<IHostActions>? Host;
         internal readonly Queue<(uint Kind, byte[] Data)> Pending = new();
         internal Exception? Error;
         internal int Bytes;
@@ -210,7 +211,7 @@ internal static unsafe partial class GhosttyNative
         {
             events = (Events)GCHandle.FromIntPtr(context).Target!;
             if (events.Error is not null) return;
-            if (length > 1024 * 1024 || events.Bytes + (long)length > 4 * 1024 * 1024 || events.Pending.Count >= 4096)
+            if (length > (kind == 1 ? 2u : 1u) * 1024 * 1024 || events.Bytes + (long)length > 4 * 1024 * 1024 || events.Pending.Count >= 4096)
                 throw new InvalidOperationException("Ghostty host-effect queue limit exceeded.");
             var bytes = new ReadOnlySpan<byte>(data, checked((int)length)).ToArray();
             events.Pending.Enqueue((kind, bytes)); events.Bytes += bytes.Length;
@@ -224,6 +225,7 @@ internal static unsafe partial class GhosttyNative
         try
         {
             Check(New(checked((uint)cols), checked((uint)rows), &OnEvent, GCHandle.ToIntPtr(root), &pointer));
+            SetClipboardCallback(pointer,&OnClipboard);
             return new Handle(pointer, root);
         }
         catch { if (pointer != 0) Free(pointer); root.Free(); throw; }

@@ -13,6 +13,7 @@ public static class GhosttySelectionWindow {
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool RedrawWindow(IntPtr h,IntPtr rect,IntPtr region,uint flags);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterClipboardFormat(string name);
  [DllImport("user32.dll")] public static extern bool OpenClipboard(IntPtr owner);
  [DllImport("user32.dll")] public static extern bool CloseClipboard();
@@ -123,7 +124,21 @@ try {
     CheckSelection 'TUI redraw retains selected text independently of its frame' 'TUI'
     $null=Rpc 'session.write' @{text=($esc+'[?1049l')} $selectionSession
     $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[H'+'VISIBLE'+$esc+'[H')} $selectionSession
-    Start-Sleep -Milliseconds 450
+    # Hosted output acceptance precedes presentation. Confirm the selection can
+    # read the prepared visible frame before freezing it; a fixed sleep races
+    # frame credit/publication and can accidentally test an older TUI frame.
+    for($attempt=0;$attempt -lt 80;$attempt++) {
+        SelectionMouse 0x201 0 0
+        SelectionMouse 0x200 0 6
+        SelectionMouse 0x202 0 6 0
+        if(([string](Rpc 'session.copy' @{} $selectionSession)) -ceq 'VISIBLE'){break}
+        Start-Sleep -Milliseconds 50
+    }
+    if($attempt -ge 80){throw 'Prepared visible selection frame was not published'}
+    $null=Rpc 'selection.clear' @{} $selectionSession
+    # Local copy reads the live native buffer, whereas synchronized output holds
+    # LastPaintFrame. Finish painting that buffer before entering synchronized mode.
+    [void][GhosttySelectionWindow]::RedrawWindow($hwnd,[IntPtr]::Zero,[IntPtr]::Zero,0x101)
     $null=Rpc 'session.write' @{text=($esc+'[?2026h'+$esc+'[H'+'HIDDEN!')} $selectionSession
     SelectionMouse 0x201 0 0
     SelectionMouse 0x200 0 6

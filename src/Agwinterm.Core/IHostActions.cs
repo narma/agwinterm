@@ -9,6 +9,7 @@ namespace Agwinterm.Core;
 ///
 /// All methods are called on the feed/pump thread, typically while the session lock is held —
 /// implementations must be cheap and marshal real work to their own thread.
+/// ClipboardExchange is the explicit synchronous request/reply exception; it must be bounded.
 /// </summary>
 public interface IHostActions
 {
@@ -25,9 +26,11 @@ public interface IHostActions
     /// state 0 clear | 1 normal | 2 error | 3 indeterminate | 4 paused; value 0–100 for 1/2/4.</summary>
     void Progress(int state, int value);
 
-    /// <summary>The program wrote the clipboard via OSC 52 (payload already base64-decoded).
-    /// Write-only by design: the emulator never asks the host to read the clipboard back.</summary>
+    /// <summary>Legacy text-only clipboard effect. Native clipboard protocols now use ClipboardExchange.</summary>
     void ClipboardWrite(string text);
+    /// <summary>Synchronous, bounded clipboard operation. Must not marshal to a UI thread
+    /// that can be waiting for the terminal lock, nor reenter terminal operations.</summary>
+    ClipboardResult ClipboardExchange(ClipboardRequest request) => ClipboardResult.Denied;
 
     /// <summary>Terminal response bytes that must be written back to the PTY as if typed
     /// (e.g. the kitty keyboard-protocol flags query reply).</summary>

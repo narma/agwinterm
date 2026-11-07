@@ -65,6 +65,7 @@ public sealed class TerminalConfig
     /// auto-copy-on-select). Set false to deny; denials are visible in AGWINTERM_VT_LOG.
     /// Reads are always refused regardless. Default on.</summary>
     public bool ClipboardWrite { get; set; } = true;
+    public bool ClipboardRead { get; set; }
 
     /// <summary>Flash the taskbar button when a notification arrives while the window is in the
     /// background (agterm's Dock bounce, #215): "none" (default) | "once" | "until-focused".</summary>
@@ -264,9 +265,11 @@ public sealed class TerminalConfig
         # characters. Pastes into bracketed-paste apps and scripted control-API pastes never prompt.
         paste-protection = true
 
-        # Allow programs to write the system clipboard via OSC 52 (e.g. Claude Code's auto-copy).
-        # Reads are always refused regardless of this setting.
+        # Allow programs to write the system clipboard via OSC 52 / OSC 5522.
         clipboard-write = true
+        # Explicitly allow terminal programs, including remote programs, to read clipboard data
+        # and MIME listings via OSC 52 / OSC 5522. Disabled by default.
+        clipboard-read = false
 
         # Extra word-delimiter characters for double-click selection (besides whitespace).
         # Empty = whitespace only, so double-click grabs a whole path or URL. Example: /\.:;,="'()[]{}
@@ -460,6 +463,7 @@ public sealed class TerminalConfig
                 case "copy-on-ctrl-c": cfg.CopyOnCtrlC = ParseBool(val, cfg.CopyOnCtrlC); break;
                 case "paste-protection": cfg.PasteProtection = ParseBool(val, cfg.PasteProtection); break;
                 case "clipboard-write": cfg.ClipboardWrite = ParseBool(val, cfg.ClipboardWrite); break;
+                case "clipboard-read": cfg.ClipboardRead = ParseBool(val, cfg.ClipboardRead); break;
                 case "notification-flash":
                     if (val is "none" or "once" or "until-focused") cfg.NotificationFlash = val;
                     break;

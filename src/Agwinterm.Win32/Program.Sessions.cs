@@ -457,6 +457,7 @@ internal partial class Program
             if (!Program._config.ClipboardWrite) { VtLog.Write(_pane.Id, "OSC", $"52 clipboard write DENIED by config ({text.Length} chars)"); return; }
             _app.Post(() => _app.ClipboardSet(text));
         }
+        public ClipboardResult ClipboardExchange(ClipboardRequest request) => _app.ExchangeTerminalClipboard(request);
         public void Respond(string reply)
         {
             // A late terminal query may be parsed while final output is settling after child death.

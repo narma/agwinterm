@@ -147,7 +147,8 @@ public sealed unsafe class GhosttyVt : IDisposable
         return new GhosttyAnchor(GhosttyNative.AnchorHandle.Create(_handle, (uint)col, (uint)row));
     }
     public bool Win32InputMode => _windows.Enabled;
-    public IHostActions? Host { get; set; }
+    private IHostActions? _host;
+    public IHostActions? Host { get => _host; set { _host=value; _events.Host=value is null ? null : new(value); } }
     private (Color Foreground, Color Background)? _hostColors;
     private IReadOnlyList<Color>? _hostPalette;
     private Color? _hostCursor;

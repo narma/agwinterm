@@ -16,7 +16,7 @@ public sealed partial class ServerSession
                     completion,"program-status-receipt",Text:id),_readCancel.Token).ConfigureAwait(false);
                 return result.Status == "ok";
             },_readCancel.Token);
-            using var pipe=new NamedPipeClientStream(".",_effectPipe,PipeDirection.In,PipeOptions.Asynchronous);
+            using var pipe=new NamedPipeClientStream(".",_effectPipe,PipeDirection.InOut,PipeOptions.Asynchronous);
             using var connect=CancellationTokenSource.CreateLinkedTokenSource(_readCancel.Token);
             connect.CancelAfter(TimeSpan.FromSeconds(10));
             await pipe.ConnectAsync(connect.Token).ConfigureAwait(false);
@@ -25,7 +25,7 @@ public sealed partial class ServerSession
             {
                 var effect=await PresentationQueryWire.ReadAsync(pipe,PresentationEffect.Parser,_readCancel.Token).ConfigureAwait(false);
                 if(effect.Incarnation != _creationTicket || effect.AttachmentEpoch != _attachmentEpoch ||
-                    effect.Sequence != ++sequence || effect.Kind > 9 || effect.Title.Length+effect.Text.Length > 512*1024)
+                    effect.Sequence != ++sequence || effect.Kind > 10 || effect.Title.Length+effect.Text.Length > (effect.Kind == 10 ? 2*1024*1024 : 512*1024))
                     throw new InvalidDataException("Invalid owner effect identity or bounds.");
                 if(effect.Kind == 0)
                 {
@@ -39,6 +39,24 @@ public sealed partial class ServerSession
                         if(frame is not null) AcknowledgeFrame(frame.Identity.Sequence);
                     }
                     return;
+                }
+                if(effect.Kind == 10)
+                {
+                    // Never take the session lock or post to the UI: the owner is
+                    // paused inside its native clipboard callback until this reply.
+                    ClipboardResult result=ClipboardResult.Busy;
+                    if(!_disposed && !_stopped && effect.CompletionSequence > DateTime.UtcNow.Ticks)
+                    {
+                        try
+                        {
+                            var request=System.Text.Json.JsonSerializer.Deserialize<ClipboardRequest>(effect.Text);
+                            result=request?.IsValid() == true ? Emulator.Host?.ClipboardExchange(request) ?? ClipboardResult.Denied : ClipboardResult.Invalid;
+                        }
+                        catch(Exception ex) { System.Diagnostics.Trace.WriteLine("Clipboard effect failed: "+ex.Message); result=ClipboardResult.IoError; }
+                    }
+                    effect.Text=System.Text.Json.JsonSerializer.Serialize(result);
+                    await PresentationQueryWire.WriteAsync(pipe,effect,_readCancel.Token).ConfigureAwait(false);
+                    continue;
                 }
                 lock(_sync)
                 {

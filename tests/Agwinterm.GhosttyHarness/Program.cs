@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 6;
+    oldAbi["abi"] = 7;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without selection exports is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without clipboard exports is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -180,6 +180,46 @@ using(var core=new GhosttyTerminalCore(20,4))
     core.Feed(System.Text.Encoding.UTF8.GetBytes("a\u2028b\r\nc"));
     Check(TerminalSelectionText.Read(core,0,0,1,0,false) == "a\u2028b\r\nc",
         "Windows newline conversion preserves printed Unicode line separators");
+}
+
+using(var core=new GhosttyTerminalCore(20,5))
+{
+    var host=new Host(); core.Host=host;
+    ClipboardRequest? received=null;
+    host.ClipboardHandler=request=> { received=request; return new(0); };
+    const string begin="\u001b]5522;type=write:id=c1\u001b\\";
+    const string end="\u001b]5522;type=wdata\u001b\\";
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+"\u001b]5522;type=wdata:mime=dGV4dC9wbGFpbg==;R2hvc3Q=\u001b\\"));
+    Check(received is null,"OSC 5522 does not publish partial transactions");
+    core.Feed(System.Text.Encoding.UTF8.GetBytes("\u001b]5522;type=wdata:mime=dGV4dC9wbGFpbg==;dHk=\u001b\\"+
+        "\u001b]5522;type=wdata:mime=dGV4dC9odG1s;PGI+aGk8L2I+\u001b\\"+end));
+    Check(received?.Contents.Length == 2 && System.Text.Encoding.UTF8.GetString(received.Contents[0].Data) == "Ghostty",
+        "OSC 5522 joins chunks and delivers all MIME representations atomically");
+    Check(host.Replies.Contains("status=DONE:id=c1"),"OSC 5522 success follows the synchronous host result");
+    foreach(var (status,name) in new[]{(1,"EPERM"),(2,"ENOSYS"),(3,"EBUSY"),(4,"EINVAL"),(5,"EIO")})
+    {
+        host.ClipboardHandler=_=>new(status); host.Replies="";
+        core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+end));
+        Check(host.Replies.Contains("status="+name+":id=c1"),"OSC 5522 forwards "+name);
+    }
+    host.Replies=""; host.ClipboardHandler=request=>new(0,[new("text/plain","hello"u8.ToArray())],["text/plain"]);
+    core.Feed("\u001b]5522;type=read:id=r1;dGV4dC9wbGFpbg==\u001b\\"u8);
+    Check(host.Replies.Contains("status=DATA:id=r1:mime=dGV4dC9wbGFpbg==;aGVsbG8=") && host.Replies.Contains("status=DONE:id=r1"),
+        "OSC 5522 read returns native MIME data and completion");
+    host.Replies=""; host.ClipboardHandler=_=>ClipboardResult.Denied;
+    core.Feed("\u001b]5522;type=read:id=r2;dGV4dC9wbGFpbg==\u001b\\"u8);
+    Check(host.Replies.Contains("status=EPERM:id=r2"),"OSC 5522 denied read never returns clipboard data");
+    host.Replies=""; host.ClipboardHandler=_=>throw new IOException("test");
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+end));
+    Check(host.Replies.Contains("status=EIO:id=c1"),"clipboard exceptions cannot cross the native callback boundary");
+    received=null; host.Replies=""; host.ClipboardHandler=request=> { received=request; return new(0); };
+    string oversized=Convert.ToBase64String(new byte[ClipboardRequest.MaximumBytes+1]);
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+"\u001b]5522;type=wdata:mime=YXBwbGljYXRpb24vb2N0ZXQtc3RyZWFt;"+oversized+"\u001b\\"+end));
+    Check(received is null && host.Replies.Contains("status=EFBIG"),"oversized OSC 5522 writes are rejected before host clipboard access");
+    host.Replies=""; host.ClipboardHandler=_=>new(0,[new("text/plain",new byte[800000])]);
+    core.Feed("\u001b]5522;type=read:id=large;dGV4dC9wbGFpbg==\u001b\\"u8);
+    Check(host.Replies.Length > 1024*1024 && host.Replies.Contains("status=DONE:id=large"),
+        "large clipboard reply survives base64 expansion in the native event queue");
 }
 
 using (var themeCore = new GhosttyTerminalCore(20, 5))
@@ -351,7 +391,7 @@ using (var vt = new GhosttyVt(40, 8))
     vt.Feed("\u001b]777;notify;title;body\a\u001b]9;4;1;42\a\u001b]52;c;aGVsbG8=\a"u8);
     Check(host.Notification == "title:body" && host.ProgressValue == 42, "notification and progress effects");
     Check(host.Clipboard == "hello", "write-only clipboard effect");
-    vt.Feed("\u001b]52;c;?\a"u8); Check(host.Replies.Length == 0, "clipboard reads remain disabled");
+    vt.Feed("\u001b]52;c;?\a"u8); Check(!host.Replies.Contains("aGVsbG8=") && host.Replies.Contains("]52;"), "denied OSC 52 read replies without clipboard data");
     vt.Feed("\u001b]777;agwinterm;command-finished;0123456789abcdef0123456789abcdef;1\a"u8);
     Check(host.Completed == 1, "authenticated shell completion is forwarded");
     vt.Feed("\u001b]133;A\a$ \u001b]133;B\acommand\r\n\u001b]133;C\aoutput\r\n\u001b]133;D;7\a"u8);
@@ -986,6 +1026,14 @@ sealed class Host : IHostActions
     public void Notify(string title, string body) => Notification = title + ":" + body;
     public void Progress(int state, int value) => ProgressValue = value;
     public void ClipboardWrite(string text) => Clipboard = text;
+    public Func<ClipboardRequest,ClipboardResult>? ClipboardHandler;
+    public ClipboardResult ClipboardExchange(ClipboardRequest request)
+    {
+        if(ClipboardHandler is { } handler) return handler(request);
+        if(request.Read) return ClipboardResult.Denied;
+        Clipboard=System.Text.Encoding.UTF8.GetString(request.Contents.FirstOrDefault()?.Data ?? []);
+        return new(0);
+    }
     public (Color Foreground, Color Background)? Colors;
     public Color[]? Palette;
     public Color? Cursor;

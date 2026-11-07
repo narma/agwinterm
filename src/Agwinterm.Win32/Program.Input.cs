@@ -1558,7 +1558,7 @@ internal partial class Program
         }
     }
 
-    private void ClipboardSet(string text)
+    private void ClipboardSetCore(string text)
     {
         // Build the handle before touching the clipboard so a failed alloc never leaves it emptied.
         byte[] buf = Encoding.Unicode.GetBytes(text + "\0");
@@ -1579,7 +1579,7 @@ internal partial class Program
         finally { CloseClipboard(); }
     }
 
-    private string ClipboardGet()
+    private string ClipboardGetCore()
     {
         if (!OpenClipboardRetry()) return "";
         try

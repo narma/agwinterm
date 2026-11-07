@@ -15,13 +15,14 @@ internal sealed class OwnerInputQueue : IDisposable
     internal static bool PasteFits(string text) =>
         text.Length <= (MaximumBytes - 64) / 2 && Encoding.UTF8.GetByteCount(text) <= MaximumBytes - 256;
 
-    private readonly record struct Item(TerminalInput Input, int Bytes, long Enqueued);
+    private readonly record struct Item(TerminalInput Input, int Bytes, long Enqueued, bool Response);
     private readonly Channel<Item> _queue = Channel.CreateBounded<Item>(new BoundedChannelOptions(4096)
     { SingleReader = false, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
     private readonly object _gate = new();
     private readonly object _writerGate = new();
     private readonly TerminalSession _session;
     private int _bytes;
+    private int _responseBytes;
     private bool _closed;
     public Task Completion { get; }
     public OwnerInputQueue(TerminalSession session)
@@ -30,7 +31,11 @@ internal sealed class OwnerInputQueue : IDisposable
         Completion = Task.Factory.StartNew(Run,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
     }
 
-    public TerminalInputAcceptance Submit(TerminalInput input)
+    public TerminalInputAcceptance Submit(TerminalInput input) => SubmitCore(input,false);
+    // A 1-MiB clipboard read grows when Ghostty base64-encodes it. Reserve a
+    // separate bounded response budget without enlarging paste/user-input limits.
+    internal TerminalInputAcceptance SubmitResponse(byte[] bytes) => SubmitCore(new TerminalInput.Raw(bytes),true);
+    private TerminalInputAcceptance SubmitCore(TerminalInput input,bool response)
     {
         // Direct local callers receive the same bounded native-encoder contract
         // as remote records, without serializing a protobuf just to validate it.
@@ -59,13 +64,13 @@ internal sealed class OwnerInputQueue : IDisposable
         lock (_gate)
         {
             if (_closed || _session.InputClosed && !(input is TerminalInput.Command && _session.HasExited)) return TerminalInputAcceptance.Closed;
-            if (size > MaximumBytes-_bytes) return input is TerminalInput.Paste ? TerminalInputAcceptance.Rejected : Overflow();
+            if (size > (response ? 2*MaximumBytes-_responseBytes : MaximumBytes-_bytes)) return input is TerminalInput.Paste ? TerminalInputAcceptance.Rejected : Overflow();
             // The caller may reuse raw storage immediately after acceptance.
             if (input is TerminalInput.Raw raw) input = new TerminalInput.Raw(raw.Bytes.ToArray());
             if (input is TerminalInput.Command { Value:TerminalCommand.InjectOutput injectCommand })
                 input = new TerminalInput.Command(new TerminalCommand.InjectOutput(injectCommand.Bytes.ToArray()));
-            if (!_queue.Writer.TryWrite(new(input,size,TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0))) return input is TerminalInput.Paste ? TerminalInputAcceptance.Rejected : Overflow();
-            _bytes += size;
+            if (!_queue.Writer.TryWrite(new(input,size,TerminalLatencyTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0,response))) return input is TerminalInput.Paste ? TerminalInputAcceptance.Rejected : Overflow();
+            if(response) _responseBytes+=size; else _bytes += size;
             return TerminalInputAcceptance.Accepted;
         }
     }
@@ -127,7 +132,7 @@ internal sealed class OwnerInputQueue : IDisposable
                     int count=0;
                     do
                     {
-                        lock (_gate) _bytes -= item.Bytes;
+                        lock (_gate) { if(item.Response) _responseBytes-=item.Bytes; else _bytes -= item.Bytes; }
                         if (_session.InputClosed) break;
                         if (item.Enqueued != 0) TerminalLatencyTrace.Record(40,Math.Max(1,System.Diagnostics.Stopwatch.GetTimestamp()-item.Enqueued));
                         byte[] bytes=item.Input is TerminalInput.Raw raw ? raw.Bytes.ToArray()

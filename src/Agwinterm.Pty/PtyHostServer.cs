@@ -66,6 +66,8 @@ public sealed class PtyHostServer : IDisposable
         private List<string> _pending = new();
         public Action<string>? ResponseSink;
         public Action<PresentationEffect>? EffectSink;
+        public Func<ClipboardRequest,ClipboardResult>? ClipboardSink;
+        public ClipboardResult ClipboardExchange(ClipboardRequest request) => ClipboardSink?.Invoke(request) ?? ClipboardResult.Denied;
         public int ProgressState, ProgressValue;
         public string RoleNotice="";
         public readonly ProgramStatusRecords ProgramStatuses = new();
@@ -251,10 +253,11 @@ public sealed class PtyHostServer : IDisposable
             {
                 hosted.Input = new OwnerInputQueue(session);
                 hosted.Replies.EffectSink = effect => hosted.Presentation?.PublishEffect(effect);
+                hosted.Replies.ClipboardSink = request => hosted.Presentation?.ExchangeClipboard(request) ?? ClipboardResult.Denied;
                 ((GhosttyTerminalCore)session.Emulator).SetTitleFilter(hosted.Replies.ConsumeTitle);
                 hosted.Replies.ResponseSink = reply =>
                 {
-                    if (hosted.Input.Submit(new TerminalInput.Raw(System.Text.Encoding.UTF8.GetBytes(reply))) != TerminalInputAcceptance.Accepted)
+                    if (hosted.Input.SubmitResponse(System.Text.Encoding.UTF8.GetBytes(reply)) != TerminalInputAcceptance.Accepted)
                         session.MarkInputClosed();
                 };
             }

@@ -160,10 +160,11 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
         public IReadOnlyList<Color>? DefaultPalette => Palette ?? Target?.DefaultPalette;
         public Color? DefaultCursorColor => Cursor ?? Target?.DefaultCursorColor;
         public void Respond(string reply)
-        { if(input.Submit(new TerminalInput.Raw(Encoding.UTF8.GetBytes(reply))) != TerminalInputAcceptance.Accepted) session.MarkInputClosed(); }
+        { if(input.SubmitResponse(Encoding.UTF8.GetBytes(reply)) != TerminalInputAcceptance.Accepted) session.MarkInputClosed(); }
         public void Notify(string title,string body) => Target?.Notify(title,body);
         public void Progress(int state,int value) => Target?.Progress(state,value);
         public void ClipboardWrite(string text) => Target?.ClipboardWrite(text);
+        public ClipboardResult ClipboardExchange(ClipboardRequest request) => Target?.ClipboardExchange(request) ?? ClipboardResult.Denied;
         public void Bell() => Target?.Bell();
         public void CommandFinished(string token,long sequence) => Target?.CommandFinished(token,sequence);
         public void Unhandled(string kind,string detail) => Target?.Unhandled(kind,detail);

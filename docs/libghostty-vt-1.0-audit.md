@@ -27,12 +27,12 @@ Validation: release library and C adapter built successfully with Zig 0.17.0; na
 - Native selection: cell, word, logical-line and rectangular mouse drags now derive their bounds through `ghostty_selection_gesture_*`. A native tracked press origin survives direction reversal and reflow. The UI supplies inclusive cell coordinates, Windows click counts, capture and autoscroll timing; each update evaluates press/drag atomically with that origin. Hosted requests run the identical calculation in the owner. A user-facing command-output selection action remains to be evaluated.
 - Formatter: ordinary copy now uses the native plain formatter, preserving Windows CRLF at the boundary; rectangles disable unwrap. Selected-text formatting also powers `copy_selection_html` and `copy_selection_vt`. HTML copies include Windows CF_HTML byte offsets and a Unicode-text fallback. Hosted formatting validates the retained selection before reading current styles. File-export UI and immutable formatted snapshots after content eviction are not implemented.
 - Retained content: UI hit testing, highlights, clipboard packaging, hosted transport, immutable selected text and saved frames remain ours. A TUI frame can relocate its saved selection without rebuilding copy text in managed code. Frozen/presented-frame fallback still reads the saved cells because the live Ghostty terminal may already contain output that was never shown. This is intentionally separate from selecting live terminal content. Keyboard mark-mode navigation remains UI-controlled.
-- Extended clipboard (OSC 5522, MIME writes, optional reads): NOT implemented. The existing callback queues text writes without protocol acknowledgement. Upstream requires the reply during the callback; the existing asynchronous GUI effects transport cannot report actual clipboard success synchronously. A bounded request/reply path and explicit clipboard-read policy are still needed before claiming support.
+- Extended clipboard: OSC 5522 MIME writes, reads and MIME listings use native parsing and replies. Writes honor `clipboard-write`; reads and listings require the explicit `clipboard-read=true` setting (default false). The hosted effects pipe has a correlated request/reply operation independent of frames and terminal queries. Detached owners deny access. Windows operations prepare all representations before emptying the clipboard, publish while holding it open, and discard partial results on an OS error. See `docs/terminal-clipboard.md` for format mappings, limits and timeout behavior.
 - Geometry: installed the native size-query callback with actual cell geometry supplied by resize. Added checks for CSI 14/16/18 t and mode 2048 resize notifications.
 - Identity: XTVERSION identifies Agwinterm and the engine release. Kept conservative default DA reports. TN remains unset because no per-session terminfo identity is supplied to the adapter; inventing a name would misreport the remote environment.
 - Existing-feature audit: the native contract suite exercises input, graphics, Unicode search, snapshots, synchronized rendering and program status. This is regression coverage, not yet an exhaustive feature-completeness audit.
 
-Adapter ABI is now 7 because the gesture export must not be loaded from an older same-upstream DLL. The upstream C ABI remains 1.0.0.
+Adapter ABI is now 8 because clipboard callback/reply exports must not be loaded from an older same-upstream DLL. The upstream C ABI remains 1.0.0.
 
 Validation so far: 258 native contract checks passed. Hyper-V process contracts: 56 passed, including local, modern hosted and detached legacy hosted theme query/notification probes. Build-only warnings are the existing xUnit analyzer warnings. GUI/host/CLI test publications use .NET 11, ReadyToRun and UseRuntimeAsync=true. No installed application was replaced.
 
@@ -60,3 +60,26 @@ Evidence: `artifacts/selection-harness.log`,
 `artifacts/selection-verified-hosted/results/stdout.log`.
 GUI, host and CLI were published with .NET 11, ReadyToRun and runtime-async enabled.
 The installed application was not replaced.
+
+## OSC 5522 validation
+
+Extended clipboard integration passes 290 native contract checks, eight
+host-effect channel tests and 118 Hyper-V Ghostty GUI checks in each session mode.
+The GUI cases exercise actual Windows Unicode/HTML/PNG clipboard representations,
+binary MIME round-trips, denied reads and listings, denied writes, invalid UTF-8
+transactions, clipboard contention (`EBUSY`), unsupported primary selection,
+clear versus empty values, and an 800,000-byte write/read through the child PTY.
+Channel tests cover receipt correlation and cancellation with a late response.
+Oversized transactions are rejected before invoking host clipboard operations.
+
+Large reads required a separate bounded PTY-response allowance for base64
+expansion; user-input and paste limits remain unchanged. Full-suite reruns also
+exposed an existing selection-fixture race: synchronized-output tests now wait
+for the prepared frame and complete local painting before freezing it.
+
+Evidence: `artifacts/clipboard-harness.log`, `artifacts/clipboard-channel-tests.log`,
+`artifacts/clipboard-verified-local-run2/results/stdout.log`, and
+`artifacts/clipboard-verified-hosted-run2/results/stdout.log`.
+GUI, host and CLI publications use .NET 11, ReadyToRun and runtime-async.
+No installed application or user clipboard was changed by these VM tests.
+Configuration and limitations: [terminal clipboard protocols](terminal-clipboard.md).

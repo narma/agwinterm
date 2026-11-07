@@ -44,7 +44,7 @@ internal partial class Program
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]
     private static extern uint RegisterClipboardFormat(string name);
 
-    private void ClipboardSetHtml(string plain,string fragment)
+    private void ClipboardSetHtmlCore(string plain,string fragment)
     {
         const string template="Version:0.9\r\nStartHTML:{0:D10}\r\nEndHTML:{1:D10}\r\nStartFragment:{2:D10}\r\nEndFragment:{3:D10}\r\n";
         const string before="<html><body><!--StartFragment-->", after="<!--EndFragment--></body></html>";
