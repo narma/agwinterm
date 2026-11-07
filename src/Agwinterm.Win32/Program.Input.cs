@@ -1547,7 +1547,7 @@ internal partial class Program
 
     private bool _altContext;   // the current WM_SYSKEYDOWN's Alt context bit (set around OnKeyDown by the window procedure)
 
-    /// <summary>Returns true if the key was consumed (matches the WinUI key table).</summary>
+    /// <summary>Returns true if the key was consumed.</summary>
     private bool OnKeyDown(int vk)
     {
         if (vk == VK_RETURN) TerminalLatencyTrace.EnterReceived();

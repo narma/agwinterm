@@ -676,7 +676,7 @@ internal partial class Program
         rt.DrawText(txt, _uiFont, new Rect(x + 16f, y, tw - 24f, th), brush);
     }
 
-    // ---- Config (mirrors the WinUI shell) ----
+    // ---- Config ----
 
     // ---- Theming ----
 

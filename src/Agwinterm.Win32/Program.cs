@@ -17,8 +17,8 @@ namespace Agwinterm.Win32;
 /// <summary>
 /// Native Win32 + Direct2D shell for agwinterm. We own the window procedure and the
 /// message pump — keyboard input arrives via WM_KEYDOWN/WM_CHAR and goes straight to
-/// the PTY, with no framework focus model in the way. Rendering mirrors the WinUI
-/// OnDraw path but on an ID2D1HwndRenderTarget.
+/// the PTY, with no framework focus model in the way. Rendering uses an
+/// ID2D1HwndRenderTarget.
 /// </summary>
 internal partial class Program : ISessionHost, IWindowHost
 {
@@ -121,7 +121,7 @@ internal partial class Program : ISessionHost, IWindowHost
     private static volatile string? _appLatest;      // non-null = a newer agwinterm release exists
     private static volatile bool _updateQuitting;    // closing all windows to apply an update
 
-    // ---- Multi-session model (agterm workspaces -> sessions), mirrors the WinUI shell ----
+    // ---- Multi-session model (agterm workspaces -> sessions) ----
     private readonly List<Workspace> _workspaces = new(); // source of truth; guarded by lock(_workspaces)
     private bool _restoring;                              // suppress SaveState while rebuilding from disk
     private Ses? _active;

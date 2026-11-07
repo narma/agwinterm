@@ -300,8 +300,7 @@ reports `unknown command 'session.metrics'`; a client may latch that capability 
 The Win32 host measures on every request from the target pane's current font size, layout and DPI.
 It uses the same per-pane `Metrics(pane.FontSize)` values as rendering and regridding, so a font-size
 change or pane resize is reflected in the next reply rather than waiting for a new session. The
-control-pipe surface is implemented in the live `Agwinterm.Win32` project; the similarly named
-`Agwinterm.App/MainWindow.xaml.cs` is not part of `Agwinterm.slnx` and is not an implementation.
+control-pipe surface is implemented in the `Agwinterm.Win32` project.
 
 For manual inspection, the ctl exposes the same call as
 `agwintermctl session metrics [<pane-id>] --json`. winterm-browser consumes the JSON form in
