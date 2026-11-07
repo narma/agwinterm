@@ -17,9 +17,9 @@ session-password grants override these settings.
 | `text/plain`, `text/plain;charset=utf-8` | Unicode clipboard text |
 | `text/html` | Windows HTML Format with UTF-8 fragment offsets |
 | `image/png` | Windows PNG clipboard format |
-| Other MIME types | Registered private MIME representation, preserving binary length |
+| Other MIME types | Fixed private MIME bundle, preserving binary length |
 
-Every representation also has a private length-prefixed format so empty data and
+Every representation also lives in one fixed, length-prefixed MIME bundle so empty data and
 trailing zero bytes round-trip exactly. Reads can also consume ordinary Windows
 Unicode, HTML and PNG data produced by other applications. An empty transaction
 clears the clipboard; an empty representation remains a present MIME value.

@@ -8,25 +8,26 @@ namespace Agwinterm.Win32;
 
 internal partial class Program
 {
-    private const string MimeClipboardPrefix="Agwinterm MIME ";
+    private const string MimeClipboardFormat="Agwinterm MIME bundle v1";
     private static readonly UTF8Encoding ClipboardUtf8=new(false,true);
     private static readonly SemaphoreSlim TerminalClipboardGate=new(1,1);
     [DllImport("kernel32.dll")] private static extern nuint GlobalSize(nint handle);
     [DllImport("user32.dll")] private static extern uint EnumClipboardFormats(uint format);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] private static extern int GetClipboardFormatName(uint format,StringBuilder name,int size);
-    private void ClipboardSet(string text)
+    private bool ClipboardSet(string text)
     {
-        if(!TerminalClipboardGate.Wait(0)) return;
-        try { ClipboardSetCore(text); } finally { TerminalClipboardGate.Release(); }
+        if(!TerminalClipboardGate.Wait(0)) { ShowToast("Clipboard is busy; try again"); return false; }
+        try { bool success=ClipboardSetCore(text); if(!success) ShowToast("Could not copy to clipboard"); return success; }
+        finally { TerminalClipboardGate.Release(); }
     }
     private void ClipboardSetHtml(string plain,string fragment)
     {
-        if(!TerminalClipboardGate.Wait(0)) return;
-        try { ClipboardSetHtmlCore(plain,fragment); } finally { TerminalClipboardGate.Release(); }
+        if(!TerminalClipboardGate.Wait(0)) { ShowToast("Clipboard is busy; try again"); return; }
+        try { if(!ClipboardSetHtmlCore(plain,fragment)) ShowToast("Could not copy to clipboard"); } finally { TerminalClipboardGate.Release(); }
     }
     private string ClipboardGet()
     {
-        if(!TerminalClipboardGate.Wait(0)) return "";
+        if(!TerminalClipboardGate.Wait(0)) { ShowToast("Clipboard is busy; try again"); return ""; }
         try { return ClipboardGetCore(); } finally { TerminalClipboardGate.Release(); }
     }
 
@@ -68,13 +69,14 @@ internal partial class Program
     private ClipboardResult WriteTerminalClipboard(ClipboardRequest request,long deadline)
     {
         var payloads=new Dictionary<uint,byte[]>();
+        using var bundle=new MemoryStream();
+        using var writer=new BinaryWriter(bundle,ClipboardUtf8,true);
+        writer.Write(request.Contents.Length);
         foreach(var item in request.Contents)
         {
             // A private representation keeps binary length, including empty data,
             // independent of HGLOBAL allocation padding or Windows conversions.
-            byte[] stored=new byte[4+item.Data.Length];
-            BinaryPrimitives.WriteInt32LittleEndian(stored,item.Data.Length); item.Data.CopyTo(stored,4);
-            payloads.Add(RegisterClipboardFormat(MimeClipboardPrefix+item.Mime),stored);
+            writer.Write(item.Mime); writer.Write(item.Data.Length); writer.Write(item.Data);
             if(item.Mime is "text/plain" or "text/plain;charset=utf-8" or "text/html")
             {
                 string text=ClipboardUtf8.GetString(item.Data);
@@ -84,6 +86,7 @@ internal partial class Program
             }
             else if(item.Mime == "image/png") payloads[RegisterClipboardFormat("PNG")]=item.Data.Length == 0 ? [0] : item.Data;
         }
+        if(request.Contents.Length > 0) payloads.Add(RegisterClipboardFormat(MimeClipboardFormat),bundle.ToArray());
         if(payloads.ContainsKey(0)) return ClipboardResult.IoError;
         var handles=new Dictionary<uint,nint>();
         try
@@ -138,18 +141,40 @@ internal partial class Program
             uint html=RegisterClipboardFormat("HTML Format"),png=RegisterClipboardFormat("PNG");
             if(IsClipboardFormatAvailable(html)) formats["text/html"]=html;
             if(IsClipboardFormatAvailable(png)) formats["image/png"]=png;
-            uint previous=0;
-            for(int i=0;i<1024 && (previous=EnumClipboardFormats(previous)) != 0;i++)
+            var privateContents=new Dictionary<string,byte[]>(StringComparer.Ordinal);
+            uint bundleFormat=RegisterClipboardFormat(MimeClipboardFormat);
+            if(IsClipboardFormatAvailable(bundleFormat))
             {
-                var name=new StringBuilder(256); GetClipboardFormatName(previous,name,256);
-                string value=name.ToString();
-                if(value.StartsWith(MimeClipboardPrefix,StringComparison.Ordinal) && ClipboardRequest.ValidMime(value[MimeClipboardPrefix.Length..]))
-                    formats[value[MimeClipboardPrefix.Length..]]=previous;
+                nint handle=GetClipboardData(bundleFormat);
+                nuint size=GlobalSize(handle);
+                if(handle == 0 || size > ClipboardRequest.MaximumBytes+4096) return ClipboardResult.IoError;
+                nint pointer=GlobalLock(handle); if(pointer == 0) return ClipboardResult.IoError;
+                byte[] bytes=new byte[(int)size];
+                try { Marshal.Copy(pointer,bytes,0,bytes.Length); } finally { GlobalUnlock(handle); }
+                using var reader=new BinaryReader(new MemoryStream(bytes),ClipboardUtf8);
+                int count=reader.ReadInt32(),sum=0;
+                if(count < 0 || count > ClipboardRequest.MaximumItems) return ClipboardResult.Invalid;
+                for(int i=0;i<count;i++)
+                {
+                    string mime=reader.ReadString(); int length=reader.ReadInt32();
+                    if(!ClipboardRequest.ValidMime(mime) || length < 0 || length > ClipboardRequest.MaximumBytes-sum) return ClipboardResult.Invalid;
+                    byte[] data=reader.ReadBytes(length); if(data.Length != length || !privateContents.TryAdd(mime,data)) return ClipboardResult.Invalid;
+                    sum+=length; formats[mime]=bundleFormat;
+                }
             }
             var contents=new List<ClipboardContent>(); int total=0;
             foreach(string mime in request.Mimes.Distinct(StringComparer.Ordinal))
             {
-                if(!formats.TryGetValue(mime,out uint format)) continue;
+                if(privateContents.TryGetValue(mime,out byte[]? exact))
+                {
+                    total+=exact.Length; if(total > ClipboardRequest.MaximumBytes) return ClipboardResult.IoError;
+                    contents.Add(new(mime,exact)); continue;
+                }
+                if(!formats.TryGetValue(mime,out uint format))
+                {
+                    if(mime == "text/plain;charset=utf-8" && IsClipboardFormatAvailable(CF_UNICODETEXT)) format=CF_UNICODETEXT;
+                    else continue;
+                }
                 nint handle=GetClipboardData(format); if(handle == 0) return ClipboardResult.IoError;
                 nuint size=GlobalSize(handle);
                 if(size > ClipboardRequest.MaximumBytes*2+4096) return ClipboardResult.IoError;

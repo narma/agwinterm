@@ -119,6 +119,13 @@ try {
     SelectionMouse 0x200 0 2
     SelectionMouse 0x202 0 2 0
     CheckSelection 'Alternate-screen plain copy uses the same selection path' 'TUI'
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x77,[IntPtr]1)
+    for($poll=0;$poll -lt 50;$poll++) { $html=[GhosttySelectionWindow]::Html(); if($html.Contains('TUI')){break}; Start-Sleep -Milliseconds 100 }
+    Check 'Alternate-screen HTML copy uses current retained content' ($html.Contains('TUI'))
+    Set-Clipboard -Value 'before-vt'
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x78,[IntPtr]1)
+    for($poll=0;$poll -lt 50;$poll++) { $vt=[string](Get-Clipboard); if($vt.Contains('TUI')){break}; Start-Sleep -Milliseconds 100 }
+    Check 'Alternate-screen VT copy uses current retained content' ($vt.Contains('TUI'))
     $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[H'+'new frame')} $selectionSession
     Start-Sleep -Milliseconds 250
     CheckSelection 'TUI redraw retains selected text independently of its frame' 'TUI'

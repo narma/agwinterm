@@ -40,6 +40,12 @@ try {
         $null=Rpc 'session.write' @{text=(ClipboardPacket 'type=read:id=list' 'Lg==')} $inputSession
     }
     $clipboardLocked=$false
+    Set-Clipboard -Value 'external Unicode text'
+    $utf8Mime=ClipboardBase64 'text/plain;charset=utf-8'
+    InputCheck 'OSC 5522 reads charset-qualified external Unicode text' ((ClipboardPacket 'type=read:status=OK:id=utf8')+(ClipboardPacket "type=read:status=DATA:id=utf8:mime=$utf8Mime" (ClipboardBase64 'external Unicode text'))+(ClipboardPacket 'type=read:status=DONE:id=utf8')) {
+        $null=Rpc 'session.write' @{text=(ClipboardPacket 'type=read:id=utf8' $utf8Mime)} $inputSession
+    }
+    Set-Clipboard -Value $plain
     for($attempt=0;$attempt -lt 20 -and -not $clipboardLocked;$attempt++) {
         $clipboardLocked=[GhosttySelectionWindow]::OpenClipboard([IntPtr]::Zero)
         if(-not $clipboardLocked){Start-Sleep -Milliseconds 10}

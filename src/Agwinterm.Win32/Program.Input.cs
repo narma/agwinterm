@@ -1224,7 +1224,8 @@ internal partial class Program
         string t = SelectionText(pane);
         copied = t;
         bool any = t.AsSpan().IndexOfAnyExcept('\r', '\n', ' ') >= 0;
-        if (any) ClipboardSet(t); else copied = "";
+        if (any && !ClipboardSet(t)) { copied=""; return false; }
+        if (!any) copied = "";
         if (clear) pane.ClearSel();
         RequestRedraw();
         return any;
@@ -1558,23 +1559,23 @@ internal partial class Program
         }
     }
 
-    private void ClipboardSetCore(string text)
+    private bool ClipboardSetCore(string text)
     {
         // Build the handle before touching the clipboard so a failed alloc never leaves it emptied.
         byte[] buf = Encoding.Unicode.GetBytes(text + "\0");
         IntPtr h = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)(uint)buf.Length);
-        if (h == IntPtr.Zero) return;
+        if (h == IntPtr.Zero) return false;
         IntPtr p = GlobalLock(h);
-        if (p == IntPtr.Zero) { GlobalFree(h); return; }
+        if (p == IntPtr.Zero) { GlobalFree(h); return false; }
         Marshal.Copy(buf, 0, p, buf.Length);
         GlobalUnlock(h);
 
-        if (!OpenClipboardRetry()) { GlobalFree(h); return; }
+        if (!OpenClipboardRetry()) { GlobalFree(h); return false; }
         try
         {
-            EmptyClipboard();
-            if (SetClipboardData(CF_UNICODETEXT, h) == IntPtr.Zero)
-                GlobalFree(h); // ownership only transfers to the clipboard on success
+            if (!EmptyClipboard() || SetClipboardData(CF_UNICODETEXT, h) == IntPtr.Zero)
+            { GlobalFree(h); return false; }
+            return true;
         }
         finally { CloseClipboard(); }
     }
@@ -1702,7 +1703,7 @@ internal partial class Program
                 // selection only when copy-on-ctrl-c is on — otherwise it falls through and interrupts,
                 // so with nothing selected (or the option off) the shell still gets ^C.
                 if (shift) { if (HasLiveSel(ap) && CopySelection(ap)) ShowToast("Text copied", 500); return true; }
-                if (_config.CopyOnCtrlC && HasLiveSel(ap) && CopySelection(ap)) { ShowToast("Text copied", 500); return true; }
+                if (_config.CopyOnCtrlC && HasLiveSel(ap)) { if(CopySelection(ap)) ShowToast("Text copied", 500); return true; }
                 // plain Ctrl+C with no selection, nothing under it, or the option off falls through
                 // to the interrupt below
             }

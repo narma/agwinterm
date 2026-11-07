@@ -23,10 +23,20 @@ internal partial class Program
             {
                 lock(pane.S.SyncRoot)
                 {
-                    if(pane.S.Emulator is not GhosttyTerminalCore core || pane.SelNative is not { } selection ||
-                        !selection.TryLocate(out int ar,out int ac,out int fr,out int fc))
+                    if(pane.S.Emulator is not GhosttyTerminalCore core || core.SynchronizedOutput)
                     { ShowToast("Select current terminal text to export formatting"); return; }
-                    plain=selection.Text;
+                    int ar,ac,fr,fc;
+                    if(pane.SelNative is { } selection && selection.TryLocate(out ar,out ac,out fr,out fc))
+                        plain=selection.Text;
+                    else if(pane.SelContent is { } content && content.TryLocate(core.Screen,out int first))
+                    {
+                        int shift=core.HistoryCount+first-Math.Min(pane.SelAncLine,pane.SelFocLine);
+                        ar=pane.SelAncLine+shift; fr=pane.SelFocLine+shift;
+                        ac=pane.SelAncCol; fc=pane.SelFocCol; plain=content.Text;
+                        if(TerminalSelectionText.Read(core,ar,ac,fr,fc,pane.BlockSel) != plain)
+                        { ShowToast("Selection changed before it could be formatted"); return; }
+                    }
+                    else { ShowToast("Select current terminal text to export formatting"); return; }
                     formatted=core.FormatSelection(ar,ac,fr,fc,pane.BlockSel,format);
                 }
             }
@@ -44,7 +54,7 @@ internal partial class Program
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]
     private static extern uint RegisterClipboardFormat(string name);
 
-    private void ClipboardSetHtmlCore(string plain,string fragment)
+    private bool ClipboardSetHtmlCore(string plain,string fragment)
     {
         const string template="Version:0.9\r\nStartHTML:{0:D10}\r\nEndHTML:{1:D10}\r\nStartFragment:{2:D10}\r\nEndFragment:{3:D10}\r\n";
         const string before="<html><body><!--StartFragment-->", after="<!--EndFragment--></body></html>";
@@ -52,7 +62,7 @@ internal partial class Program
         int first=start+Encoding.UTF8.GetByteCount(before), last=first+Encoding.UTF8.GetByteCount(fragment);
         string header=string.Format(System.Globalization.CultureInfo.InvariantCulture,template,start,last+Encoding.UTF8.GetByteCount(after),first,last);
         uint htmlFormat=RegisterClipboardFormat("HTML Format");
-        if(htmlFormat == 0) return;
+        if(htmlFormat == 0) return false;
         var payloads=new[] { (CF_UNICODETEXT,Encoding.Unicode.GetBytes(plain+"\0")),
             (htmlFormat,Encoding.UTF8.GetBytes(header+before+fragment+after+"\0")) };
         var handles=new nint[payloads.Length];
@@ -62,17 +72,21 @@ internal partial class Program
             {
                 byte[] data=payloads[i].Item2;
                 handles[i]=GlobalAlloc(GMEM_MOVEABLE,(nuint)data.Length);
-                if(handles[i] == 0) return;
+                if(handles[i] == 0) return false;
                 nint pointer=GlobalLock(handles[i]);
-                if(pointer == 0) return;
+                if(pointer == 0) return false;
                 try { Marshal.Copy(data,0,pointer,data.Length); } finally { GlobalUnlock(handles[i]); }
             }
-            if(!OpenClipboardRetry()) return;
+            if(!OpenClipboardRetry()) return false;
             try
             {
-                if(!EmptyClipboard()) return;
+                if(!EmptyClipboard()) return false;
                 for(int i=0;i<handles.Length;i++)
-                    if(SetClipboardData(payloads[i].Item1,handles[i]) != 0) handles[i]=0;
+                {
+                    if(SetClipboardData(payloads[i].Item1,handles[i]) == 0) { EmptyClipboard(); return false; }
+                    handles[i]=0;
+                }
+                return true;
             }
             finally { CloseClipboard(); }
         }
