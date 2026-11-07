@@ -72,12 +72,14 @@ Cell, word, logical-line and rectangular drags use native gesture bounds with a
 tracked press origin. Windows hit testing, click counts and autoscroll remain in
 the UI; hosted gestures execute in the terminal owner. Ordinary copy uses the
 native plain formatter with Windows line endings and physical rows for rectangles.
-Immutable text and saved-frame fallback remain independent of live terminal state.
-The `copy_selection_html` and
-`copy_selection_vt` keymap actions export the current retained selection through
-the native formatter (100,000-byte limit); HTML includes a plain-text clipboard
+Immutable text, formatted snapshots and saved-frame fallback remain independent
+of live terminal state. The `copy_selection_html` and `copy_selection_vt` actions
+use snapshots captured by the native formatter at selection time (100,000 bytes
+per formatted representation); HTML includes a plain-text clipboard
 fallback. For example, `map ctrl+alt+c = copy_selection_html` enables formatted
-copy without changing ordinary copy shortcuts. Hosted exports run in the owner.
+copy without changing ordinary copy shortcuts. Hosted selection replies carry
+formatted snapshots to the GUI; `export_selection_text/html/vt` saves them locally
+through the Windows save dialog, even after the owner evicts the selected rows.
 History captures include native graphics and hyperlinks. Capture temporarily
 selects the requested viewport under the session lock and restores the live
 viewport before returning; conversion and drawing run outside the lock.

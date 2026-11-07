@@ -17,10 +17,19 @@ public static class GhosttySelectionWindow {
      var cls=new System.Text.StringBuilder(256); GetClassName(h,cls,256);
      if(cls.ToString()!="Edit") return true;
      var text=new System.Text.StringBuilder(1024); ReadText(h,0xD,(IntPtr)1024,text);
-     if(text.ToString().StartsWith("selection.",StringComparison.Ordinal)) { result=h; return false; }
+     if(text.ToString()=="selection" || text.ToString().StartsWith("selection.",StringComparison.Ordinal)) { result=h; return false; }
      return true;
    },IntPtr.Zero);
    return result;
+ }
+ public static string DescribeChildren(IntPtr dialog) {
+   var result=new System.Text.StringBuilder();
+   EnumChildWindows(dialog,(h,d)=> {
+     var cls=new System.Text.StringBuilder(256); GetClassName(h,cls,256);
+     var text=new System.Text.StringBuilder(1024); ReadText(h,0xD,(IntPtr)1024,text);
+     result.AppendLine(cls+" : "+text); return true;
+   },IntPtr.Zero);
+   return result.ToString();
  }
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
@@ -222,8 +231,11 @@ try {
                 CheckSelection 'Canceling export preserves the selected snapshot' 'FIRST command output'
                 continue
             }
-            $edit=[GhosttySelectionWindow]::FileNameEdit($save)
-            if($edit -eq [IntPtr]::Zero){throw 'Export filename edit was not found'}
+            for($poll=0;$poll -lt 60;$poll++) {
+                $edit=[GhosttySelectionWindow]::FileNameEdit($save)
+                if($edit -ne [IntPtr]::Zero){break}; Start-Sleep -Milliseconds 100
+            }
+            if($edit -eq [IntPtr]::Zero){throw ('Export filename edit was not found: '+[GhosttySelectionWindow]::DescribeChildren($save))}
             $path=Join-Path $artifact "вывод команды.$format"
             [void][GhosttySelectionWindow]::SendText($edit,0xC,[IntPtr]::Zero,$path)
             [void][GhosttySelectionWindow]::PostMessageW($save,0x111,[IntPtr]1,[IntPtr]::Zero)
