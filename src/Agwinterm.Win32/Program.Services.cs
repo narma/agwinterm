@@ -695,6 +695,9 @@ internal partial class Program
         {
             foreach (var pane in window.ThemeSurfaces())
                 if (pane.S is ServerSession server) server.UpdateTheme();
+                else
+                    lock (pane.S.SyncRoot)
+                        if (pane.S.Emulator is GhosttyTerminalCore native) native.SyncTheme();
             window.RequestRedraw();
         }
     }

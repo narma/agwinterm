@@ -72,7 +72,7 @@ public static class Keymap
         "toggle_search", "toggle_scratch", "quick_terminal", "close_cover", "toggle_fullscreen", "toggle_broadcast", "mark_mode", "toggle_read_only",
         "previous_prompt", "next_prompt", "reopen_session",
         "toggle_flag", "toggle_flagged_view", "focus_workspace", "toggle_workspace_filter", "clear_workspace_focus",
-        "select_all", "copy_selection", "paste",
+        "select_all", "copy_selection", "copy_selection_html", "copy_selection_vt", "paste",
         "new_window", "close_window", "switch_window",
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 

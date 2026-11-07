@@ -7,6 +7,19 @@ public static class GhosttySelectionWindow {
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterClipboardFormat(string name);
+ [DllImport("user32.dll")] public static extern bool OpenClipboard(IntPtr owner);
+ [DllImport("user32.dll")] public static extern bool CloseClipboard();
+ [DllImport("user32.dll")] public static extern IntPtr GetClipboardData(uint format);
+ [DllImport("kernel32.dll")] public static extern IntPtr GlobalLock(IntPtr handle);
+ [DllImport("kernel32.dll")] public static extern bool GlobalUnlock(IntPtr handle);
+ public static string Html() {
+   if(!OpenClipboard(IntPtr.Zero)) return "";
+   try { var h=GetClipboardData(RegisterClipboardFormat("HTML Format")); if(h==IntPtr.Zero) return "";
+     var p=GlobalLock(h); if(p==IntPtr.Zero) return "";
+     try { return Marshal.PtrToStringUTF8(p) ?? ""; } finally { GlobalUnlock(h); }
+   } finally { CloseClipboard(); }
+ }
 }
 '@
 $selectionCommand='"'+(Join-Path $PSHOME 'pwsh.exe')+'" -NoProfile -NonInteractive -Command "[Console]::WriteLine(''SELECTION-READY''); [Threading.Thread]::Sleep(120000)"'
@@ -21,7 +34,7 @@ try {
     Check 'Selection fixture child is ready' (([string](Rpc 'session.text' @{} $selectionSession)).Contains('SELECTION-READY'))
     $selectionMetrics=Rpc 'session.metrics' @{} $selectionSession
     $logical='SELECT-'+('x'*($selectionMetrics.cols+3))
-    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[3J'+$esc+'[H'+$logical+$esc+'[H')} $selectionSession
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[3J'+$esc+'[H'+$esc+'[31m'+$logical+$esc+'[0m'+$esc+'[H')} $selectionSession
     [void][HudOwnedJob]::SendMessageW($hwnd,7,[IntPtr]::Zero,[IntPtr]::Zero)
     Start-Sleep -Milliseconds 350
     $caret=[HudOwnedJob]::CaretRect($hwnd)
@@ -35,6 +48,12 @@ try {
     [void][HudOwnedJob]::SendMessageW($hwnd,0x202,[IntPtr]::Zero,[IntPtr](($y2 -shl 16)-bor $x2))
     $copied=[string](Rpc 'session.copy' @{} $selectionSession)
     Check 'Mouse selection joins native soft wraps without newline' ($copied -ceq $logical) "expected=$($logical.Length) actual=$($copied.Length)"
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x77,[IntPtr]1)
+    for($poll=0;$poll -lt 50;$poll++) { $html=[GhosttySelectionWindow]::Html(); if($html.Contains($logical)){break}; Start-Sleep -Milliseconds 100 }
+    Check 'Formatted selection reaches Windows HTML clipboard' ($html.Contains('StartFragment:') -and $html.Contains($logical))
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x78,[IntPtr]1)
+    for($poll=0;$poll -lt 50;$poll++) { $vt=[string](Get-Clipboard); if($vt.Contains($esc+'[')){break}; Start-Sleep -Milliseconds 100 }
+    Check 'VT selection export retains terminal styling' ($vt.Contains($logical) -and $vt.Contains($esc+'['))
     foreach($width in @(620,980,540,1040)) {
         [void][GhosttySelectionWindow]::SetWindowPos($hwnd,[IntPtr]::Zero,0,0,$width,650,6)
         Start-Sleep -Milliseconds 250

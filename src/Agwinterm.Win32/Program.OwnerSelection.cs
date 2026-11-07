@@ -19,6 +19,13 @@ internal partial class Program
         private long _requestedGeneration=-1;
         public Task Ready { get; }
         public bool CopyQueued;
+        public async Task<string?> FormatAsync(int format)
+        {
+            await Ready.ConfigureAwait(false);
+            var result=await _presentation.QueryAsync(_query with {Operation="selection-format",RowCount=format},_cancel.Token).ConfigureAwait(false);
+            return result.Status == "ok" && result.Rows.Count == 1
+                ? JsonSerializer.Deserialize<TerminalSelectionResult>(result.Rows[0])?.Text : null;
+        }
         public string? Text => Volatile.Read(ref _snapshot)?.Value.Text ?? _fallback;
         public OwnerSelection(ISessionPresentation presentation,TerminalFrameIdentity identity,
             TerminalSelectionRequest request,string? fallback,Action changed)

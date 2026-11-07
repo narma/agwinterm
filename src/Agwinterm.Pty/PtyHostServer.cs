@@ -571,6 +571,7 @@ public sealed class PtyHostServer : IDisposable
 
     private Reply HandleTheme(ThemeUpdate update) => WithSession(update.Id, h =>
     {
+        List<string>? replies = null;
         var colors = ThemeColors.Parse(update.Colors);
         var palette = ThemeColors.ParsePalette(update.Palette);
         var cursor = ThemeColors.ParseColor(update.Cursor);
@@ -589,7 +590,14 @@ public sealed class PtyHostServer : IDisposable
                     native.SetCursorDefault(style, (update.CursorDefault & 1) != 0);
                 }
             }
+            if (!h.SingleOwner) replies = h.Replies.Take();
         }
+        // Theme notifications can originate without a subsequent output chunk.
+        // Legacy attachments answer from their replica; detached owners answer here.
+        if (replies is not null)
+            lock (h.DataLock)
+                if (h.Data is null)
+                    foreach (var reply in replies) SessionInput.TryWrite(h.S, System.Text.Encoding.UTF8.GetBytes(reply));
         h.Presentation?.Signal();
         return Ok();
     }, update.CreationTicket);

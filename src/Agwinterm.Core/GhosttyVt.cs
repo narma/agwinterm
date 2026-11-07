@@ -152,6 +152,39 @@ public sealed unsafe class GhosttyVt : IDisposable
     private IReadOnlyList<Color>? _hostPalette;
     private Color? _hostCursor;
     public long ThemeVersion { get; private set; }
+    public string FormatSelection(int ar,int ac,int fr,int fc,bool block,int format,int maximumBytes=100000)
+    {
+        CheckAlive();
+        if(maximumBytes is < 1 or > 1024*1024) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        byte[] buffer=new byte[maximumBytes];
+        fixed(byte* ptr=buffer)
+        {
+            int result=GhosttyNative.FormatSelection(_handle,checked((uint)ar),checked((uint)ac),checked((uint)fr),checked((uint)fc),
+                block ? 1u : 0u,checked((uint)format),ptr,(nuint)buffer.Length,out nuint length);
+            if(result == -3) throw new InvalidDataException("Formatted selection exceeds the copy limit.");
+            GhosttyNative.Check(result);
+            return Encoding.UTF8.GetString(buffer,0,checked((int)length));
+        }
+    }
+    public bool SelectBounds(int kind, int row, int column, string delimiters,
+        out int ar, out int ac, out int fr, out int fc)
+    {
+        CheckAlive();
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        if (delimiters.Length > 4094) throw new ArgumentOutOfRangeException(nameof(delimiters));
+        uint[] boundaries = (delimiters + " \0").EnumerateRunes().Select(r => (uint)r.Value).Distinct().ToArray();
+        uint* bounds = stackalloc uint[4];
+        int result;
+        fixed (uint* ptr = boundaries)
+            result = GhosttyNative.SelectBounds(_handle, (uint)kind, (uint)column, (uint)row, ptr, (nuint)boundaries.Length, bounds);
+        ar = ac = fr = fc = 0;
+        if (result == -4) return false;
+        GhosttyNative.Check(result);
+        ar = checked((int)bounds[0]); ac = checked((int)bounds[1]);
+        fr = checked((int)bounds[2]); fc = checked((int)bounds[3]);
+        return true;
+    }
     public void SyncHostColors()
     {
         var colors = Host?.DefaultColors;
@@ -171,7 +204,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             fixed (uint* ptr = packed) GhosttyNative.Check(GhosttyNative.Theme(_handle, ptr, Pack(cursor ?? colors?.Foreground ?? Color.DefaultForeground)));
             _hostPalette = palette; _hostCursor = cursor; changed = true;
         }
-        if (changed) { ThemeVersion++; RefreshInfo(); }
+        if (changed) { ThemeVersion++; RefreshInfo(); DrainEvents(); }
     }
     public string Title { get; private set; } = "";
     private Func<string, bool>? _titleFilter;

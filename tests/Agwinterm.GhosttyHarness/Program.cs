@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 4;
+    oldAbi["abi"] = 5;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous title-event ABI is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without selection exports is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -116,6 +116,69 @@ using (var core = new GhosttyTerminalCore(20, 6, CursorStyle.Bar, false))
         "RIS resets live cursor and margin metadata");
     core.Feed("\u001b]111\a"u8);
     Check(core.DynamicBg == 0, "OSC 111 removes background override presence");
+}
+
+using (var selectionCore = new GhosttyTerminalCore(5, 4))
+{
+    selectionCore.Feed("abcdefgh"u8);
+    Check(selectionCore.SelectBounds(0,1,1,"",out int ar,out int ac,out int fr,out int fc) &&
+        ar == 0 && ac == 0 && fr == 1 && fc == 2, "native word selection crosses soft wraps");
+    using var selected = selectionCore.CreateSelection(ar,ac,fr,fc,false);
+    Check(selected.Text == "abcdefgh", "native word bounds preserve logical copy text");
+    Check(selectionCore.SelectBounds(0,1,1,"e",out ar,out ac,out fr,out fc) && ar == 1 && ac == 0 && fr == 1 && fc == 2,
+        "native word selection honors configured delimiters across wraps");
+    Check(selectionCore.SelectBounds(1,1,0,"",out ar,out ac,out fr,out fc) && ar == 0 && fr == 1,
+        "native line selection follows a wrapped logical line");
+    Check(selectionCore.FormatSelection(0,0,1,2,false,0) == "abcdefgh", "native formatter unwraps selected plain text");
+    string html=selectionCore.FormatSelection(0,0,1,2,false,2);
+    Check(html.Contains("abcdefgh") && html.Contains('<'), "native formatter exports selected HTML");
+    bool limited=false;
+    try { selectionCore.FormatSelection(0,0,1,2,false,2,4); } catch(InvalidDataException) { limited=true; }
+    Check(limited,"formatted selection respects its output limit");
+}
+
+using (var themeCore = new GhosttyTerminalCore(20, 5))
+{
+    var themeHost = new Host { Colors = (Color.DefaultForeground, Color.DefaultBackground) };
+    themeCore.Host = themeHost;
+    themeCore.Feed("\u001b[?996n"u8);
+    Check(themeHost.Replies == "\u001b[?997;1n", "dark theme query uses native reply");
+    themeHost.Replies = "";
+    themeHost.Colors = (Color.DefaultBackground, new Color(255, 255, 255));
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "", "theme change is silent without subscription");
+    themeCore.Feed("\u001b[?996n"u8);
+    Check(themeHost.Replies == "\u001b[?997;2n", "light theme query uses updated host theme");
+    themeCore.Feed("\u001b[?2031h"u8);
+    themeHost.Replies = "";
+    themeHost.Colors = (Color.DefaultForeground, Color.DefaultBackground);
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "\u001b[?997;1n", "subscribed theme change replies without further output or paint");
+    themeHost.Replies = "";
+    themeCore.SyncTheme();
+    themeHost.Colors = (Color.DefaultForeground, new Color(10, 20, 30));
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "", "same scheme and repeated synchronization do not notify");
+    themeCore.Feed("\u001b]11;#ffffff\a\u001b[?996n"u8);
+    Check(themeHost.Replies == "\u001b[?997;1n", "OSC background override does not change host theme identity");
+    themeCore.Feed("\u001b[?2031l"u8);
+    themeHost.Replies = "";
+    themeHost.Colors = (Color.DefaultBackground, new Color(255, 255, 255));
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "", "unsubscribed theme changes remain silent");
+}
+
+using (var geometry = new GhosttyVt(20,5))
+{
+    var host=new Host(); geometry.Host=host;
+    geometry.Resize(30,10,9,19);
+    geometry.Feed("\u001b[14t\u001b[16t\u001b[18t"u8);
+    Check(host.Replies == "\u001b[4;190;270t\u001b[6;19;9t\u001b[8;10;30t", "native size queries report pane and cell geometry");
+    geometry.Feed("\u001b[?2048h"u8); host.Replies="";
+    geometry.Resize(40,12,10,20);
+    Check(host.Replies == "\u001b[48;12;40;240;400t", "subscribed resize reports updated geometry");
+    host.Replies=""; geometry.Feed("\u001b[>q"u8);
+    Check(host.Replies.Contains("Agwinterm (libghostty-vt 1.0.0)"), "terminal version identifies the embedding application");
 }
 
 using (var core = new GhosttyTerminalCore(20, 5))

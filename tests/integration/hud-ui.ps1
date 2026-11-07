@@ -170,6 +170,7 @@ public sealed class HudOwnedJob {
     }
     'map f12 = close_pane'|Set-Content (Join-Path $appDir 'keymap.conf')
     if($Suite-eq 'Clipboard'){'map f8 = paste'|Add-Content (Join-Path $appDir 'keymap.conf')}
+    if($Suite-eq 'Ghostty'){@('map f8 = copy_selection_html','map f9 = copy_selection_vt')|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'WorkingSets'){'map f8 = toggle_workspace_filter'|Add-Content (Join-Path $appDir 'keymap.conf')}
     if($Suite-eq 'Quick'){
         @('map f7 = toggle_search','map f8 = command:QuickProbe',

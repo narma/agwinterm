@@ -112,6 +112,50 @@ public class PtyHostTests : IDisposable
         client.Kill(id);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ThemeQueryAndChangeReachChildWithoutPaint(bool hosted, bool singleOwner)
+    {
+        string prefix = Path.Combine(Path.GetTempPath(), "agw-theme-" + Guid.NewGuid().ToString("N"));
+        string initial = prefix + "-initial", changed = prefix + "-changed";
+        string[] args = ["-NoProfile", "-Command",
+            "function Read-Reply { $s=''; $t=[Diagnostics.Stopwatch]::StartNew(); " +
+            "while($t.ElapsedMilliseconds -lt 12000 -and -not $s.EndsWith('n')) { " +
+            "if([Console]::KeyAvailable) { $s += [Console]::ReadKey($true).KeyChar } else { Start-Sleep -Milliseconds 10 } }; $s.Replace([string][char]27,'ESC') }; " +
+            "[Console]::Write([char]27+'[?2031h'+[char]27+'[?996n'); " +
+            $"Set-Content -LiteralPath '{initial}' -Value (Read-Reply); " +
+            $"Set-Content -LiteralPath '{changed}' -Value (Read-Reply); Start-Sleep 30"];
+        string palette = ThemeColors.FormatPalette(Theme.DefaultPalette());
+        using var client = PtyHostClient.Connect(_appId);
+        using var local = hosted ? null : new TerminalSession(80, 24);
+        string? id = null;
+        try
+        {
+            if (hosted)
+                id = client.Create(Guid.NewGuid().ToString(), 80, 24, "powershell.exe", args,
+                    env: new Dictionary<string, string> { [ThemeColors.EnvVar] = "eeeeee;000000" }, verbatim: false,
+                    emulatorCore: "ghostty", singleOwner: singleOwner);
+            else
+            {
+                local!.EnablePresentation().Execute(new TerminalCommand.Theme("eeeeee;000000", palette, "eeeeee"));
+                await local.StartAsync("powershell.exe", args);
+            }
+            Assert.Equal("ESC[?997;1n", ConPtyConnectionTests.ReadDsrProbe(initial));
+            if (hosted) Assert.True(client.UpdateTheme(id!, "000000;ffffff", palette, "000000"));
+            else Assert.Equal(TerminalInputAcceptance.Accepted,
+                local!.Presentation!.Execute(new TerminalCommand.Theme("000000;ffffff", palette, "000000")));
+            Assert.Equal("ESC[?997;2n", ConPtyConnectionTests.ReadDsrProbe(changed));
+        }
+        finally
+        {
+            if (id is not null) client.Kill(id);
+            local?.Dispose();
+            File.Delete(initial); File.Delete(changed);
+        }
+    }
+
     [Fact]
     public void DuplicateCreate_IsRefused()
     {

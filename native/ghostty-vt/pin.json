@@ -1,8 +1,8 @@
 {
-  "revision": "2c76f29972dad21d3f2cc0efde2517a6fa8fed56",
+  "revision": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
   "zigVersion": "0.17.0",
   "zigWindowsUrl": "https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip",
   "zigWindowsSha256": "b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428",
   "target": "x86_64-windows-gnu",
-  "abi": 5
+  "abi": 6
 }

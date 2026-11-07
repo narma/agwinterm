@@ -193,6 +193,8 @@ internal partial class Program
             case "next_prompt": JumpPrompt(1); break;
             case "select_all": if (ActiveSurface() is { } sa) SelectAll(sa); break;
             case "copy_selection": if (ActiveSurface() is { } sc && HasLiveSel(sc)) CopySelection(sc); break;
+            case "copy_selection_html": if (ActiveSurface() is { } html && HasLiveSel(html)) _=CopyFormattedSelection(html,2); break;
+            case "copy_selection_vt": if (ActiveSurface() is { } vt && HasLiveSel(vt)) _=CopyFormattedSelection(vt,1); break;
             case "paste": if (ActiveSurface() is { } sp2) PasteInto(sp2); break;
         }
     }
@@ -813,7 +815,7 @@ internal partial class Program
     /// something relative to this snapshot, and ReconcileSel reconciles the two later.</summary>
     private void StampSel(Pane p) => StampSelection(p,all:false);
 
-    private void StampSelection(Pane p,bool all)
+    private void StampSelection(Pane p,bool all,string? unit=null)
     {
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
@@ -837,7 +839,8 @@ internal partial class Program
                 try { fallback=TerminalSelectionText.Read(remote,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,100000); }
                 catch(NotSupportedException) { } catch(InvalidDataException) { }
                 p.SelOwner=new(presentation,frame.Identity,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
-                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen),fallback,()=>RequestRedraw());
+                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen,unit,_config.WordDelimiters),
+                    unit is null ? fallback : null,()=>RequestRedraw());
                 return;
             }
             if (em is GhosttyTerminalCore held && held.SynchronizedOutput)
@@ -1113,6 +1116,7 @@ internal partial class Program
 
     private void SelectWord(Pane p, int line, int col)
     {
+        if (SelectNativeUnit(p,line,col,"word",0)) return;
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
         {
@@ -1133,8 +1137,29 @@ internal partial class Program
 
     private void SelectLine(Pane p, int line)
     {
+        if (SelectNativeUnit(p,line,0,"line",1)) return;
         int cols; lock (p.S.SyncRoot) cols = p.S.Emulator.Screen.Cols;
         p.SelAncLine = p.SelFocLine = line; p.SelAncCol = 0; p.SelFocCol = cols - 1; p.HasSel = true; StampSel(p);
+    }
+
+    private bool SelectNativeUnit(Pane p,int line,int col,string unit,int kind)
+    {
+        lock(p.S.SyncRoot)
+        {
+            if(p.S.Emulator.SynchronizedOutput) return false;
+            if(p.S.Emulator is PresentedTerminalView)
+            {
+                p.SelAncLine=p.SelFocLine=line; p.SelAncCol=p.SelFocCol=col;
+                p.BlockSel=false; p.HasSel=true; StampSelection(p,false,unit);
+                return true;
+            }
+            if(p.S.Emulator is not GhosttyTerminalCore core) return false;
+            if(!core.SelectBounds(kind,line,col,_config.WordDelimiters,out int ar,out int ac,out int fr,out int fc))
+            { p.ClearSel(); return true; }
+            p.SelAncLine=ar; p.SelAncCol=ac; p.SelFocLine=fr; p.SelFocCol=fc;
+            p.BlockSel=false; p.HasSel=true; StampSel(p);
+            return true;
+        }
     }
 
     /// <summary>Copy the selection; false if there was nothing to copy. A live selection can still

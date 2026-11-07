@@ -169,7 +169,7 @@ internal partial class Program
             return _commands.Any(c => string.Equals(c.Label, action[8..], StringComparison.OrdinalIgnoreCase)
                 && c.Mode is "send" or "detached");
         return action is "quick_terminal" or "close_cover" or "close_pane" or "close_session"
-            or "select_all" or "copy_selection" or "paste" or "mark_mode" or "toggle_search"
+            or "select_all" or "copy_selection" or "copy_selection_html" or "copy_selection_vt" or "paste" or "mark_mode" or "toggle_search"
             or "previous_prompt" or "next_prompt" or "toggle_read_only";
     }
 }

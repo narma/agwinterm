@@ -158,6 +158,11 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     // tracked positions, so it does not infer eviction counts from this value.
     public long ScrollGeneration => _vt.ScrollEpoch;
     public GhosttyAnchor TrackPoint(int row, int col) => _vt.TrackPoint(row, col);
+    public string FormatSelection(int ar,int ac,int fr,int fc,bool block,int format,int maximumBytes=100000)
+        => _vt.FormatSelection(ar,ac,fr,fc,block,format,maximumBytes);
+    public bool SelectBounds(int kind, int row, int column, string delimiters,
+        out int ar, out int ac, out int fr, out int fc)
+        => _vt.SelectBounds(kind, row, column, delimiters, out ar, out ac, out fr, out fc);
     public GhosttySelection CreateSelection(int ar, int ac, int fr, int fc, bool block,int maximumCharacters=int.MaxValue)
         => new(this, ar, ac, fr, fc, block,maximumCharacters);
     private void ReadHistory(int row)

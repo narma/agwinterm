@@ -122,6 +122,8 @@ struct AgwVt {
     AgwVtEvent event;
     void* context;
     int updating;
+    bool light_scheme;
+    uint32_t cell_width, cell_height;
     TrackedMark marks[512];
     size_t mark_count;
     GhosttyTrackedGridRef scroll_probe;
@@ -331,13 +333,31 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 5;
+    return 6;
 }
-const char* agwvt_revision(void) { return "2c76f29972dad21d3f2cc0efde2517a6fa8fed56"; }
+const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
     if (vt->event) vt->event(vt->context, 1, data, len);
+}
+static bool color_scheme(GhosttyTerminal terminal, void* context, GhosttyColorScheme* out) {
+    (void)terminal;
+    *out = ((AgwVt*)context)->light_scheme ? GHOSTTY_COLOR_SCHEME_LIGHT : GHOSTTY_COLOR_SCHEME_DARK;
+    return true;
+}
+static bool terminal_size(GhosttyTerminal terminal, void* context, GhosttySizeReportSize* out) {
+    AgwVt* vt = context;
+    if (ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_ROWS, &out->rows) ||
+        ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_COLS, &out->columns)) return false;
+    out->cell_width = vt->cell_width ? vt->cell_width : 8;
+    out->cell_height = vt->cell_height ? vt->cell_height : 18;
+    return true;
+}
+static GhosttyString terminal_version(GhosttyTerminal terminal, void* context) {
+    (void)terminal; (void)context;
+    static const uint8_t version[] = "Agwinterm (libghostty-vt 1.0.0)";
+    return (GhosttyString){ .ptr = version, .len = sizeof(version) - 1 };
 }
 static void bell(GhosttyTerminal terminal, void* context) {
     (void)terminal;
@@ -471,6 +491,51 @@ int agwvt_marks(AgwVt* vt, AgwVtMark* marks, size_t capacity, size_t* count) {
     }
     return GHOSTTY_SUCCESS;
 }
+int agwvt_format_selection(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uint32_t fc,
+    uint32_t block, uint32_t format, uint8_t* output, size_t capacity, size_t* length) {
+    if (!vt || !length || format > 2 || block > 1) return GHOSTTY_INVALID_VALUE;
+    GhosttySelection selection = { .rectangle = block != 0 };
+    GhosttyPoint start = { .tag = GHOSTTY_POINT_TAG_SCREEN, .value = { .coordinate = { .x = ac, .y = ar } } };
+    GhosttyPoint end = { .tag = GHOSTTY_POINT_TAG_SCREEN, .value = { .coordinate = { .x = fc, .y = fr } } };
+    TRY(ghostty_terminal_grid_ref(vt->terminal, start, &selection.start));
+    TRY(ghostty_terminal_grid_ref(vt->terminal, end, &selection.end));
+    GhosttyFormatter formatter;
+    TRY(ghostty_formatter_terminal_new(&vt->allocator, &formatter, vt->terminal));
+    GhosttyFormatterFormat emit = (GhosttyFormatterFormat)format;
+    bool unwrap = true;
+    GhosttyFormatterExtras extras = 0;
+    int result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+    if (!result) result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &unwrap);
+    if (!result) result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EXTRAS, &extras);
+    if (!result) result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
+    if (!result) result = ghostty_formatter_format_buf(formatter, output, capacity, length);
+    ghostty_formatter_free(formatter);
+    return result;
+}
+int agwvt_select_bounds(AgwVt* vt, uint32_t kind, uint32_t col, uint32_t row,
+    const uint32_t* delimiters, size_t count, uint32_t* bounds) {
+    if (!vt || !bounds || count > 4096 || (count && !delimiters) || kind > 2) return GHOSTTY_INVALID_VALUE;
+    GhosttyPoint point = { .tag = GHOSTTY_POINT_TAG_SCREEN, .value = { .coordinate = { .x = col, .y = row } } };
+    GhosttyGridRef ref;
+    TRY(ghostty_terminal_grid_ref(vt->terminal, point, &ref));
+    GhosttySelection selection;
+    if (kind == 0) {
+        GhosttyTerminalSelectWordOptions options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
+        options.ref = ref; options.boundary_codepoints = delimiters; options.boundary_codepoints_len = count;
+        TRY(ghostty_terminal_select_word(vt->terminal, &options, &selection));
+    } else if (kind == 1) {
+        GhosttyTerminalSelectLineOptions options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectLineOptions);
+        options.ref = ref;
+        TRY(ghostty_terminal_select_line(vt->terminal, &options, &selection));
+    } else {
+        TRY(ghostty_terminal_select_output(vt->terminal, &ref, &selection));
+    }
+    GhosttyPointCoordinate start, end;
+    TRY(ghostty_terminal_point_from_grid_ref(vt->terminal, &selection.start, GHOSTTY_POINT_TAG_SCREEN, &start));
+    TRY(ghostty_terminal_point_from_grid_ref(vt->terminal, &selection.end, GHOSTTY_POINT_TAG_SCREEN, &end));
+    bounds[0] = start.y; bounds[1] = start.x; bounds[2] = end.y; bounds[3] = end.x;
+    return GHOSTTY_SUCCESS;
+}
 int agwvt_anchor_new(AgwVt* vt, uint32_t col, uint32_t row, void** anchor) {
     if (!vt || !anchor) return GHOSTTY_INVALID_VALUE;
     flush_anchors(vt);
@@ -532,6 +597,9 @@ static int configure_terminal(AgwVt* vt, int initialize_colors) {
     if (initialize_colors && !result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &background);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_USERDATA, vt);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, (const void*)reply);
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_SCHEME, (const void*)color_scheme);
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_SIZE, (const void*)terminal_size);
+    if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_XTVERSION, (const void*)terminal_version);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_BELL, (const void*)bell);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, (const void*)title_changed);
     if (!result) result = ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_PWD_CHANGED, (const void*)pwd_changed);
@@ -713,7 +781,10 @@ int agwvt_resize(AgwVt* vt, uint32_t cols, uint32_t rows, uint32_t cw, uint32_t 
     if (!vt || !cols || !rows || cols > 32768 || rows > 32768 || (uint64_t)cols * rows > 4000000)
         return GHOSTTY_INVALID_VALUE;
     flush_anchors(vt);
-    TRY(ghostty_terminal_resize(vt->terminal, (uint16_t)cols, (uint16_t)rows, cw, ch));
+    uint32_t old_width = vt->cell_width, old_height = vt->cell_height;
+    vt->cell_width = cw; vt->cell_height = ch;
+    int result = ghostty_terminal_resize(vt->terminal, (uint16_t)cols, (uint16_t)rows, cw, ch);
+    if (result) { vt->cell_width = old_width; vt->cell_height = old_height; return result; }
     GhosttyPoint top = { .tag = GHOSTTY_POINT_TAG_ACTIVE, .value = { .coordinate = { .x = 0, .y = 0 } } };
     return ghostty_tracked_grid_ref_set(vt->scroll_probe, vt->terminal, top);
 }
@@ -859,7 +930,21 @@ int agwvt_colors(AgwVt* vt, uint32_t foreground, uint32_t background) {
     GhosttyColorRgb fg = { (uint8_t)(foreground >> 16), (uint8_t)(foreground >> 8), (uint8_t)foreground };
     GhosttyColorRgb bg = { (uint8_t)(background >> 16), (uint8_t)(background >> 8), (uint8_t)background };
     TRY(ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &fg));
-    return ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &bg);
+    TRY(ghostty_terminal_set(vt->terminal, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &bg));
+    // Classify the host theme, independently of application OSC overrides.
+    bool light = 299u * bg.r + 587u * bg.g + 114u * bg.b >= 128000u;
+    if (light != vt->light_scheme) {
+        vt->light_scheme = light;
+        GhosttyTerminalModeConfig mode = { .mode = ghostty_mode_new(2031, false) };
+        TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_MODE, &mode));
+        if (mode.value) {
+            uint8_t buffer[32]; size_t length;
+            TRY(ghostty_color_scheme_report_encode(light ? GHOSTTY_COLOR_SCHEME_LIGHT : GHOSTTY_COLOR_SCHEME_DARK,
+                buffer, sizeof(buffer), &length));
+            reply(vt->terminal, vt, buffer, length);
+        }
+    }
+    return GHOSTTY_SUCCESS;
 }
 int agwvt_cursor(AgwVt* vt, uint32_t* col, uint32_t* row, uint32_t* visible, uint32_t* shape) {
     if (!vt || vt->updating || !vt->capture_busy || !col || !row || !visible || !shape) return GHOSTTY_INVALID_VALUE;
