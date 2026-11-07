@@ -212,3 +212,12 @@ title reports remain disabled by upstream default, and checksum extensions are
 not opted into. These are not missing callbacks to enable blindly. Sixel is not
 provided by this library. Existing formatter size caps and frozen-frame plain
 text fallback remain documented product limits.
+
+Native and managed validation: 323 native contracts, 448 core tests and 154
+presentation tests passed. Evidence: `artifacts/completeness-harness.log`,
+`artifacts/completeness-core/core.trx` and
+`artifacts/completeness-presentation/presentation.trx`.
+The VM focus fixture reads console `FOCUS_EVENT` records with VT input disabled;
+with VT input enabled, ConPTY converts focus back into VT characters only when
+the inner application subscribed. See Microsoft's
+[input buffer implementation](https://github.com/microsoft/terminal/blob/main/src/host/inputBuffer.cpp).
