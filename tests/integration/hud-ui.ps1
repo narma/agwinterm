@@ -12,7 +12,7 @@ param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net1
       [ValidateSet('','before','after')][string]$LatencyVariant='',
       [switch]$SingleOwner,
       [ValidateSet('marker-burst','single-key')][string]$LatencyInputPattern='marker-burst',
-      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','TerminalLatency','Ghostty')][string]$Suite='Hud')
+      [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','TerminalLatency','Ghostty','Agents')][string]$Suite='Hud')
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test Hud -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
@@ -275,6 +275,7 @@ public sealed class HudOwnedJob {
         if($LatencyWorkload -eq 'fixed-bulk'){ . "$PSScriptRoot/session-bulk-ui-cases.ps1" }
         else { . "$PSScriptRoot/terminal-latency-ui-cases.ps1" }
     }
+    elseif($Suite-eq 'Agents') { . "$PSScriptRoot/agents-ui-cases.ps1" }
     elseif($Suite-eq 'Ghostty') { . "$PSScriptRoot/ghostty-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {

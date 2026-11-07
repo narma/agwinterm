@@ -19,7 +19,7 @@ public sealed partial class ServerSession
             {
                 var effect=await PresentationQueryWire.ReadAsync(pipe,PresentationEffect.Parser,_readCancel.Token).ConfigureAwait(false);
                 if(effect.Incarnation != _creationTicket || effect.AttachmentEpoch != _attachmentEpoch ||
-                    effect.Sequence != ++sequence || effect.Kind > 7 || effect.Title.Length+effect.Text.Length > 512*1024)
+                    effect.Sequence != ++sequence || effect.Kind > 9 || effect.Title.Length+effect.Text.Length > 512*1024)
                     throw new InvalidDataException("Invalid owner effect identity or bounds.");
                 if(effect.Kind == 0)
                 {
@@ -48,6 +48,11 @@ public sealed partial class ServerSession
                         case 5: view.DispatchHostEffect(a=>a.CommandFinished(effect.Text,effect.CompletionSequence),retainedBytes); break;
                         case 6: view.PublishRoleNotice(effect.Text); break;
                         case 7: view.SetMetadata(effect.Title,effect.Text); break;
+                        case 8:
+                            var report = System.Text.Json.JsonSerializer.Deserialize<ProgramStatus>(effect.Text)
+                                ?? throw new InvalidDataException("Missing program status report.");
+                            view.DispatchHostEffect(a=>a.ProgramStatusChanged(report),retainedBytes); break;
+                        case 9: view.DispatchHostEffect(a=>a.ProgramStatusCommandFinished(),retainedBytes); break;
                     }
                 }
                 if(effect.Kind == 7) OutputReceived?.Invoke();

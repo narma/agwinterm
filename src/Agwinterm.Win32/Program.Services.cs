@@ -1769,6 +1769,9 @@ internal partial class Program
             {
                 ActiveId = activeId,
                 SidebarWidth = _sidebarWShown,   // the shown width even while hidden: a `sidebar width` set while hidden survives a restart
+                AgentPins = _agentPins.Count > 0 ? _agentPins.ToList() : null,
+                AgentSort = _agentSort == "grouped" ? "grouped" : null,
+                AgentsCollapsed = _agentsCollapsed ? true : null,
                 SidebarVisible = _sidebarW > 0,
                 SidebarMode = _sidebarMode == SidebarMode.Flagged ? "flagged" : "tree",
                 FocusedWorkspaceId = _focusedWorkspaceId,
@@ -1928,6 +1931,11 @@ internal partial class Program
             // A hand-edited or pre-P2 file may carry a width the chrome cannot draw (0 was what a
             // hidden sidebar used to save); that falls back to the default rather than to a 3-DIP tree.
             _sidebarWShown = Agwinterm.Pty.SidebarWidths.InRange((long)st.SidebarWidth) ? st.SidebarWidth : SidebarWFull;
+            _agentPins.Clear();
+            if (st.AgentPins is not null) foreach (string pin in st.AgentPins.Take(4096))
+                if (!string.IsNullOrEmpty(pin) && pin.Length <= 256) _agentPins.Add(pin);
+            _agentSort = st.AgentSort == "grouped" ? "grouped" : "priority";
+            _agentsCollapsed = st.AgentsCollapsed == true;
             _sidebarW = st.SidebarVisible ? _sidebarWShown : 0;
             foreach (var w in st.Workspaces)
             {

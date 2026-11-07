@@ -35,7 +35,7 @@ public interface ISession : IDisposable
     /// <summary>Raised (background thread) after each chunk of output is fed to the emulator.</summary>
     event Action? OutputReceived;
 
-    // ---- Agent status (push-based, via the control API) ----
+    // ---- Agent status (push-based, via the control API or program status reports) ----
     AgentStatus Status { get; }
     bool Blink { get; }
     bool AutoReset { get; }

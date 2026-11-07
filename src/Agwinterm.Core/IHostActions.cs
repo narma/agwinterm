@@ -12,6 +12,10 @@ namespace Agwinterm.Core;
 /// </summary>
 public interface IHostActions
 {
+    /// <summary>A validated OSC 7501 report, on the terminal's output thread.</summary>
+    void ProgramStatusChanged(ProgramStatus report) { }
+    /// <summary>A primary shell prompt ends transient working/blocked program records.</summary>
+    void ProgramStatusCommandFinished() { }
     /// <summary>Current terminal title and working directory after an OSC update.</summary>
     void MetadataChanged(string title,string cwd) { }
     /// <summary>Desktop notification requested via OSC 9 (body only) or OSC 777 (title + body).</summary>

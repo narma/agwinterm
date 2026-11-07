@@ -68,6 +68,14 @@ public sealed class PtyHostServer : IDisposable
         public Action<PresentationEffect>? EffectSink;
         public int ProgressState, ProgressValue;
         public string RoleNotice="";
+        public readonly ProgramStatusRecords ProgramStatuses = new();
+        public void ProgramStatusCommandFinished()
+        { ProgramStatuses.FinishCommand(); EffectSink?.Invoke(new() { Kind=9 }); }
+        public void ProgramStatusChanged(ProgramStatus report)
+        {
+            ProgramStatuses.Apply(report);
+            EffectSink?.Invoke(new() { Kind=8,Text=System.Text.Json.JsonSerializer.Serialize(report) });
+        }
         public bool ConsumeTitle(string title)
         {
             if(!title.StartsWith("zmx-role;",StringComparison.Ordinal)) return false;
@@ -248,6 +256,7 @@ public sealed class PtyHostServer : IDisposable
                 };
             }
             hosted.Replies.DefaultColors = ThemeColors.Parse(env?.GetValueOrDefault(ThemeColors.EnvVar));
+            session.Exited += _ => { lock(session.SyncRoot) hosted.Replies.ProgramStatusCommandFinished(); };
             hosted.Replies.DefaultPalette = ThemeColors.ParsePalette(env?.GetValueOrDefault(ThemeColors.PaletteEnvVar));
             hosted.Replies.DefaultCursorColor = ThemeColors.ParseColor(env?.GetValueOrDefault(ThemeColors.CursorEnvVar));
             if (env?.GetValueOrDefault("AGWINTERM_PROMPT_TOKEN") is { } token && ShellCompletion.ValidToken(token)
@@ -400,6 +409,8 @@ public sealed class PtyHostServer : IDisposable
                     channel.PublishEffect(new() { Kind=2,State=hosted.Replies.ProgressState,Value=hosted.Replies.ProgressValue });
                     if(hosted.Replies.RoleNotice.Length > 0) channel.PublishEffect(new() { Kind=6,Text=hosted.Replies.RoleNotice });
                     channel.PublishEffect(new() { Kind=7,Title=hosted.S.Emulator.Title,Text=hosted.S.Emulator.Cwd });
+                    foreach (var report in hosted.Replies.ProgramStatuses.Records)
+                        channel.PublishEffect(new() { Kind=8,Text=System.Text.Json.JsonSerializer.Serialize(report) });
                 }
                 _ = channel.Completion.ContinueWith(_ =>
                 {

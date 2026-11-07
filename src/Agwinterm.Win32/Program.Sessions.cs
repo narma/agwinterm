@@ -215,12 +215,16 @@ internal partial class Program
         AgentStatus? explicitSoundStatus = null;
         session.StatusChanged += () =>
         {
+            bool fromProgram = Volatile.Read(ref pane.ProgramStatusThread) == Environment.CurrentManagedThreadId;
             var now = session.Status;
             if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked && explicitSoundStatus != now)
                 Post(() => RouteStatusSound(pane, null, blockedDefault: true));
             explicitSoundStatus = null;
             lastStatus = now;
-            Post(() => { if (OwningSes(pane) is { } owner) PublishOriginPresentation(owner, "status"); });
+            Post(() => {
+                if (!fromProgram) pane.AgentActivity.Observe(now, AgentIsViewed(pane));
+                if (OwningSes(pane) is { } owner) PublishOriginPresentation(owner, "status");
+            });
             RequestRedraw();
         };
         // An explicit --sound on session.status: play its spec (null => default alert).
@@ -241,6 +245,7 @@ internal partial class Program
             // An exit may already be queued when explicit termination confirms the
             // workload is missing. Never turn that result into a reconnect request.
             if (session is ServerSession { Stopped: true }) return;
+            paneHost.ProgramStatusCommandFinished();
             OnPaneProcessExited(pane);   // split survivor promotion (agterm #121)
             NotifyProfileShellExit(pane, code);
             TryEnterExitHold(pane);
@@ -484,6 +489,43 @@ internal partial class Program
             });
         }
         public void Unhandled(string kind, string detail) => VtLog.Write(_pane.Id, kind, detail);       // AGWINTERM_VT_LOG tap
+        public void ProgramStatusChanged(ProgramStatus report) => _app.Post(() =>
+        {
+            _pane.ProgramStatuses.Apply(report);
+            var retained = _pane.ProgramStatuses.Records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (string id in _pane.ProgramActivities.Keys.Where(id => !retained.Contains(id)).ToArray())
+                _pane.ProgramActivities.Remove(id);
+            if (report.State != "clear")
+            {
+                if (!_pane.ProgramActivities.TryGetValue(report.Id, out var activity))
+                    _pane.ProgramActivities[report.Id] = activity = new();
+                activity.Observe(report.Status, _app.AgentIsViewed(_pane));
+            }
+            var status = _pane.ProgramStatuses.Records.OrderBy(r => AgentActivity.Priority(r.Status)).FirstOrDefault()?.Status ?? AgentStatus.Idle;
+            SetProgramStatus(status);
+            _app.RequestRedraw();
+        });
+        public void ProgramStatusCommandFinished() => _app.Post(() =>
+        {
+            bool hadRecords = _pane.ProgramStatuses.Records.Count > 0;
+            _pane.ProgramStatuses.FinishCommand();
+            var live = _pane.ProgramStatuses.Records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (string id in _pane.ProgramActivities.Keys.Where(id => !live.Contains(id)).ToArray())
+                _pane.ProgramActivities.Remove(id);
+            if (hadRecords) SetProgramStatus(_pane.ProgramStatuses.Records.OrderBy(r => AgentActivity.Priority(r.Status))
+                .FirstOrDefault()?.Status ?? AgentStatus.Idle);
+            _app.RequestRedraw();
+        });
+        private void SetProgramStatus(AgentStatus status)
+        {
+            Volatile.Write(ref _pane.ProgramStatusThread, Environment.CurrentManagedThreadId);
+            try
+            {
+                _s.SetStatus(status);
+                _pane.LastProgramStatusVersion = _s.StatusSignal?.Snapshot.Version ?? 0;
+            }
+            finally { Volatile.Write(ref _pane.ProgramStatusThread, 0); }
+        }
     }
 
     [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
@@ -816,9 +858,9 @@ internal partial class Program
         if (_coverKind == 1) ScratchVisibility(_cover, "hidden");
         _active = ses;
         ClearUnread(ses);   // visiting a session clears its notification badge (agterm's "cleared when seen")
-        // Auto-reset-on-select: a status marked auto-reset clears to idle once the user looks at the session.
+        // Viewing acknowledges completion, but never resolves an outstanding permission/question.
         foreach (var p in ses.Panes)
-            if (p.S.AutoReset && p.S.Status is AgentStatus.Completed or AgentStatus.Blocked)
+            if (p.S.AutoReset && p.S.Status is AgentStatus.Completed)
                 p.S.SetStatus(AgentStatus.Idle);
         // A scratch/overlay cover belongs to the previous session; drop it (quick is per-app, kept).
         if (_coverKind is 1 or 3) { _cover = null; _coverKind = 0; _ovlOwner = null; }
