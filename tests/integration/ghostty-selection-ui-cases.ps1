@@ -197,6 +197,7 @@ try {
     Check 'Copy during synchronized output retains the displayed frame' ($heldCopy -ceq 'VISIBLE') "actual=[$heldCopy]"
     $null=Rpc 'selection.clear' @{} $selectionSession
     $shellOutput=$esc+'[2J'+$esc+'[3J'+$esc+'[H'+$esc+"]133;A`a$ "+$esc+"]133;B`afirst`r`n"+$esc+"]133;C`aFIRST command output`r`n"+$esc+"]133;D;0`a"+$esc+"]133;A`a$ "+$esc+"]133;B`asecond`r`n"+$esc+"]133;C`aSECOND command output`r`n"+$esc+"]133;D;0`a"+$esc+"]133;A`a$ "+$esc+"]133;B`a"
+    $shellOutput=$shellOutput.Replace('FIRST command output',$esc+'[31mFIRST command output'+$esc+'[0m')
     $null=Rpc 'session.write' @{text=$shellOutput} $selectionSession
     Start-Sleep -Milliseconds 500
     [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x74,[IntPtr]1)
@@ -271,6 +272,8 @@ try {
             Check "Retained $format selection exports through the save dialog" ($exported.Contains('FIRST command output') -and !$exported.Contains('replacement'))
             if($format -eq 'text'){Check 'Plain export is exact UTF-8 text' ($exported -ceq 'FIRST command output')}
             if($format -eq 'html'){Check 'HTML export is a standalone UTF-8 document' ($exported.StartsWith('<!doctype html>') -and $exported.Contains('<meta charset="utf-8">'))}
+            if($format -eq 'html'){Check 'HTML export retains source colors after eviction' ($exported.Contains('color:'))}
+            if($format -eq 'vt'){Check 'VT export retains source styling after eviction' ($exported.Contains($esc+'['))}
         }
     } finally {
         [IO.File]::WriteAllText($keymapPath,$savedKeymap)
