@@ -488,7 +488,7 @@ public class ControlServerFrameShmTests : IDisposable
         var p = NewProducer();
         long seq = p.Publish(0xDF);
         string file = Path.GetTempFileName();
-        byte[] fileBytes = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A };
+        byte[] fileBytes = ControlServerTests.OnePixelPng;
         File.WriteAllBytes(file, fileBytes);
         try
         {
@@ -983,7 +983,7 @@ public class ControlServerFrameShmTests : IDisposable
     public void ReplacingAnExistingIdIsAcceptedWhileAnotherPathHoldsTheSessionOverBudget()
     {
         // The budget is a ceiling on what shared frames may ADD, not a gate on the session's total:
-        // a Kitty or sixel image that arrived through the pty can put the pane over the limit on
+        // a host image that arrived through the pty can put the pane over the limit on
         // its own, and a producer replacing its own id then makes nothing worse, so it must not be
         // locked out. Only a request that would grow the excess is refused.
         using var session = new TerminalSession(80, 24);
@@ -998,7 +998,7 @@ public class ControlServerFrameShmTests : IDisposable
         Assert.Contains("frame:1/1", server.Dispatch(Request(
             "{\"images\":[" + Image(p, p.Publish(0xB1), p.Slot, id: 1) + "]}")));
         // Something else (the pty stream, say) parks four frames' worth of pixels under another id.
-        session.MutateLocked(em => em.SetImageData(2, KittyFormat.Png, 0, 0, new byte[oneFrameBytes * 4]));
+        session.MutateLocked(em => em.SetImageData(2, KittyFormat.Rgba, checked((int)oneFrameBytes), 1, new byte[oneFrameBytes * 4]));
 
         string replaced = server.Dispatch(Request(
             "{\"images\":[" + Image(p, p.Publish(0xB2), p.Slot, id: 1) + "]}"));

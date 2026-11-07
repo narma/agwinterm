@@ -8,11 +8,9 @@ Builds **per-user** Windows installers — end users need **no** .NET runtime in
   self-contained publish. Its shortcuts seed `--default-session-host server` on first run.
   Hosted sessions share a separate application host process; each terminal has one Ghostty
   owner. Direct in-process sessions remain available.
-- **`agwinterm-lite-setup-0.17.4.exe`** is the frozen handover installer carried forward for users upgrading to agliteterm.
 
 The full installer ships Ghostty and the Rust Linux helpers. It removes the retired Windows
-Rust host and core from the full application's directory. The separate lite installation
-and its native ABI assets remain independent.
+Rust host and core from the full application's directory.
 
 The agwinterm setup also carries Microsoft's ConPTY, `conpty.dll` + `x64\OpenConsole.exe` from the
 `Microsoft.Windows.Console.ConPTY` NuGet package (MIT), which `dotnet publish` puts in the stage.
@@ -54,13 +52,11 @@ Deliberately **minimal / non-invasive** (agterm-style): they only copy files and
 They do **not** touch your `PATH`, profile, or config.
 
 - **Per-user, no admin** (`PrivilegesRequired=lowest`); main installs to
-  `%LOCALAPPDATA%\Programs\agwinterm`, lite to `%LOCALAPPDATA%\Programs\agwinterm-lite`.
-- **Start-menu** shortcut (`agwinterm` / `agwinterm lite`); **desktop** shortcut via a checkbox (task).
+  `%LOCALAPPDATA%\Programs\agwinterm`.
+- **Start-menu** shortcut (`agwinterm`); **desktop** shortcut via a checkbox (task).
 - **Launch on finish**: a "Launch …" checkbox (interactive installs).
-- **Uninstall** removes the app files (your `%LOCALAPPDATA%\agwinterm` / `%LOCALAPPDATA%\agwinterm-lite`
+- **Uninstall** removes the app files (your `%LOCALAPPDATA%\agwinterm`
   config/sessions are left intact).
-- Upgrading the main setup from 0.15.0–0.16.0 (which bundled lite) removes the bundled
-  `agwinterm-lite.exe` and its old shortcuts — install the lite setup to keep lite.
 
 ### Integrations are opt-in (from inside the app)
 
@@ -99,10 +95,8 @@ The updater uses the installed GUI's .NET version. For .NET 11 it publishes with
 
 ```powershell
 agwinterm-setup-<ver>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-agwinterm-lite-setup-<ver>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 # uninstall:
 "%LOCALAPPDATA%\Programs\agwinterm\unins000.exe" /VERYSILENT
-"%LOCALAPPDATA%\Programs\agwinterm-lite\unins000.exe" /VERYSILENT
 ```
 
 ## Optional WebView2 runtime

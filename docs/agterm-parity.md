@@ -7,13 +7,13 @@
 > Full parity is not the goal. The v0.26.0 comparison and completed batches below remain
 > historical evidence; “nothing left” below does not describe the latest upstream release.
 
-What [umputun/agterm](https://github.com/umputun/agterm) has that **agwinterm** and **agliteterm** do
+What [umputun/agterm](https://github.com/umputun/agterm) has that **agwinterm** does
 not, and what we have closed.
 
 - Compared against **agterm v0.26.0** (2026-09-02), releases 0.22.0 → 0.26.0.
 - **The running order lives in [plans/2026-09-03-parity-batches.md](plans/2026-09-03-parity-batches.md)** —
   this file is what is missing, that file is which batch builds it and when.
-- Ours: agwinterm **0.17.13** released (main is ahead), agliteterm **0.17.15** released.
+- Ours: agwinterm **0.17.13** released (main is ahead).
 - Update this file in the PR that closes an item. A line that says "missing" long after it shipped
   is worse than no tracker.
 - **This supersedes the earlier gap docs in this directory** (`agterm-gap-analysis*.md`,
@@ -47,11 +47,11 @@ named as such rather than left to look like a backlog nobody is working on.
 | `session.context` — one line per session, shown in the title bar, the row and the palette, in `tree` as `context`, restored after a restart | 0.26.0 | agwinterm #233 *(P3)*, lite: P3-lite |
 | `restore.capture` — fill the captured-command slots on demand, per-pane reply, `capturedCommands` in `tree` | 0.26.0 | agwinterm #233 *(P3)*, lite: P3-lite |
 | `session.split` replies with the **pane id** (the split pane's on `on`, also when already split; the survivor's on `off`) | — | agwinterm *(P4, #238)*; lite had it (#13) |
-| Horizontal splits — `--axis vertical\|horizontal` on `session.split` (agterm's words: vertical = left/right, horizontal = top/bottom), per session, re-orients live, survives restore, `axis` in `tree`; `session.focus` takes `primary\|split\|left\|right\|top\|bottom\|other`, `session.resize` gains `--grow-top` / `--grow-bottom` | 0.23.0 | agwinterm *(P4, #238)*, lite: P4-lite |
-| `session.split.close` — closes **either** pane, the survivor's id as the reply; a one-pane session refused | 0.23.0 | agwinterm *(P4, #238)*, lite: P4-lite |
-| `session.swap` — the panes exchanged; axis, ratio sequence, focus's pane, the session-wide overlay, status and **every id** kept (a pane overlay travels with its pane since P5) | 0.26.0 | agwinterm *(P4, #238)*, lite: P4-lite *(agliteterm #30 — one flag read in its hidden-session model; see [lite-parity.md](lite-parity.md))* |
-| Pane-scoped overlays and reading an overlay — `--pane left\|right` on `session.overlay` `open` / `close` / `result` (the flag omitted = the session-wide slot, unchanged byte for byte; `left` = pane 0 and `right` = pane 1 whatever the axis; a pane overlay is that pane's **surface** while open, moves with its pane on a swap and dies with it), `session.overlay.copy`, `session.overlay.text [--all\|--lines N]`, `session.text --all`, `paneOverlays` in `tree` | 0.24.0 (`copy` / `text`), pane scoping 2026-08-01 | agwinterm *(P5, #250)*, lite *(P5-lite, agliteterm #40)* |
-| `session.rename` replies `{session, name}` — the session the name landed on and the name in effect; a pane id names the session that pane belongs to, a blank name and an unknown target are refused in their own words | — | agwinterm #287, and agliteterm's mirror of it |
+| Horizontal splits — `--axis vertical\|horizontal` on `session.split` (agterm's words: vertical = left/right, horizontal = top/bottom), per session, re-orients live, survives restore, `axis` in `tree`; `session.focus` takes `primary\|split\|left\|right\|top\|bottom\|other`, `session.resize` gains `--grow-top` / `--grow-bottom` | 0.23.0 | agwinterm *(P4, #238)* |
+| `session.split.close` — closes **either** pane, the survivor's id as the reply; a one-pane session refused | 0.23.0 | agwinterm *(P4, #238)* |
+| `session.swap` — the panes exchanged; axis, ratio sequence, focus's pane, the session-wide overlay, status and **every id** kept (a pane overlay travels with its pane since P5) | 0.26.0 | agwinterm *(P4, #238)* |
+| Pane-scoped overlays and reading an overlay — `--pane left\|right` on `session.overlay` `open` / `close` / `result` (the flag omitted = the session-wide slot, unchanged byte for byte; `left` = pane 0 and `right` = pane 1 whatever the axis; a pane overlay is that pane's **surface** while open, moves with its pane on a swap and dies with it), `session.overlay.copy`, `session.overlay.text [--all\|--lines N]`, `session.text --all`, `paneOverlays` in `tree` | 0.24.0 (`copy` / `text`), pane scoping 2026-08-01 | agwinterm *(P5, #250)* |
+| `session.rename` replies `{session, name}` — the session the name landed on and the name in effect; a pane id names the session that pane belongs to, a blank name and an unknown target are refused in their own words | — | agwinterm #287 |
 
 `session.rename`'s row is the third in the family P2 opened: `session.restore` stopped answering the
 constant "pinned" and named the pane, P3's `session.context` shipped `{session, context}`, and #287
@@ -123,8 +123,7 @@ set the format rule the later batches inherit: additive keys only, no version fi
 value validated (`plans/completed/2026-09-05-p3-persistence.md`); P4 is the second, and follows it
 with one additive key (`Axis`, written only for a split horizontal session, validated on load). `--stdin` is `session type` / `session write` here — `quick type` has
 no separate verb because the quick terminal is a pane with an id that `session type --target`
-reaches. The agliteterm mirrors are the per-batch `P<n>-lite` plans, tracked in
-[lite-parity.md](lite-parity.md) — agwinterm-first, so the contract is fixed before it is copied.
+reaches.
 
 ---
 
@@ -141,19 +140,18 @@ agterm's `--cwd`, `--follow` and `--background-color` on `open`, deliberately le
 ### 1. Native picker — P16
 `pick.open/result/cancel` and `agwintermctl pick` provide bounded native controls,
 label filtering, custom results, exact-ID waiting and window-owned lifetime.
-See [native-picker.md](native-picker.md). Lite mirror/conformance remain P17.
+See [native-picker.md](native-picker.md).
 
 ### 2. `session.hud` and `--position` — implemented in P13
 **agterm 0.22.0 / 0.24.0.** A transient overlay for status an agent wants seen without printing into
 the terminal, anchored to one of nine positions. Agwinterm now draws a passive native
 HUD with detail, spinners, colors and bounded width; it leaves terminal input and geometry
 unchanged. See [session-hud.md](session-hud.md) for targeting, replacement and validation.
-The agliteterm mirror remains owed in P17; the shared conformance floor is unchanged.
 
 ### 3. Quick terminal — shipped in P14 (#266)
 Detached app-wide shell, monitor work-area percentage and opt-in global hotkey.
 See [quick-terminal.md](quick-terminal.md) for focus, lifetime and refusal policy;
-UIA per-window provider parity remains #267. Lite mirror is P17.
+UIA per-window provider parity remains #267.
 
 ### 4. Workspace navigation and keymap alternatives — P15
 Merged in #269: wrapped `workspace.go`, collapse action, alternative
@@ -201,16 +199,6 @@ Not a one-way list. Ours have, and agterm's control surface does not appear to: 
 shell `profiles`, `omp` theme control, `claude.adopt` / `claude.yolo` / `claude.update`,
 `app.update`, `session.metrics` (live cell and pixel geometry) and `image.frameshm` (shared-memory
 frame delivery, which ConPTY makes necessary) — the last two on `main` since **#220**.
-
-## agliteterm, against agwinterm
-
-Tracked separately, in **[lite-parity.md](lite-parity.md)** — the goal there is that the two products
-expose the same features, so it is a list with an end, not a survey. Short version as of 2026-09-02:
-agliteterm answers **41 of agwinterm's 85** control verbs, the sharpest gap being `selection.*`
-(it can read a selection but not make one). It is also *ahead* in three places, which should move the
-other way.
-
----
 
 *The 0.22–0.25 survey this builds on was done by another session on 2026-09-01 and lives at
 `C:\Users\boris\AI\docs\agterm-parity.md`; this file is the maintained copy, extended to 0.26.0 and

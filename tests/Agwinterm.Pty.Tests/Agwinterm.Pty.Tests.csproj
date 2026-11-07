@@ -15,6 +15,9 @@
   <ItemGroup>
     <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)/runtimes/win-x64/native/conpty.dll" Link="conpty/conpty.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)/build/native/runtimes/x64/OpenConsole.exe" Link="conpty/x64/OpenConsole.exe" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Ghostty sessions use the same bundled ConPTY layout as the application. -->
+    <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)/runtimes/win-x64/native/conpty.dll" Link="conpty.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_Windows_Console_ConPTY)/build/native/runtimes/x64/OpenConsole.exe" Link="x64/OpenConsole.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures/WslZmx/*" CopyToOutputDirectory="PreserveNewest" />
@@ -24,6 +27,7 @@
     <ProjectReference Include="../../src/Agwinterm.Ctl/Agwinterm.Ctl.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../TerminalReference/*.cs" />
+    <Compile Include="../GhosttyTestRuntime.cs" />
   </ItemGroup>
+  <Import Project="../GhosttyTestRuntime.targets" />
 </Project>

@@ -228,7 +228,6 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
         _hostPlacements.Add(new ImagePlacement(id, row, col, cols, rows, srcX, srcY, srcW, srcH));
         Invalidate();
     }
-    public bool PlaceSixel(byte[] data) => false;
     public int CellPixelWidth { get; set; } = 8;
     public int CellPixelHeight { get; set; } = 18;
     public string DumpRow(int row)

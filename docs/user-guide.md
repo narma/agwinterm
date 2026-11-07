@@ -69,7 +69,7 @@ The existing opening policy applies: HTTP(S) and file links are supported.
   See [default-terminal testing](defterm-testing.md).
 - **Fast**: sustained output at **~33k lines/s** (~87 % of a bare conhost window), 0.4 s cold start,
   ~0 % idle CPU, and a leak-hunted session lifecycle (`tools/profile-memory.ps1` keeps it honest).
-- Sixel and Kitty graphics, win32-input-mode and the Kitty keyboard protocol, SGR and SGR-Pixels mouse
+- Kitty graphics (Sixel is unsupported), win32-input-mode and the Kitty keyboard protocol, SGR and SGR-Pixels mouse
   reporting (`?1006`/`?1016`, including DECRQM discovery and device-pixel coordinates), ligatures
   (toggleable), builtin box-drawing glyphs, buffer restore, block selection and keyboard mark mode,
   read-only panes, elevated and de-elevated sessions side by side (⚡ marker), FTCS/OSC-133 prompt

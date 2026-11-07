@@ -10,8 +10,7 @@ For architecture, testing and differences from upstream, see the [fork developer
 
 Related pages: [launching a session command](session-commands.md), [session HUD](session-hud.md),
 [workspace navigation](navigation.md), [quick terminal](quick-terminal.md),
-[native picker](native-picker.md), [`image frameshm`](specs/image-frameshm.md). The subset agliteterm
-shares is canonical in [`tests/conformance/control-api.json`](../tests/conformance/control-api.json).
+[native picker](native-picker.md), [`image frameshm`](specs/image-frameshm.md). The tested API cases are recorded in [`tests/conformance/control-api.json`](../tests/conformance/control-api.json).
 
 ## Terminal search
 
@@ -391,8 +390,7 @@ with a palette/RGB colour instead of SGR 2 needs that application's colour conve
 alone is not proof of an empty composer. The snapshot does not reserve the pane against later input.
 
 Targeting is unchanged, including quick-terminal and overlay **ids**. `session overlay text
---styles` is refused before reading; use `session text --styles --target <overlay-id>`. agliteterm implements
-the same reply over its own row selection (see [parity tracker](lite-parity.md)).
+--styles` is refused before reading; use `session text --styles --target <overlay-id>`.
 
 ## `statusChangedAt` in `tree --json`
 
@@ -866,3 +864,8 @@ profile directory, then global `new-session-dir-mode`. An unavailable workspace 
 falls through without deleting the stored setting. WSL profiles retain their profile-directory
 and Linux-home fallback behavior. The setting survives app restart and reopening a deleted
 workspace from recent history. A partial reopen retry retains the destination's current setting.
+
+## Unsupported image format
+
+The Ghostty adapter supports Kitty graphics. Sixel is unsupported; the legacy
+`image.sixel` command returns an explicit error without reading the file or changing the pane.

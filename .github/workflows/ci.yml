@@ -243,10 +243,7 @@ jobs:
           & (Join-Path $harness 'Agwinterm.GhosttyServerHarness.exe') (Split-Path $exe)
           exit $LASTEXITCODE
 
-      # The control API is a cross-product contract now: agliteterm ships from its own repository
-      # promising to speak this dialect, and its CI runs THIS spec against its own client. Running
-      # it here too is what makes "same control API" a gate rather than a claim — a verb reshaped
-      # in the full app fails the other product's build, and vice versa.
+      # Verify the Windows product’s control-API contract.
       - name: Control-API conformance
         if: matrix.suite == 'control'
         shell: pwsh

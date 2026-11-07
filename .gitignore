@@ -5,7 +5,6 @@ TestResults/
 .vs/
 artifacts/
 installer/stage/
-installer/stage-lite/
 installer/stage-portable/
 installer/Output/
 
@@ -26,7 +25,3 @@ installer/Output/
 
 # Native UI acceptance runs (screenshots, transcripts and probe output).
 /.revmux/*-ui-*/
-
-# throwaway UI mock-ups: vendored FLTK, cmake/ninja trees and their build output (~1 GB),
-# none of which belongs in the repo — one `git add -A` away from being committed.
-lite/design-mocks/

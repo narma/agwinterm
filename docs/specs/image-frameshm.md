@@ -19,8 +19,7 @@ transport with a shared memory mapping carrying raw BGRA.
 The verb is an **optimisation with an automatic fallback**. A producer that cannot open a mapping,
 or that gets `unknown command 'image.frameshm'` from an older build, uses `image.frame` and works.
 
-`image.frameshm` is deliberately **not** in `tests/conformance/control-api.json`: that file is a
-contract agliteterm must also satisfy, and it does not implement this verb.
+`image.frameshm` is covered by dedicated shared-memory transport tests rather than the general control-API shape suite.
 
 ## Mapping layout
 

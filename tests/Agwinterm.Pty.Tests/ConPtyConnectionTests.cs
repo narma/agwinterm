@@ -18,12 +18,12 @@ public class ConPtyConnectionTests
             Environment.CurrentDirectory, environment: null, 80, 24, deElevate: false);
         string output = ReadAsTerminal(conn, "done-probing");
         Assert.Contains("done-probing", output);
-        var source = new Agwinterm.Core.TerminalEmulator(80, 24);
+        using var source = new Agwinterm.Core.GhosttyTerminalCore(80, 24);
         source.Feed(Encoding.UTF8.GetBytes(output));
         Assert.True(source.HistoryCount > 0);
         Assert.Contains("REFLOW_BEGIN_", source.DumpHistoryRow(0));
         Assert.True(Agwinterm.Core.BufferPersist.TryParse(Agwinterm.Core.BufferPersist.Serialize(source), out var saved));
-        var restored = new Agwinterm.Core.TerminalEmulator(200, 24);
+        using var restored = new Agwinterm.Core.GhosttyTerminalCore(200, 24);
         Agwinterm.Core.BufferPersist.Restore(restored, saved);
         string history = string.Join("\n", Enumerable.Range(0, restored.HistoryCount).Select(restored.DumpHistoryRow));
         string marker = "REFLOW_BEGIN_" + string.Concat(Enumerable.Repeat("0123456789", 14)) + "_REFLOW_END";
@@ -96,9 +96,9 @@ public class ConPtyConnectionTests
     internal static Dictionary<string, string>? ThemeEnv(bool withTheme) =>
         withTheme ? new() { [Agwinterm.Core.ThemeColors.EnvVar] = "cccccc;123456" } : null;
 
-    /// <summary>What the DSR probe records: the OSC 11 reply only when the host knows the theme.</summary>
+    /// <summary>Ghostty answers OSC 11 with the pane theme or its default black background.</summary>
     internal static string ExpectedDsrProbe(bool withTheme) =>
-        withTheme ? "dsr-reply=ESC]11;rgb:1212/3434/5656ESC\\ESC[0n" : "dsr-reply=ESC[0n";
+        withTheme ? "dsr-reply=ESC]11;rgb:1212/3434/5656\aESC[0n" : "dsr-reply=ESC]11;rgb:0000/0000/0000\aESC[0n";
 
     /// <summary>Wait for the DSR probe's file and return its text ("" if it never appeared).</summary>
     internal static string ReadDsrProbe(string outFile, int timeoutMs = 20000)
@@ -148,7 +148,7 @@ public class ConPtyConnectionTests
                     asked = CountOf(output.ToString(), "\x1b[c");
                 }
                 for (; answered < asked; answered++)
-                    conn.WriterStream.Write(Encoding.ASCII.GetBytes(Agwinterm.Core.TerminalEmulator.Da1Reply));
+                    conn.WriterStream.Write(Encoding.ASCII.GetBytes("\x1b[?62;4;22c"));
                 conn.WriterStream.Flush();
             }
         });

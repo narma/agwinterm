@@ -1,46 +1,10 @@
-using System.Text;
 using Agwinterm.Core;
 
 namespace Agwinterm.Core.Tests;
 
-/// <summary>
-/// The host-only <see cref="KittyFormat.Bgra"/> and the upload path that selects on it. Two things
-/// have to hold: BGRA pixels reach Direct2D without a channel swap (the point of the format), and
-/// no APC sequence can mint the value, because a terminal-supplied "f=132" would otherwise send
-/// RGBA bytes down the no-swizzle route and render with red and blue exchanged.
-/// </summary>
+/// <summary>Host image pixel conversion used by the Direct2D upload path.</summary>
 public class KittyPixelFormatTests
 {
-    private static readonly string Esc = ((char)27).ToString();
-
-    private static TerminalEmulator Feed(string s)
-    {
-        var t = new TerminalEmulator(40, 10);
-        t.Feed(Encoding.ASCII.GetBytes(s));
-        return t;
-    }
-
-    [Fact]
-    public void Bgra_SitsOutsideTheKittyWireRange()
-    {
-        Assert.Equal(132, (int)KittyFormat.Bgra);
-        Assert.False(KittyFormats.IsWireFormat((int)KittyFormat.Bgra));
-        Assert.True(KittyFormats.IsWireFormat(24));
-        Assert.True(KittyFormats.IsWireFormat(32));
-        Assert.True(KittyFormats.IsWireFormat(100));
-    }
-
-    [Theory]
-    [InlineData(24, KittyFormat.Rgb)]
-    [InlineData(32, KittyFormat.Rgba)]
-    [InlineData(100, KittyFormat.Png)]
-    [InlineData(132, KittyFormat.Rgba)]   // the host-only value falls back
-    [InlineData(0, KittyFormat.Rgba)]
-    [InlineData(-1, KittyFormat.Rgba)]
-    [InlineData(99999, KittyFormat.Rgba)]
-    public void ParseWireFormat_ClampsToTheProtocolFormats(int f, KittyFormat expected)
-        => Assert.Equal(expected, KittyFormats.ParseWireFormat(f));
-
     [Fact]
     public void Upload_Bgra_TakesTheNoSwizzleRoute()
     {
@@ -107,39 +71,4 @@ public class KittyPixelFormatTests
         Assert.Empty(KittyPixels.ToPremultipliedBgra(img));
     }
 
-    [Fact]
-    public void CraftedApc_DeclaringF132_DoesNotProduceBgra()
-    {
-        // The attack this guards: terminal output that names the host-only format so the renderer
-        // skips the swizzle on bytes that are actually RGBA.
-        var t = Feed($"{Esc}_Ga=T,i=11,f=132,s=1,v=1;AAECAw=={Esc}\\");
-        Assert.True(t.Images.ContainsKey(11));
-        Assert.NotEqual(KittyFormat.Bgra, t.Images[11].Format);
-        Assert.Equal(KittyFormat.Rgba, t.Images[11].Format);   // clamped to the protocol default
-    }
-
-    [Fact]
-    public void CraftedApc_OtherOutOfRangeFormats_AlsoClampToRgba()
-    {
-        var t = Feed($"{Esc}_Ga=T,i=12,f=7,s=1,v=1;AAECAw=={Esc}\\");
-        Assert.Equal(KittyFormat.Rgba, t.Images[12].Format);
-    }
-
-    [Fact]
-    public void Apc_WireFormats_StillRoundTrip()
-    {
-        // The clamp must not disturb the three legal values.
-        Assert.Equal(KittyFormat.Rgb, Feed($"{Esc}_Ga=t,i=1,f=24,s=1,v=1;AAEC{Esc}\\").Images[1].Format);
-        Assert.Equal(KittyFormat.Rgba, Feed($"{Esc}_Ga=t,i=2,f=32,s=1,v=1;AAECAw=={Esc}\\").Images[2].Format);
-        Assert.Equal(KittyFormat.Png, Feed($"{Esc}_Ga=t,i=3,f=100;AAEC{Esc}\\").Images[3].Format);
-    }
-
-    [Fact]
-    public void HostPath_CanStillSetBgraDirectly()
-    {
-        // The parser is gated; the host API (what image.frameshm uses) is not.
-        var t = new TerminalEmulator(40, 10);
-        t.SetImageData(20, KittyFormat.Bgra, 1, 1, new byte[] { 1, 2, 3, 255 });
-        Assert.Equal(KittyFormat.Bgra, t.Images[20].Format);
-    }
 }

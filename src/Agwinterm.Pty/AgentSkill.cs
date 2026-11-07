@@ -204,8 +204,7 @@ public static class AgentSkill
           history. Trailing whitespace (even styled) and trailing empty rows trim like plain text. On a known composer
           using faint suggestions, inspect runs in the cursor row where `col+width > cursor.col`: an all-faint suffix
           is consistent with a suggestion, a non-faint run with a draft. Verify the composer and text before the caret;
-          this is an app-specific heuristic, not proof. `--json` keeps the reply envelope; agliteterm answers it too, over
-          its own row selection. `session overlay text --styles` is refused; use `session text --styles --target <overlay-id>`.
+          this is an app-specific heuristic, not proof. `--json` keeps the reply envelope. `session overlay text --styles` is refused; use `session text --styles --target <overlay-id>`.
         - `agwintermctl session copy [--target <id>]`            — return the session's current mouse text selection ("" if none);
           resolved like `session text`: `--target <pane id>` reads the shell under a pane overlay, no target or
           `--target active` reads the focused surface (the overlay while one is up), and `session overlay copy`
@@ -612,8 +611,7 @@ public static class AgentSkill
 
         ## Show an image inline
         - `agwintermctl image show C:\path\pic.png --row 2 --col 4`
-        - `agwintermctl image sixel C:\path\pic.six [--row R --col C]` — render a sixel file (delivered
-          out-of-band; ConPTY strips sixel through the shell, so use this to display one)
+        - `agwintermctl image sixel C:\path\pic.six [--row R --col C]` — unsupported by the Ghostty adapter; use Kitty graphics or `image show` instead
         - `agwintermctl image frameshm <Local\agwinterm-frame-NAME> [--slot N] [--seq N] ...` — display
           a high-rate raw BGRA/RGBA frame from a versioned shared-memory mapping. This is a specialized
           producer path; query `agwintermctl session metrics [<pane-id>] --json` before sizing it and

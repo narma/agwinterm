@@ -488,7 +488,7 @@ internal partial class Program
             // Reconcile and capture the cells in the same frame under the same lock.
             hasSel = selPane is not null && HasLiveSel(selPane) && selPane.SelContentVisible;
             if (hasSel) NormSel(selPane!, out sl0, out sc0, out sl1, out sc1);
-            em.CellPixelWidth = Math.Max(1, (int)cw); em.CellPixelHeight = Math.Max(1, (int)ch);  // for sixel cell-span
+            em.CellPixelWidth = Math.Max(1, (int)cw); em.CellPixelHeight = Math.Max(1, (int)ch);  // image cell geometry
             hist = em.HistoryCount;
             bool isAlt = em.IsAltScreen;
             off = isAlt ? 0 : Math.Clamp(scrollOffset, 0, hist);

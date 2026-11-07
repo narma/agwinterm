@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <GhosttyTestPayload>$(MSBuildThisFileDirectory)..\artifacts\ghostty-release-native</GhosttyTestPayload>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The application prepares the verified native package once in the build graph. -->
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\Agwinterm.Win32\Agwinterm.Win32.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
+    <None Include="$(GhosttyTestPayload)\agwinterm_ghostty.dll;$(GhosttyTestPayload)\ghostty-vt.dll;$(GhosttyTestPayload)\ghostty-vt.provenance.json">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

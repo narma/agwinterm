@@ -650,7 +650,7 @@ public sealed partial class ControlServer : IDisposable
                 // OkRaw, not Ok: Events() already returns JSON. Ok() would serialize it AGAIN, so
                 // .result arrived as a STRING of JSON and a caller had to parse it a second time —
                 // while tree and window.list, built the same way, return objects. The conformance
-                // contract caught it as a divergence from agliteterm, which had it right.
+                // contract checks that this reply stays an object.
                 case "events":
                 {
                     var query = EventQuery.Parse(args);
@@ -1330,16 +1330,7 @@ public sealed partial class ControlServer : IDisposable
     }
 
     private static string HandleImageSixel(ISession s, JsonElement args)
-    {
-        string? path = GetString(args, "path");
-        if (path is null || !File.Exists(path)) return Err("sixel file not found: " + (path ?? "<null>"));
-        int row = GetInt(args, "row", -1), col = GetInt(args, "col", -1);
-        // Inject straight into the emulator's parser — ConPTY strips DCS through the shell, so sixel is
-        // delivered out-of-band here (same as Kitty images). Optional CUP positions it first.
-        if (row >= 0 && col >= 0) s.Inject(Encoding.ASCII.GetBytes($"\x1b[{row + 1};{col + 1}H"));
-        s.Inject(File.ReadAllBytes(path));
-        return Ok("shown");
-    }
+        => Err("Sixel is not supported by the Ghostty adapter; use Kitty graphics or image.show.");
 
     private static string HandleImageClear(ISession s)
     {

@@ -11,8 +11,8 @@ public class ImageDecodeTrackerTests
     public void PaneLocalIdsDoNotSupersedeEachOther()
     {
         var tracker = new ImageDecodeTracker();
-        var left = new TerminalEmulator(10, 2);
-        var right = new TerminalEmulator(10, 2);
+        var left = new PresentedTerminalView(10, 2);
+        var right = new PresentedTerminalView(10, 2);
         KittyImage leftImage = Image(1, 1);
         KittyImage rightImage = Image(1, 2);
 
@@ -29,8 +29,8 @@ public class ImageDecodeTrackerTests
     public void PublishingOnePaneDoesNotPruneAnotherPane()
     {
         var tracker = new ImageDecodeTracker();
-        var left = new TerminalEmulator(10, 2);
-        var right = new TerminalEmulator(10, 2);
+        var left = new PresentedTerminalView(10, 2);
+        var right = new PresentedTerminalView(10, 2);
         KittyImage leftImage = Image(1, 1);
         KittyImage rightImage = Image(2, 2);
 
@@ -46,7 +46,7 @@ public class ImageDecodeTrackerTests
     public void RapidReplacementKeepsOnlyTheNewestInstanceCurrent()
     {
         var tracker = new ImageDecodeTracker();
-        var owner = new TerminalEmulator(10, 2);
+        var owner = new PresentedTerminalView(10, 2);
         KittyImage oldImage = Image(1, 1);
         KittyImage newImage = Image(1, 2);
 
@@ -63,9 +63,9 @@ public class ImageDecodeTrackerTests
     public void CompletingOldWorkMakesCapacityAvailableToTheLatestFrame()
     {
         var tracker = new ImageDecodeTracker();
-        var left = new TerminalEmulator(10, 2);
-        var right = new TerminalEmulator(10, 2);
-        var third = new TerminalEmulator(10, 2);
+        var left = new PresentedTerminalView(10, 2);
+        var right = new PresentedTerminalView(10, 2);
+        var third = new PresentedTerminalView(10, 2);
         KittyImage leftImage = Image(1, 1);
         KittyImage rightImage = Image(1, 2);
         KittyImage waitingImage = Image(1, 3);
@@ -87,8 +87,8 @@ public class ImageDecodeTrackerTests
     public void HiddenOwnersCannotPublishCompletedStaleWork()
     {
         var tracker = new ImageDecodeTracker();
-        var visible = new TerminalEmulator(10, 2);
-        var hidden = new TerminalEmulator(10, 2);
+        var visible = new PresentedTerminalView(10, 2);
+        var hidden = new PresentedTerminalView(10, 2);
         KittyImage visibleImage = Image(1, 1);
         KittyImage hiddenImage = Image(1, 2);
         tracker.Publish(visible, [visibleImage]);
@@ -104,7 +104,7 @@ public class ImageDecodeTrackerTests
     public void FailedImageCannotRestartUntilItIsReplaced()
     {
         var tracker = new ImageDecodeTracker();
-        var owner = new TerminalEmulator(10, 2);
+        var owner = new PresentedTerminalView(10, 2);
         KittyImage failed = Image(1, 1);
         KittyImage replacement = Image(1, 2);
 
@@ -123,7 +123,7 @@ public class ImageDecodeTrackerTests
     public void RemovingFailedImagePrunesItsFailureMarker()
     {
         var tracker = new ImageDecodeTracker();
-        var owner = new TerminalEmulator(10, 2);
+        var owner = new PresentedTerminalView(10, 2);
         KittyImage image = Image(1, 1);
 
         tracker.Publish(owner, [image]);
@@ -138,7 +138,7 @@ public class ImageDecodeTrackerTests
     public void DeviceRecoveryAllowsFailedImageToRetry()
     {
         var tracker = new ImageDecodeTracker();
-        var owner = new TerminalEmulator(10, 2);
+        var owner = new PresentedTerminalView(10, 2);
         KittyImage image = Image(1, 1);
 
         tracker.Publish(owner, [image]);

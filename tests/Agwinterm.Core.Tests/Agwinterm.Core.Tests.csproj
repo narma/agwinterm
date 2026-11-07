@@ -13,17 +13,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Agwinterm.Core/Agwinterm.Core.csproj" />
-    <!-- PInvokeCharSetTests reflects over the BUILT Agwinterm.Win32 assembly (it can't reference it:
-         that's a net$(AgwintermFrameworkMajor).0-windows WinExe and this is net$(AgwintermFrameworkMajor).0). Build-order only — no assembly
-         reference, TFM check skipped. Without this the test fails with "build Agwinterm.Win32 first"
-         in any fresh clone or worktree, and only passed in CI because the workflow happens to run a
-         full solution build in an earlier step. -->
-    <ProjectReference Include="../../src/Agwinterm.Win32/Agwinterm.Win32.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true"
-                      Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../TerminalReference/*.cs" />
+    <Compile Include="../GhosttyTestRuntime.cs" />
   </ItemGroup>
+  <Import Project="../GhosttyTestRuntime.targets" />
 </Project>

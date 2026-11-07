@@ -122,5 +122,5 @@ is the runner. `tests/ui/lib.ps1` is plumbing — it holds no assertions and no 
 
 ```powershell
 dotnet test Agwinterm.slnx -c Release           # 312 incl. SelectionBoundsTests
-pwsh tests\conformance\conformance.ps1          # control-API shape, shared with agliteterm
+pwsh tests\conformance\conformance.ps1          # Windows control-API shape
 ```

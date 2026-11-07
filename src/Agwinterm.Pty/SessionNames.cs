@@ -29,9 +29,7 @@ namespace Agwinterm.Pty;
 /// can see that it did.</para>
 ///
 /// <para><b>A target that owns no session is refused</b>, unchanged: agwinterm's window-level quick
-/// terminal covers no session, so there is nothing for a name to land on. (agliteterm refuses its
-/// scratch / overlay / quick covers here for the same condition stated in its own model — a lite
-/// cover is a hidden session with no owner at all, where an agwinterm cover covers one.)</para>
+/// terminal covers no session, so there is nothing for a name to land on.</para>
 /// </summary>
 public static class SessionNames
 {

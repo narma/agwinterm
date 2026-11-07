@@ -117,7 +117,7 @@ public class ServerSessionTests : IDisposable
         using var old = _backend.Create(id, 80, 24);
         await old.StartAsync("cmd.exe", ["/d", "/q"]);
         Assert.True(WaitFor(() => _backend.Client.List().Any(i => i.Id == id && i.Attached)));
-        using var replacement = _backend.Client.Attach(id);
+        using var replacement = _backend.Client.Attach(id, nativeSnapshot: true);
         // An attachment is a duplex transport, not just a handle. Keep consuming output as a
         // real replacement client does; otherwise a prompt can backpressure the host's writer
         // while List waits for its attachment lock, deadlocking the test's liveness assertion.

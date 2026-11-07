@@ -59,7 +59,6 @@ public interface ITerminalCore
     void SetImageData(int id, KittyFormat format, int width, int height, byte[] data);
     void PlaceImage(int id, int row, int col, int cols, int rows,
         int srcX = 0, int srcY = 0, int srcW = 0, int srcH = 0);
-    bool PlaceSixel(byte[] data);
     int CellPixelWidth { get; set; }
     int CellPixelHeight { get; set; }
 

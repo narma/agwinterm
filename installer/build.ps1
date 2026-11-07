@@ -1,10 +1,6 @@
 # Build the agwinterm installer: installer\Output\agwinterm-setup-<ver>.exe
 # (Agwinterm.Win32 + agwintermctl + Ghostty and the Rust integration helpers).
 #
-# The lite terminal is no longer built here — it became its own product, agliteterm, and ships from
-# github.com/yeroo/agliteterm. Releases still CARRY a frozen agwinterm-lite-setup asset so installs
-# that predate the handover can still find their way across; see .github/workflows/release.yml.
-# Prereqs: .NET SDK (net10.0-windows) + Inno Setup 6 (ISCC on PATH or the usual locations).
 $ErrorActionPreference = "Stop"
 $here   = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $root   = Split-Path -Parent $here
@@ -54,9 +50,7 @@ Write-Host "== build Windows integration hook (Rust) ==" -ForegroundColor Cyan
 & cargo build --locked --release --manifest-path (Join-Path $root "native\Cargo.toml") -p agwinterm-hook
 if ($LASTEXITCODE -ne 0) { throw "cargo build (native) failed" }
 & (Join-Path $root 'tools/stage-wsl-hooks.ps1') -Destination $stage
-# The app loads the Meslo Nerd Font by name from its exe dir. It used to live in lite/assets and
-# moved to assets/fonts/ when lite left this repository — it is the MAIN app's font too, and a
-# shared file has no business living inside a component that was about to be deleted.
+# Bundle the main application’s default Meslo Nerd Font.
 Copy-Item (Join-Path $root "assets\fonts\MesloLGLDZNerdFont-Regular.ttf") $stage -Force
 Copy-Item (Join-Path $root "assets\fonts\FONT-LICENSE.txt") $stage -Force
 Copy-Item (Join-Path $here 'install-webview2.cmd') $stage -Force

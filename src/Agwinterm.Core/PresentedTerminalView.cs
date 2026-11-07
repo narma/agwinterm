@@ -156,7 +156,6 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
     public bool HasImage(int id)=>false;
     public void SetImageData(int id,KittyFormat format,int width,int height,byte[] data)=>throw OwnerOperation();
     public void PlaceImage(int id,int row,int col,int cols,int rows,int srcX=0,int srcY=0,int srcW=0,int srcH=0)=>throw OwnerOperation();
-    public bool PlaceSixel(byte[] data)=>throw OwnerOperation();
     public int CellPixelWidth { get; set; }=8;
     public int CellPixelHeight { get; set; }=18;
     public string DumpRow(int row)
