@@ -99,11 +99,13 @@ public class ControlServerTests
         string resp = server.Dispatch(req);
 
         Assert.Contains("\"ok\":true", resp);
-        Assert.Single(session.Emulator.Placements);
-        var p = session.Emulator.Placements[0];
+        var core = Assert.IsType<GhosttyTerminalCore>(session.Emulator);
+        core.BeginPaint(); core.CompletePaint();
+        var p = Assert.Single(core.PaintImages);
         Assert.Equal(3, p.Row);
         Assert.Equal(5, p.Col);
-        Assert.Single(session.Emulator.Images);
+        Assert.Equal(1, p.Image.Width);
+        Assert.Equal(1, p.Image.Height);
     }
 
     [Fact]
@@ -114,11 +116,14 @@ public class ControlServerTests
         string file = Path.Combine(Path.GetTempPath(), "agw_ctrl_clear.png");
         File.WriteAllBytes(file, png);
         server.Dispatch("{\"cmd\":\"image.show\",\"args\":{\"path\":" + System.Text.Json.JsonSerializer.Serialize(file) + ",\"id\":1}}");
-        Assert.Single(session.Emulator.Placements);
+        var core = Assert.IsType<GhosttyTerminalCore>(session.Emulator);
+        core.BeginPaint(); core.CompletePaint();
+        Assert.Single(core.PaintImages);
 
         string resp = server.Dispatch("{\"cmd\":\"image.clear\"}");
         Assert.Contains("\"ok\":true", resp);
-        Assert.Empty(session.Emulator.Placements);
+        core.BeginPaint(); core.CompletePaint();
+        Assert.Empty(core.PaintImages);
     }
 
     [Fact]
@@ -233,12 +238,6 @@ public class ControlServerTests
     }
 
     // A 1x1 PNG, the fixture every image.frame test here writes to disk.
-    private static readonly byte[] OnePixelPng =
-    {
-        0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
-        0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
-        0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x08,0xD7,0x63,0xF8,0xCF,0xC0,0x00,
-        0x00,0x00,0x03,0x01,0x01,0x00,0x18,0xDD,0x8D,0xB0,0x00,0x00,0x00,0x00,0x49,0x45,
-        0x4E,0x44,0xAE,0x42,0x60,0x82,
-    };
+    internal static readonly byte[] OnePixelPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==");
 }

@@ -6,7 +6,7 @@
 #define AppExe     "Agwinterm.Win32.exe"
 #define AppPublisher "Boris Kudriashov"
 ; The main app defaults new sessions to the Ghostty-capable .NET pty-host as a first-run seed only (it never
-; overrides an existing config). Lite ships from its own installer (agwinterm-lite.iss).
+; overrides an existing config).
 #define DefaultHostArg "--default-session-host server"
 
 [Setup]
@@ -44,13 +44,9 @@ Source: "stage\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs igno
 Source: "prepare-owner-upgrade.ps1"; Flags: dontcopy
 
 [InstallDelete]
-; 0.15.0–0.16.0 bundled the lite terminal inside THIS setup; it now ships from its own installer
-; (agwinterm-lite-setup-<ver>.exe) — an upgrade must clean up what those versions left behind.
-Type: files; Name: "{app}\agwinterm-lite.exe"
+; Remove obsolete files left by older main-product installers.
 Type: files; Name: "{app}\agwinterm-ptyhost.exe"
 Type: files; Name: "{app}\agwinterm_core.dll"
-Type: files; Name: "{autoprograms}\{#AppName} lite.lnk"
-Type: files; Name: "{autodesktop}\{#AppName} lite.lnk"
 
 [Icons]
 ; Main terminal — its shortcut seeds server on a first run (harmless once configured).

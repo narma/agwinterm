@@ -5,7 +5,7 @@
 [![Downloads](https://img.shields.io/github/downloads/narma/agwinterm/total.svg)](https://github.com/narma/agwinterm/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**[Releases](https://github.com/narma/agwinterm/releases)** · [User guide](docs/user-guide.md) · [Control API](docs/control-api.md) · [agliteterm](https://github.com/yeroo/agliteterm)
+**[Releases](https://github.com/narma/agwinterm/releases)** · [User guide](docs/user-guide.md) · [Control API](docs/control-api.md)
 
 `agwinterm` is a native Windows terminal with a full control API, in a fast, custom-drawn Win32 + Direct2D shell. Shells are organized into workspaces, each holding the sessions for one project or context, and everything it holds is an object a script can address. The bundled `agwintermctl` creates sessions and types into them, reads a pane's text back, runs a program in an overlay and returns its exit status, sets a session's status, opens a dashboard, moves windows, and reads all of that state back out over a local named pipe.
 
@@ -28,7 +28,7 @@ See the [upstream comparison](docs/fork.md) for the baseline, architecture and v
 - **Agent status and skill.** Agents report their state through hooks or the API as a colored dot and a title-bar bell. Opt-in installers add the agent skill, Claude Code / Codex / Devin status hooks, shell integration and the CLI on `PATH`.
 - **Claude Code binding and auto-resume.** A `claude` wrapper ties each conversation to its pane, so a restart re-launches every bound pane and the conversation comes back. Updating Claude Code restarts every running Claude session into its own conversation.
 - **Restore and session ownership.** Hosted shells run in a separate Ghostty owner process and survive a UI quit or crash. When upgrading from the previous Windows host, setup checkpoints the open windows, saves a backup and closes the old shells. The new version restores the layout, configured commands and history saved with `restore-buffer` enabled.
-- **A real Windows terminal.** Default Terminal Application registration, Sixel and Kitty graphics, the Kitty keyboard protocol, ligatures, elevated and de-elevated sessions side by side, and agterm's menus — File, View, Navigate, Help — as a menu bar in the title bar (Alt or F10).
+- **A real Windows terminal.** Default Terminal Application registration, Kitty graphics, the Kitty keyboard protocol, ligatures, elevated and de-elevated sessions side by side, and agterm's menus — File, View, Navigate, Help — as a menu bar in the title bar (Alt or F10).
 - **Accessible.** The terminal is a UIA text document for Narrator and NVDA, every control is in the UIA tree, and new output is announced.
 - **Themes.** ~580 bundled themes retint the whole window, fonts apply live, and an optional mode follows Windows light/dark.
 
@@ -44,6 +44,8 @@ The Settings window, on the Agent Status tab, where the status colors and the bl
 ![Settings](docs/img/settings.png)
 
 </details>
+
+Sixel graphics are currently unsupported by the Ghostty adapter.
 
 ## The model
 
@@ -99,17 +101,16 @@ The same interface covers windows, splits, overlays, dashboards, HUDs, notificat
 - [Workspace navigation](docs/navigation.md), [quick terminal](docs/quick-terminal.md), [session HUD](docs/session-hud.md), [native picker](docs/native-picker.md).
 - [Default terminal](docs/defterm-testing.md): how the console handoff is exercised.
 - [Local UI tests](docs/hyperv-ui-tests.md): local Windows UI commands use dedicated Hyper-V VMs; CI keeps its own runner desktop.
-- [agterm interoperability](docs/agterm-parity.md) and [historical agliteterm parity](docs/lite-parity.md).
-- [CONTRIBUTING.md](CONTRIBUTING.md): building from source, dev builds side by side with the release, the contract with agliteterm.
+- [agterm interoperability](docs/agterm-parity.md).
+- [CONTRIBUTING.md](CONTRIBUTING.md): building from source, dev builds side by side with the release.
 
 Report bugs in [Issues](https://github.com/narma/agwinterm/issues).
 
 ## Related projects
 
 - **[agterm](https://github.com/umputun/agterm)** by [umputun](https://github.com/umputun) is the macOS original whose design this project follows.
-- **agliteterm** is the lightweight sibling, formerly `agwinterm-lite`. Its C++ client uses the Rust emulator core and pty-host. [agliteterm repository](https://github.com/yeroo/agliteterm)
 
-The projects share a [control API contract](tests/conformance/control-api.json). This fork uses Ghostty for Windows terminal state. Consumers of the legacy Windows Rust core and ABI manifest can pin a release before 0.30.1.
+The fork maintains its [control API contract](tests/conformance/control-api.json) for the Windows product. Ghostty owns Windows terminal state.
 
 ## Attribution
 

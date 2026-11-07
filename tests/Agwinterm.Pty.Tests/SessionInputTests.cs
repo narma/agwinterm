@@ -249,7 +249,8 @@ public class SessionInputTests
     {
         using var session = new InputSession { InputClosed = closed, FailWrite = true };
         var type = LoadProgram().GetNestedType("PaneHost", BindingFlags.NonPublic)!;
-        session.Emulator.Host = (IHostActions)Activator.CreateInstance(type, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, [null, null, session], null)!;
+        var pane = Activator.CreateInstance(LoadProgram().GetNestedType("Pane", BindingFlags.NonPublic)!, true)!;
+        session.Emulator.Host = (IHostActions)Activator.CreateInstance(type, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, [null, pane, session], null)!;
         // Kitty flags query requests a real host reply; the marker follows in the SAME Feed call.
         session.Emulator.Feed("\x1b[?uFINAL-after-query"u8);
         Assert.Contains("FINAL-after-query", session.Emulator.DumpRow(0));
@@ -304,7 +305,7 @@ public class SessionInputTests
     {
         public bool InputClosed { get; init; }
         public bool FailWrite; public int Attempts; public string Input = "";
-        public ITerminalCore Emulator { get; } = new TerminalEmulator(80, 24);
+        public ITerminalCore Emulator { get; } = new GhosttyTerminalCore(80, 24);
         public int Cols => 80; public int Rows => 24; public int? ChildProcessId => null;
         public object SyncRoot { get; } = new();
         public AgentStatus Status => AgentStatus.Idle; public bool Blink => false; public bool AutoReset => false;
@@ -325,6 +326,6 @@ public class SessionInputTests
         public void Resize(int cols, int rows) => Emulator.Resize(cols, rows);
         public string SnapshotRow(int row) => Emulator.DumpRow(row);
         public (int Row, int Col) SnapshotCursor() => (Emulator.CursorRow, Emulator.CursorCol);
-        public void Detach() { } public void Dispose() { Disposed = true; }
+        public void Detach() { } public void Dispose() { Disposed = true; ((IDisposable)Emulator).Dispose(); }
     }
 }

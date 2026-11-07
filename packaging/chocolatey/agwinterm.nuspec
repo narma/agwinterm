@@ -24,7 +24,7 @@ first-class citizens.
 - **Agent-first**: workspaces and sessions with per-session agent status (idle / active / blocked /
   completed), a scriptable control API (`agwintermctl` or newline-JSON over a named pipe with full
   read-back), splits, quick &amp; scratch terminals, and multi-window support.
-- **A real Windows terminal**: ConPTY, Default Terminal Application integration, Sixel &amp; Kitty
+- **A real Windows terminal**: ConPTY, Default Terminal Application integration, Kitty
   graphics, win32-input-mode + Kitty keyboard protocol, ligatures, prompt marks (OSC 133).
 - **Accessible**: the terminal is a UI Automation text document — screen readers read it line by
   line, new output is announced, and the whole UI is keyboard-navigable.

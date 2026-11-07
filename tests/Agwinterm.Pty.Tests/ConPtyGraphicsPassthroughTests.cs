@@ -29,13 +29,13 @@ public class ConPtyGraphicsPassthroughTests
         // `cmd /c type <file>` emits the raw bytes (all <= 0x7f, no Ctrl-Z) to stdout.
         await session.RunAsync("cmd.exe", new[] { "/c", "type", file }, verbatimCommandLine: true, cts.Token);
 
-        int images = session.Emulator.Images.Count;
+        var core = (Agwinterm.Core.GhosttyTerminalCore)session.Emulator;
+        core.BeginPaint(); core.CompletePaint();
+        int images = core.PaintImages.Count;
 
-        // FINDING (Windows 11 build 26200): ConPTY STRIPS Kitty graphics APC sequences from
-        // child output — nothing reaches our parser. This is why graphics from a child program
-        // (e.g. docxy) must be delivered out-of-band via the control API -> TerminalSession.Inject,
-        // not the PTY stream. If this assertion ever fails (images>=1), ConPTY gained passthrough
-        // and inline-Kitty-through-ConPTY (Path B) has become viable.
-        Assert.Equal(0, images);
+        // The bundled ConPTY forwards Kitty graphics to the native terminal parser.
+        Assert.Equal(1, images);
+        Assert.Equal(1u, core.PaintImages[0].Id);
+        Assert.Equal(new byte[] { 3, 2, 1, 255 }, core.PaintImages[0].Image.ToPremultipliedBgra());
     }
 }

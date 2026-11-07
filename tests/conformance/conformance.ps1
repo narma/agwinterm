@@ -1,10 +1,4 @@
-# Control-API conformance — the agwinterm side.
-#
-# agliteterm ships from its own repository promising to speak the agwintermctl dialect. THIS file is
-# the canonical copy of the contract and the runner; agliteterm's CI checks its copy against this
-# one and runs the same steps against its own client. So a verb removed or reshaped here fails the
-# other product's build, and vice versa — the promise is enforced by two CIs rather than asserted
-# in a README.
+# Control-API conformance for the Windows product.
 #
 # Every verb in tests/conformance/control-api.json is driven through the REAL agwintermctl against
 # a sandbox instance, and the response SHAPE is checked.
@@ -217,7 +211,7 @@ try {
 }
 finally {
     # Close ONLY what this run created, by name, through the pipe — never by enumerating processes.
-    # A blanket "stop every agliteterm" here would close the windows the developer is working in,
+    # A blanket "stop every terminal process" here would close the windows the developer is working in,
     # which is the exact accident this suite's rules exist to prevent.
     try {
         $wins = (Invoke-Ctl @('window', 'list')).result

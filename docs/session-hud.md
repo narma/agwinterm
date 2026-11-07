@@ -109,8 +109,6 @@ Timers dispatch on the owner UI thread, so busy UI work can delay expiry but can
 it early or redirect it to a replacement.
 
 This is the native Win32 implementation. Hosts without HUD support explicitly refuse.
-P17 expands the shared conformance floor alongside the Wave-3 lite companion; see
-[lite parity](lite-parity.md#p17-wave-3-mirror). No release/tag is included.
 
 Reference: [agterm v0.26.0 HUD implementation](https://github.com/umputun/agterm/blob/v0.26.0/agtermCore/Sources/agtermCore/Hud.swift).
 The nine positions, passive behavior and replacement semantics follow that interface;

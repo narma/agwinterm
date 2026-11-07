@@ -203,7 +203,7 @@ public static class CtlUsage
           agwintermctl selection all|copy|clear|finalize [--target ID]
           agwintermctl surface cursor [--target ID]         (caret column of a pane, as a bare integer)
           agwintermctl image show <path> [--row R] [--col C] [--id N] [--target ID]
-          agwintermctl image sixel <path> [--row R] [--col C] [--target ID]
+          agwintermctl image sixel <path>   (unsupported by the Ghostty adapter)
           agwintermctl image frameshm <Local\agwinterm-frame-NAME> [--slot N] [--seq N] [--width N]
               [--height N] [--stride N] [--format N] [--id N] [--row R] [--col C] [--cols N] [--rows N]
               [--sx N] [--sy N] [--sw N] [--sh N] [--target ID]

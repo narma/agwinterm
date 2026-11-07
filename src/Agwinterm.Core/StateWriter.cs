@@ -7,7 +7,7 @@ namespace Agwinterm.Core;
 /// <para>The UI thread used to write the state file inline on every tree change: a snapshot, a
 /// <c>WriteAllText</c>, a <c>File.Move</c>. On a machine whose endpoint-security filter holds a
 /// rename for 20–50 s — then, once, for twenty minutes — every keystroke queued behind that call and
-/// the window was flagged as hung (agliteterm #94, agwinterm #294). The snapshot is cheap and stays
+/// the window was flagged as hung (agwinterm #294). The snapshot is cheap and stays
 /// where the data is; the I/O is what moves. A producer calls <see cref="Enqueue"/> with the
 /// finished bytes and returns at once; a single background thread lets a burst settle and writes
 /// the newest snapshot per path, once.</para>

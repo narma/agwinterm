@@ -101,7 +101,7 @@ public interface ISession : IDisposable
     /// exhaustively, the alt-screen flag (any alt-screen mode: <c>?47</c>, <c>?1047</c>,
     /// <c>?1049</c>), the scroll generation and history count (they move only when a line is pushed
     /// off the top of the main screen into scrollback — scrollback on, no partial region, and
-    /// something scrolls the screen up: text that wraps or ends a line, a Sixel image placed at the
+    /// something scrolls the screen up: text that wraps or ends a line, an image placed at the
     /// bottom, <c>SU</c>; a downward scroll or an <c>IL</c>/<c>DL</c> edit moves neither) and the
     /// scroll region (<c>DECSTBM</c>: full screen, or partial — a reserved status line); what the
     /// pin does with each — clear, renumber or hold — is <c>StampSel</c>/<c>ReconcileSel</c>'s own

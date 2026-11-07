@@ -8,7 +8,7 @@ namespace Agwinterm.Pty;
 /// <c>--create-workspace</c>, silently fell back to the ACTIVE workspace and answered ok:true with a
 /// session id — the caller believed it had placed a session somewhere it had not. Every other
 /// workspace-taking verb (<c>session.to-workspace</c>, <c>workspace.select</c>,
-/// <c>workspace.delete</c>) already refused, agliteterm already refused on <c>session.new</c>, and
+/// <c>workspace.delete</c>) already refused, and
 /// the conformance contract already states the rule in prose for <c>workspace.select</c>. This is
 /// <c>session.new</c> obeying it.
 ///

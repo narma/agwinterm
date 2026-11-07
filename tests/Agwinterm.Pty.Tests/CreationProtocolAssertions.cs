@@ -11,10 +11,10 @@ internal static class CreationProtocolAssertions
 {
     internal static async Task StartupSweepKeepsPendingPane(string appId)
     {
-        using var backend = new ServerSessionBackend(appId, null, singleOwner: false);
+        using var backend = new ServerSessionBackend(appId, null);
         // The live config path resolves a new backend even when reapplying the same value.
         // The original instance still owns the delayed sweep; the replacement owns this pane.
-        using var replacement = new ServerSessionBackend(appId, null, singleOwner: false);
+        using var replacement = new ServerSessionBackend(appId, null);
         using var pendingPane = replacement.Create("not-yet-published", 80, 24);
         using var client = PtyHostClient.Connect(appId);
         string orphan = client.PrepareCreate("unclaimed-orphan");
@@ -78,7 +78,7 @@ internal static class CreationProtocolAssertions
             Assert.False(child.HasExited);
             Assert.Equal(id, client.Create(id, 80, 24, "powershell.exe", create.Args.ToArray(), freshEnv: false, creationTicket: ticket));
             Assert.Equal(first.ChildPid, Assert.Single(client.List()).ChildPid); // no duplicate spawn
-            using (var attachment = client.Attach(id, creationTicket: ticket))
+            using (var attachment = client.Attach(id, creationTicket: ticket, nativeSnapshot: true))
                 Assert.Equal(ticket, attachment.CreationTicket);
             Assert.True(SpinWait.SpinUntil(() => !Assert.Single(client.List()).Attached, 5000));
             Assert.Equal(CreationPhase.CreationUnknown, client.CancelCreate(id, ticket));
@@ -93,7 +93,7 @@ internal static class CreationProtocolAssertions
             Assert.Throws<InvalidOperationException>(() => client.Kill(id, ticket));
             Assert.Throws<InvalidOperationException>(() => client.Detach(id, ticket));
             Assert.Throws<InvalidOperationException>(() => client.Resize(id, 90, 30, ticket));
-            Assert.Throws<InvalidOperationException>(() => client.Attach(id, creationTicket: ticket));
+            Assert.Throws<InvalidOperationException>(() => client.Attach(id, creationTicket: ticket, nativeSnapshot: true));
             Assert.Equal(second.ChildPid, Assert.Single(client.List()).ChildPid);
             Assert.False(Assert.Single(client.List()).HasExited);
         }

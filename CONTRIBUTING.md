@@ -57,7 +57,7 @@ They run under **PowerShell 7** (`pwsh -NoProfile -File ...`), never Windows Pow
 
 **CI runs UI suites directly** on the runner desktop, without Windows Sandbox. The core job also checks the Sandbox wrapper with fixtures that require no VM.
 
-`tests/conformance/control-api.json` is the control-API contract shared with [agliteterm](https://github.com/yeroo/agliteterm); `tests/conformance/conformance.ps1` runs it. `qa/*.md` are behaviour cases written for a person (or an agent) to execute against a live build; `qa/product.md` says how.
+`tests/conformance/control-api.json` records the Windows product’s control-API contract; `tests/conformance/conformance.ps1` runs it. `qa/*.md` are behaviour cases written for a person (or an agent) to execute against a live build; `qa/product.md` says how.
 
 ### Dev builds run side-by-side with the installed release
 
@@ -103,7 +103,7 @@ AI-assisted development is welcome. The expectations for those PRs are specific.
   - **Module boundary.** `Agwinterm.Core` is host-free and targets plain `net10.0`: no Win32, no Direct2D, no `System.Windows`, no console. That is what lets its tests run with no window. The emulator, config and keymap parsing, the menu model and the host-actions seam (`IHostActions`) live there. `Agwinterm.Pty` owns sessions, the control server and the agent skill; `Agwinterm.Win32` is the shell, and its `Program` class is split by concern across `Program.*.cs`. When a feature splits, push the host-free half down into `Agwinterm.Core` and keep the Win32 side a thin adapter for side effects.
   - **Threads.** The window has one UI thread. A control verb arrives on a pipe thread and reaches window state only through `PostVerb`, which marshals the work onto the UI thread; session output arrives on reader threads and requests a repaint rather than drawing. Touching `_config`, panes, the tree or Direct2D from another thread is a bug even when it appears to work.
   - **Tests.** xUnit in `tests/Agwinterm.Core.Tests` (by concern: `NavigationTests` covers the keymap, `MenuModelTests` the menus, and so on) and `tests/Agwinterm.Pty.Tests`. Add focused coverage to the file that already owns the behaviour; create a new one only when that gives clearer ownership. Behaviour that needs a window goes into an interactive suite, see above.
-  - **Documentation.** A change to the control API updates `docs/control-api.md` and the agent skill in `src/Agwinterm.Pty/AgentSkill.cs`, and `tests/conformance/control-api.json` when the verb is one agliteterm shares. A change to the keymap format updates `Keymap.StarterText` (the header written to a new `keymap.conf`) and `docs/user-guide.md`. There is no CHANGELOG to edit; release notes are written at release time.
+  - **Documentation.** A change to the control API updates `docs/control-api.md` and the agent skill in `src/Agwinterm.Pty/AgentSkill.cs`, and `tests/conformance/control-api.json` when the verb is covered there. A change to the keymap format updates `Keymap.StarterText` (the header written to a new `keymap.conf`) and `docs/user-guide.md`. There is no CHANGELOG to edit; release notes are written at release time.
   - **Config.** A new `agwinterm.conf` key is parsed in `TerminalConfig`, applied live in `ApplyConfigKeys` (a reload must not fall short of a `config set`), and documented in the user guide.
 - Code has to be readable by a person maintaining it a year from now.
 - Commit messages and PR descriptions should say something specific. Generic AI output is not enough.
@@ -142,7 +142,7 @@ A new **control verb** needs all of:
 1. an `agwintermctl` subcommand in `src/Agwinterm.Ctl/Program.cs`
 2. dispatch in `ControlServer` (`src/Agwinterm.Pty`), which owns the host-free part (argument parsing, validation, error text, response shape) and calls the host through `ISessionHost` for the side effect alone
 3. the `ISessionHost` implementation in `Program.ControlHost.cs`, reaching window state through `PostVerb`
-4. `docs/control-api.md`, the agent skill, and the conformance spec when agliteterm shares the verb
+4. `docs/control-api.md`, the agent skill, and the conformance spec when the verb is covered there
 5. an end-to-end check in `tests/integration/win32-control.ps1` or a `hud-ui.ps1` cases file
 
 A verb that sets or mutates per-session state also owes a matching read-back field on the `tree` node, so a script can query the value it just wrote. A refusal names only what its guard saw, and a verb that cannot do the whole job says so rather than doing half.
@@ -162,6 +162,6 @@ PRs here merge on evidence: the description carries the test output, and for a U
 
 The maintainer tags releases from the fork. The release workflow publishes standard and .NET 11 assets to [fork releases](https://github.com/narma/agwinterm/releases). Keep version bumps separate from feature PRs.
 
-## The contract with agliteterm
+## Product scope
 
-The fork runs [conformance cases](tests/conformance/control-api.json) for the control-API subset shared with [agliteterm](https://github.com/yeroo/agliteterm). Coordinate changes to that subset with the other project's maintainers. Release 0.30.1 retires the separate Windows Rust core, host and ABI manifest. Consumers of those assets can pin an earlier release.
+This fork maintains the Windows product and its [control-API conformance cases](tests/conformance/control-api.json). It does not maintain agliteterm, its C++ bindings, bitmap fonts or handover installers.

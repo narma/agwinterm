@@ -8,17 +8,17 @@ public class WslRecoveryTests
     public void RoleProtocolIsConsumedWithoutChangingTheApplicationTitle()
     {
         var role = new ZmxRoleState("current");
-        var terminal = new Agwinterm.Core.TerminalEmulator(80, 24);
-        terminal.TitleFilter = text =>
+        using var terminal = new Agwinterm.Core.GhosttyTerminalCore(80, 24);
+        terminal.SetTitleFilter(text =>
         {
             if (!text.StartsWith("zmx-role;", StringComparison.Ordinal)) return false;
             if (ZmxRoleNotice.Parse(text) is { } notice) role.Apply(notice);
             return true;
-        };
-        terminal.OscDispatch(2, "editor");
-        terminal.OscDispatch(2, "zmx-role;current:leader:8");
-        terminal.OscDispatch(2, "zmx-role;old:follower:99");
-        terminal.OscDispatch(2, "zmx-role;current:follower:7");
+        });
+        terminal.Feed(System.Text.Encoding.UTF8.GetBytes("\x1b]2;editor\x07"));
+        terminal.Feed(System.Text.Encoding.UTF8.GetBytes("\x1b]2;zmx-role;current:leader:8\x07"));
+        terminal.Feed(System.Text.Encoding.UTF8.GetBytes("\x1b]2;zmx-role;old:follower:99\x07"));
+        terminal.Feed(System.Text.Encoding.UTF8.GetBytes("\x1b]2;zmx-role;current:follower:7\x07"));
         Assert.Equal("editor", terminal.Title);
         Assert.Equal("leader", role.Role);
         Assert.Equal(8u, role.Generation);

@@ -46,11 +46,8 @@ it as PowerShell code (single quotes inside the command string).
 
 Migration from agwinterm 0.18.0: add `--command-mode direct` to callers that depend
 on direct process lifetime or argv parsing. Use a matching updated `agwintermctl`
-and terminal; older CLIs do not send the new option. Lite's ordinary PowerShell
-command behavior remains the same. These rules apply to `session new`; overlays,
+and terminal; older CLIs do not send the new option. These rules apply to `session new`; overlays,
 shell profiles, custom commands and restore replay retain their separate contracts.
-In Lite, an exact empty argv (a bare `powershell.exe` direct session) stays exact across
-duplicate, Reopen Closed and a cold restore since agliteterm 0.19.3 (agliteterm #79).
 
 ## Agent resume
 

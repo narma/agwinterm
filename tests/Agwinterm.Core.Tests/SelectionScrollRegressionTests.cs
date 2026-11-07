@@ -55,12 +55,12 @@ public class SelectionScrollRegressionTests
         using var f = new Fixture(false);
         f.Core.Resize(5, 3);
         f.Core.ScrollbackMax = 2;
-        f.Feed("\x1b[2J\x1b[Hxxxxxabc defghijklmnop\r\nend");
+        f.Feed("\x1b[3J\x1b[2J\x1b[Hxxxxxabc defghijklmnop\r\nend");
         f.Select(-f.Core.HistoryCount, f.Core.CursorRow, to: f.Core.CursorCol - 1);
         Assert.Equal("xxxxxabc defghijklmnop\r\nend", f.Text());
         // History trims in batches, allowing slack above the configured cap.
-        f.Feed(string.Concat(Enumerable.Repeat("\r\nxxxxx", 600)) + "\r\nend\r\n1234567890\r\nlast");
-        Assert.True(f.Core.HistoryCount < 600);
+        f.Feed(string.Concat(Enumerable.Repeat("\r\nxxxxx", 20000)) + "\r\nend\r\n1234567890\r\nlast");
+        Assert.True(f.Core.HistoryCount < 20000);
         f.Select(-1, f.Core.CursorRow, to: f.Core.CursorCol - 1);
         Assert.Equal("end\r\n1234567890\r\nlast", f.Text());
     }
@@ -91,8 +91,6 @@ public class SelectionScrollRegressionTests
         {
             var sessionType = Assembly.LoadFrom(Path.Combine(Path.GetDirectoryName(Ui.Location)!,
                 "Agwinterm.Pty.dll")).GetType("Agwinterm.Pty.TerminalSession", true)!;
-            Func<int, int, ITerminalCore> factory = (cols, rows) => new TerminalEmulator(cols, rows);
-            sessionType.GetField("CoreFactory")!.SetValue(null, factory);
             _session = (IDisposable)Activator.CreateInstance(sessionType, 30, 6)!;
             Core = (ITerminalCore)sessionType.GetProperty("Emulator")!.GetValue(_session)!;
             Pane = RuntimeHelpers.GetUninitializedObject(PaneType);
@@ -256,11 +254,11 @@ public class SelectionScrollRegressionTests
     public void MouseReportingDoesNotKeepEvictedHistorySelected()
     {
         using var f = new Fixture(alt: false);
-        ((TerminalEmulator)f.Core).ScrollbackMax = 2;
+        ((GhosttyTerminalCore)f.Core).ScrollbackMax = 2;
         f.Feed("\x1b[6;1H\r\n\x1b[?1000h");
         f.Select(-1);
         Assert.Equal("MARKER00", f.Text());
-        f.Feed(string.Concat(Enumerable.Repeat("\r\nnew", 600)));
+        f.Feed(string.Concat(Enumerable.Repeat("\r\nnew", 20000)));
         Assert.Equal("", f.Text());
     }
 

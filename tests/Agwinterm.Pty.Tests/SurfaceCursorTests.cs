@@ -6,8 +6,7 @@ using Agwinterm.Pty;
 namespace Agwinterm.Pty.Tests;
 
 /// <summary>Contract tests for <c>surface.cursor</c> — the caret column of a pane, as a BARE integer.
-/// The shape is the contract agliteterm mirrors (P8) and the reason a script written against agterm's
-/// cookbook works here unchanged, so it is pinned as tightly as the value itself.</summary>
+/// The response shape is pinned alongside the value for control-API consumers.</summary>
 public class SurfaceCursorTests
 {
     private static JsonElement Cursor(ControlServer server, string? target = null)
@@ -40,15 +39,14 @@ public class SurfaceCursorTests
     }
 
     [Fact]
-    public void PrintIntoTheLastColumn_ReportsTheWidth_UntilTheNextPrintWraps()
+    public void PrintIntoTheLastColumn_ReportsTheLastCell_UntilTheNextPrintWraps()
     {
-        // Deferred wrap: both cores leave the caret ONE PAST the last cell after filling a row, and
-        // wrap on the next print. The verb reports that honestly, so the doc has to say so too.
+        // Ghostty keeps the cursor on the last cell while a wrap is pending.
         using var session = new TerminalSession(10, 4);
         using var server = new ControlServer(session);
 
         Feed(session, "0123456789");
-        Assert.Equal(10, Cursor(server).GetProperty("result").GetInt32());
+        Assert.Equal(9, Cursor(server).GetProperty("result").GetInt32());
 
         Feed(session, "x");
         Assert.Equal(1, Cursor(server).GetProperty("result").GetInt32());
