@@ -27,6 +27,8 @@ mod install;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
+mod terminal;
+#[cfg(target_os = "linux")]
 mod observe;
 #[cfg(target_os = "linux")]
 mod ask_bridge;
@@ -193,6 +195,12 @@ fn main() {
     // A hard process deadline also bounds a blocked stdin/pipe write/read. Windows
     // closes all process handles on exit. Missing pipes fail immediately.
     let operation = env::args().nth(1).unwrap_or_default();
+    #[cfg(target_os = "linux")]
+    if operation == "--pty" {
+        std::process::exit(terminal::run().unwrap_or_else(|error| {
+            eprintln!("agwinterm PTY: {error}"); 1
+        }));
+    }
     #[cfg(target_os = "linux")]
     if operation == "--zmx-export-provision" || operation == "--zmx-export-disable"
         || env::current_exe().ok().and_then(|p| p.file_name().map(|s| s.to_owned()))

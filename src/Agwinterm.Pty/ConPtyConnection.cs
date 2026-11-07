@@ -18,11 +18,10 @@ namespace Agwinterm.Pty;
 /// </summary>
 internal sealed class ConPtyConnection : IPtyConnection
 {
-    private readonly ConPtyApi _api;
+    private readonly ConPtyApi? _api;
     private IntPtr _hPC;
     private IntPtr _hProcess;
     private IntPtr _hThread;
-    private IntPtr _attrList;
     private readonly FileStream _reader;
     private readonly FileStream _writer;
 
@@ -34,10 +33,10 @@ internal sealed class ConPtyConnection : IPtyConnection
     public event EventHandler<PtyExitedEventArgs>? ProcessExited;
 #pragma warning restore CS0067
 
-    private ConPtyConnection(ConPtyApi api, IntPtr hPC, IntPtr hProcess, IntPtr hThread, IntPtr attrList,
+    private ConPtyConnection(ConPtyApi? api, IntPtr hPC, IntPtr hProcess, IntPtr hThread,
         FileStream reader, FileStream writer, int pid)
     {
-        _api = api; _hPC = hPC; _hProcess = hProcess; _hThread = hThread; _attrList = attrList;
+        _api = api; _hPC = hPC; _hProcess = hProcess; _hThread = hThread;
         _reader = reader; _writer = writer; Pid = pid;
     }
 
@@ -47,7 +46,7 @@ internal sealed class ConPtyConnection : IPtyConnection
 
     public void Resize(int cols, int rows)
     {
-        if (_hPC != IntPtr.Zero) _api.Resize(_hPC, (short)cols, (short)rows);
+        if (_hPC != IntPtr.Zero) _api!.Resize(_hPC, (short)cols, (short)rows);
     }
 
     public void Kill()
@@ -59,54 +58,65 @@ internal sealed class ConPtyConnection : IPtyConnection
     {
         try { _writer.Dispose(); } catch { }
         try { _reader.Dispose(); } catch { }
-        if (_hPC != IntPtr.Zero) { _api.Close(_hPC); _hPC = IntPtr.Zero; }
-        if (_attrList != IntPtr.Zero) { DeleteProcThreadAttributeList(_attrList); Marshal.FreeHGlobal(_attrList); _attrList = IntPtr.Zero; }
+        if (_hPC != IntPtr.Zero) { _api!.Close(_hPC); _hPC = IntPtr.Zero; }
         if (_hThread != IntPtr.Zero) { CloseHandle(_hThread); _hThread = IntPtr.Zero; }
         if (_hProcess != IntPtr.Zero) { CloseHandle(_hProcess); _hProcess = IntPtr.Zero; }
     }
 
-    /// <summary>Spawn <paramref name="commandLine"/> inside a fresh pseudoconsole from
-    /// <paramref name="api"/>, with <paramref name="environment"/> as its whole environment (null
-    /// inherits this process's), de-elevated when <paramref name="deElevate"/>. Throws on failure (e.g.
-    /// the SAFER token derivation fails, or process creation does — a missing cwd, a command that does
-    /// not exist); every such failure is prefixed "de-elevation:" or "conpty:".</summary>
-    public static ConPtyConnection Spawn(ConPtyApi api, string commandLine, string? cwd,
+    /// <summary>Spawn a Windows process with the supplied environment and optional reduced token.
+    /// A console API creates a pseudoconsole. The WSL launcher passes null to inherit only its
+    /// redirected stdin and output pipe handles.</summary>
+    public static ConPtyConnection Spawn(ConPtyApi? api, string commandLine, string? cwd,
         IEnumerable<KeyValuePair<string, string>>? environment, int cols, int rows, bool deElevate)
     {
-        string prefix = deElevate ? "de-elevation" : "conpty";
+        string prefix = deElevate ? "de-elevation" : api is null ? "WSL pipes" : "conpty";
         IntPtr inPipeRead = IntPtr.Zero, inPipeWrite = IntPtr.Zero;
         IntPtr outPipeRead = IntPtr.Zero, outPipeWrite = IntPtr.Zero;
-        IntPtr hPC = IntPtr.Zero, attrList = IntPtr.Zero, token = IntPtr.Zero;
+        IntPtr hPC = IntPtr.Zero, attrList = IntPtr.Zero, token = IntPtr.Zero, inherited = IntPtr.Zero;
         try
         {
             if (!CreatePipe(out inPipeRead, out inPipeWrite, IntPtr.Zero, 0)) throw Fail("CreatePipe(in)", prefix);
             if (!CreatePipe(out outPipeRead, out outPipeWrite, IntPtr.Zero, 0)) throw Fail("CreatePipe(out)", prefix);
 
-            int hr = api.Create((short)cols, (short)rows, inPipeRead, outPipeWrite, out hPC);
-            if (hr != 0) throw new InvalidOperationException($"CreatePseudoConsole failed (0x{hr:x8})");
-            // ConPTY dup'd the read/write ends it needs; close our copies so EOF propagates correctly.
-            CloseHandle(inPipeRead); inPipeRead = IntPtr.Zero;
-            CloseHandle(outPipeWrite); outPipeWrite = IntPtr.Zero;
-
-            // STARTUPINFOEX carrying the pseudoconsole attribute.
             var siEx = new STARTUPINFOEX();
             siEx.StartupInfo.cb = Marshal.SizeOf<STARTUPINFOEX>();
-            // Null std handles: the child gets the pseudoconsole's. Without the flag it inherits this
-            // process's own, which a redirected parent (a test host, a service) points elsewhere.
             siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
             IntPtr size = IntPtr.Zero;
             InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
             attrList = Marshal.AllocHGlobal(size);
-            if (!InitializeProcThreadAttributeList(attrList, 1, 0, ref size)) throw Fail("InitializeProcThreadAttributeList", prefix);
-            if (!UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hPC, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
-                throw Fail("UpdateProcThreadAttribute", prefix);
+            if (!InitializeProcThreadAttributeList(attrList, 1, 0, ref size))
+            {
+                var failure = Fail("InitializeProcThreadAttributeList", prefix);
+                Marshal.FreeHGlobal(attrList); attrList = IntPtr.Zero;
+                throw failure;
+            }
+            if (api is null)
+            {
+                // WSL uses redirected binary streams, including launcher diagnostics.
+                // Inherit only this launch's child ends, even during concurrent spawns.
+                siEx.StartupInfo.hStdInput = inPipeRead;
+                siEx.StartupInfo.hStdOutput = siEx.StartupInfo.hStdError = outPipeWrite;
+                inherited = Marshal.AllocHGlobal(2 * IntPtr.Size);
+                Marshal.WriteIntPtr(inherited, inPipeRead);
+                Marshal.WriteIntPtr(inherited, IntPtr.Size, outPipeWrite);
+                if (!SetHandleInformation(inPipeRead, 1, 1) || !SetHandleInformation(outPipeWrite, 1, 1)
+                    || !UpdateProcThreadAttribute(attrList, 0, 0x20002 /* HANDLE_LIST */, inherited,
+                        (IntPtr)(2 * IntPtr.Size), IntPtr.Zero, IntPtr.Zero)) throw Fail("redirect WSL pipes", prefix);
+            }
+            else
+            {
+                int hr = api.Create((short)cols, (short)rows, inPipeRead, outPipeWrite, out hPC);
+                if (hr != 0) throw new InvalidOperationException($"CreatePseudoConsole failed (0x{hr:x8})");
+                if (!UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hPC, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
+                    throw Fail("UpdateProcThreadAttribute", prefix);
+            }
             siEx.lpAttributeList = attrList;
 
             var pi = new PROCESS_INFORMATION();
             var cmd = new string(commandLine.ToCharArray());   // mutable buffer for CreateProcess*
             string? dir = string.IsNullOrEmpty(cwd) ? null : cwd;
             string? block = environment is null ? null : EnvironmentBlock(environment);
-            int flags = EXTENDED_STARTUPINFO_PRESENT | (block is null ? 0 : CREATE_UNICODE_ENVIRONMENT);
+            int flags = EXTENDED_STARTUPINFO_PRESENT | (api is null ? 0x08000000 /* CREATE_NO_WINDOW */ : 0) | (block is null ? 0 : CREATE_UNICODE_ENVIRONMENT);
             if (deElevate)
             {
                 // A Medium-integrity token derived from OUR (elevated) token via SAFER. Because it's a
@@ -116,17 +126,21 @@ internal sealed class ConPtyConnection : IPtyConnection
                 EnablePrivilege("SeIncreaseQuotaPrivilege");
                 EnablePrivilege("SeAssignPrimaryTokenPrivilege");
                 token = GetDeElevatedToken();
-                if (!CreateProcessAsUserW(token, null, cmd, IntPtr.Zero, IntPtr.Zero, false, flags,
+                if (!CreateProcessAsUserW(token, null, cmd, IntPtr.Zero, IntPtr.Zero, api is null, flags,
                     block, dir, ref siEx, out pi)) throw Fail("CreateProcessAsUserW", prefix);
             }
-            else if (!CreateProcessW(null, cmd, IntPtr.Zero, IntPtr.Zero, false, flags, block, dir, ref siEx, out pi))
+            else if (!CreateProcessW(null, cmd, IntPtr.Zero, IntPtr.Zero, api is null, flags, block, dir, ref siEx, out pi))
                 throw Fail("CreateProcessW", prefix);
+
+            CloseHandle(inPipeRead); inPipeRead = IntPtr.Zero;
+            CloseHandle(outPipeWrite); outPipeWrite = IntPtr.Zero;
+            DeleteProcThreadAttributeList(attrList); Marshal.FreeHGlobal(attrList); attrList = IntPtr.Zero;
 
             var writer = new FileStream(new SafeFileHandle(inPipeWrite, ownsHandle: true), FileAccess.Write);
             var reader = new FileStream(new SafeFileHandle(outPipeRead, ownsHandle: true), FileAccess.Read);
             inPipeWrite = IntPtr.Zero; outPipeRead = IntPtr.Zero;   // owned by the streams now
 
-            return new ConPtyConnection(api, hPC, pi.hProcess, pi.hThread, attrList, reader, writer, pi.dwProcessId);
+            return new ConPtyConnection(api, hPC, pi.hProcess, pi.hThread, reader, writer, pi.dwProcessId);
         }
         catch
         {
@@ -134,11 +148,11 @@ internal sealed class ConPtyConnection : IPtyConnection
             if (inPipeWrite != IntPtr.Zero) CloseHandle(inPipeWrite);
             if (outPipeRead != IntPtr.Zero) CloseHandle(outPipeRead);
             if (outPipeWrite != IntPtr.Zero) CloseHandle(outPipeWrite);
-            if (hPC != IntPtr.Zero) api.Close(hPC);
+            if (hPC != IntPtr.Zero) api!.Close(hPC);
             if (attrList != IntPtr.Zero) { DeleteProcThreadAttributeList(attrList); Marshal.FreeHGlobal(attrList); }
             throw;
         }
-        finally { if (token != IntPtr.Zero) CloseHandle(token); }
+        finally { if (token != IntPtr.Zero) CloseHandle(token); Marshal.FreeHGlobal(inherited); }
     }
 
     /// <summary>A CreateProcessW Unicode environment block: NAME=value strings sorted by name, each
@@ -224,6 +238,7 @@ internal sealed class ConPtyConnection : IPtyConnection
     }
     [StructLayout(LayoutKind.Sequential)] private struct STARTUPINFOEX { public STARTUPINFO StartupInfo; public IntPtr lpAttributeList; }
 
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, IntPtr lpPipeAttributes, int nSize);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();

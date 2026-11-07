@@ -1,4 +1,5 @@
 set -eu
+previous_umask=$(umask)
 umask 077
 machine=$(uname -m)
 case "$machine" in
@@ -14,4 +15,5 @@ trap 'rm -f "$temp/helper"; rmdir "$temp"' EXIT
 trap 'exit 1' HUP INT TERM
 cp "$source" "$temp/helper"
 chmod 700 "$temp/helper"
+if [ "${1:-}" = "--pty" ]; then umask "$previous_umask"; fi
 "$temp/helper" "$@"

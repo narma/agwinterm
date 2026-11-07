@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('ghostty','rust','managed')][string]$Core = 'ghostty',
     [ValidateSet('bundled','inbox')][string]$Conpty = 'bundled',
-    [ValidateSet('htop','resize')][string]$Scenario = 'htop',
+    [ValidateSet('htop','resize','roundtrip')][string]$Scenario = 'htop',
     [ValidateRange(5,120)][int]$Seconds = 20
 )
 $ErrorActionPreference = 'Stop'
@@ -17,14 +17,22 @@ $state = Join-Path $env:LOCALAPPDATA $id
 $null = New-Item -ItemType Directory -Path $state
 $trace = Join-Path $OutputDirectory "$Core-paints.jsonl"
 if (Test-Path -LiteralPath $trace) { throw 'Use a new output directory.' }
-$env:AGWINTERM_PAINT_TRACE = $trace
-$env:AGWINTERM_PERF = Join-Path $OutputDirectory "$Core-perf.log"
-$env:AGWINTERM_DUMP = Join-Path $OutputDirectory "$Core-output.vt"
+if ($Scenario -ne 'roundtrip') {
+    $env:AGWINTERM_PAINT_TRACE = $trace
+    $env:AGWINTERM_PERF = Join-Path $OutputDirectory "$Core-perf.log"
+    $env:AGWINTERM_DUMP = Join-Path $OutputDirectory "$Core-output.vt"
+}
 # Separate htop configuration; do not read or modify the user's htop settings.
 $htopRc = '/tmp/' + $id + '.htoprc'
 $childArgs = @('-d',$Distro,'--exec','env','TERM=xterm-256color',"HTOPRC=$htopRc",'htop','-d','1','-s','PERCENT_CPU')
 if ($Scenario -eq 'resize') {
     $childArgs = @('-d',$Distro,'--exec','sh','-c','for n in $(seq 1 28); do printf "\033[32mFILE_%02d_marker\033[0m  permissions size user date filename-example-long.txt\n" "$n"; done; printf "\033[4mREADME.md\033[0m\n"; exec env ZDOTDIR=/tmp/agwinterm-empty-zdotdir PS1="PROMPT_marker> " zsh -dfi')
+}
+if ($Scenario -eq 'roundtrip') {
+    $fixture = (& wsl.exe -d $Distro --exec wslpath -u "$PSScriptRoot/wsl-pty-roundtrip.py").Trim()
+    $report = Join-Path $OutputDirectory 'roundtrip.json'
+    $target = (& wsl.exe -d $Distro --exec wslpath -u $report).Trim()
+    $childArgs = @('-d',$Distro,'--exec','python3',$fixture,$target)
 }
 @{ default='htop fixture'; profiles=@(@{name='htop fixture';command='wsl.exe';args=$childArgs}) } |
     ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $state 'profiles.json')
@@ -67,6 +75,11 @@ try {
     [void][TuiFixtureWindow]::ShowWindow($window,4)
     Start-Sleep -Seconds 2
     [void][TuiFixtureWindow]::ShowWindow($window,4)
+    if ($Scenario -eq 'roundtrip') {
+        for ($i=0;$i -lt 150 -and -not (Test-Path -LiteralPath $report);$i++) { Start-Sleep -Milliseconds 200 }
+        Get-Content -LiteralPath $report | Write-Host
+        return
+    }
     if ($Scenario -eq 'resize') {
         Start-Sleep -Seconds 2
         for ($round=0;$round -lt 4;$round++) {
@@ -124,7 +137,7 @@ try {
         for ($r=$header+1; $r -lt $_.rows-1; $r++) { if ($r -ne $selectedRow -and $_.backgrounds[$r] -eq [uint32]$color) { $moved=$true; break } }
         $moved
     })
-    $summary = @{core=$Core;configuredConpty=$Conpty;effectiveConpty=$(if ($Core -eq 'ghostty') {'bundled'} else {$Conpty});frames=$frames.Count;htopFrames=$htop.Count;blankFirstProcessRow=$bad.Count;highlightDisplacements=$displaced.Count;settledFrames=$settled.Count;seconds=$Seconds}
+    $summary = @{core=$Core;configuredConpty=$Conpty;frames=$frames.Count;htopFrames=$htop.Count;blankFirstProcessRow=$bad.Count;highlightDisplacements=$displaced.Count;settledFrames=$settled.Count;seconds=$Seconds}
     $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory "$Core-summary.json")
     $summary | ConvertTo-Json | Write-Host
 } finally {

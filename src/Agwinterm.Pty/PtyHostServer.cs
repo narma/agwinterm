@@ -475,7 +475,7 @@ public sealed class PtyHostServer : IDisposable
                         }
                         catch { ch.Pipe.Dispose(); ch.Cancel.Dispose(); return; }
                     }
-                    if (!reply.NativeSnapshot && repaint && hosted.S.OnBundledConpty)
+                    if (!reply.NativeSnapshot && repaint && hosted.S.PreservesViewportOnResize)
                     {
                         string screen = hosted.S.Emulator.DumpScreen();
                         try { ch.Pipe.Write(System.Text.Encoding.UTF8.GetBytes(screen)); ch.Pipe.Flush(); } catch { }
@@ -496,7 +496,7 @@ public sealed class PtyHostServer : IDisposable
             }
             // The jiggle makes the inbox conhost repaint. The bundled ConPTY repaints nothing, the snapshot
             // above did that, and shrinking the host emulator by a row would lose its bottom row.
-            if (!reply.NativeSnapshot && repaint && !hosted.S.OnBundledConpty) hosted.Resize.Run(() => JiggleRepaint(hosted.S));
+            if (!reply.NativeSnapshot && repaint && !hosted.S.PreservesViewportOnResize) hosted.Resize.Run(() => JiggleRepaint(hosted.S));
             await PumpInputAsync(hosted, ch).ConfigureAwait(false);
         });
 
