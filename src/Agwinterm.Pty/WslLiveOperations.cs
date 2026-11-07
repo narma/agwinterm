@@ -40,6 +40,8 @@ public sealed class WslLiveOperations
         ct.ThrowIfCancellationRequested();
         var env = WslLiveProfiles.WorkloadEnvironment(profile.Env);
         foreach (var item in WslLiveProfiles.WorkloadEnvironment(environment)) env[item.Key] = item.Value;
+        // As with ordinary WSL launch, explicit Linux profile variables win over frontend defaults.
+        if (profile.Env?.TryGetValue("TERM", out var term) == true) env["TERM"] = term;
         var result = await _client.InvokeAsync(location, new { verb = "create", ledger = location.Ledger,
             operation = binding.BindingId, specification = new { executable = endpoint.Executable,
                 socketDirectory = endpoint.SocketDirectory, cwd = location.Cwd,

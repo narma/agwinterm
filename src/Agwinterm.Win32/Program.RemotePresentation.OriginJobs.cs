@@ -53,6 +53,7 @@ internal partial class Program
             environment["AGWINTERM_WINDOW_ID"] = Id;
             environment["AGWINTERM_WORKSPACE_ID"] = session.Ws.Id;
             environment["TERM_PROGRAM"] = "agwinterm";
+            environment.TryAdd("TERM", TerminalIdentity.Term);
             environment["TERM_PROGRAM_VERSION"] = _termProgramVersion;
             environment["COLORTERM"] = "truecolor";
             var job = new AgtermOverlayJob(scope, presenter.Subscriber.Generation, presenter.Owner, pane?.Id,

@@ -340,6 +340,21 @@ const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
+    // libghostty 1.0 emits one complete XTGETTCAP response per callback. Its
+    // static map describes Ghostty's renderer, whereas our cell/frame protocol
+    // currently retains only a single foreground-colored underline and no
+    // overline or blinking text. Do not advertise those renderer extensions.
+    // This filters generated replies, never application input or arbitrary DCS.
+    static const char* unsupported[] = {
+        "5375", "536D756C78", "536574756C63", "536D6F6C", "526D6F6C", "626C696E6B"
+    }; // Su, Smulx, Setulc, Smol, Rmol, blink
+    if (len >= 8 && !memcmp(data, "\033P1+r", 5)) {
+        for (size_t i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); i++) {
+            size_t n = strlen(unsupported[i]);
+            if (len >= 5 + n + 2 && !memcmp(data + 5, unsupported[i], n) &&
+                (data[5 + n] == '=' || data[5 + n] == '\033')) return;
+        }
+    }
     if (vt->event) vt->event(vt->context, 1, data, len);
 }
 static bool color_scheme(GhosttyTerminal terminal, void* context, GhosttyColorScheme* out) {

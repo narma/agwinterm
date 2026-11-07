@@ -1,4 +1,5 @@
 @{
+    WslCapabilities = @{ Path='tests/integration/wsl-capabilities.ps1'; Wsl=$true; Options=@('Distro','AppDirectory','CtlDirectory','SessionHost') }
     HostOwnerSearchLoad = @{ Path='tests/integration/host-owner-search-load.ps1'; Exe=$true; Options=@() }
     HostOwnerHandoff = @{ Path='tests/integration/host-owner-handoff.ps1'; Exe=$true; Ctl=$true; Options=@() }
     PtyProcessContracts = @{ Path='tests/integration/pty-process-contracts.ps1'; Exe=$false; Options=@() }

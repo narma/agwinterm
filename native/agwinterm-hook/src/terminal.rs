@@ -56,7 +56,7 @@ pub fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let win = size(dimension()?, dimension()?);
     let mut command = Command::new(args.next().ok_or("missing command")?);
     command.args(args);
-    if std::env::var_os("TERM").is_none() {
+    if std::env::var_os("TERM").is_none_or(|value| value.is_empty()) {
         command.env("TERM", "xterm-256color");
     }
 

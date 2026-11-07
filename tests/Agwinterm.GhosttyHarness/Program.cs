@@ -288,6 +288,25 @@ using (var themeCore = new GhosttyTerminalCore(20, 5))
     Check(themeHost.Replies == "", "unsubscribed theme changes remain silent");
 }
 
+using (var identity = new GhosttyVt(20,5))
+{
+    var host = new Host(); identity.Host = host;
+    identity.Feed("\u001b[c\u001b[>c\u001b[=c"u8);
+    Check(host.Replies == "\u001b[?62;22c\u001b[>1;0;0c\u001bP!|00000000\u001b\\", "DA reports conservative VT220 color capabilities without Sixel");
+    host.Replies = "";
+    identity.Feed("\u001bP+q544E;5375;536D756C78;536574756C63;536D6F6C;526D6F6C;626C696E6B\u001b\\"u8);
+    Check(host.Replies == "", "TN and unsupported renderer capabilities are not advertised");
+    identity.Feed("\u001bP+q436F;524742;5463;4245;4D73;53796E63\u001b\\"u8);
+    Check(host.Replies.Contains("1+r436F=323536") && host.Replies.Contains("1+r524742=38") &&
+        host.Replies.Contains("1+r5463\u001b\\") && host.Replies.Contains("1+r4245=") &&
+        host.Replies.Contains("1+r4D73=") && host.Replies.Contains("1+r53796E63="),
+        "capability filtering preserves colors, bracketed paste, clipboard and synchronized output");
+    host.Replies = "";
+    foreach (byte value in "\u001bP+q5375;524742;544E\u001b\\"u8)
+        identity.Feed(new byte[] { value });
+    Check(host.Replies == "\u001bP1+r524742=38\u001b\\", "fragmented mixed capability query preserves only its supported reply");
+}
+
 using (var geometry = new GhosttyVt(20,5))
 {
     var host=new Host(); geometry.Host=host;

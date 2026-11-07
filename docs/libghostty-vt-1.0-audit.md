@@ -83,3 +83,26 @@ Evidence: `artifacts/clipboard-harness.log`, `artifacts/clipboard-channel-tests.
 GUI, host and CLI publications use .NET 11, ReadyToRun and runtime-async.
 No installed application or user clipboard was changed by these VM tests.
 Configuration and limitations: [terminal clipboard protocols](terminal-clipboard.md).
+
+## TERM and capability identity audit
+
+Completed for local/hosted Windows, native WSL PTYs and SSH PTY transport.
+New panes use portable `xterm-256color` rather than inheriting a launching
+terminal's identity. Explicit profile TERM survives ordinary and owned ZMX
+launches; SSH attachments pin their own PTY type without rewriting existing
+remote workloads. The native helper defaults empty as well as absent TERM.
+
+The engine's XTGETTCAP map advertised renderer features missing from our shared
+cell/frame representation: colored/shaped underlines, overlines and blinking
+text. Their positive replies are now suppressed. Conservative DA replies and
+Agwinterm XTVERSION are verified; TN deliberately remains unset because a global
+name would misrepresent overridden profiles and existing remote workloads.
+See [the route matrix and limitations](terminal-capability-identity.md).
+
+Validation: 305 native contracts, 59 WSL/SSH unit checks, two Linux PTY tests,
+139 Windows UI checks in each owner mode, and default/overridden WSL plus
+loopback SSH queries in both owner modes. GUI, host and CLI were published
+with .NET 11, ReadyToRun and runtime-async. Evidence: `artifacts/identity-harness.log`,
+`artifacts/identity-unit/identity-unit.trx`, `artifacts/identity-linux-tests.log`,
+`artifacts/identity-local-ui/results/stdout.log`, `artifacts/identity-hosted-ui/results/stdout.log`,
+`artifacts/identity-wsl-local4/test.log`, `artifacts/identity-wsl-hosted2/test.log`.

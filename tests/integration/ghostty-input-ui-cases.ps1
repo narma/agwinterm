@@ -30,6 +30,7 @@ public static class NativeInputSink {
     [DllImport("kernel32.dll")] static extern bool SetConsoleMode(IntPtr h,uint mode);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool ReadConsoleW(IntPtr h,[Out] char[] text,uint count,out uint read,IntPtr control);
     public static void Run(string log) {
+        System.IO.File.WriteAllText(log+".environment", Environment.GetEnvironmentVariable("TERM")+"|"+Environment.GetEnvironmentVariable("TERM_PROGRAM")+"|"+Environment.GetEnvironmentVariable("COLORTERM"));
         Console.InputEncoding=System.Text.Encoding.UTF8;
         Console.OutputEncoding=new System.Text.UTF8Encoding(false);
         if(!SetConsoleMode(GetStdHandle(-10),0x200)||!SetConsoleMode(GetStdHandle(-11),7)) throw new Exception("VT console mode");
@@ -75,6 +76,16 @@ try {
     $ready=$false
     for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $inputSession)).Contains('INPUT-SINK-READY')){$ready=$true;break};Start-Sleep -Milliseconds 100}
     if(-not $ready){throw 'Input byte sink did not start'}
+    Check 'Child receives portable TERM and Agwinterm truecolor identity' ((Get-Content -LiteralPath ($inputLog+'.environment') -Raw) -ceq 'xterm-256color|agwinterm|truecolor')
+    InputCheck 'DA capabilities reach the child through the session owner' ($esc+'[?62;22c'+$esc+'[>1;0;0c') {
+        $null=Rpc 'session.write' @{text=($esc+'[c'+$esc+'[>c')} $inputSession
+    }
+    InputCheck 'Unsupported renderer capabilities and unknown TN remain silent' '' {
+        $null=Rpc 'session.write' @{text=($esc+'P+q544E;5375;536D756C78;536574756C63;536D6F6C;526D6F6C;626C696E6B'+$esc+'\')} $inputSession
+    }
+    InputCheck 'Truecolor capability survives session transport' ($esc+'P1+r524742=38'+$esc+'\') {
+        $null=Rpc 'session.write' @{text=($esc+'P+q524742'+$esc+'\')} $inputSession
+    }
     $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
     . "$PSScriptRoot/ghostty-clipboard-ui-cases.ps1"
     [void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
