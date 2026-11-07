@@ -5,7 +5,7 @@ if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslCapabilities -Parameters $PS
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id='agwinterm-capabilities-'+[guid]::NewGuid().ToString('N')
 $state=Join-Path $env:LOCALAPPDATA $id
-$evidence=Join-Path $repo "artifacts/$id"
+$evidence=Join-Path $repo "artifacts/$id quote's"
 $null=New-Item -ItemType Directory -Path $state,$evidence
 $ctl=Join-Path $CtlDirectory 'agwintermctl.exe'
 $ui=$null
@@ -85,10 +85,15 @@ printf '[127.0.0.1]:%s %s %s\n' "$port" "$kind" "$key" >"$work/known_hosts"
 kill -0 "$server"
 # Like CommandInfo(terminal:true), set TERM on the SSH client; sshd receives it
 # through the PTY request. Do not fake TERM on the remote command or use AcceptEnv.
+quote() {
+  local value=${1//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+remote="bash --noprofile $(quote "$root/probe.sh") $(quote "$root/ssh.txt") xterm-256color ssh"
 TERM=xterm-256color ssh -tt -p "$port" -i "$work/client" -F /dev/null \
   -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
   -o UserKnownHostsFile="$work/known_hosts" -o GlobalKnownHostsFile=/dev/null \
-  "$(id -un)@127.0.0.1" "bash --noprofile '$root/probe.sh' '$root/ssh.txt' xterm-256color ssh"
+  "$(id -un)@127.0.0.1" "$remote"
 '@
 [IO.File]::WriteAllText((Join-Path $evidence 'ssh.sh'),$sshProbe.Replace("`r`n","`n"),[Text.UTF8Encoding]::new($false))
 $linuxRoot=(& wsl -d $Distro --exec wslpath -u $evidence).Trim()

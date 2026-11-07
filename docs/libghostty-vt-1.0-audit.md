@@ -105,4 +105,4 @@ loopback SSH queries in both owner modes. GUI, host and CLI were published
 with .NET 11, ReadyToRun and runtime-async. Evidence: `artifacts/identity-harness.log`,
 `artifacts/identity-unit/identity-unit.trx`, `artifacts/identity-linux-tests.log`,
 `artifacts/identity-local-ui/results/stdout.log`, `artifacts/identity-hosted-ui/results/stdout.log`,
-`artifacts/identity-wsl-local4/test.log`, `artifacts/identity-wsl-hosted2/test.log`.
+`artifacts/identity-wsl-local-final/test.log`, `artifacts/identity-wsl-hosted-final/test.log`.
