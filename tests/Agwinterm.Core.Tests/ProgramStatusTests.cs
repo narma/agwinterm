@@ -104,25 +104,28 @@ public sealed class ProgramStatusTests
     }
 
     [Fact]
-    public void DetachedCompletionReplaysOnceBeforeLatestIdleFields()
+    public void DetachedCompletionReplaysUntilReceiptBeforeLatestIdleFields()
     {
         var records = new ProgramStatusRecords();
         records.Apply(Report("done", "child"), detached: true);
         records.Apply(Report("idle", "child", "codex"), detached: true);
-        var replay = records.TakeReplay();
-        Assert.Equal(new[] { "done", "idle" }, replay.Select(r => r.State));
-        Assert.All(replay, r => Assert.Equal("codex", r.App));
-        Assert.Equal("idle", Assert.Single(records.TakeReplay()).State);
+        var replay = records.Replay();
+        Assert.Equal(new[] { "done", "idle" }, replay.Select(r => r.Report.State));
+        Assert.All(replay, r => Assert.Equal("codex", r.Report.App));
+        Assert.Equal(replay, records.Replay()); // a failed attach did not consume anything
+        records.AcknowledgeCompletion("child", replay[0].Completion);
+        Assert.Equal("idle", Assert.Single(records.Replay()).Report.State);
         records.Apply(Report("working", "child"), detached: true);
         records.Apply(Report("idle", "child"), detached: true);
-        Assert.Equal(new[] { "done", "idle" }, records.TakeReplay().Select(r => r.State));
+        records.AcknowledgeCompletion("child", replay[0].Completion); // stale attachment receipt
+        Assert.Equal(new[] { "done", "idle" }, records.Replay().Select(r => r.Report.State));
         records.Apply(Report("done", "child"), detached: true);
         records.Apply(Report("working", "child"), detached: true);
         records.FinishCommand();
-        Assert.Empty(records.TakeReplay());
+        Assert.Empty(records.Replay());
         records.Apply(Report("done", "child"), detached: true);
         records.Apply(Report("clear"), detached: true);
-        Assert.Empty(records.TakeReplay());
+        Assert.Empty(records.Replay());
     }
 
     [Fact]

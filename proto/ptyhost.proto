@@ -325,5 +325,5 @@ message PresentationEffect {
   string text = 6;
   int32 state = 7;
   int32 value = 8;
-  int64 completion_sequence = 9;
+  int64 completion_sequence = 9; // kind 5: shell completion; kind 8: replay receipt token (program-status-receipt query with generation=token and text=record ID)
 }

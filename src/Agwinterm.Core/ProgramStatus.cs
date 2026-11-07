@@ -36,7 +36,7 @@ public sealed class ProgramStatusRecords
 {
     private readonly Dictionary<string, ProgramStatus> _records = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _updated = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _unseenCompletions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _unseenCompletions = new(StringComparer.Ordinal);
     private long _sequence;
     public IReadOnlyCollection<ProgramStatus> Records => _records.Values;
     public void FinishCommand()
@@ -61,23 +61,27 @@ public sealed class ProgramStatusRecords
         if (report.State != "idle") _unseenCompletions.Remove(report.Id);
         if (detached && (report.State == "done" || report.State == "idle" &&
             _records.TryGetValue(report.Id, out var previous) && previous.State == "working"))
-            _unseenCompletions.Add(report.Id);
+            _unseenCompletions[report.Id] = _sequence + 1;
         _records[report.Id] = report;
         _updated[report.Id] = ++_sequence;
     }
 
-    // Replay an unread transition before the latest raw fields. The viewer owns
-    // acknowledgement; consuming this batch must be serialized with Apply.
-    public IReadOnlyList<ProgramStatus> TakeReplay()
+    // Reading a replay is not delivery. Keep completion tokens until the client
+    // acknowledges receipt, and ignore acknowledgements for superseded work.
+    public IReadOnlyList<(ProgramStatus Report, long Completion)> Replay()
     {
-        var reports = new List<ProgramStatus>();
+        var reports = new List<(ProgramStatus, long)>();
         foreach (var report in _records.Values)
         {
-            if (report.State == "idle" && _unseenCompletions.Contains(report.Id))
-                reports.Add(report with { State = "done" });
-            reports.Add(report);
+            long completion = _unseenCompletions.GetValueOrDefault(report.Id);
+            if (report.State == "idle" && completion != 0)
+                reports.Add((report with { State = "done" }, completion));
+            reports.Add((report, report.State == "done" ? completion : 0));
         }
-        _unseenCompletions.Clear();
         return reports;
+    }
+    public void AcknowledgeCompletion(string id, long completion)
+    {
+        if (_unseenCompletions.GetValueOrDefault(id) == completion) _unseenCompletions.Remove(id);
     }
 }

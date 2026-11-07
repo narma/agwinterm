@@ -55,6 +55,12 @@ public sealed partial class ServerSession
                         case 9: view.DispatchHostEffect(a=>a.ProgramStatusCommandFinished(),retainedBytes); break;
                     }
                 }
+                if (effect.Kind == 8 && effect.CompletionSequence != 0)
+                {
+                    var receipt = await QueryPresentationAsync(new(effect.Incarnation,effect.AttachmentEpoch,
+                        effect.CompletionSequence,"program-status-receipt",Text:effect.Title),_readCancel.Token).ConfigureAwait(false);
+                    if (receipt.Status != "ok") throw new IOException("Program status receipt rejected.");
+                }
                 if(effect.Kind == 7) OutputReceived?.Invoke();
             }
         }
