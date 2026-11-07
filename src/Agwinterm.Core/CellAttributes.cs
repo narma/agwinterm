@@ -12,6 +12,7 @@ public enum CellAttributes
     Strikethrough = 32,
     Overline = 64,
     Blink = 128,
+    Invisible = 256,
 }
 
 public enum UnderlineStyle : byte { None, Single, Double, Curly, Dotted, Dashed }

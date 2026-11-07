@@ -49,7 +49,7 @@ Applications can detect extended features through runtime queries.
   it stops when the window is minimized. Animation needs neither PTY output nor
   repeated hosted frames and never alters selected/copied text or stored cells.
 
-The native adapter ABI is 10. Hosted presentation revision 3 carries decoration and blink
+The native adapter ABI is 10. Hosted presentation revision 4 carries decoration and blink
 data in full and delta frames; peers require an exact revision match and reject
 older frames rather than silently losing formatting. GUI and host must be
 updated together. Existing disk buffers remain readable: the added protobuf

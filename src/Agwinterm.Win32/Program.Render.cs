@@ -733,6 +733,9 @@ internal partial class Program
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
+                    // Conceal suppresses all foreground ink, including links and decorations.
+                    // Keep the cell and its background intact for selection, export and history.
+                    if (cell.Attributes.HasFlag(CellAttributes.Invisible)) { c++; continue; }
                     if (cell.Attributes.HasFlag(CellAttributes.Blink))
                     {
                         _textBlinkVisible = true;
@@ -796,7 +799,8 @@ internal partial class Program
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
                         if (cc.UnderlineStyle != cell.UnderlineStyle || cc.UnderlineColor != cell.UnderlineColor ||
-                            (cc.Attributes & CellAttributes.Blink) != (cell.Attributes & CellAttributes.Blink)) break;
+                            (cc.Attributes & (CellAttributes.Blink | CellAttributes.Invisible)) !=
+                            (cell.Attributes & (CellAttributes.Blink | CellAttributes.Invisible))) break;
                         if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask) || (runStyle & LineMask) != 0 && EffectiveFg(cc, localBackground, resolvedColors) != runFg) break; }
                         else if (EffectiveFg(cc, localBackground, resolvedColors) != runFg || DisplayStyle(cc) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);

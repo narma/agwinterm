@@ -734,11 +734,7 @@ internal partial class Program
                 if (!_windowActive) { _altArmed = false; LeaveMenuBar(); }   // an Alt+Tab away is not a lone Alt tap
                 // Focus reporting (DECSET ?1004): on a real focus transition, tell the active pane's
                 // app the terminal gained (ESC[I) or lost (ESC[O) focus, so it can pause/resume.
-                if (_windowActive != wasActive && _session is { } fs)
-                {
-                    if (HasSemanticInput(fs)) SubmitOwnerInput(fs,new TerminalInput.Focus(_windowActive));
-                    else if (fs.Emulator.FocusReporting) SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
-                }
+                if (_windowActive != wasActive) ReportTerminalFocus(_session, _windowActive);
                 if (_config.UnfocusedDim > 0) RequestRedraw();
                 if (_isQuickWindow && !_windowActive && _quickVisible && !_quickPinned
                     && (lParam == IntPtr.Zero || GetAncestor(lParam, 3 /* GA_ROOTOWNER */) != _hwnd)) DismissQuick(blur: true);

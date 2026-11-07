@@ -6,12 +6,12 @@ using Google.Protobuf;
 
 namespace Agwinterm.Pty;
 
-/// <summary>Revision 3 adds blinking text to decorated run-length encoded cells.
+/// <summary>Revision 4 adds concealed text to decorated run-length encoded cells.
 /// A delta always names its exact base. Both peers cap records before allocating, and
 /// a reader never publishes a partially decoded viewport. No native or VT state crosses.</summary>
 internal static class PresentationFrameCodec
 {
-    public const uint Revision = 3;
+    public const uint Revision = 4;
     public const int MaximumBytes = 16 * 1024 * 1024;
     private const int MaximumStringBytes = 64 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, true);
@@ -207,7 +207,7 @@ internal static class PresentationFrameCodec
     {
         int rune = r.ReadInt32(); var fg = Unpack(r.ReadUInt32()); var bg = Unpack(r.ReadUInt32());
         var attributes = (CellAttributes)r.ReadUInt32(); byte width = r.ReadByte();
-        if (!Rune.IsValid(rune) || width > 2 || ((uint)attributes & ~255u) != 0) throw new InvalidDataException("Invalid presentation cell.");
+        if (!Rune.IsValid(rune) || width > 2 || ((uint)attributes & ~511u) != 0) throw new InvalidDataException("Invalid presentation cell.");
         var fgSpec = ReadSpec(r); var bgSpec = ReadSpec(r); string? grapheme = ReadString(r), uri = ReadString(r);
         var link = uri is null ? null : new TerminalHyperlink(uri, ReadString(r) ?? "");
         var underline = (UnderlineStyle)r.ReadByte();

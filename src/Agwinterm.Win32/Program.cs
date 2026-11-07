@@ -100,7 +100,19 @@ internal partial class Program : ISessionHost, IWindowHost
     private static Theme? _themeBeforePreview;                   // saved when the theme picker opens (Esc reverts)
     private static List<Theme> _allThemes = new();
     private static Agwinterm.Pty.ShellProfiles.Config _profileCfg = new();   // shell profiles (profiles.json); app-global
-    private ISession? _session;   // mirrors the ACTIVE SURFACE (active pane, or a shown cover)
+    private ISession? _inputSession;
+    // Mirrors the active surface. All pane, session and cover transitions use this setter.
+    private ISession? _session
+    {
+        get => _inputSession;
+        set
+        {
+            if (ReferenceEquals(_inputSession, value)) return;
+            if (_windowActive) ReportTerminalFocus(_inputSession, false);
+            _inputSession = value;
+            if (_windowActive) ReportTerminalFocus(_inputSession, true);
+        }
+    }
     // Auxiliary "cover" terminal drawn over the content region: scratch (per-session) or quick (per-app).
     private Pane? _cover;                // the shown cover, or null
     private int _coverKind;              // 0 none, 1 scratch, 2 quick, 3 overlay

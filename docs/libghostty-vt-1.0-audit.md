@@ -2,6 +2,9 @@
 
 Checked 2026-11-07 against tag vt-1.0.0 (0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec).
 
+The recommendations and validation below are chronological. For the current
+completeness assessment, see the 2026-11-08 re-audit at the end.
+
 Sources: https://lib.ghostty.org/vt/ and https://lib.ghostty.org/vt/stability.html; release headers in include/ghostty/vt. These are integration opportunities, not all newly introduced in 1.0.
 
 Already integrated: native keyboard/mouse/paste encoders, focus reporting, Kitty direct graphics and animation, hyperlinks, synchronized output, semantic prompt marks, OSC 7501 program status, progress and notifications, snapshots, Unicode search and history import. Do not count these as missing features.
@@ -163,3 +166,49 @@ Evidence: `artifacts/blink-harness.log`, `artifacts/blink-core`,
 `artifacts/blink-unit`, `artifacts/blink-routing.log`,
 `artifacts/blink-local-ui/results`, `artifacts/blink-hosted-ui/results`,
 `artifacts/blink-wsl-local/test.log`, `artifacts/blink-wsl-hosted/test.log`.
+
+## Completeness re-audit (2026-11-08)
+
+Rechecked the pinned 1.0 C headers, adapter callbacks, managed model, renderer,
+owner input/effect channels and existing native/VM regression contracts. This
+is an integration-boundary audit, not a claim that every upstream escape
+sequence or every external TUI has been independently tested.
+
+Two end-to-end gaps were found and fixed:
+
+- SGR 8 (conceal) was parsed by Ghostty but lost in `style_attributes`. All eight
+  upstream boolean style flags now survive native cells, history and hosted
+  frames. Concealed cells suppress foreground glyphs and all decorations,
+  including blank-cell and hyperlink underlines, matching Ghostty/xterm.
+  Backgrounds and underlying text remain intact; SGR 28/0 clears conceal.
+  Conceal is display styling, not redaction: copy and text queries retain text.
+- Mode 1004 reports previously followed only Windows activation. Switching the
+  active session, split pane or cover now sends loss to the previous surface
+  and gain to the next. Re-selecting the same surface is silent. Switching
+  surfaces while the window is inactive sends no premature gain; activation
+  reports to the current surface. Hosted owners check their current mode when
+  consuming input, rather than trusting potentially stale frame metadata.
+
+Adapter ABI 11 and hosted frame revision 4 prevent older peers from silently
+dropping conceal. Existing history attribute storage needs no new disk fields.
+
+| Integration | Assessment and coverage |
+| --- | --- |
+| Keyboard and paste | Native encoders remain authoritative for legacy/Kitty modes, Windows input, Unicode/dead keys, modifiers, bracketed paste and terminator sanitization. Owner encoding and broadcast tests cover recipient-specific modes. |
+| Mouse and focus | Native mouse encoding covers cell/pixel coordinates and tracking modes. Focus payloads are fixed CSI I/O, gated by native mode 1004; the UI transition gap above is closed. |
+| Cells and colors | All native boolean styles and five underline shapes are carried. Palette/default/RGB sources, OSC resets, cursor defaults and reverse-screen resolved colors are preserved by native captures. Conceal now joins the shared local/hosted renderer. |
+| Hyperlinks | OSC 8 URIs survive capture, synchronized frames, history and formatted copy. Windows opening/UI decoration remains application-owned. |
+| Graphics | Direct Kitty RGB/RGBA/PNG, placements, layers, animation and immutable image generations have native and UI coverage. Hosted image payloads remain separate from cell frames. |
+| Synchronized output | Previous complete cells/images/links remain visible; bounded timeout and resize release are covered. Selection targets the displayed frame. |
+| Search and persistence | Unicode folding/graphemes, cancellation, reflow, eviction, snapshots, parser continuation and inert history import have native contracts; hosted queries validate generation. Snapshot identity/checksum/size checks remain necessary. |
+| Titles, cwd, bell, notifications, progress, OSC 7501 | Callbacks are connected to host actions and hosted effects. Durable progress/status is restored on attach; ephemeral bell/clipboard effects are not replayed. Native/hosted suites exercise these paths; existing user notification policy remains in the UI. |
+| Theme, geometry and identity | Native query callbacks, mode 2031/2048 updates and conservative DA/XTGETTCAP claims remain connected. TN stays unset for unknown per-session identities. |
+| Selection, formatting and clipboard | Native gestures/formatters remain authoritative for live content. Frozen-frame fallback, UI, transport and retained exports are ours. OSC 52/5522 policy, MIME limits, acknowledgments and errors retain their dedicated coverage. |
+
+Deliberate boundaries remain: application-requested window resize is not enabled;
+Kitty file/temp-file/shared-memory media need transport-aware handling and stay
+disabled; Glyph Protocol needs renderer work. ENQ has no configured answerback,
+title reports remain disabled by upstream default, and checksum extensions are
+not opted into. These are not missing callbacks to enable blindly. Sixel is not
+provided by this library. Existing formatter size caps and frozen-frame plain
+text fallback remain documented product limits.

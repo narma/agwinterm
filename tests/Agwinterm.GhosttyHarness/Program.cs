@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 9;
+    oldAbi["abi"] = 10;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without blinking text is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without concealed text is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -305,6 +305,26 @@ using (var identity = new GhosttyVt(20,5))
     foreach (byte value in "\u001bP+q626C696E6B;524742;544E\u001b\\"u8)
         identity.Feed(new byte[] { value });
     Check(host.Replies == "\u001bP1+r626C696E6B=1B5B356D\u001b\\\u001bP1+r524742=38\u001b\\", "fragmented query advertises blink and RGB while leaving TN unset");
+}
+
+using (var concealed = new GhosttyTerminalCore(20,5))
+using (var restoredConceal = new GhosttyTerminalCore(20,5))
+{
+    concealed.Feed("\u001b[8;4:3;53mA \u001b[28mB\u001b[8mC\u001b[0mD"u8);
+    Check(concealed.Screen[0,0].Attributes.HasFlag(CellAttributes.Invisible) &&
+        concealed.Screen[0,1].Attributes.HasFlag(CellAttributes.Invisible), "SGR 8 preserves conceal on glyphs and decorated blanks");
+    Check(!concealed.Screen[0,2].Attributes.HasFlag(CellAttributes.Invisible) &&
+        !concealed.Screen[0,4].Attributes.HasFlag(CellAttributes.Invisible), "SGR 28 and 0 clear conceal");
+    concealed.BeginPaint(); var held = concealed.CompletePaint();
+    using var selection = concealed.CreateSelection(0,0,0,4,false);
+    Check(selection!.Text == "A BCD", "conceal is presentation-only and preserves copied text");
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(concealed),out var saved), "concealed history serializes");
+    BufferPersist.Restore(restoredConceal,saved);
+    Check(restoredConceal.GetHistoryCell(0,0).Attributes.HasFlag(CellAttributes.Invisible) &&
+        restoredConceal.GetHistoryCell(0,0).UnderlineStyle == UnderlineStyle.Curly, "history import preserves conceal and decorations");
+    concealed.Feed("\u001b[H\u001b[0mX"u8);
+    Check(held[0,0].Attributes.HasFlag(CellAttributes.Invisible) &&
+        !concealed.Screen[0,0].Attributes.HasFlag(CellAttributes.Invisible), "retained frame preserves conceal after repaint");
 }
 
 using (var blinking = new GhosttyTerminalCore(20,5))

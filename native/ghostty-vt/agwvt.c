@@ -20,7 +20,8 @@ static uint32_t style_attributes(GhosttyStyle style) {
         ((style.flags & GHOSTTY_STYLE_FLAG_FAINT) ? 16 : 0) |
         ((style.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 32 : 0) |
         ((style.flags & GHOSTTY_STYLE_FLAG_OVERLINE) ? 64 : 0) |
-        ((style.flags & GHOSTTY_STYLE_FLAG_BLINK) ? 128 : 0);
+        ((style.flags & GHOSTTY_STYLE_FLAG_BLINK) ? 128 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_INVISIBLE) ? 256 : 0);
 }
 
 static void decoration(AgwVtCell* cell, GhosttyStyle style, const GhosttyColorRgb* palette) {
@@ -347,7 +348,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 10;
+    return 11;
 }
 const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {

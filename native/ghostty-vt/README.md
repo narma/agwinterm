@@ -4,8 +4,8 @@ The [single-owner contract](../../docs/single-owner-contracts.md) explains which
 
 Windows sessions use Ghostty for terminal state. Installed configurations that previously selected Managed or Rust migrate to Ghostty. Hosted sessions keep their terminal in the application host and send viewport frames to the UI.
 
-Adapter ABI 10 carries underline style, resolved underline color and color source,
-plus overline and blink attributes. Hosted frame revision 3 and disk buffer fields preserve
+Adapter ABI 11 carries underline style, resolved underline color and color source,
+plus overline, blink and invisible attributes. Hosted frame revision 4 and disk buffer fields preserve
 these decorations. Palette colors come from the captured render state, including
 held frames, rather than the live terminal. GUI and host require matching frame revisions.
 

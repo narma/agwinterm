@@ -77,6 +77,22 @@ try {
     for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $inputSession)).Contains('INPUT-SINK-READY')){$ready=$true;break};Start-Sleep -Milliseconds 100}
     if(-not $ready){throw 'Input byte sink did not start'}
     Check 'Child receives portable TERM and Agwinterm truecolor identity' ((Get-Content -LiteralPath ($inputLog+'.environment') -Raw) -ceq 'xterm-256color|agwinterm|truecolor')
+    [void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
+    Start-Sleep -Milliseconds 150
+    if([GhosttyInputFixture]::GetForegroundWindow()-ne $hwnd){throw 'Focus fixture does not own foreground'}
+    $null=Rpc 'session.write' @{text=($esc+'[?1004h')} $inputSession
+    InputCheck 'Session switches report focus loss and gain through the owner' ($esc+'[O'+$esc+'[I') {
+        $null=Rpc 'session.select' @{} $session
+        $null=Rpc 'session.select' @{} $inputSession
+    }
+    InputCheck 'Selecting the same session sends no duplicate focus report' '' {
+        $null=Rpc 'session.select' @{} $inputSession
+    }
+    $null=Rpc 'session.write' @{text=($esc+'[?1004l')} $inputSession
+    InputCheck 'Disabled focus reporting stays silent on session switches' '' {
+        $null=Rpc 'session.select' @{} $session
+        $null=Rpc 'session.select' @{} $inputSession
+    }
     InputCheck 'DA capabilities reach the child through the session owner' ($esc+'[?62;22c'+$esc+'[>1;0;0c') {
         $null=Rpc 'session.write' @{text=($esc+'[c'+$esc+'[>c')} $inputSession
     }
