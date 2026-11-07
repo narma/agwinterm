@@ -1,5 +1,23 @@
 # Terminal clipboard protocols
 
+## Copy command output
+
+The action palette offers **Select Command Output** and **Copy Command Output**.
+Optional `keymap.conf` bindings use `select_command_output` and
+`copy_command_output`; no default shortcut is replaced. With an existing
+selection, the action targets the command output at its focus cell. Clear the
+selection to target the most recent command with an OSC 133 output-start mark.
+Prompt and command-input cells are excluded by Ghostty's semantic selection.
+
+These actions require shell integration marks, refuse alternate-screen and
+synchronized-output frames, and leave the clipboard alone when no output can be
+selected. Hosted requests reject a changed frame; retry the action on the current
+frame. Copy retains the selection, so `copy_selection_html` and
+`copy_selection_vt` can format the same output afterwards. File export and
+formatted snapshots after history eviction remain separate work.
+
+## Application clipboard access
+
 Agwinterm uses libghostty-vt to parse OSC 52 and the [OSC 5522 clipboard protocol](https://sw.kovidgoyal.net/kitty/clipboard/), assemble chunks and aliases, and encode replies.
 
 ```

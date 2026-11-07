@@ -191,6 +191,8 @@ internal partial class Program
             case "toggle_read_only": if (ActiveSurface() is { } rp) { rp.ReadOnly = !rp.ReadOnly; ShowToast(rp.ReadOnly ? "pane read-only ON" : "pane read-only off"); RequestRedraw(); } break;
             case "previous_prompt": JumpPrompt(-1); break;
             case "next_prompt": JumpPrompt(1); break;
+            case "select_command_output": if(ActiveSurface() is { } so) SelectCommandOutput(so,false); break;
+            case "copy_command_output": if(ActiveSurface() is { } co) SelectCommandOutput(co,true); break;
             case "select_all": if (ActiveSurface() is { } sa) SelectAll(sa); break;
             case "copy_selection": if (ActiveSurface() is { } sc && HasLiveSel(sc)) CopySelection(sc); break;
             case "copy_selection_html": if (ActiveSurface() is { } html && HasLiveSel(html)) _=CopyFormattedSelection(html,2); break;

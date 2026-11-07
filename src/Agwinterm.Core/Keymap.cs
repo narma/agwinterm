@@ -72,7 +72,7 @@ public static class Keymap
         "toggle_search", "toggle_scratch", "quick_terminal", "close_cover", "toggle_fullscreen", "toggle_broadcast", "mark_mode", "toggle_read_only",
         "previous_prompt", "next_prompt", "reopen_session",
         "toggle_flag", "toggle_flagged_view", "focus_workspace", "toggle_workspace_filter", "clear_workspace_focus",
-        "select_all", "copy_selection", "copy_selection_html", "copy_selection_vt", "paste",
+        "select_all", "select_command_output", "copy_command_output", "copy_selection", "copy_selection_html", "copy_selection_vt", "paste",
         "new_window", "close_window", "switch_window",
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
@@ -118,6 +118,8 @@ public static class Keymap
         # map ctrl+shift+pgup = previous_session
         # map ctrl+shift+pgdown = next_session
         # map ctrl+insert = copy_selection
+        # map ctrl+shift+o = select_command_output
+        # map ctrl+alt+c = copy_command_output
         # map shift+insert = paste        # pair with copy-on-ctrl-c = false in agwinterm.conf for ^C interrupt
         # map ctrl+shift+g = command:Greet
         # command Greet = echo hello from {AGW_SESSION}

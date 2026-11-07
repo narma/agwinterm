@@ -118,6 +118,28 @@ using (var core = new GhosttyTerminalCore(20, 6, CursorStyle.Bar, false))
     Check(core.DynamicBg == 0, "OSC 111 removes background override presence");
 }
 
+using(var outputCore=new GhosttyTerminalCore(12,8))
+{
+    Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output requires shell marks");
+    outputCore.Feed("\u001b]133;A\a$ \u001b]133;B\afirst\r\n\u001b]133;C\aFIRST-output-wrapped\r\n\u001b]133;D;0\a\u001b]133;A\a$ \u001b]133;B\asecond\r\n\u001b]133;C\aSECOND\r\n\u001b]133;D;0\a\u001b]133;A\a$ \u001b]133;B\a"u8);
+    Check(outputCore.SelectCommandOutput(0,0,true,out int ar,out int ac,out int fr,out int fc) &&
+        outputCore.FormatSelection(ar,ac,fr,fc,false,0) == "SECOND","latest command output excludes prompts and command input");
+    Check(outputCore.SelectCommandOutput(1,2,false,out ar,out ac,out fr,out fc) &&
+        outputCore.FormatSelection(ar,ac,fr,fc,false,0) == "FIRST-output-wrapped","selected command output follows native wrapped bounds");
+    Check(!outputCore.SelectCommandOutput(0,0,false,out _,out _,out _,out _),"prompt cells are not command output");
+    outputCore.Feed("\u001b[?1049h"u8);
+    Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output refuses alternate screen");
+}
+
+using(var outputCore=new GhosttyTerminalCore(40,5))
+{
+    outputCore.Feed("\u001b]133;A\a$ \u001b]133;B\acmd \u001b]133;C\ainline output\r\n\u001b]133;D;0\a\u001b]133;A\a$ \u001b]133;B\a"u8);
+    Check(outputCore.SelectCommandOutput(0,0,true,out int ar,out int ac,out int fr,out int fc) &&
+        outputCore.FormatSelection(ar,ac,fr,fc,false,0) == "inline output","command output can begin after command text on the same row");
+    outputCore.Feed("\u001b[?2026h"u8);
+    Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output does not select unseen synchronized content");
+}
+
 using (var selectionCore = new GhosttyTerminalCore(5, 4))
 {
     selectionCore.Feed("abcdefgh"u8);

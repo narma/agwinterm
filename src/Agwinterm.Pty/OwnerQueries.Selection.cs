@@ -48,11 +48,14 @@ internal sealed partial class OwnerQueries
                 else if(core.Generation != query.Generation) return Result("stale",core.Generation);
                 if(request.Unit is not null)
                 {
-                    int kind=request.Unit switch { "word" => 0, "line" => 1, "output" => 2, _ => -1 };
+                    int kind=request.Unit switch { "word" => 0, "line" => 1, "output" or "last-output" => 2, _ => -1 };
                     if(kind < 0 || request.AnchorRow < first || request.AnchorRow > last ||
                         request.AnchorColumn < 0 || request.AnchorColumn >= core.Cols) return Result("invalid",core.Generation);
-                    if(!core.SelectBounds(kind,request.AnchorRow,request.AnchorColumn,request.Delimiters,
-                        out int startRow,out int startCol,out int endRow,out int endCol)) return Result("ok",core.Generation,
+                    int startRow,startCol,endRow,endCol;
+                    bool found=kind == 2
+                        ? core.SelectCommandOutput(request.AnchorRow,request.AnchorColumn,request.Unit == "last-output",out startRow,out startCol,out endRow,out endCol)
+                        : core.SelectBounds(kind,request.AnchorRow,request.AnchorColumn,request.Delimiters,out startRow,out startCol,out endRow,out endCol);
+                    if(!found) return Result("ok",core.Generation,
                             new(request.Id,false,0,0,0,0,null));
                     request=request with { AnchorRow=startRow,AnchorColumn=startCol,FocusRow=endRow,FocusColumn=endCol,Block=false };
                 }

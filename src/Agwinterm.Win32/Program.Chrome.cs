@@ -928,6 +928,8 @@ internal partial class Program
                     A("Select All", "Ctrl+Shift+A", () => { if (ActiveSurface() is { } p) SelectAll(p); });
                     A("Copy Selection", "Ctrl+C", () => { if (ActiveSurface() is { } p && HasLiveSel(p)) CopySelection(p); });
                     A("Paste", "Ctrl+V", () => { if (ActiveSurface() is { } p) PasteInto(p); });
+                    A("Select Command Output", "", () => { if(ActiveSurface() is { } p) SelectCommandOutput(p,false); });
+                    A("Copy Command Output", "", () => { if(ActiveSurface() is { } p) SelectCommandOutput(p,true); });
                     A("Next Session", "Ctrl+Tab", () => CycleSession(1));
                     A("Previous Session", "Ctrl+Shift+Tab", () => CycleSession(-1));
                     A("Next Attention", "Ctrl+Alt+Down", () => GoToNextAttention(1));
