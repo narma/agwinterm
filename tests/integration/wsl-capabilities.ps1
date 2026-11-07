@@ -41,7 +41,7 @@ printf '\033P+q524742\033\\'
 IFS= read -r -t 5 -d '\' reply
 test "$reply" = $'\033P1+r524742=38\033'
 printf 'RGB=PASS\n' >&3
-printf '\033P+q5375;536D756C78;536574756C63;536D6F6C;526D6F6C;626C696E6B;544E\033\\'
+printf '\033P+q626C696E6B;544E\033\\'
 if IFS= read -r -t 1 -n 1 reply; then exit 13; fi
 printf 'FILTER=PASS\nDONE\n' >&3
 sleep 15

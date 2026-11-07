@@ -542,7 +542,9 @@ public sealed unsafe class GhosttyVt : IDisposable
         var link = cell.LinkLength is 0 or uint.MaxValue ? null : new TerminalHyperlink(
             Encoding.UTF8.GetString(text.AsSpan(checked((int)cell.LinkOffset), checked((int)cell.LinkLength))));
         return new Cell((int)cell.Rune, Unpack(cell.Fg), Unpack(cell.Bg), (CellAttributes)cell.Attributes,
-            (byte)cell.Width, Spec(cell.FgKind, cell.FgValue), Spec(cell.BgKind, cell.BgValue), link, grapheme);
+            (byte)cell.Width, Spec(cell.FgKind, cell.FgValue), Spec(cell.BgKind, cell.BgValue), link, grapheme,
+            (UnderlineStyle)cell.UnderlineStyle, cell.UnderlineKind == 0 ? null : Unpack(cell.UnderlineColor),
+            Spec(cell.UnderlineKind, cell.UnderlineValue));
     }
     private static Color Unpack(uint color) => new((byte)(color >> 16), (byte)(color >> 8), (byte)color);
     private static ColorSpec Spec(uint kind, uint value) => (ColorSpecKind)kind switch

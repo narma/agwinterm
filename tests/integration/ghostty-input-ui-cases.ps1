@@ -81,10 +81,13 @@ try {
         $null=Rpc 'session.write' @{text=($esc+'[c'+$esc+'[>c')} $inputSession
     }
     InputCheck 'Unsupported renderer capabilities and unknown TN remain silent' '' {
-        $null=Rpc 'session.write' @{text=($esc+'P+q544E;5375;536D756C78;536574756C63;536D6F6C;526D6F6C;626C696E6B'+$esc+'\')} $inputSession
+        $null=Rpc 'session.write' @{text=($esc+'P+q544E;626C696E6B'+$esc+'\')} $inputSession
     }
     InputCheck 'Truecolor capability survives session transport' ($esc+'P1+r524742=38'+$esc+'\') {
         $null=Rpc 'session.write' @{text=($esc+'P+q524742'+$esc+'\')} $inputSession
+    }
+    InputCheck 'Colored underline and overline capabilities reach the child' ($esc+'P1+r5375'+$esc+'\'+$esc+'P1+r536D6F6C=1B5B35336D'+$esc+'\') {
+        $null=Rpc 'session.write' @{text=($esc+'P+q5375;536D6F6C'+$esc+'\')} $inputSession
     }
     $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
     . "$PSScriptRoot/ghostty-clipboard-ui-cases.ps1"

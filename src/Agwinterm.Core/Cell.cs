@@ -8,7 +8,8 @@ namespace Agwinterm.Core;
 public readonly record struct Cell(
     int Rune, Color Foreground, Color Background, CellAttributes Attributes, byte Width = 1,
     ColorSpec FgSpec = default, ColorSpec BgSpec = default, TerminalHyperlink? Hyperlink = null,
-    string? Grapheme = null)
+    string? Grapheme = null, UnderlineStyle UnderlineStyle = UnderlineStyle.None,
+    Color? UnderlineColor = null, ColorSpec UnderlineSpec = default)
 {
     public static Cell Empty => new(' ', Color.DefaultForeground, Color.DefaultBackground, CellAttributes.None);
     /// <summary>Complete text of a leading cell; wide-cell spacers contribute no text.</summary>

@@ -94,7 +94,8 @@ remote workloads. The native helper defaults empty as well as absent TERM.
 
 The engine's XTGETTCAP map advertised renderer features missing from our shared
 cell/frame representation: colored/shaped underlines, overlines and blinking
-text. Their positive replies are now suppressed. Conservative DA replies and
+text. Their positive replies were suppressed during this audit; the decoration
+implementation below restores all of them except blinking text. Conservative DA replies and
 Agwinterm XTVERSION are verified; TN deliberately remains unset because a global
 name would misrepresent overridden profiles and existing remote workloads.
 See [the route matrix and limitations](terminal-capability-identity.md).
@@ -106,3 +107,32 @@ with .NET 11, ReadyToRun and runtime-async. Evidence: `artifacts/identity-harnes
 `artifacts/identity-unit/identity-unit.trx`, `artifacts/identity-linux-tests.log`,
 `artifacts/identity-local-ui/results/stdout.log`, `artifacts/identity-hosted-ui/results/stdout.log`,
 `artifacts/identity-wsl-local-final/test.log`, `artifacts/identity-wsl-hosted-final/test.log`.
+
+## Colored and shaped decorations
+
+Implemented single, double, curly, dotted and dashed underlines with default,
+indexed and RGB colors, plus independent overlines. Blank cells, wide glyphs,
+graphemes and text runs use the same decoration renderer. Patterns stay aligned
+to the terminal grid across text runs. OSC 8 UI underlines keep the text color.
+
+Adapter ABI 9 and hosted frame revision 2 carry the new cell data. Full/delta
+frames preserve decoration-only changes and immutable old leases. Added disk
+fields preserve decoration styles and color sources through history import;
+legacy buffers still default to plain underlining. Re-enabled XTGETTCAP `Su`,
+`Smulx`, `Setulc`, `Smol`, `Rmol`; `blink` remains disabled.
+
+Validation includes 312 native contracts, 448 core tests and 37 presentation
+transport tests. Dedicated VM pixel checks distinguish all five underline
+shapes and overlines on blank cells and verify their capability replies in
+local and hosted modes. The full core run also refreshed old selection fixtures
+to provide a real session lock, retain evicted selected text without a stale
+highlight, and preserve Ghostty's original mouse-press anchor.
+
+Final acceptance: 151 Hyper-V UI checks passed in each mode, plus private-desktop
+WSL default/override and loopback SSH probes in both modes. GUI, host and CLI
+were built with .NET 11, ReadyToRun and runtime-async. Evidence:
+`artifacts/decorations-harness.log`, `artifacts/decorations-core/decorations-core.trx`,
+`artifacts/decorations-unit/decorations.trx`,
+`artifacts/decorations-local-final/results/stdout.log`,
+`artifacts/decorations-hosted-final/results/stdout.log`,
+`artifacts/decorations-wsl-local/test.log`, `artifacts/decorations-wsl-hosted/test.log`.

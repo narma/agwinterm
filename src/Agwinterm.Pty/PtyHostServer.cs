@@ -214,7 +214,7 @@ public sealed class PtyHostServer : IDisposable
         // The handshake is the protocol's forward-compat seam: a client offering a DIFFERENT
         // version is refused loudly (never half-understood), and the reply names ours.
         return h.Protocol == ProtocolVersion
-            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1, PresentationRevision = 1 } }
+            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1, PresentationRevision = PresentationFrameCodec.Revision } }
             : Err($"protocol mismatch: host={ProtocolVersion} client={h.Protocol}");
     }
 
@@ -402,7 +402,7 @@ public sealed class PtyHostServer : IDisposable
     {
         if (a.PresentationRevision != 0)
         {
-            if (a.PresentationRevision != 1 || !hosted.SingleOwner || hosted.S.Emulator is not GhosttyTerminalCore)
+            if (a.PresentationRevision != PresentationFrameCodec.Revision || !hosted.SingleOwner || hosted.S.Emulator is not GhosttyTerminalCore)
                 return Err("requested presentation transport is unavailable for this session");
             lock (hosted.DataLock)
             {
@@ -429,7 +429,7 @@ public sealed class PtyHostServer : IDisposable
                 },TaskScheduler.Default);
                 return new Reply { Ok = true, Attach = new AttachReply { Pipe = channel.FramePipeName,
                     InputPipe = channel.InputPipeName, QueryPipe = channel.QueryPipeName, EffectPipe=channel.EffectPipeName,
-                    PresentationRevision = 1, AttachmentEpoch = epoch,
+                    PresentationRevision = PresentationFrameCodec.Revision, AttachmentEpoch = epoch,
                     CreationTicket = hosted.Creation.Ticket, EmulatorCore = "ghostty", Cols = (uint)hosted.S.Cols,
                     Rows = (uint)hosted.S.Rows, ChildPid = (uint)(hosted.S.ChildProcessId ?? 0),
                     HasExited = hosted.S.HasExited, ExitCode = hosted.S.ExitCode ?? 0 } };

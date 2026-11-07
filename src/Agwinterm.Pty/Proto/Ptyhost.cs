@@ -4847,7 +4847,7 @@ namespace Agwinterm.Pty.Proto {
     public const int PresentationRevisionFieldNumber = 6;
     private uint presentationRevision_;
     /// <summary>
-    /// 1 = bounded viewport channel plus ordered semantic input
+    /// 2 = decorated cells; exact revision required by viewport channel
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -12654,7 +12654,7 @@ namespace Agwinterm.Pty.Proto {
     public const int KindFieldNumber = 4;
     private uint kind_;
     /// <summary>
-    /// 0 settled end; 1 notification; 2 progress; 3 clipboard; 4 bell; 5 completion; 6 durable ZMX role; 7 current title and cwd
+    /// 0 settled end; 1 notification; 2 progress; 3 legacy clipboard; 4 bell; 5 completion; 6 durable ZMX role; 7 current title and cwd; 8 OSC 7501 record (JSON text); 9 program command ended; 10 clipboard request/receipt (JSON text, title=request ID, completion_sequence=request expiry UTC ticks)
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -12716,6 +12716,9 @@ namespace Agwinterm.Pty.Proto {
     /// <summary>Field number for the "completion_sequence" field.</summary>
     public const int CompletionSequenceFieldNumber = 9;
     private long completionSequence_;
+    /// <summary>
+    /// kind 5: shell completion; kind 8: replay receipt token (program-status-receipt query with generation=token and text=record ID)
+    /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public long CompletionSequence {

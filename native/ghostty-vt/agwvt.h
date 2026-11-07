@@ -17,6 +17,7 @@ typedef struct {
     uint32_t fg_kind, fg_value, bg_kind, bg_value;
     uint32_t text_offset, text_length;
     uint32_t link_offset, link_length;
+    uint32_t underline_style, underline_color, underline_kind, underline_value;
 } AgwVtCell;
 typedef struct {
     uint32_t cols, rows, cursor_col, cursor_row, cursor_visible, alt_screen;

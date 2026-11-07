@@ -27,6 +27,9 @@ internal static class GhosttyHistory
                     foreach (var (flag, code) in Styles) if ((cell.Attrs & (uint)flag) != 0) text.Append(';').Append(code);
                     Color(text, cell.FgKind, cell.FgIndex, cell.FgRgb, 38);
                     Color(text, cell.BgKind, cell.BgIndex, cell.BgRgb, 48);
+                    if ((cell.Attrs & (uint)CellAttributes.Underline) != 0 && cell.UnderlineStyle is >= 1 and <= 5)
+                        text.Append(";4:").Append(cell.UnderlineStyle);
+                    Color(text, cell.UnderlineKind, cell.UnderlineIndex, cell.UnderlineRgb, 58);
                 }
                 text.Append('m');
                 bool link = cell is { HyperlinkUri.Length: > 0 };
@@ -46,7 +49,7 @@ internal static class GhosttyHistory
     }
     private static readonly (CellAttributes Flag, int Code)[] Styles =
         [(CellAttributes.Bold, 1), (CellAttributes.Dim, 2), (CellAttributes.Italic, 3),
-         (CellAttributes.Underline, 4), (CellAttributes.Inverse, 7), (CellAttributes.Strikethrough, 9)];
+         (CellAttributes.Underline, 4), (CellAttributes.Inverse, 7), (CellAttributes.Strikethrough, 9), (CellAttributes.Overline, 53)];
     private static void Plain(StringBuilder text, string value)
     {
         if (value.Length > 65536) throw new InvalidDataException("History string exceeds the size limit.");

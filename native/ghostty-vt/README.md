@@ -4,6 +4,11 @@ The [single-owner contract](../../docs/single-owner-contracts.md) explains which
 
 Windows sessions use Ghostty for terminal state. Installed configurations that previously selected Managed or Rust migrate to Ghostty. Hosted sessions keep their terminal in the application host and send viewport frames to the UI.
 
+Adapter ABI 9 adds underline style, resolved underline color and color source to cells,
+plus an overline attribute. Hosted frame revision 2 and disk buffer fields preserve
+these decorations. Palette colors come from the captured render state, including
+held frames, rather than the live terminal. GUI and host require matching frame revisions.
+
 The Windows adapter pins libghostty-vt **1.0.0** (`vt-1.0.0`, commit `0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec`) with Zig 0.17.0. This is the first stable C ABI release; upstream promises compatibility across 1.x. Snapshot bytes are versioned separately and are not covered by that promise. Our history and Unicode search extensions still build against this release. See the [official documentation](https://lib.ghostty.org/vt/) and [upstream changes](https://github.com/ghostty-org/ghostty/compare/2c76f29972dad21d3f2cc0efde2517a6fa8fed56...vt-1.0.0).
 
 The build applies the history import and Unicode search extensions to the pinned checkout and records their hashes. Zig builds the Windows GNU target. The shipped DLLs load with the Windows inbox CRT.

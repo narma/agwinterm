@@ -18,7 +18,19 @@ static uint32_t style_attributes(GhosttyStyle style) {
         (GHOSTTY_STYLE_UNDERLINE(style) ? 4 : 0) |
         ((style.flags & GHOSTTY_STYLE_FLAG_INVERSE) ? 8 : 0) |
         ((style.flags & GHOSTTY_STYLE_FLAG_FAINT) ? 16 : 0) |
-        ((style.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 32 : 0);
+        ((style.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 32 : 0) |
+        ((style.flags & GHOSTTY_STYLE_FLAG_OVERLINE) ? 64 : 0);
+}
+
+static void decoration(AgwVtCell* cell, GhosttyStyle style, const GhosttyColorRgb* palette) {
+    cell->underline_style = GHOSTTY_STYLE_UNDERLINE(style);
+    cell->underline_kind = style.underline_color.tag;
+    GhosttyColorRgb c = style.underline_color.tag == GHOSTTY_STYLE_COLOR_PALETTE
+        ? palette[style.underline_color.value.palette] : style.underline_color.value.rgb;
+    cell->underline_color = cell->underline_kind == GHOSTTY_STYLE_COLOR_NONE ? 0
+        : ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+    cell->underline_value = cell->underline_kind == GHOSTTY_STYLE_COLOR_PALETTE
+        ? style.underline_color.value.palette : cell->underline_color;
 }
 
 // Use Windows' PNG decoder without a managed callback or an extra runtime.
@@ -334,20 +346,19 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 8;
+    return 9;
 }
 const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
     (void)terminal;
     AgwVt* vt = context;
     // libghostty 1.0 emits one complete XTGETTCAP response per callback. Its
-    // static map describes Ghostty's renderer, whereas our cell/frame protocol
-    // currently retains only a single foreground-colored underline and no
-    // overline or blinking text. Do not advertise those renderer extensions.
+    // static map describes Ghostty's renderer. Text blinking is not rendered
+    // by Agwinterm, so keep only that capability suppressed.
     // This filters generated replies, never application input or arbitrary DCS.
     static const char* unsupported[] = {
-        "5375", "536D756C78", "536574756C63", "536D6F6C", "526D6F6C", "626C696E6B"
-    }; // Su, Smulx, Setulc, Smol, Rmol, blink
+        "626C696E6B"
+    }; // blink (text blinking remains unsupported)
     if (len >= 8 && !memcmp(data, "\033P1+r", 5)) {
         for (size_t i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); i++) {
             size_t n = strlen(unsupported[i]);
@@ -1321,6 +1332,7 @@ int agwvt_read_row(AgwVt* vt, uint32_t y, uint32_t history, AgwVtCell* cells, si
         GhosttyStyle style = {0};
         TRY(ghostty_grid_ref_style(&ref, &style));
         dst->attrs = style_attributes(style);
+        decoration(dst, style, palette);
         dst->fg_kind = style.fg_color.tag; dst->bg_kind = style.bg_color.tag;
         dst->fg = style.fg_color.tag == 2 ? rgb(style.fg_color.value.rgb) : style.fg_color.tag == 1 ? rgb(palette[style.fg_color.value.palette]) : rgb(fg);
         dst->bg = style.bg_color.tag == 2 ? rgb(style.bg_color.value.rgb) : style.bg_color.tag == 1 ? rgb(palette[style.bg_color.value.palette]) : rgb(bg);
@@ -1401,6 +1413,7 @@ int agwvt_cells(AgwVt* vt, AgwVtCell* cells, size_t capacity, uint8_t* dirty, in
             if (wide == GHOSTTY_CELL_WIDE_SPACER_HEAD && wrap) wraps[y] = cols - 1;
             TRY(ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style));
             dst->attrs = style_attributes(style);
+            decoration(dst, style, colors.palette);
             GhosttyColorRgb fg = colors.foreground, bg = colors.background;
             ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &fg);
             ghostty_render_state_row_cells_get(vt->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bg);

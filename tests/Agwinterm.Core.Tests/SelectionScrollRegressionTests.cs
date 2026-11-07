@@ -251,7 +251,7 @@ public class SelectionScrollRegressionTests
     }
 
     [Fact]
-    public void MouseReportingDoesNotKeepEvictedHistorySelected()
+    public void MouseReportingKeepsEvictedTextWithoutAStaleHighlight()
     {
         using var f = new Fixture(alt: false);
         ((GhosttyTerminalCore)f.Core).ScrollbackMax = 2;
@@ -259,7 +259,8 @@ public class SelectionScrollRegressionTests
         f.Select(-1);
         Assert.Equal("MARKER00", f.Text());
         f.Feed(string.Concat(Enumerable.Repeat("\r\nnew", 20000)));
-        Assert.Equal("", f.Text());
+        Assert.Equal("MARKER00", f.Text());
+        Assert.False(f.Visible);
     }
 
     [Theory]
@@ -292,7 +293,7 @@ public class SelectionScrollRegressionTests
     }
 
     [Fact]
-    public void NewDragCanReanchorAfterBlankStartingCellChanges()
+    public void NativeDragKeepsItsPressOriginAcrossUnrelatedRepaint()
     {
         using var f = new Fixture(alt: true);
         var program = RuntimeHelpers.GetUninitializedObject(ProgramType);
@@ -302,7 +303,8 @@ public class SelectionScrollRegressionTests
         var update = ProgramType.GetMethod("UpdateSelect", BindingFlags.Instance | BindingFlags.NonPublic)!;
         update.Invoke(program, new object[] { f.Pane, 2, 0 });
         update.Invoke(program, new object[] { f.Pane, 2, 7 });
-        Assert.Equal("MARKER02", f.Text());
+        // Ghostty retains the press at column 29; reversing direction does not reset it to column 0.
+        Assert.Equal("2 distinct row 2", f.Text());
         Assert.True(f.Visible);
     }
 

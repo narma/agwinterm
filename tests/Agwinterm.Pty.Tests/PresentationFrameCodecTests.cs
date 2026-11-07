@@ -7,6 +7,23 @@ namespace Agwinterm.Pty.Tests;
 public class PresentationFrameCodecTests
 {
     [Fact]
+    public void DecorationOnlyDeltaPreservesOldFrameAndRejectsOldRevision()
+    {
+        var cell=Cell.Empty with { Attributes=CellAttributes.Underline|CellAttributes.Overline,
+            UnderlineStyle=UnderlineStyle.Curly, UnderlineColor=new(11,22,33), UnderlineSpec=ColorSpec.Indexed(42) };
+        using var first=Frame(1,cell); using var a=first.Acquire();
+        using var decoded=Decode(PresentationFrameCodec.Encode(a)).Frame; using var old=decoded.Acquire();
+        Assert.Equal(cell,old[0,0]);
+        var replacement=cell with { UnderlineStyle=UnderlineStyle.Double, UnderlineColor=new(44,55,66) };
+        using var second=Frame(2,replacement); using var b=second.Acquire();
+        using var delta=Decode(PresentationFrameCodec.Encode(b,a),old).Frame; using var current=delta.Acquire();
+        Assert.Equal(replacement,current[0,0]); Assert.Equal(cell,old[0,0]);
+        var bytes=PresentationFrameCodec.Encode(a);
+        // The first protobuf header field is the row-encoding revision.
+        Assert.Equal(8,bytes[8]); bytes[9]=1;
+        Assert.Throws<InvalidDataException>(()=>Decode(bytes));
+    }
+    [Fact]
     public void CommandMarksAndEncodedImageLengthSurviveTransport()
     {
         using var text=Frame(1,Cell.Empty);

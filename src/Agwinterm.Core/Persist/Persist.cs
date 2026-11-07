@@ -24,21 +24,24 @@ namespace Agwinterm.Core.Persist {
     static PersistReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg1wZXJzaXN0LnByb3RvEhFhZ3dpbnRlcm0ucGVyc2lzdCL4AQoFUENlbGwS",
+            "Cg1wZXJzaXN0LnByb3RvEhFhZ3dpbnRlcm0ucGVyc2lzdCLyAgoFUENlbGwS",
             "DAoEcnVuZRgBIAEoBRIKCgJmZxgCIAEoDRIKCgJiZxgDIAEoDRINCgVhdHRy",
             "cxgEIAEoDRINCgV3aWR0aBgFIAEoDRIPCgdmZ19raW5kGAYgASgNEhAKCGZn",
             "X2luZGV4GAcgASgNEg4KBmZnX3JnYhgIIAEoDRIPCgdiZ19raW5kGAkgASgN",
             "EhAKCGJnX2luZGV4GAogASgNEg4KBmJnX3JnYhgLIAEoDRIVCg1oeXBlcmxp",
             "bmtfdXJpGAwgASgJEhwKFGh5cGVybGlua19wYXJhbWV0ZXJzGA0gASgJEhAK",
-            "CGdyYXBoZW1lGA4gASgJIloKBFBSb3cSFAoMc29mdF93cmFwcGVkGAIgASgI",
-            "EhMKC3dyYXBfbGVuZ3RoGAMgASgNEicKBWNlbGxzGAEgAygLMhguYWd3aW50",
-            "ZXJtLnBlcnNpc3QuUENlbGwiTwoHUEJ1ZmZlchIPCgd2ZXJzaW9uGAEgASgN",
-            "EgwKBGNvbHMYAiABKA0SJQoEcm93cxgDIAMoCzIXLmFnd2ludGVybS5wZXJz",
-            "aXN0LlBSb3dCGaoCFkFnd2ludGVybS5Db3JlLlBlcnNpc3RiBnByb3RvMw=="));
+            "CGdyYXBoZW1lGA4gASgJEhcKD3VuZGVybGluZV9zdHlsZRgPIAEoDRIXCg91",
+            "bmRlcmxpbmVfY29sb3IYECABKA0SFgoOdW5kZXJsaW5lX2tpbmQYESABKA0S",
+            "FwoPdW5kZXJsaW5lX2luZGV4GBIgASgNEhUKDXVuZGVybGluZV9yZ2IYEyAB",
+            "KA0iWgoEUFJvdxIUCgxzb2Z0X3dyYXBwZWQYAiABKAgSEwoLd3JhcF9sZW5n",
+            "dGgYAyABKA0SJwoFY2VsbHMYASADKAsyGC5hZ3dpbnRlcm0ucGVyc2lzdC5Q",
+            "Q2VsbCJPCgdQQnVmZmVyEg8KB3ZlcnNpb24YASABKA0SDAoEY29scxgCIAEo",
+            "DRIlCgRyb3dzGAMgAygLMhcuYWd3aW50ZXJtLnBlcnNpc3QuUFJvd0IZqgIW",
+            "QWd3aW50ZXJtLkNvcmUuUGVyc2lzdGIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb", "HyperlinkUri", "HyperlinkParameters", "Grapheme" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PCell), global::Agwinterm.Core.Persist.PCell.Parser, new[]{ "Rune", "Fg", "Bg", "Attrs", "Width", "FgKind", "FgIndex", "FgRgb", "BgKind", "BgIndex", "BgRgb", "HyperlinkUri", "HyperlinkParameters", "Grapheme", "UnderlineStyle", "UnderlineColor", "UnderlineKind", "UnderlineIndex", "UnderlineRgb" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PRow), global::Agwinterm.Core.Persist.PRow.Parser, new[]{ "SoftWrapped", "WrapLength", "Cells" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Agwinterm.Core.Persist.PBuffer), global::Agwinterm.Core.Persist.PBuffer.Parser, new[]{ "Version", "Cols", "Rows" }, null, null, null, null)
           }));
@@ -101,6 +104,11 @@ namespace Agwinterm.Core.Persist {
       hyperlinkUri_ = other.hyperlinkUri_;
       hyperlinkParameters_ = other.hyperlinkParameters_;
       grapheme_ = other.grapheme_;
+      underlineStyle_ = other.underlineStyle_;
+      underlineColor_ = other.underlineColor_;
+      underlineKind_ = other.underlineKind_;
+      underlineIndex_ = other.underlineIndex_;
+      underlineRgb_ = other.underlineRgb_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -287,6 +295,66 @@ namespace Agwinterm.Core.Persist {
       }
     }
 
+    /// <summary>Field number for the "underline_style" field.</summary>
+    public const int UnderlineStyleFieldNumber = 15;
+    private uint underlineStyle_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint UnderlineStyle {
+      get { return underlineStyle_; }
+      set {
+        underlineStyle_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "underline_color" field.</summary>
+    public const int UnderlineColorFieldNumber = 16;
+    private uint underlineColor_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint UnderlineColor {
+      get { return underlineColor_; }
+      set {
+        underlineColor_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "underline_kind" field.</summary>
+    public const int UnderlineKindFieldNumber = 17;
+    private uint underlineKind_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint UnderlineKind {
+      get { return underlineKind_; }
+      set {
+        underlineKind_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "underline_index" field.</summary>
+    public const int UnderlineIndexFieldNumber = 18;
+    private uint underlineIndex_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint UnderlineIndex {
+      get { return underlineIndex_; }
+      set {
+        underlineIndex_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "underline_rgb" field.</summary>
+    public const int UnderlineRgbFieldNumber = 19;
+    private uint underlineRgb_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint UnderlineRgb {
+      get { return underlineRgb_; }
+      set {
+        underlineRgb_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -316,6 +384,11 @@ namespace Agwinterm.Core.Persist {
       if (HyperlinkUri != other.HyperlinkUri) return false;
       if (HyperlinkParameters != other.HyperlinkParameters) return false;
       if (Grapheme != other.Grapheme) return false;
+      if (UnderlineStyle != other.UnderlineStyle) return false;
+      if (UnderlineColor != other.UnderlineColor) return false;
+      if (UnderlineKind != other.UnderlineKind) return false;
+      if (UnderlineIndex != other.UnderlineIndex) return false;
+      if (UnderlineRgb != other.UnderlineRgb) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -337,6 +410,11 @@ namespace Agwinterm.Core.Persist {
       if (HyperlinkUri.Length != 0) hash ^= HyperlinkUri.GetHashCode();
       if (HyperlinkParameters.Length != 0) hash ^= HyperlinkParameters.GetHashCode();
       if (Grapheme.Length != 0) hash ^= Grapheme.GetHashCode();
+      if (UnderlineStyle != 0) hash ^= UnderlineStyle.GetHashCode();
+      if (UnderlineColor != 0) hash ^= UnderlineColor.GetHashCode();
+      if (UnderlineKind != 0) hash ^= UnderlineKind.GetHashCode();
+      if (UnderlineIndex != 0) hash ^= UnderlineIndex.GetHashCode();
+      if (UnderlineRgb != 0) hash ^= UnderlineRgb.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -411,6 +489,26 @@ namespace Agwinterm.Core.Persist {
         output.WriteRawTag(114);
         output.WriteString(Grapheme);
       }
+      if (UnderlineStyle != 0) {
+        output.WriteRawTag(120);
+        output.WriteUInt32(UnderlineStyle);
+      }
+      if (UnderlineColor != 0) {
+        output.WriteRawTag(128, 1);
+        output.WriteUInt32(UnderlineColor);
+      }
+      if (UnderlineKind != 0) {
+        output.WriteRawTag(136, 1);
+        output.WriteUInt32(UnderlineKind);
+      }
+      if (UnderlineIndex != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteUInt32(UnderlineIndex);
+      }
+      if (UnderlineRgb != 0) {
+        output.WriteRawTag(152, 1);
+        output.WriteUInt32(UnderlineRgb);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -477,6 +575,26 @@ namespace Agwinterm.Core.Persist {
         output.WriteRawTag(114);
         output.WriteString(Grapheme);
       }
+      if (UnderlineStyle != 0) {
+        output.WriteRawTag(120);
+        output.WriteUInt32(UnderlineStyle);
+      }
+      if (UnderlineColor != 0) {
+        output.WriteRawTag(128, 1);
+        output.WriteUInt32(UnderlineColor);
+      }
+      if (UnderlineKind != 0) {
+        output.WriteRawTag(136, 1);
+        output.WriteUInt32(UnderlineKind);
+      }
+      if (UnderlineIndex != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteUInt32(UnderlineIndex);
+      }
+      if (UnderlineRgb != 0) {
+        output.WriteRawTag(152, 1);
+        output.WriteUInt32(UnderlineRgb);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -528,6 +646,21 @@ namespace Agwinterm.Core.Persist {
       }
       if (Grapheme.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Grapheme);
+      }
+      if (UnderlineStyle != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(UnderlineStyle);
+      }
+      if (UnderlineColor != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(UnderlineColor);
+      }
+      if (UnderlineKind != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(UnderlineKind);
+      }
+      if (UnderlineIndex != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(UnderlineIndex);
+      }
+      if (UnderlineRgb != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeUInt32Size(UnderlineRgb);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -582,6 +715,21 @@ namespace Agwinterm.Core.Persist {
       }
       if (other.Grapheme.Length != 0) {
         Grapheme = other.Grapheme;
+      }
+      if (other.UnderlineStyle != 0) {
+        UnderlineStyle = other.UnderlineStyle;
+      }
+      if (other.UnderlineColor != 0) {
+        UnderlineColor = other.UnderlineColor;
+      }
+      if (other.UnderlineKind != 0) {
+        UnderlineKind = other.UnderlineKind;
+      }
+      if (other.UnderlineIndex != 0) {
+        UnderlineIndex = other.UnderlineIndex;
+      }
+      if (other.UnderlineRgb != 0) {
+        UnderlineRgb = other.UnderlineRgb;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -658,6 +806,26 @@ namespace Agwinterm.Core.Persist {
             Grapheme = input.ReadString();
             break;
           }
+          case 120: {
+            UnderlineStyle = input.ReadUInt32();
+            break;
+          }
+          case 128: {
+            UnderlineColor = input.ReadUInt32();
+            break;
+          }
+          case 136: {
+            UnderlineKind = input.ReadUInt32();
+            break;
+          }
+          case 144: {
+            UnderlineIndex = input.ReadUInt32();
+            break;
+          }
+          case 152: {
+            UnderlineRgb = input.ReadUInt32();
+            break;
+          }
         }
       }
     #endif
@@ -731,6 +899,26 @@ namespace Agwinterm.Core.Persist {
           }
           case 114: {
             Grapheme = input.ReadString();
+            break;
+          }
+          case 120: {
+            UnderlineStyle = input.ReadUInt32();
+            break;
+          }
+          case 128: {
+            UnderlineColor = input.ReadUInt32();
+            break;
+          }
+          case 136: {
+            UnderlineKind = input.ReadUInt32();
+            break;
+          }
+          case 144: {
+            UnderlineIndex = input.ReadUInt32();
+            break;
+          }
+          case 152: {
+            UnderlineRgb = input.ReadUInt32();
             break;
           }
         }

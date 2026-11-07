@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 7;
+    oldAbi["abi"] = 8;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without clipboard exports is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without decoration fields is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -294,7 +294,7 @@ using (var identity = new GhosttyVt(20,5))
     identity.Feed("\u001b[c\u001b[>c\u001b[=c"u8);
     Check(host.Replies == "\u001b[?62;22c\u001b[>1;0;0c\u001bP!|00000000\u001b\\", "DA reports conservative VT220 color capabilities without Sixel");
     host.Replies = "";
-    identity.Feed("\u001bP+q544E;5375;536D756C78;536574756C63;536D6F6C;526D6F6C;626C696E6B\u001b\\"u8);
+    identity.Feed("\u001bP+q544E;626C696E6B\u001b\\"u8);
     Check(host.Replies == "", "TN and unsupported renderer capabilities are not advertised");
     identity.Feed("\u001bP+q436F;524742;5463;4245;4D73;53796E63\u001b\\"u8);
     Check(host.Replies.Contains("1+r436F=323536") && host.Replies.Contains("1+r524742=38") &&
@@ -302,9 +302,35 @@ using (var identity = new GhosttyVt(20,5))
         host.Replies.Contains("1+r4D73=") && host.Replies.Contains("1+r53796E63="),
         "capability filtering preserves colors, bracketed paste, clipboard and synchronized output");
     host.Replies = "";
-    foreach (byte value in "\u001bP+q5375;524742;544E\u001b\\"u8)
+    foreach (byte value in "\u001bP+q626C696E6B;524742;544E\u001b\\"u8)
         identity.Feed(new byte[] { value });
     Check(host.Replies == "\u001bP1+r524742=38\u001b\\", "fragmented mixed capability query preserves only its supported reply");
+}
+
+using (var decorated = new GhosttyTerminalCore(20,5))
+using (var restored = new GhosttyTerminalCore(20,5))
+{
+    decorated.Feed("\u001b]4;42;#123456\a\u001b[4:3;58:5:42;53mA \u001b[4:2;58:2::200:30:70mB\u001b[59;55;4:5mC\u001b[24mD"u8);
+    var a=decorated.Screen[0,0];
+    Check(a.UnderlineStyle == UnderlineStyle.Curly && a.UnderlineColor == new Color(18,52,86) &&
+        a.UnderlineSpec == ColorSpec.Indexed(42) && a.Attributes.HasFlag(CellAttributes.Overline), "native cells retain indexed curly underline and overline");
+    Check(decorated.Screen[0,1].UnderlineStyle == UnderlineStyle.Curly && decorated.Screen[0,2].UnderlineColor == new Color(200,30,70) &&
+        decorated.Screen[0,2].UnderlineStyle == UnderlineStyle.Double, "blank and adjacent colored decorations stay distinct");
+    Check(decorated.Screen[0,3].UnderlineColor is null && !decorated.Screen[0,3].Attributes.HasFlag(CellAttributes.Overline) &&
+        decorated.Screen[0,4].UnderlineStyle == UnderlineStyle.None, "SGR 59 55 and 24 reset independent decorations");
+    decorated.BeginPaint(); var old=decorated.CompletePaint();
+    decorated.Feed("\u001b]4;42;#aabbcc\a"u8);
+    Check(decorated.Screen[0,0].UnderlineColor == new Color(170,187,204) && old[0,0].UnderlineColor == a.UnderlineColor,
+        "palette changes recolor underline without mutating held frames");
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(decorated),out var saved), "decorated history serializes");
+    BufferPersist.Restore(restored,saved);
+    var imported=restored.GetHistoryCell(0,0);
+    Check(imported.UnderlineStyle == UnderlineStyle.Curly && imported.UnderlineSpec == ColorSpec.Indexed(42) &&
+        imported.Attributes.HasFlag(CellAttributes.Overline), "restored history keeps underline style color source and overline");
+    var host=new Host(); decorated.Host=host;
+    decorated.Feed("\u001bP+q5375;536D756C78;536574756C63;536D6F6C;526D6F6C\u001b\\"u8);
+    Check(new[]{"5375","536D756C78","536574756C63","536D6F6C","526D6F6C"}.All(k=>host.Replies.Contains("1+r"+k)),
+        "supported underline and overline capabilities are advertised again");
 }
 
 using (var geometry = new GhosttyVt(20,5))

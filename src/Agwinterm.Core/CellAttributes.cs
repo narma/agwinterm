@@ -10,4 +10,7 @@ public enum CellAttributes
     Inverse = 8,
     Dim = 16,
     Strikethrough = 32,
+    Overline = 64,
 }
+
+public enum UnderlineStyle : byte { None, Single, Double, Curly, Dotted, Dashed }
