@@ -154,9 +154,6 @@ public sealed class HudOwnedJob {
     # Every pane uses a harmless cmd /d shell: never the user's PowerShell profile or agent hooks.
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
     @("session-host = $SessionHost",'claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
-    # Agent preferences are independent of asynchronous scrollback exports.
-    # History export/restore has its own suites; keep this fixture focused on UI state.
-    if($Suite-eq 'Agents'){'restore-buffer = false'|Add-Content (Join-Path $appDir 'agwinterm.conf')}
     if ($Suite -eq 'TerminalLatency') {
         $echoChild = Join-Path (Split-Path ([IO.Path]::GetFullPath($Exe))) 'echo-fixture/Agwinterm.EchoFixture.exe'
         if (-not (Test-Path $echoChild)) { throw 'Publish the compiled echo fixture in the app echo-fixture directory first.' }

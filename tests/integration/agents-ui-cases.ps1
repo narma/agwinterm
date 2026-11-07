@@ -12,6 +12,16 @@ public static class AgentTestWindows {
 }
 '@
 function AgentWait([scriptblock]$condition, [int]$attempts=70){for($i=0;$i-lt $attempts;$i++){if(& $condition){return $true};Start-Sleep -Milliseconds 100};return $false}
+function ReadAgentState {
+    # StateWriter replaces the file atomically. Polling with Get-Content can hold
+    # a non-delete-sharing handle and make that replacement fail on Windows.
+    try {
+        $stream=[IO.FileStream]::new($agentStatePath,[IO.FileMode]::Open,[IO.FileAccess]::Read,
+            ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+        $reader=[IO.StreamReader]::new($stream)
+        try {$reader.ReadToEnd()|ConvertFrom-Json} finally {$reader.Dispose()}
+    } catch [IO.IOException] { $null }
+}
 function WaitAgentShell([string]$id){
     if(-not (AgentWait {try{([string](Rpc 'session.text' @{} $id)).Contains('>')}catch{$false}})){
         throw "Agent fixture shell did not become ready: $id"
@@ -72,17 +82,17 @@ AgentContext (FindAgent 'Worker'); AgentMenuChoice 'Pin agent'
 # Owner mode exports terminal history before publishing the window snapshot.
 # Give disk persistence a longer deadline than interactive UI responses.
 Check 'pin persisted separately from flags' (AgentWait {
-    $state=Get-Content $agentStatePath -Raw -ErrorAction SilentlyContinue|ConvertFrom-Json
+    $state=ReadAgentState
     @($state.AgentPins).Count-eq 1
 } 400)
 InvokeNamed 'Sort agents'; AgentMenuChoice 'Grouped by workspace'
 Check 'sort preference persisted' (AgentWait {
-    (Get-Content $agentStatePath -Raw|ConvertFrom-Json).AgentSort-eq 'grouped'
+    (ReadAgentState).AgentSort-eq 'grouped'
 } 400)
 $null=Shot 'agents-grouped-pinned'
 AgentContext (FindAgent 'Worker'); AgentMenuChoice 'Unpin agent'
 Check 'unpin persisted' (AgentWait {
-    -not (Get-Content $agentStatePath -Raw|ConvertFrom-Json).AgentPins
+    ($state=ReadAgentState) -and -not $state.AgentPins
 } 400)
 InvokeNamed 'Collapse agents'
 Check 'collapsed panel hides rows' (AgentWait {@(AgentElements).Count-eq 0})
@@ -120,7 +130,7 @@ if(-not (AgentWait {$null-ne (FindAgent 'Workers ready')})){throw 'Child reports
 Check 'keyboard End reveals final agent below fold' (AgentWait {$null-ne (FindAgent 'worker24')})
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x50,[IntPtr]1) # P
 Check 'keyboard pin persists the focused child' (AgentWait {
-    @((Get-Content $agentStatePath -Raw|ConvertFrom-Json).AgentPins|Where-Object {$_-like '*/worker24'}).Count-eq 1
+    @((ReadAgentState).AgentPins|Where-Object {$_-like '*/worker24'}).Count-eq 1
 } 400)
 Check 'keyboard pin keeps the moved row visible' (AgentWait {$null-ne (FindAgent 'worker24')})
 $beforeOpen=[string](Rpc 'session.text' @{} $worker)
@@ -159,7 +169,7 @@ AgentContext (FindAgent 'OSC cleared'); AgentMenuChoice 'Pin agent'
 InvokeNamed 'Sort agents'; AgentMenuChoice 'Grouped by workspace'
 InvokeNamed 'Collapse agents'
 if(-not (AgentWait {
-    $saved=Get-Content $agentStatePath -Raw|ConvertFrom-Json
+    $saved=ReadAgentState
     $saved.AgentsCollapsed -and $saved.AgentSort-eq 'grouped' -and $saved.AgentPins -contains ($clearProbe+'/')
 } 400)){throw 'Preferences were not saved before restart'}
 $job.Finish();$job=[HudOwnedJob]::new()
@@ -172,6 +182,6 @@ InvokeNamed 'Expand agents'
 Check 'restored root pin identifies agent without a new status report' (AgentWait {$null-ne (FindAgent 'OSC cleared')})
 # Expanding saves a new snapshot built from loaded preferences.
 Check 'restored preferences survive a subsequent save' (AgentWait {
-    $saved=Get-Content $agentStatePath -Raw|ConvertFrom-Json
+    $saved=ReadAgentState
     -not $saved.AgentsCollapsed -and $saved.AgentSort-eq 'grouped' -and $saved.AgentPins -contains ($clearProbe+'/')
 } 400)
