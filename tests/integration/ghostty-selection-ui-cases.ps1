@@ -27,7 +27,7 @@ public static class GhosttySelectionWindow {
    EnumChildWindows(dialog,(h,d)=> {
      var cls=new System.Text.StringBuilder(256); GetClassName(h,cls,256);
      var text=new System.Text.StringBuilder(1024); ReadText(h,0xD,(IntPtr)1024,text);
-     result.AppendLine(cls+" : "+text); return true;
+     result.AppendLine(cls+" #"+GetDlgCtrlID(h)+" : "+text); return true;
    },IntPtr.Zero);
    return result.ToString();
  }
@@ -41,6 +41,19 @@ public static class GhosttySelectionWindow {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string title);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent,IntPtr after,string cls,string title);
  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h,uint command);
+ [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr h);
+ public static IntPtr DialogButton(IntPtr dialog,int id) {
+   IntPtr result=IntPtr.Zero;
+   EnumChildWindows(dialog,(h,d)=> {
+     var cls=new System.Text.StringBuilder(256); GetClassName(h,cls,256);
+     if(cls.ToString()=="Button" && GetDlgCtrlID(h)==id) {
+       var text=new System.Text.StringBuilder(256); ReadText(h,0xD,(IntPtr)256,text);
+       if(!string.IsNullOrWhiteSpace(text.ToString())) { result=h; return false; }
+     }
+     return true;
+   },IntPtr.Zero);
+   return result;
+ }
  [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h,uint message,IntPtr w,IntPtr l);
  [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")] public static extern IntPtr SendText(IntPtr h,uint message,IntPtr w,string text);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern uint RegisterClipboardFormat(string name);
@@ -226,7 +239,9 @@ try {
             if($save -eq [IntPtr]::Zero){throw "Missing $format export save dialog"}
             if([GhosttySelectionWindow]::GetWindow($save,4) -ne $hwnd){throw 'Export dialog has an unexpected owner'}
             if($format -eq 'cancel') {
-                [void][GhosttySelectionWindow]::PostMessageW($save,0x111,[IntPtr]2,[IntPtr]::Zero)
+                $cancel=[GhosttySelectionWindow]::DialogButton($save,2)
+                if($cancel -eq [IntPtr]::Zero){throw ('Cancel button missing: '+[GhosttySelectionWindow]::DescribeChildren($save))}
+                [void][GhosttySelectionWindow]::PostMessageW($cancel,0xF5,[IntPtr]::Zero,[IntPtr]::Zero)
                 Start-Sleep -Milliseconds 150
                 CheckSelection 'Canceling export preserves the selected snapshot' 'FIRST command output'
                 continue
@@ -236,11 +251,22 @@ try {
                 if($edit -ne [IntPtr]::Zero){break}; Start-Sleep -Milliseconds 100
             }
             if($edit -eq [IntPtr]::Zero){throw ('Export filename edit was not found: '+[GhosttySelectionWindow]::DescribeChildren($save))}
-            $path=Join-Path $artifact "вывод команды.$format"
-            [void][GhosttySelectionWindow]::SendText($edit,0xC,[IntPtr]::Zero,$path)
-            [void][GhosttySelectionWindow]::PostMessageW($save,0x111,[IntPtr]1,[IntPtr]::Zero)
+            $extension=if($format -eq 'text'){'txt'}else{$format}
+            $path=Join-Path $artifact "вывод команды.$extension"
+            # DirectUI does not update its filename model for WM_SETTEXT.
+            # Paste through the edit control to generate normal change notifications.
+            Set-Clipboard -Value $path
+            [void][HudOwnedJob]::SendMessageW($edit,0xB1,[IntPtr]::Zero,[IntPtr](-1))
+            [void][HudOwnedJob]::SendMessageW($edit,0x302,[IntPtr]::Zero,[IntPtr]::Zero)
+            $accept=[GhosttySelectionWindow]::DialogButton($save,1)
+            if($accept -eq [IntPtr]::Zero){throw ('Save button missing: '+[GhosttySelectionWindow]::DescribeChildren($save))}
+            [void][GhosttySelectionWindow]::PostMessageW($accept,0xF5,[IntPtr]::Zero,[IntPtr]::Zero)
             for($poll=0;$poll -lt 60;$poll++) { if(Test-Path -LiteralPath $path){break}; Start-Sleep -Milliseconds 100 }
-            if(!(Test-Path -LiteralPath $path)){throw "Export did not create $path"}
+            if(!(Test-Path -LiteralPath $path)){
+                Write-Host ('Export evidence files: '+((Get-ChildItem -LiteralPath $artifact -File).Name -join ', '))
+                Write-Host ('Documents files: '+((Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('MyDocuments')) -File -ErrorAction SilentlyContinue).Name -join ', '))
+                throw ("Export did not create $path; dialog: "+[GhosttySelectionWindow]::DescribeChildren($save))
+            }
             $exported=[IO.File]::ReadAllText($path)
             Check "Retained $format selection exports through the save dialog" ($exported.Contains('FIRST command output') -and !$exported.Contains('replacement'))
             if($format -eq 'text'){Check 'Plain export is exact UTF-8 text' ($exported -ceq 'FIRST command output')}
