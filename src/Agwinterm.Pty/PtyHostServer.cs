@@ -69,11 +69,12 @@ public sealed class PtyHostServer : IDisposable
         public int ProgressState, ProgressValue;
         public string RoleNotice="";
         public readonly ProgramStatusRecords ProgramStatuses = new();
+        public Func<bool>? HasStatusViewer;
         public void ProgramStatusCommandFinished()
         { ProgramStatuses.FinishCommand(); EffectSink?.Invoke(new() { Kind=9 }); }
         public void ProgramStatusChanged(ProgramStatus report)
         {
-            ProgramStatuses.Apply(report);
+            ProgramStatuses.Apply(report, detached: HasStatusViewer?.Invoke() != true);
             EffectSink?.Invoke(new() { Kind=8,Text=System.Text.Json.JsonSerializer.Serialize(report) });
         }
         public bool ConsumeTitle(string title)
@@ -248,6 +249,7 @@ public sealed class PtyHostServer : IDisposable
             {
                 hosted.Input = new OwnerInputQueue(session);
                 hosted.Replies.EffectSink = effect => hosted.Presentation?.PublishEffect(effect);
+                hosted.Replies.HasStatusViewer = () => hosted.Presentation is { Completion.IsCompleted: false };
                 ((GhosttyTerminalCore)session.Emulator).SetTitleFilter(hosted.Replies.ConsumeTitle);
                 hosted.Replies.ResponseSink = reply =>
                 {
@@ -409,7 +411,7 @@ public sealed class PtyHostServer : IDisposable
                     channel.PublishEffect(new() { Kind=2,State=hosted.Replies.ProgressState,Value=hosted.Replies.ProgressValue });
                     if(hosted.Replies.RoleNotice.Length > 0) channel.PublishEffect(new() { Kind=6,Text=hosted.Replies.RoleNotice });
                     channel.PublishEffect(new() { Kind=7,Title=hosted.S.Emulator.Title,Text=hosted.S.Emulator.Cwd });
-                    foreach (var report in hosted.Replies.ProgramStatuses.Records)
+                    foreach (var report in hosted.Replies.ProgramStatuses.TakeReplay())
                         channel.PublishEffect(new() { Kind=8,Text=System.Text.Json.JsonSerializer.Serialize(report) });
                 }
                 _ = channel.Completion.ContinueWith(_ =>

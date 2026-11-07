@@ -149,3 +149,25 @@ Start-Sleep -Milliseconds 300
 $null=Rpc 'session.select' @{} $session
 $null=Rpc 'sidebar' @{op='show'}
 Check 'hidden-sidebar visit acknowledges completion' (AgentWait {($a=FindAgent 'OSC cleared') -and $a.Current.Name -like '*, Idle,*'})
+
+# Restore the preferences in a new process, not just their serialized keys.
+AgentContext (FindAgent 'OSC cleared'); AgentMenuChoice 'Pin agent'
+InvokeNamed 'Sort agents'; AgentMenuChoice 'Grouped by workspace'
+InvokeNamed 'Collapse agents'
+if(-not (AgentWait {
+    $saved=Get-Content $agentStatePath -Raw|ConvertFrom-Json
+    $saved.AgentsCollapsed -and $saved.AgentSort-eq 'grouped' -and $saved.AgentPins -contains ($clearProbe+'/')
+} 400)){throw 'Preferences were not saved before restart'}
+$job.Finish();$job=[HudOwnedJob]::new()
+$job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe",$root)
+if(-not (AgentWait {try{$null-ne (Node $clearProbe)}catch{$false}})){throw 'Restored session missing'}
+$proc=[Diagnostics.Process]::GetProcessById($job.Pid)
+if(-not (AgentWait {$proc.Refresh();$script:hwnd=$proc.MainWindowHandle;$hwnd-ne [IntPtr]::Zero})){throw 'Restored window missing'}
+Check 'restored panel remains collapsed' (@(AgentElements).Count-eq 0)
+InvokeNamed 'Expand agents'
+Check 'restored root pin identifies agent without a new status report' (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+# Expanding saves a new snapshot built from loaded preferences.
+Check 'restored preferences survive a subsequent save' (AgentWait {
+    $saved=Get-Content $agentStatePath -Raw|ConvertFrom-Json
+    -not $saved.AgentsCollapsed -and $saved.AgentSort-eq 'grouped' -and $saved.AgentPins -contains ($clearProbe+'/')
+} 400)

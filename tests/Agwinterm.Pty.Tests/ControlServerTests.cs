@@ -54,7 +54,7 @@ public class ControlServerTests
     }
 
     [Fact]
-    public void NotifyActivity_ClearsBlockedOrCompleted_NotActive()
+    public void NotifyActivity_ClearsCompleted_NotActive()
     {
         var (_, session) = New();
         session.SetStatus(AgentStatus.Completed);

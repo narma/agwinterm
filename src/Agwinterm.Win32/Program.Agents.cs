@@ -63,8 +63,12 @@ internal partial class Program
         var roots = result.Where(r => r.RecordId.Length == 0).ToDictionary(r => r.Pane);
         var byPane = result.ToLookup(r => r.Pane);
         var top = result.Where(r => r.RecordId.Length == 0 || r.Pinned || !roots.ContainsKey(r.Pane))
-            .Select(r => r.RecordId.Length == 0 ? r with { Status = byPane[r.Pane]
-                .Select(c => c.Status).OrderBy(AgentActivity.Priority).First() } : r);
+            .Select(r => {
+                if (r.RecordId.Length != 0) return r;
+                var urgent = byPane[r.Pane].OrderBy(c => AgentActivity.Priority(c.Status))
+                    .ThenByDescending(c => c.ChangedAt).First();
+                return r with { Status = urgent.Status, ChangedAt = urgent.ChangedAt };
+            });
         var ordered = top.OrderByDescending(r => r.Pinned)
             .ThenBy(r => _agentSort == "grouped" && !r.Pinned ? r.Session.Ws.Name : "", StringComparer.OrdinalIgnoreCase)
             .ThenBy(r => AgentActivity.Priority(r.Status)).ThenByDescending(r => r.ChangedAt)
@@ -86,6 +90,7 @@ internal partial class Program
         _agentRows.Clear();
         float available = MathF.Max(0, bottom - TitleBarH);
         float height = _agentsCollapsed ? rowH : MathF.Min(available * .45f, MathF.Max(rowH * 4, available * .4f));
+        if (!_agentsCollapsed && AgentList().Count == 0) height = MathF.Min(height, rowH * 2);
         _agentsTop = MathF.Max(TitleBarH, bottom - height);
         return _agentsTop;
     }

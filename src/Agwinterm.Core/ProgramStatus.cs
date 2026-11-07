@@ -36,28 +36,48 @@ public sealed class ProgramStatusRecords
 {
     private readonly Dictionary<string, ProgramStatus> _records = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _updated = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _unseenCompletions = new(StringComparer.Ordinal);
     private long _sequence;
     public IReadOnlyCollection<ProgramStatus> Records => _records.Values;
     public void FinishCommand()
     {
         foreach (string id in _records.Values.Where(r => r.State is "working" or "blocked").Select(r => r.Id).ToArray())
-        { _records.Remove(id); _updated.Remove(id); }
+        { _records.Remove(id); _updated.Remove(id); _unseenCompletions.Remove(id); }
     }
-    public void Apply(ProgramStatus report)
+    public void Apply(ProgramStatus report, bool detached = false)
     {
         if (report.State == "clear")
         {
             foreach (string id in _records.Keys.Where(id => report.Id.Length == 0 || id == report.Id ||
                 id.StartsWith(report.Id + "/", StringComparison.Ordinal)).ToArray())
-            { _records.Remove(id); _updated.Remove(id); }
+            { _records.Remove(id); _updated.Remove(id); _unseenCompletions.Remove(id); }
             return;
         }
         if (!_records.ContainsKey(report.Id) && _records.Count >= 64)
         {
             string oldest = _updated.MinBy(pair => pair.Value).Key;
-            _records.Remove(oldest); _updated.Remove(oldest);
+            _records.Remove(oldest); _updated.Remove(oldest); _unseenCompletions.Remove(oldest);
         }
+        if (report.State != "idle") _unseenCompletions.Remove(report.Id);
+        if (detached && (report.State == "done" || report.State == "idle" &&
+            _records.TryGetValue(report.Id, out var previous) && previous.State == "working"))
+            _unseenCompletions.Add(report.Id);
         _records[report.Id] = report;
         _updated[report.Id] = ++_sequence;
+    }
+
+    // Replay an unread transition before the latest raw fields. The viewer owns
+    // acknowledgement; consuming this batch must be serialized with Apply.
+    public IReadOnlyList<ProgramStatus> TakeReplay()
+    {
+        var reports = new List<ProgramStatus>();
+        foreach (var report in _records.Values)
+        {
+            if (report.State == "idle" && _unseenCompletions.Contains(report.Id))
+                reports.Add(report with { State = "done" });
+            reports.Add(report);
+        }
+        _unseenCompletions.Clear();
+        return reports;
     }
 }

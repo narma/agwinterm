@@ -54,6 +54,8 @@ indicator and API receive the most urgent OSC state too. A shell's primary OSC 1
 prompt or process exit removes transient working/blocked records, retaining done/error
 records. Full terminal reset clears all records. The Windows session host retains
 records while detached and replays them when a window reconnects.
+Completions followed by idle while detached replay an unread Done transition before
+the latest fields. Typing or pasting does not dismiss a producer's Blocked request.
 
 ## Checks
 

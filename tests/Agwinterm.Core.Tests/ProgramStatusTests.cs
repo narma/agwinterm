@@ -104,6 +104,28 @@ public sealed class ProgramStatusTests
     }
 
     [Fact]
+    public void DetachedCompletionReplaysOnceBeforeLatestIdleFields()
+    {
+        var records = new ProgramStatusRecords();
+        records.Apply(Report("done", "child"), detached: true);
+        records.Apply(Report("idle", "child", "codex"), detached: true);
+        var replay = records.TakeReplay();
+        Assert.Equal(new[] { "done", "idle" }, replay.Select(r => r.State));
+        Assert.All(replay, r => Assert.Equal("codex", r.App));
+        Assert.Equal("idle", Assert.Single(records.TakeReplay()).State);
+        records.Apply(Report("working", "child"), detached: true);
+        records.Apply(Report("idle", "child"), detached: true);
+        Assert.Equal(new[] { "done", "idle" }, records.TakeReplay().Select(r => r.State));
+        records.Apply(Report("done", "child"), detached: true);
+        records.Apply(Report("working", "child"), detached: true);
+        records.FinishCommand();
+        Assert.Empty(records.TakeReplay());
+        records.Apply(Report("done", "child"), detached: true);
+        records.Apply(Report("clear"), detached: true);
+        Assert.Empty(records.TakeReplay());
+    }
+
+    [Fact]
     public void WorkingToIdleProducesUnseenCompletion()
     {
         var activity = new AgentActivity();
