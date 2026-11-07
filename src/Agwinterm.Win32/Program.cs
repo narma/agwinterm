@@ -402,6 +402,9 @@ internal partial class Program : ISessionHost, IWindowHost
         public ContentSelection? SelContent;
         public GhosttySelection? SelNative;
         public OwnerSelection? SelOwner;
+        public GhosttySelectionGesture? SelGesture;
+        public string? SelGestureId;
+        public int SelGestureBehavior, SelGestureRow, SelGestureColumn;
         public bool SelContentVisible = true;
         public void ReleaseSelectionAnchors()
         {
@@ -412,7 +415,8 @@ internal partial class Program : ISessionHost, IWindowHost
                 SelNative?.Dispose(); SelNative = null;
             }
         }
-        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); }
+        public void EndSelectionGesture() { lock(S.SyncRoot) { SelGesture?.Dispose(); SelGesture=null; SelGestureId=null; } }
+        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); EndSelectionGesture(); }
         public int UiaAnnouncedAbs = -1;   // absolute buffer line (history + cursor row) last spoken to a screen reader
     }
 

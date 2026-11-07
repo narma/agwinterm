@@ -4,7 +4,8 @@ using Agwinterm.Core;
 namespace Agwinterm.Pty;
 
 public sealed record TerminalSelectionRequest(string Id,int AnchorRow,int AnchorColumn,int FocusRow,int FocusColumn,bool Block,
-    bool All=false,bool AlternateScreen=false,string? Unit=null,string Delimiters="");
+    bool All=false,bool AlternateScreen=false,string? Unit=null,string Delimiters="",
+    string? GestureId=null,int GestureBehavior=0,int GestureRow=0,int GestureColumn=0);
 public sealed record TerminalSelectionResult(string Id,bool Valid,int AnchorRow,int AnchorColumn,int FocusRow,int FocusColumn,string? Text);
 
 internal sealed partial class OwnerQueries
@@ -12,6 +13,8 @@ internal sealed partial class OwnerQueries
     private GhosttySelection? _selection;
     private string? _selectionId;
     private bool _disposed;
+    private GhosttySelectionGesture? _gesture;
+    private string? _gestureId;
 
     private TerminalQueryResult ReadSelection(TerminalQuery query,CancellationToken cancellation)
     {
@@ -56,6 +59,22 @@ internal sealed partial class OwnerQueries
                 if(request.AnchorRow < first || request.FocusRow < first || request.AnchorRow > last || request.FocusRow > last ||
                     request.AnchorColumn < 0 || request.FocusColumn < 0 || request.AnchorColumn >= core.Cols || request.FocusColumn >= core.Cols)
                     return Result("invalid",core.Generation);
+                if(request.GestureId is { } gestureId)
+                {
+                    if(!Guid.TryParseExact(gestureId,"N",out _) || request.GestureBehavior is < 0 or > 2)
+                        return Result("invalid",core.Generation);
+                    if(_gestureId != gestureId)
+                    {
+                        if(request.GestureRow < first || request.GestureRow > last || request.GestureColumn < 0 || request.GestureColumn >= core.Cols)
+                            return Result("invalid",core.Generation);
+                        _gesture?.Dispose();
+                        _gesture=new(core,request.GestureRow,request.GestureColumn,request.GestureBehavior,request.Delimiters);
+                        _gestureId=gestureId;
+                    }
+                    if(!_gesture!.Update(request.FocusRow,request.FocusColumn,request.Block,out int gar,out int gac,out int gfr,out int gfc))
+                        return Result("stale",core.Generation);
+                    request=request with { AnchorRow=gar,AnchorColumn=gac,FocusRow=gfr,FocusColumn=gfc };
+                }
                 GhosttySelection next;
                 try { next=core.CreateSelection(request.AnchorRow,request.AnchorColumn,request.FocusRow,request.FocusColumn,request.Block,query.ResultLimit); }
                 catch(InvalidDataException) { return Result("limit",core.Generation); }
@@ -80,5 +99,5 @@ internal sealed partial class OwnerQueries
     }
 
     private void ReleaseSelection() { _selection?.Dispose(); _selection=null; _selectionId=null; }
-    public void Dispose() { lock(session.SyncRoot) { _disposed=true; ReleaseSelection(); } }
+    public void Dispose() { lock(session.SyncRoot) { _disposed=true; ReleaseSelection(); _gesture?.Dispose(); _gesture=null; } }
 }

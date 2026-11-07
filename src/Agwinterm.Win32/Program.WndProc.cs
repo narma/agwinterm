@@ -575,6 +575,7 @@ internal partial class Program
                     var sp = _selPane; _selPane = null;
                     if (!_selMoved) { ActiveSurface()?.ClearSel(); RequestRedraw(); } // plain click clears
                     else if (sp is not null) FinalizeSelection(sp);                   // copy-on-select
+                    sp?.EndSelectionGesture();
                     return IntPtr.Zero;
                 }
                 if (InContent(lParam)) { SendMousePx(0, lParam, false); }
@@ -593,8 +594,9 @@ internal partial class Program
                     {
                         var (line, col) = CellAtPx(h0.pane, h0.ox, h0.oy, h0.cw, h0.ch, mx, my);
                         SelectWord(h0.pane, line, col);
-                        _clickCount = 2; _lastClickMs = Environment.TickCount; _selMoved = true; _selecting = false;
-                        FinalizeSelection(h0.pane);
+                        _clickCount = 2; _lastClickMs = Environment.TickCount; _selMoved = true; _selecting = true;
+                        _selPane=h0.pane; _selMouseX=mx; _selAutoDir=0;
+                        SetCapture(hwnd);
                         RequestRedraw();
                     }
                     return IntPtr.Zero;

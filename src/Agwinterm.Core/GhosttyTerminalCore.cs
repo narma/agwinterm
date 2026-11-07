@@ -163,6 +163,9 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     public bool SelectBounds(int kind, int row, int column, string delimiters,
         out int ar, out int ac, out int fr, out int fc)
         => _vt.SelectBounds(kind, row, column, delimiters, out ar, out ac, out fr, out fc);
+    public bool SelectionDrag(int ar,int ac,int fr,int fc,int behavior,bool block,string delimiters,
+        out int startRow,out int startCol,out int endRow,out int endCol)
+        => _vt.SelectionDrag(ar,ac,fr,fc,behavior,block,delimiters,out startRow,out startCol,out endRow,out endCol);
     public GhosttySelection CreateSelection(int ar, int ac, int fr, int fc, bool block,int maximumCharacters=int.MaxValue)
         => new(this, ar, ac, fr, fc, block,maximumCharacters);
     private void ReadHistory(int row)

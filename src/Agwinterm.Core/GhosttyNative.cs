@@ -41,7 +41,7 @@ internal static unsafe partial class GhosttyNative
                 // revision alone cannot detect an accidentally replaced upstream DLL.
                 using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "ghostty-vt.provenance.json")));
                 var provenance = manifest.RootElement;
-                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 6)
+                if (provenance.GetProperty("upstream").GetString() != Revision || provenance.GetProperty("abi").GetInt32() != 7)
                     throw new InvalidOperationException("Ghostty build provenance does not match the expected revision/ABI.");
                 foreach (string filename in new[] { "ghostty-vt.dll", "agwinterm_ghostty.dll" })
                 {
@@ -57,7 +57,7 @@ internal static unsafe partial class GhosttyNative
                 var abi = (delegate* unmanaged[Cdecl]<uint*, uint*, uint>)NativeLibrary.GetExport(library, "agwvt_abi");
                 var revision = (delegate* unmanaged[Cdecl]<byte*>)NativeLibrary.GetExport(library, "agwvt_revision");
                 uint cellSize, infoSize;
-                if (abi(&cellSize, &infoSize) != 6 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
+                if (abi(&cellSize, &infoSize) != 7 || cellSize != sizeof(NativeCell) || infoSize != sizeof(Info) ||
                     Marshal.PtrToStringUTF8((nint)revision()) != Revision)
                     throw new InvalidOperationException("Ghostty adapter ABI, layout or upstream revision mismatch; rebuild both DLLs together.");
                 foreach (string entry in new[] { "new", "free", "feed", "resize", "info", "scrollback", "begin", "end", "cursor", "cursor_default", "colors", "cells", "clean", "abort", "read_row", "text", "marks", "anchor_new", "anchor_point", "anchor_free", "snapshot", "snapshot_free", "restore", "images", "image_pixels" })
@@ -340,6 +340,10 @@ internal static unsafe partial class GhosttyNative
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int SelectBounds(Handle handle, uint kind, uint col, uint row,
         uint* delimiters, nuint count, uint* bounds);
+    [LibraryImport(Library, EntryPoint = "agwvt_selection_drag")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int SelectionDrag(Handle handle, uint ar, uint ac, uint fr, uint fc,
+        uint behavior, uint rectangle, uint* delimiters, nuint count, uint* bounds);
     [LibraryImport(Library, EntryPoint = "agwvt_anchor_new")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int AnchorNew(Handle handle, uint col, uint row, out nint anchor);

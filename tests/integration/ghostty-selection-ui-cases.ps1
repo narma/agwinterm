@@ -1,8 +1,14 @@
 # Mouse selection and retained native anchors, on the enclosing owned VM only.
+if (-not (($env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount') -or
+    ($env:AGWINTERM_HYPERV_UI -eq '1' -and (& "$PSScriptRoot/hyperv-ui-context.ps1")))) {
+    throw 'Selection acceptance requires a verified isolated Windows guest.'
+}
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class GhosttySelectionWindow {
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int height,uint flags);
@@ -60,6 +66,71 @@ try {
         $copied=[string](Rpc 'session.copy' @{} $selectionSession)
         Check "Mouse selection survives reflow at window width $width" ($copied -ceq $logical) "expected=$($logical.Length) actual=$($copied.Length)"
     }
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[3J'+$esc+'[H'+"alpha beta gamma`r`n0123456789`r`nABCDEFGHIJ"+$esc+'[H')} $selectionSession
+    Start-Sleep -Milliseconds 350
+    $selectionMetrics=Rpc 'session.metrics' @{} $selectionSession
+    $caret=[HudOwnedJob]::CaretRect($hwnd)
+    $cellW=$selectionMetrics.widthPx/$selectionMetrics.cols/$scale
+    $cellH=$selectionMetrics.heightPx/$selectionMetrics.rows/$scale
+    function SelectionMouse([int]$message,[int]$row,[int]$column,[int]$buttons=1) {
+        $x=[int]($caret.left+$cellW*($column+0.5)); $y=[int]($caret.top+$cellH*($row+0.5))
+        [void][HudOwnedJob]::SendMessageW($hwnd,$message,[IntPtr]$buttons,[IntPtr](($y -shl 16)-bor $x))
+    }
+    function CheckSelection([string]$name,[string]$expected) {
+        for($attempt=0;$attempt -lt 40;$attempt++) {
+            $actual=[string](Rpc 'session.copy' @{} $selectionSession)
+            if($actual -ceq $expected){break}; Start-Sleep -Milliseconds 50
+        }
+        Check $name ($actual -ceq $expected) "expected=[$expected] actual=[$actual]"
+    }
+    SelectionMouse 0x203 0 7
+    SelectionMouse 0x200 0 13
+    CheckSelection 'Double-click drag extends by whole words' 'beta gamma'
+    SelectionMouse 0x200 0 1
+    CheckSelection 'Word drag reverses around the pressed word' 'alpha beta'
+    SelectionMouse 0x200 0 7
+    SelectionMouse 0x202 0 7 0
+    CheckSelection 'Word drag retracts to the pressed word' 'beta'
+    # A third press immediately after the double-click selects a logical line.
+    SelectionMouse 0x203 1 3
+    SelectionMouse 0x202 1 3 0
+    SelectionMouse 0x201 1 3
+    SelectionMouse 0x200 2 2
+    SelectionMouse 0x202 2 2 0
+    CheckSelection 'Triple-click drag extends by whole lines' "0123456789`r`nABCDEFGHIJ"
+    foreach($reverse in @($false,$true)) {
+        Start-Sleep -Milliseconds 450
+        [void][GhosttySelectionWindow]::SetForegroundWindow($hwnd)
+        [GhosttySelectionWindow]::keybd_event(0x12,0,0,[UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 70
+        try {
+            if($reverse) { SelectionMouse 0x201 2 5; SelectionMouse 0x200 1 2; SelectionMouse 0x202 1 2 0 }
+            else { SelectionMouse 0x201 1 2; SelectionMouse 0x200 2 5; SelectionMouse 0x202 2 5 0 }
+        } finally { [GhosttySelectionWindow]::keybd_event(0x12,0,2,[UIntPtr]::Zero) }
+        CheckSelection "Rectangular mouse selection, reverse=$reverse" "2345`r`nCDEF"
+    }
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[H'+'replacement')} $selectionSession
+    Start-Sleep -Milliseconds 250
+    CheckSelection 'Redraw retains the previously selected text' "2345`r`nCDEF"
+    $null=Rpc 'session.write' @{text=($esc+'[?1049h'+$esc+'[H'+'TUI-HELLO'+$esc+'[H')} $selectionSession
+    Start-Sleep -Milliseconds 450
+    SelectionMouse 0x201 0 0
+    SelectionMouse 0x200 0 2
+    SelectionMouse 0x202 0 2 0
+    CheckSelection 'Alternate-screen plain copy uses the same selection path' 'TUI'
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[H'+'new frame')} $selectionSession
+    Start-Sleep -Milliseconds 250
+    CheckSelection 'TUI redraw retains selected text independently of its frame' 'TUI'
+    $null=Rpc 'session.write' @{text=($esc+'[?1049l')} $selectionSession
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[H'+'VISIBLE'+$esc+'[H')} $selectionSession
+    Start-Sleep -Milliseconds 450
+    $null=Rpc 'session.write' @{text=($esc+'[?2026h'+$esc+'[H'+'HIDDEN!')} $selectionSession
+    SelectionMouse 0x201 0 0
+    SelectionMouse 0x200 0 6
+    SelectionMouse 0x202 0 6 0
+    $heldCopy=[string](Rpc 'session.copy' @{} $selectionSession)
+    $null=Rpc 'session.write' @{text=($esc+'[?2026l')} $selectionSession
+    Check 'Copy during synchronized output retains the displayed frame' ($heldCopy -ceq 'VISIBLE') "actual=[$heldCopy]"
 } finally {
     [void][GhosttySelectionWindow]::SetWindowPos($hwnd,[IntPtr]::Zero,0,0,($windowRect.Right-$windowRect.Left),($windowRect.Bottom-$windowRect.Top),6)
     $null=Rpc 'session.close' @{} $selectionSession

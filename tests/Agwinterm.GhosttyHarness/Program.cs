@@ -20,7 +20,7 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 5;
+    oldAbi["abi"] = 6;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without selection exports is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
@@ -135,6 +135,51 @@ using (var selectionCore = new GhosttyTerminalCore(5, 4))
     bool limited=false;
     try { selectionCore.FormatSelection(0,0,1,2,false,2,4); } catch(InvalidDataException) { limited=true; }
     Check(limited,"formatted selection respects its output limit");
+}
+
+using (var core = new GhosttyTerminalCore(30, 6))
+{
+    core.Feed("alpha beta gamma\r\n0123456789\r\nABCDEFGHIJ"u8);
+    string Drag(GhosttySelectionGesture gesture,int row,int col,bool block=false)
+    {
+        Check(gesture.Update(row,col,block,out int ar,out int ac,out int fr,out int fc),"native gesture produces bounds");
+        return TerminalSelectionText.Read(core,ar,ac,fr,fc,block);
+    }
+    using var word=new GhosttySelectionGesture(core,0,7,1,"");
+    Check(Drag(word,0,13) == "beta gamma","double-click drag extends by whole words");
+    Check(Drag(word,0,1) == "alpha beta","word drag reverses around the original press");
+    Check(Drag(word,0,7) == "beta","word drag retracts to the original word");
+    using var forward=new GhosttySelectionGesture(core,1,2,0,"");
+    using var reverse=new GhosttySelectionGesture(core,2,5,0,"");
+    Check(Drag(forward,2,5,true) == "2345\r\nCDEF","native rectangular gesture clips each physical row");
+    Check(Drag(reverse,1,2,true) == "2345\r\nCDEF","reverse rectangular gesture has identical text");
+    Check(Drag(reverse,2,2) == "CDEF","reverse cell drag includes both endpoints");
+    using var line=new GhosttySelectionGesture(core,1,3,2,"");
+    Check(Drag(line,2,2) == "0123456789\r\nABCDEFGHIJ","triple-click drag extends by whole lines");
+    using var saved=core.CreateSelection(1,2,2,5,true);
+    core.Feed("\u001b[2J"u8);
+    Check(!saved.TryLocate(out _,out _,out _,out _) && saved.Text == "2345\r\nCDEF","redraw invalidates bounds but retains native copied text");
+}
+
+using(var core=new GhosttyTerminalCore(100,100))
+{
+    string text=new('x',8000);
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(text));
+    Check(TerminalSelectionText.Read(core,0,0,79,99,false) == text,"plain copy grows its native output buffer beyond 4 KiB");
+    bool limited=false;
+    try { TerminalSelectionText.Read(core,0,0,79,99,false,7000); } catch(InvalidDataException) { limited=true; }
+    Check(limited,"plain native copy enforces the managed character limit");
+    using var gesture=new GhosttySelectionGesture(core,0,50,0,"");
+    core.Resize(50,100);
+    Check(gesture.Update(1,55 % 50,false,out int ar,out int ac,out int fr,out int fc) && ar == 1 && ac == 0 && fr == 1 && fc == 5,
+        "gesture press origin follows reflow before the next drag");
+}
+
+using(var core=new GhosttyTerminalCore(20,4))
+{
+    core.Feed(System.Text.Encoding.UTF8.GetBytes("a\u2028b\r\nc"));
+    Check(TerminalSelectionText.Read(core,0,0,1,0,false) == "a\u2028b\r\nc",
+        "Windows newline conversion preserves printed Unicode line separators");
 }
 
 using (var themeCore = new GhosttyTerminalCore(20, 5))

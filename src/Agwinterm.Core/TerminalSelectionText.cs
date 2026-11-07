@@ -15,6 +15,14 @@ public static class TerminalSelectionText
     public static string Read(ITerminalCore core, int anchorRow, int anchorCol, int focusRow, int focusCol, bool block,
         int maximumCharacters=int.MaxValue)
     {
+        if(core is GhosttyTerminalCore ghostty)
+        {
+            if(maximumCharacters < 1) throw new InvalidDataException("Selection exceeds the copy limit.");
+            int byteLimit=(int)Math.Min(int.MaxValue,(long)maximumCharacters*4);
+            string result=ghostty.FormatSelection(anchorRow,anchorCol,focusRow,focusCol,block,0,byteLimit).Replace("\n","\r\n",StringComparison.Ordinal);
+            if(result.Length > maximumCharacters) throw new InvalidDataException("Selection exceeds the copy limit.");
+            return result;
+        }
         int cols = core is GhosttyTerminalCore native ? native.Cols : core.Screen.Cols;
         int rows = core is GhosttyTerminalCore nativeRows ? nativeRows.Rows : core.Screen.Rows;
         int history = core.HistoryCount;

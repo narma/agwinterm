@@ -815,7 +815,7 @@ internal partial class Program
     /// something relative to this snapshot, and ReconcileSel reconciles the two later.</summary>
     private void StampSel(Pane p) => StampSelection(p,all:false);
 
-    private void StampSelection(Pane p,bool all,string? unit=null)
+    private void StampSelection(Pane p,bool all,string? unit=null,bool gesture=false)
     {
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
@@ -839,8 +839,9 @@ internal partial class Program
                 try { fallback=TerminalSelectionText.Read(remote,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,100000); }
                 catch(NotSupportedException) { } catch(InvalidDataException) { }
                 p.SelOwner=new(presentation,frame.Identity,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
-                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen,unit,_config.WordDelimiters),
-                    unit is null ? fallback : null,()=>RequestRedraw());
+                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen,unit,_config.WordDelimiters,
+                    gesture ? p.SelGestureId : null,p.SelGestureBehavior,p.SelGestureRow,p.SelGestureColumn),
+                    unit is null && (!gesture || p.SelGestureBehavior == 0) ? fallback : null,()=>RequestRedraw());
                 return;
             }
             if (em is GhosttyTerminalCore held && held.SynchronizedOutput)
@@ -860,7 +861,8 @@ internal partial class Program
                 NormSel(p, out int first, out int from, out int last, out int to);
                 if (first >= em.HistoryCount)
                     p.SelContent = new ContentSelection(em.Screen, first - em.HistoryCount, from,
-                        last - em.HistoryCount, to, p.BlockSel);
+                        last - em.HistoryCount, to, p.BlockSel,
+                        em is GhosttyTerminalCore ? TerminalSelectionText.Read(em,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel) : null);
             }
             if (em is GhosttyTerminalCore ghostty && p.SelContent is null &&
                 ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
@@ -914,7 +916,7 @@ internal partial class Program
         {
             if (em.SynchronizedOutput) { p.SelContentVisible = false; return true; }
             if (!nativeSelection.TryLocate(out int anchorRow, out int anchorCol, out int focusRow, out int focusCol))
-            { p.ClearSel(); return false; }
+            { p.SelContentVisible=false; return true; }
             p.SelContentVisible = true;
             p.SelAncLine = anchorRow; p.SelAncCol = anchorCol;
             p.SelFocLine = focusRow; p.SelFocCol = focusCol;
@@ -1075,7 +1077,9 @@ internal partial class Program
     {
         lock (p.S.SyncRoot)
         {
+            if(p.SelNative is not null && !p.SelContentVisible && !p.S.Emulator.SynchronizedOutput) return false;
             if (p.SelContent is null) return true;
+            if(p.S.Emulator.SynchronizedOutput) return true;
             int hist = p.S.Emulator.HistoryCount, end = hist + p.S.Emulator.Screen.Rows;
             return p.SelContentVisible && p.SelAncLine >= hist && p.SelAncLine < end
                 && p.SelFocLine >= hist && p.SelFocLine < end;
@@ -1089,12 +1093,33 @@ internal partial class Program
             if (extend && HasLiveSel(p))
             {
                 if (!CanExtendSelection(p)) return false;
+                StartSelectionGesture(p,p.SelAncLine,p.SelAncCol,0);
                 p.BlockSel = block;
-                p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampSel(p);
+                p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampGesture(p);
             }
-            else { p.BlockSel = block; p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
+            else { StartSelectionGesture(p,line,col,0); p.BlockSel = block; p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
             return true;
         }
+    }
+
+    private void StartSelectionGesture(Pane p,int row,int column,int behavior)
+    {
+        p.EndSelectionGesture();
+        p.SelGestureRow=row; p.SelGestureColumn=column; p.SelGestureBehavior=behavior;
+        if(p.S.Emulator.SynchronizedOutput) return;
+        p.SelGestureId=Guid.NewGuid().ToString("N");
+        if(p.S.Emulator is GhosttyTerminalCore core)
+            p.SelGesture=new(core,row,column,behavior,_config.WordDelimiters);
+    }
+
+    private void StampGesture(Pane p)
+    {
+        if(p.SelGesture is { } gesture && !p.S.Emulator.SynchronizedOutput)
+        {
+            if(!gesture.Update(p.SelFocLine,p.SelFocCol,p.BlockSel,out int ar,out int ac,out int fr,out int fc)) return;
+            p.SelAncLine=ar; p.SelAncCol=ac; p.SelFocLine=fr; p.SelFocCol=fc;
+        }
+        StampSelection(p,false,gesture:p.SelGestureId is not null);
     }
 
     private void UpdateSelect(Pane p, int line, int col)
@@ -1105,17 +1130,18 @@ internal partial class Program
             // rows until they return; only an invalidated selection starts a new drag segment.
             bool reconciled = ReconcileSel(p);
             if (p.HasSel && reconciled && !CanExtendSelection(p)) return;
-            if (!reconciled || !p.SelContentVisible)
+            if (!reconciled || (!p.SelContentVisible && !p.S.Emulator.SynchronizedOutput))
             {
                 p.SelAncLine = line; p.SelAncCol = col;
             }
             p.SelFocLine = line; p.SelFocCol = col; p.HasSel = true; _selMoved = true;
-            StampSel(p);
+            StampGesture(p);
         }
     }
 
     private void SelectWord(Pane p, int line, int col)
     {
+        lock(p.S.SyncRoot) StartSelectionGesture(p,line,col,1);
         if (SelectNativeUnit(p,line,col,"word",0)) return;
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
@@ -1137,6 +1163,7 @@ internal partial class Program
 
     private void SelectLine(Pane p, int line)
     {
+        lock(p.S.SyncRoot) StartSelectionGesture(p,line,0,2);
         if (SelectNativeUnit(p,line,0,"line",1)) return;
         int cols; lock (p.S.SyncRoot) cols = p.S.Emulator.Screen.Cols;
         p.SelAncLine = p.SelFocLine = line; p.SelAncCol = 0; p.SelFocCol = cols - 1; p.HasSel = true; StampSel(p);
@@ -1150,7 +1177,7 @@ internal partial class Program
             if(p.S.Emulator is PresentedTerminalView)
             {
                 p.SelAncLine=p.SelFocLine=line; p.SelAncCol=p.SelFocCol=col;
-                p.BlockSel=false; p.HasSel=true; StampSelection(p,false,unit);
+                p.BlockSel=false; p.HasSel=true; StampGesture(p);
                 return true;
             }
             if(p.S.Emulator is not GhosttyTerminalCore core) return false;

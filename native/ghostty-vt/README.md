@@ -61,7 +61,12 @@ The host theme answers CSI ? 996 n and scheme changes notify mode 2031 subscribe
 including idle local and hosted sessions. Application OSC background overrides do
 not change the reported host scheme. Size queries use the pane and cell geometry;
 XTVERSION identifies Agwinterm and its embedded library release.
-Word and logical-line selection use native bounds. The `copy_selection_html` and
+Cell, word, logical-line and rectangular drags use native gesture bounds with a
+tracked press origin. Windows hit testing, click counts and autoscroll remain in
+the UI; hosted gestures execute in the terminal owner. Ordinary copy uses the
+native plain formatter with Windows line endings and physical rows for rectangles.
+Immutable text and saved-frame fallback remain independent of live terminal state.
+The `copy_selection_html` and
 `copy_selection_vt` keymap actions export the current retained selection through
 the native formatter (100,000-byte limit); HTML includes a plain-text clipboard
 fallback. For example, `map ctrl+alt+c = copy_selection_html` enables formatted

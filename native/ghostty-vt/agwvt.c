@@ -333,7 +333,7 @@ static int capture_links(AgwVt* vt, LinkEntry** out) {
 uint32_t agwvt_abi(uint32_t* cell_size, uint32_t* info_size) {
     if (cell_size) *cell_size = sizeof(AgwVtCell);
     if (info_size) *info_size = sizeof(AgwVtInfo);
-    return 6;
+    return 7;
 }
 const char* agwvt_revision(void) { return "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"; }
 static void reply(GhosttyTerminal terminal, void* context, const uint8_t* data, size_t len) {
@@ -502,7 +502,7 @@ int agwvt_format_selection(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uin
     GhosttyFormatter formatter;
     TRY(ghostty_formatter_terminal_new(&vt->allocator, &formatter, vt->terminal));
     GhosttyFormatterFormat emit = (GhosttyFormatterFormat)format;
-    bool unwrap = true;
+    bool unwrap = block == 0;
     GhosttyFormatterExtras extras = 0;
     int result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
     if (!result) result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &unwrap);
@@ -510,6 +510,56 @@ int agwvt_format_selection(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uin
     if (!result) result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
     if (!result) result = ghostty_formatter_format_buf(formatter, output, capacity, length);
     ghostty_formatter_free(formatter);
+    return result;
+}
+int agwvt_selection_drag(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uint32_t fc,
+    uint32_t behavior, uint32_t rectangle, const uint32_t* delimiters, size_t count, uint32_t* bounds) {
+    if (!vt || !bounds || behavior > 3 || rectangle > 1 || count > 4096 || (count && !delimiters)) return GHOSTTY_INVALID_VALUE;
+    GhosttyPoint a = { .tag = GHOSTTY_POINT_TAG_SCREEN, .value = { .coordinate = { .x = ac, .y = ar } } };
+    GhosttyPoint f = { .tag = GHOSTTY_POINT_TAG_SCREEN, .value = { .coordinate = { .x = fc, .y = fr } } };
+    GhosttyGridRef anchor, focus;
+    TRY(ghostty_terminal_grid_ref(vt->terminal, a, &anchor));
+    TRY(ghostty_terminal_grid_ref(vt->terminal, f, &focus));
+    GhosttySelectionGesture gesture = NULL;
+    GhosttySelectionGestureEvent press = NULL, drag = NULL;
+    int result = ghostty_selection_gesture_new(&vt->allocator, &gesture);
+    if (!result) result = ghostty_selection_gesture_event_new(&vt->allocator, &press, GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_PRESS);
+    if (!result) result = ghostty_selection_gesture_event_new(&vt->allocator, &drag, GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_DRAG);
+    GhosttySelectionGestureBehaviors behaviors = { behavior, behavior, behavior };
+    GhosttyCodepoints words = { .ptr = delimiters, .len = count };
+    // The UI supplies inclusive cells, rather than pixel positions. Place both
+    // endpoints on their outer edges; Ghostty owns word/line/rectangle geometry.
+    bool reverse = rectangle ? fc < ac : (fr < ar || (fr == ar && fc < ac));
+    GhosttySurfacePosition start = { .x = ac * 100.0 + (reverse ? 99 : 1), .y = 50 };
+    GhosttySurfacePosition end = { .x = fc * 100.0 + (reverse ? 1 : 99), .y = 50 };
+    uint16_t columns = 0;
+    if (!result) result = ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_COLS, &columns);
+    GhosttySelectionGestureGeometry geometry = { .columns = columns, .cell_width = 100, .screen_height = 100 };
+    bool block = rectangle != 0;
+    GhosttySelection selection;
+#define GESTURE_SET(event, opt, value) if (!result) result = ghostty_selection_gesture_event_set(event, opt, value)
+    GESTURE_SET(press, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_REF, &anchor);
+    GESTURE_SET(press, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_POSITION, &start);
+    GESTURE_SET(press, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_BEHAVIORS, &behaviors);
+    GESTURE_SET(press, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_WORD_BOUNDARY_CODEPOINTS, &words);
+    if (!result) {
+        result = ghostty_selection_gesture_event(gesture, vt->terminal, press, &selection);
+        if (result == GHOSTTY_NO_VALUE) result = GHOSTTY_SUCCESS;
+    }
+    GESTURE_SET(drag, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_REF, &focus);
+    GESTURE_SET(drag, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_POSITION, &end);
+    GESTURE_SET(drag, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_GEOMETRY, &geometry);
+    GESTURE_SET(drag, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_RECTANGLE, &block);
+    GESTURE_SET(drag, GHOSTTY_SELECTION_GESTURE_EVENT_OPT_WORD_BOUNDARY_CODEPOINTS, &words);
+#undef GESTURE_SET
+    if (!result) result = ghostty_selection_gesture_event(gesture, vt->terminal, drag, &selection);
+    GhosttyPointCoordinate begin, finish;
+    if (!result) result = ghostty_terminal_point_from_grid_ref(vt->terminal, &selection.start, GHOSTTY_POINT_TAG_SCREEN, &begin);
+    if (!result) result = ghostty_terminal_point_from_grid_ref(vt->terminal, &selection.end, GHOSTTY_POINT_TAG_SCREEN, &finish);
+    if (!result) { bounds[0] = begin.y; bounds[1] = begin.x; bounds[2] = finish.y; bounds[3] = finish.x; }
+    ghostty_selection_gesture_event_free(drag);
+    ghostty_selection_gesture_event_free(press);
+    ghostty_selection_gesture_free(gesture, vt->terminal);
     return result;
 }
 int agwvt_select_bounds(AgwVt* vt, uint32_t kind, uint32_t col, uint32_t row,

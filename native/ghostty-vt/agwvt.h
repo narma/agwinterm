@@ -84,6 +84,8 @@ AGWVT_API int agwvt_marks(AgwVt* vt, AgwVtMark* marks, size_t capacity, size_t* 
 AGWVT_API int agwvt_anchor_new(AgwVt* vt, uint32_t col, uint32_t row, void** anchor);
 AGWVT_API int agwvt_select_bounds(AgwVt* vt, uint32_t kind, uint32_t col, uint32_t row,
     const uint32_t* delimiters, size_t count, uint32_t* bounds);
+AGWVT_API int agwvt_selection_drag(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uint32_t fc,
+    uint32_t behavior, uint32_t rectangle, const uint32_t* delimiters, size_t count, uint32_t* bounds);
 AGWVT_API int agwvt_format_selection(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uint32_t fc,
     uint32_t block, uint32_t format, uint8_t* output, size_t capacity, size_t* length);
 AGWVT_API int agwvt_anchor_point(void* anchor, uint32_t* col, uint32_t* row);

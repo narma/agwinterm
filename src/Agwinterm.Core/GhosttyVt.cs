@@ -155,16 +155,43 @@ public sealed unsafe class GhosttyVt : IDisposable
     public string FormatSelection(int ar,int ac,int fr,int fc,bool block,int format,int maximumBytes=100000)
     {
         CheckAlive();
-        if(maximumBytes is < 1 or > 1024*1024) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
-        byte[] buffer=new byte[maximumBytes];
-        fixed(byte* ptr=buffer)
+        if(maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        byte[] buffer=new byte[Math.Min(maximumBytes,4096)];
+        while(true)
         {
-            int result=GhosttyNative.FormatSelection(_handle,checked((uint)ar),checked((uint)ac),checked((uint)fr),checked((uint)fc),
-                block ? 1u : 0u,checked((uint)format),ptr,(nuint)buffer.Length,out nuint length);
-            if(result == -3) throw new InvalidDataException("Formatted selection exceeds the copy limit.");
-            GhosttyNative.Check(result);
-            return Encoding.UTF8.GetString(buffer,0,checked((int)length));
+            fixed(byte* ptr=buffer)
+            {
+                int result=GhosttyNative.FormatSelection(_handle,checked((uint)ar),checked((uint)ac),checked((uint)fr),checked((uint)fc),
+                    block ? 1u : 0u,checked((uint)format),ptr,(nuint)buffer.Length,out nuint length);
+                if(result == -3)
+                {
+                    if(length > (nuint)maximumBytes || length <= (nuint)buffer.Length)
+                        throw new InvalidDataException("Formatted selection exceeds the copy limit.");
+                    buffer=new byte[checked((int)length)];
+                    continue;
+                }
+                GhosttyNative.Check(result);
+                return Encoding.UTF8.GetString(buffer,0,checked((int)length));
+            }
         }
+    }
+    public bool SelectionDrag(int ar,int ac,int fr,int fc,int behavior,bool block,string delimiters,
+        out int startRow,out int startCol,out int endRow,out int endCol)
+    {
+        CheckAlive();
+        if(behavior is < 0 or > 3 || delimiters.Length > 4094) throw new ArgumentOutOfRangeException(nameof(behavior));
+        uint[] boundaries=(delimiters+" \0").EnumerateRunes().Select(r=>(uint)r.Value).Distinct().ToArray();
+        uint* bounds=stackalloc uint[4];
+        int result;
+        fixed(uint* ptr=boundaries)
+            result=GhosttyNative.SelectionDrag(_handle,checked((uint)ar),checked((uint)ac),checked((uint)fr),checked((uint)fc),
+                (uint)behavior,block ? 1u : 0u,ptr,(nuint)boundaries.Length,bounds);
+        startRow=startCol=endRow=endCol=0;
+        if(result == -4) return false;
+        GhosttyNative.Check(result);
+        startRow=checked((int)bounds[0]); startCol=checked((int)bounds[1]);
+        endRow=checked((int)bounds[2]); endCol=checked((int)bounds[3]);
+        return true;
     }
     public bool SelectBounds(int kind, int row, int column, string delimiters,
         out int ar, out int ac, out int fr, out int fc)
