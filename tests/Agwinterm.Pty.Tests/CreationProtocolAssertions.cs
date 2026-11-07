@@ -9,6 +9,12 @@ namespace Agwinterm.Pty.Tests;
 // Real-pipe/real-child oracle, shared by BOTH hosts. Requires the integration-suite token locally.
 internal static class CreationProtocolAssertions
 {
+    // These oracles need a persistent child, not PowerShell's CLR/crypto startup.
+    // Windows PowerShell can exit with 0x8009001d before Start-Sleep runs on a
+    // fresh Windows runner. /d disables AutoRun; /k keeps cmd alive until cancelled.
+    internal static string IdleApp => Path.Combine(Environment.SystemDirectory, "cmd.exe");
+    internal static string[] IdleArgs => ["/d", "/q", "/k"];
+
     internal static async Task StartupSweepKeepsPendingPane(string appId)
     {
         using var backend = new ServerSessionBackend(appId, null);
@@ -20,9 +26,9 @@ internal static class CreationProtocolAssertions
         string orphan = client.PrepareCreate("unclaimed-orphan");
         try
         {
-            await pendingPane.StartAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 120"], freshEnv: false);
+            await pendingPane.StartAsync(IdleApp, IdleArgs, freshEnv: false);
             Assert.False(pendingPane.HasExited);
-            client.Create("unclaimed-orphan", 80, 24, "powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 120"], freshEnv: false, creationTicket: orphan);
+            client.Create("unclaimed-orphan", 80, 24, IdleApp, IdleArgs, freshEnv: false, creationTicket: orphan);
             var before = client.List(); Assert.Equal(2, before.Count);
             using var orphanChild = Process.GetProcessById(before.Single(x => x.Id == "unclaimed-orphan").ChildPid!.Value);
             _ = orphanChild.SafeHandle;
@@ -64,8 +70,8 @@ internal static class CreationProtocolAssertions
 
         var ticket = client.PrepareCreate(id);
         var create = new Create { Id = id, CreationTicket = ticket, Cols = 80, Rows = 24,
-            App = "powershell.exe", FreshEnvOff = true };
-        create.Args.Add(new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 120" });
+            App = IdleApp, FreshEnvOff = true };
+        create.Args.Add(IdleArgs);
         string? replacement = null;
         try
         {
@@ -73,10 +79,10 @@ internal static class CreationProtocolAssertions
             Assert.True(SpinWait.SpinUntil(() => client.QueryCreate(id, ticket) == CreationPhase.CreationLive, 15000),
                 "lost Create reply must leave an exact queryable live attempt");
             var first = Assert.Single(client.List()); Assert.Equal(ticket, first.CreationTicket);
-            using var child = Process.GetProcessById(first.ChildPid!.Value);
+            using var child = OpenChild(client, id, ticket, first.ChildPid!.Value);
             _ = child.SafeHandle; // pin THIS process while it is known live, before cancellation
             Assert.False(child.HasExited);
-            Assert.Equal(id, client.Create(id, 80, 24, "powershell.exe", create.Args.ToArray(), freshEnv: false, creationTicket: ticket));
+            Assert.Equal(id, client.Create(id, 80, 24, IdleApp, create.Args.ToArray(), freshEnv: false, creationTicket: ticket));
             Assert.Equal(first.ChildPid, Assert.Single(client.List()).ChildPid); // no duplicate spawn
             using (var attachment = client.Attach(id, creationTicket: ticket, nativeSnapshot: true))
                 Assert.Equal(ticket, attachment.CreationTicket);
@@ -86,7 +92,7 @@ internal static class CreationProtocolAssertions
             Assert.Empty(client.List());
 
             replacement = client.PrepareCreate(id);
-            client.Create(id, 80, 24, "powershell.exe", create.Args.ToArray(), freshEnv: false, creationTicket: replacement);
+            client.Create(id, 80, 24, IdleApp, create.Args.ToArray(), freshEnv: false, creationTicket: replacement);
             var second = Assert.Single(client.List()); Assert.Equal(replacement, second.CreationTicket);
             Assert.NotEqual(ticket, replacement);
             Assert.Equal(CreationPhase.CreationUnknown, client.CancelCreate(id, ticket));
@@ -103,6 +109,21 @@ internal static class CreationProtocolAssertions
             foreach (var owned in new[] { ticket, replacement }.OfType<string>())
                 Assert.True(SpinWait.SpinUntil(() => cleanup.CancelCreate(id, owned) == CreationPhase.CreationUnknown, 15000),
                     "exact creation cleanup did not complete");
+        }
+    }
+
+    private static Process OpenChild(PtyHostClient client, string id, string ticket, int pid)
+    {
+        try { return Process.GetProcessById(pid); }
+        catch (ArgumentException ex)
+        {
+            // Diagnostics only: never retry the spawn or accept a missing child.
+            SpinWait.SpinUntil(() => Assert.Single(client.List()).HasExited, 2000);
+            var state = Assert.Single(client.List());
+            using var attachment = client.Attach(id, creationTicket: ticket, nativeSnapshot: true);
+            using var terminal = new Agwinterm.Core.GhosttyTerminalCore(80, 24);
+            terminal.RestoreSnapshot(attachment.NativeSnapshot!);
+            throw new InvalidOperationException($"Child {pid} exited before cancellation: exited={state.HasExited}, code={state.ExitCode}; output:\n{string.Join('\n', terminal.DumpBuffer())}", ex);
         }
     }
 }
