@@ -129,9 +129,14 @@ if(-not (AgentWait {$null-ne (FindAgent 'Workers ready')})){throw 'Child reports
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x23,[IntPtr]1) # End
 Check 'keyboard End reveals final agent below fold' (AgentWait {$null-ne (FindAgent 'worker24')})
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x50,[IntPtr]1) # P
-Check 'keyboard pin persists the focused child' (AgentWait {
+$keyboardPinSaved=AgentWait {
     @((ReadAgentState).AgentPins|Where-Object {$_-like '*/worker24'}).Count-eq 1
-} 400)
+} 400
+Check 'keyboard pin persists the focused child' $keyboardPinSaved
+if(-not $keyboardPinSaved){
+    "PIN DIAGNOSTIC: $((ReadAgentState).AgentPins|ConvertTo-Json -Compress)"
+    Get-ChildItem (Split-Path $agentStatePath) | Select-Object Name,Length,LastWriteTime | Out-String | Write-Output
+}
 Check 'keyboard pin keeps the moved row visible' (AgentWait {$null-ne (FindAgent 'worker24')})
 $beforeOpen=[string](Rpc 'session.text' @{} $worker)
 [void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]13,[IntPtr]1)

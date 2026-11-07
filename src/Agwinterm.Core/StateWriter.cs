@@ -225,7 +225,17 @@ public sealed class StateWriter
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 string tmp = path + ".tmp";
                 File.WriteAllText(tmp, text);
-                File.Move(tmp, path, overwrite: true);   // atomic replace: a crash never leaves a truncated file
+                // A short-lived reader or Windows file scanner can deny replacement
+                // even after the new snapshot was written successfully. Retry the
+                // rename only, retaining the same snapshot and ordering fence.
+                for (int attempt = 0; ; attempt++)
+                {
+                    try { File.Move(tmp, path, overwrite: true); break; }
+                    catch (Exception ex) when (attempt < 5 &&
+                        ex is IOException or UnauthorizedAccessException &&
+                        (ex.HResult & 0xffff) is 5 or 32 or 33)
+                    { Thread.Sleep(50 * (attempt + 1)); }
+                }
                 s.Published = stamp;
                 s.PublishedText = text;
                 return true;
