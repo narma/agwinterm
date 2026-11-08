@@ -4,6 +4,22 @@ namespace Agwinterm.Core.Tests;
 
 public class NavigationTests
 {
+    [Theory]
+    [InlineData("left")]
+    [InlineData("right")]
+    [InlineData("up")]
+    [InlineData("down")]
+    public void ShiftSelectionCanBeDisabledAndRebound(string direction)
+    {
+        string chord = "shift+" + direction, action = "extend_selection_" + direction;
+        Assert.Equal(action, Keymap.Parse("").Bindings[chord]);
+        var parsed = Keymap.Parse($"unmap {chord}\nmap alt+{chord} = {action}");
+        Assert.Empty(parsed.Diagnostics);
+        Assert.False(parsed.Bindings.ContainsKey(chord));
+        Assert.Equal(action, parsed.Bindings["alt+" + chord]);
+        Assert.Equal("mark_mode", Keymap.Parse($"map {chord} = mark_mode").Bindings[chord]);
+    }
+
     [Fact] public void F2ReachesTerminalUnlessExplicitlyBoundByUser()
     {
         Assert.False(Keymap.Parse("").Bindings.ContainsKey("f2"));

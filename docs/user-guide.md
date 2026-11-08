@@ -191,6 +191,20 @@ bar when nothing else bound it), **Ctrl+Shift+D** (dashboard), **Ctrl+`** (quick
   to `next_session` or `previous_session`; after `unmap ctrl+tab` MRU does not run and the chord
   follows the normal keymap / terminal path. Use `unmap ctrl+d` for one chord, or `unmap a | b` for
   several. Reload with **File → Reload Keymap** or `agwintermctl keymap reload`.
+
+  **Shift+Left/Right/Up/Down** starts or extends terminal text selection from the
+  cursor (or the existing selection). Reversing direction shrinks the selection;
+  typing resumes terminal input. This also works in full-screen terminal programs.
+  The actions are `extend_selection_left`, `extend_selection_right`,
+  `extend_selection_up`, and `extend_selection_down`. For example:
+
+  ```text
+  unmap shift+left | shift+right | shift+up | shift+down
+  map alt+shift+left = extend_selection_left
+  map alt+shift+right = extend_selection_right
+  ```
+
+  `unmap` lets the original Shift+arrow keys reach the shell or TUI again.
   **PageUp** / **PageDown** can be bound as `pageup` / `pagedown` or `pgup` / `pgdown`.
   For session switching, add `map ctrl+shift+pgup = previous_session` and
   `map ctrl+shift+pgdown = next_session`. Plain **Shift+PageUp** / **Shift+PageDown**

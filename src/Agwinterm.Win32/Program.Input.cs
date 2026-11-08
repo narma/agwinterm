@@ -194,6 +194,10 @@ internal partial class Program
             case "select_command_output": if(ActiveSurface() is { } so) SelectCommandOutput(so,false); break;
             case "copy_command_output": if(ActiveSurface() is { } co) SelectCommandOutput(co,true); break;
             case "select_all": if (ActiveSurface() is { } sa) SelectAll(sa); break;
+            case "extend_selection_left": if (ActiveSurface() is { } sl) ExtendKeyboardSelection(sl, -1, 0); break;
+            case "extend_selection_right": if (ActiveSurface() is { } sr) ExtendKeyboardSelection(sr, 1, 0); break;
+            case "extend_selection_up": if (ActiveSurface() is { } su) ExtendKeyboardSelection(su, 0, -1); break;
+            case "extend_selection_down": if (ActiveSurface() is { } sd) ExtendKeyboardSelection(sd, 0, 1); break;
             case "copy_selection": if (ActiveSurface() is { } sc && HasLiveSel(sc)) CopySelection(sc); break;
             case "copy_selection_html": if (ActiveSurface() is { } html && HasLiveSel(html)) _=CopyFormattedSelection(html,2); break;
             case "copy_selection_vt": if (ActiveSurface() is { } vt && HasLiveSel(vt)) _=CopyFormattedSelection(vt,1); break;
@@ -822,6 +826,7 @@ internal partial class Program
 
     private void StampSelection(Pane p,bool all,string? unit=null,bool gesture=false)
     {
+        p.SelKeyboardDirection = null;
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
         {
@@ -1011,6 +1016,67 @@ internal partial class Program
         }
     }
 
+    // Shift selection is a normal bindable action, not a modal keyboard grab.
+    // Reconstruct caret boundaries from reconciled inclusive cells on every step so
+    // native reflow/scroll tracking remains authoritative.
+    private void ExtendKeyboardSelection(Pane p, int dx, int dy)
+    {
+        lock (p.S.SyncRoot)
+        {
+            bool existing = (p.HasSel || p.SelKeyboardDirection == 0) && ReconcileSel(p);
+            if (existing && !CanExtendSelection(p))
+            {
+                if (p.HasSel) return; // preserve a retained offscreen selection
+                existing = false; // an empty caret must not block starting again after output
+            }
+            var em = p.S.Emulator;
+            int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
+            if (cols <= 0 || rows <= 0) return;
+            long min = (long)(em.IsAltScreen ? hist : 0) * cols;
+            long end = (long)(hist + rows) * cols;
+            long anchor, focus;
+            if (existing)
+            {
+                anchor = (long)p.SelAncLine * cols + p.SelAncCol;
+                focus = (long)p.SelFocLine * cols + p.SelFocCol;
+                int direction = p.SelKeyboardDirection ?? (focus >= anchor ? 1 : -1);
+                if (direction > 0) focus++;
+                else if (direction < 0) anchor++;
+            }
+            else
+            {
+                p.ClearSel();
+                // The terminal cursor belongs to the live screen, regardless of viewport scroll.
+                anchor = focus = (long)(hist + em.CursorRow) * cols + em.CursorCol;
+            }
+            anchor = Math.Clamp(anchor, min, end);
+            focus = Math.Clamp(focus + dx + (long)dy * cols, min, end);
+            // A CJK/emoji spacer is not a separate character boundary.
+            if (focus > min && focus < end)
+            {
+                int line = (int)(focus / cols), col = (int)(focus % cols);
+                var cell = line < hist ? em.GetHistoryCell(line, col) : em.Screen[line - hist, col];
+                if (cell.Width == 0) focus = Math.Clamp(focus + (dx < 0 || dy < 0 ? -1 : 1), min, end);
+            }
+            int nextDirection = Math.Sign(focus - anchor);
+            long anchorCell = Math.Clamp(anchor - (nextDirection < 0 ? 1 : 0), min, end - 1);
+            long focusCell = Math.Clamp(focus - (nextDirection > 0 ? 1 : 0), min, end - 1);
+            p.EndSelectionGesture();
+            p.SelAncLine = (int)(anchorCell / cols); p.SelAncCol = (int)(anchorCell % cols);
+            p.SelFocLine = (int)(focusCell / cols); p.SelFocCol = (int)(focusCell % cols);
+            p.BlockSel = false;
+            p.HasSel = nextDirection != 0;
+            StampSel(p);
+            p.SelKeyboardDirection = nextDirection;
+            int top = hist - Math.Clamp(p.ScrollOffset, 0, hist);
+            if (em.IsAltScreen) p.ScrollOffset = 0;
+            else if (p.SelFocLine < top) p.ScrollOffset = Math.Clamp(hist - p.SelFocLine, 0, hist);
+            else if (p.SelFocLine >= top + rows)
+                p.ScrollOffset = Math.Clamp(hist - p.SelFocLine + rows - 1, 0, hist);
+        }
+        RequestRedraw();
+    }
+
     // ---- Keyboard mark mode (WT's markMode): build a selection without the mouse ----
     private bool _markMode;
 
@@ -1086,6 +1152,7 @@ internal partial class Program
     {
         lock (p.S.SyncRoot)
         {
+            if(p.SelOwner is not null && !p.SelContentVisible) return false;
             if(p.SelNative is not null && !p.SelContentVisible && !p.S.Emulator.SynchronizedOutput) return false;
             if (p.SelContent is null) return true;
             if(p.S.Emulator.SynchronizedOutput) return true;

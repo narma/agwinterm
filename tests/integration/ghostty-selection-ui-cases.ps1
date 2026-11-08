@@ -126,6 +126,40 @@ try {
         }
         Check $name ($actual -ceq $expected) "expected=[$expected] actual=[$actual]"
     }
+    function SelectionChord([byte]$key,[byte]$modifier=0x10) {
+        [void][GhosttySelectionWindow]::SetForegroundWindow($hwnd)
+        [GhosttySelectionWindow]::keybd_event($modifier,0,0,[UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 70
+        try {
+            [GhosttySelectionWindow]::keybd_event($key,0,0,[UIntPtr]::Zero)
+            [GhosttySelectionWindow]::keybd_event($key,0,2,[UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 70
+        } finally { [GhosttySelectionWindow]::keybd_event($modifier,0,2,[UIntPtr]::Zero) }
+    }
+    $null=Rpc 'selection.clear' @{} $selectionSession
+    SelectionChord 0x27
+    CheckSelection 'Shift+Right selects exactly one character from the cursor' 'a'
+    SelectionChord 0x27
+    CheckSelection 'Repeated Shift+Right extends selection' 'al'
+    SelectionChord 0x25
+    CheckSelection 'Shift+Left shrinks selection' 'a'
+    SelectionChord 0x25
+    CheckSelection 'Reversing to the anchor clears selection' ''
+    $keyboardKeymapPath=Join-Path $appDir 'keymap.conf'
+    $keyboardKeymap=[IO.File]::ReadAllText($keyboardKeymapPath)
+    try {
+        [IO.File]::WriteAllText($keyboardKeymapPath,$keyboardKeymap+"`r`nunmap shift+right`r`nmap alt+right = extend_selection_right`r`n")
+        $null=Rpc 'keymap.reload' @{}
+        Start-Sleep -Milliseconds 150
+        SelectionChord 0x27
+        CheckSelection 'Unmapped Shift+Right does not start selection' ''
+        SelectionChord 0x27 0x12
+        CheckSelection 'Selection action works on a user-defined chord' 'a'
+    } finally {
+        [IO.File]::WriteAllText($keyboardKeymapPath,$keyboardKeymap)
+        $null=Rpc 'keymap.reload' @{}
+        $null=Rpc 'selection.clear' @{} $selectionSession
+    }
     SelectionMouse 0x203 0 7
     SelectionMouse 0x200 0 13
     CheckSelection 'Double-click drag extends by whole words' 'beta gamma'

@@ -14,6 +14,75 @@ public class SelectionScrollRegressionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void KeyboardSelectionStartsAtCursorShrinksAndCrossesAnchor(bool alt)
+    {
+        using var f = new Fixture(alt);
+        f.Feed("\x1b[2J\x1b[Habcdef\x1b[1;4H");
+        f.Clear();
+        f.Extend(-1); Assert.Equal("c", f.Text());
+        f.Extend(-1); Assert.Equal("bc", f.Text());
+        f.Extend(1); Assert.Equal("c", f.Text());
+        f.Extend(1); Assert.Equal("", f.Text());
+        f.Extend(1); Assert.Equal("d", f.Text());
+        f.Extend(1); Assert.Equal("de", f.Text());
+    }
+
+    [Fact]
+    public void KeyboardSelectionCrossesSoftWrapAndTreatsWideGlyphAsOneStep()
+    {
+        using var f = new Fixture(false);
+        f.Core.Resize(5, 6);
+        f.Feed("\x1b[2J\x1b[Habcde界xy\x1b[2;3H");
+        f.Clear();
+        f.Extend(-1); Assert.Equal("界", f.Text());
+        f.Extend(-1); Assert.Equal("e界", f.Text());
+        f.Extend(1); Assert.Equal("界", f.Text());
+        f.Extend(1); Assert.Equal("", f.Text());
+    }
+
+    [Fact]
+    public void KeyboardSelectionExtendsMouseSelectionAndHonorsAltScreenFloor()
+    {
+        using var f = new Fixture(true);
+        f.Feed("\x1b[2J\x1b[Habcdef");
+        f.Select(0, from: 1, to: 2);
+        f.Extend(1); Assert.Equal("bcd", f.Text());
+        f.Clear();
+        f.Feed("\x1b[H");
+        f.Extend(-1); Assert.Equal("", f.Text());
+        f.Extend(0, -1); Assert.Equal("", f.Text());
+        f.Extend(1); Assert.Equal("a", f.Text());
+    }
+
+    [Fact]
+    public void KeyboardSelectionUsesLiveCursorWhileScrolledAndExtendsVertically()
+    {
+        using var f = new Fixture(false);
+        f.Feed(string.Concat(Enumerable.Repeat("old line\r\n", 20)));
+        f.Feed("\x1b[2J\x1b[Habcde\r\nfghij\x1b[1;3H");
+        f.Clear();
+        f.Set("ScrollOffset", f.Core.HistoryCount);
+        f.Extend(0, 1); Assert.Equal("cde\r\nfg", f.Text());
+        f.Extend(0, -1); Assert.Equal("", f.Text());
+        f.Extend(-1); Assert.Equal("b", f.Text());
+    }
+
+    [Fact]
+    public void EmptyKeyboardSelectionCanRestartAfterItsContentIsReplaced()
+    {
+        using var f = new Fixture(false);
+        f.Feed("\x1b[2J\x1b[Habc\x1b[H");
+        f.Clear();
+        f.Extend(1); f.Extend(-1);
+        Assert.Equal("", f.Text());
+        f.Feed("\x1b[Hxyz\x1b[H");
+        f.Extend(1);
+        Assert.Equal("x", f.Text());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void CopyJoinsSoftWrapsButKeepsSpacesAndHardBreaks(bool alt)
     {
         foreach (int cols in new[] { 5, 80 })
@@ -126,6 +195,10 @@ public class SelectionScrollRegressionTests
             return method.Invoke(method.IsStatic ? null : RuntimeHelpers.GetUninitializedObject(ProgramType),new[] { Pane });
         }
         public string Text() => (string)Invoke("SelectionText")!;
+        public void Clear() => PaneType.GetMethod("ClearSel")!.Invoke(Pane, null);
+        public void Extend(int dx, int dy = 0) => ProgramType.GetMethod("ExtendKeyboardSelection",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(
+                RuntimeHelpers.GetUninitializedObject(ProgramType), new object[] { Pane, dx, dy });
         public void AssertSelection(int row)
         {
             Assert.Equal("MARKER02", Text()); // empty (clear-on-wheel) is also a failure

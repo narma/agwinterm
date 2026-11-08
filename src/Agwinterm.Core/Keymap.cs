@@ -49,6 +49,10 @@ public static class Keymap
         ("ctrl+j", "toggle_scratch"),
         ("ctrl+shift+f", "toggle_flag"),
         ("ctrl+shift+a", "select_all"),
+        ("shift+left", "extend_selection_left"),
+        ("shift+right", "extend_selection_right"),
+        ("shift+up", "extend_selection_up"),
+        ("shift+down", "extend_selection_down"),
         ("ctrl+alt+n", "new_window"),
         ("f11", "toggle_fullscreen"),
         ("ctrl+shift+up", "previous_prompt"),
@@ -73,6 +77,7 @@ public static class Keymap
         "previous_prompt", "next_prompt", "reopen_session",
         "toggle_flag", "toggle_flagged_view", "focus_workspace", "toggle_workspace_filter", "clear_workspace_focus",
         "select_all", "select_command_output", "copy_command_output", "copy_selection", "copy_selection_html", "copy_selection_vt", "paste",
+        "extend_selection_left", "extend_selection_right", "extend_selection_up", "extend_selection_down",
         "export_selection_text", "export_selection_html", "export_selection_vt",
         "new_window", "close_window", "switch_window",
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
@@ -119,6 +124,9 @@ public static class Keymap
         # map ctrl+shift+pgup = previous_session
         # map ctrl+shift+pgdown = next_session
         # map ctrl+insert = copy_selection
+        # unmap shift+left | shift+right | shift+up | shift+down
+        # map alt+shift+left = extend_selection_left
+        # map alt+shift+right = extend_selection_right
         # map ctrl+shift+o = select_command_output
         # map ctrl+alt+c = copy_command_output
         # map shift+insert = paste        # pair with copy-on-ctrl-c = false in agwinterm.conf for ^C interrupt
