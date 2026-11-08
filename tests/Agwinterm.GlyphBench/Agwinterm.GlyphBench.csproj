@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <Compile Include="../../src/Agwinterm.Win32/SoloGlyphCache.cs" Link="SoloGlyphCache.cs" />
+    <Compile Include="../../src/Agwinterm.Win32/CellBackground.cs" Link="CellBackground.cs" />
     <Compile Include="../../src/Agwinterm.Win32/SoloGlyphBitmapCache.cs" Link="SoloGlyphBitmapCache.cs" />
   </ItemGroup>
 </Project>

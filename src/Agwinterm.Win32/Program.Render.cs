@@ -655,7 +655,6 @@ internal partial class Program
             bool searchHere = _searchActive && selPane is not null && ReferenceEquals(selPane, ActiveSurface());
             for (int r = 0; r < rows; r++)
             {
-                float y = oy + r * ch;
                 int c = 0;
                 while (c < cols)  // Pass 1: coalesced background fills
                 {
@@ -672,7 +671,7 @@ internal partial class Program
                         c++;
                     }
                     brush.Color = C4(bg);
-                    rt.FillRectangle(new Rect(ox + start * cw, y, (c - start) * cw, ch), brush);
+                    CellBackground.Fill(rt, brush, ox, oy, cw, ch, r, start, c);
                 }
             }
             DrawGhosttyImages(session,nativeImages, GhosttyImageLayer.BelowText, ox, oy, cw, ch, cols, rows);
@@ -690,7 +689,7 @@ internal partial class Program
                     if (to >= from)
                     {
                         brush.Color = new Color4(40 / 255f, 90 / 255f, 150 / 255f, 1f);
-                        rt.FillRectangle(new Rect(ox + from * cw, y, (to - from + 1) * cw, ch), brush);
+                        CellBackground.Fill(rt, brush, ox, oy, cw, ch, r, from, to + 1);
                     }
                 }
                 if (searchHere)  // search-match highlight (amber; current match brighter)
@@ -712,7 +711,7 @@ internal partial class Program
                         int to = Math.Clamp(abs == m.EndLine ? m.Col1 : cols - 1, 0, cols - 1);
                         brush.Color = mi == _searchCur ? new Color4(235 / 255f, 175 / 255f, 45 / 255f, 1f)
                                                        : new Color4(150 / 255f, 110 / 255f, 25 / 255f, 1f);
-                        rt.FillRectangle(new Rect(ox + from * cw, y, (to - from + 1) * cw, ch), brush);
+                        CellBackground.Fill(rt, brush, ox, oy, cw, ch, r, from, to + 1);
                     }
                 }
                 if (_linkUrl is not null && selPane is not null && ReferenceEquals(selPane, _linkPane) && abs == _linkLine)
