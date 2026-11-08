@@ -399,7 +399,17 @@ internal partial class Program
                 if (!KeyDown(VK_CONTROL)) ClearLinkHover();   // Ctrl released: drop the link underline/cursor
                 break;
 
+            case WM_CAPTURECHANGED:
+                if (_sidebarResizing) FinishSidebarResize();
+                break;
+
             case WM_SETCURSOR:
+                if (LoWord(lParam) == HTCLIENT)
+                {
+                    GetCursorPos(out POINT sidebarCursor); ScreenToClient(hwnd, ref sidebarCursor);
+                    if (_sidebarResizing || SidebarDividerAt(ToDip(sidebarCursor.x), ToDip(sidebarCursor.y)))
+                    { SetCursor(LoadCursorW(IntPtr.Zero, IDC_SIZEWE)); return (IntPtr)1; }
+                }
                 if (_linkUrl is not null && LoWord(lParam) == HTCLIENT)
                 { SetCursor(LoadCursorW(IntPtr.Zero, IDC_HAND)); return (IntPtr)1; }   // hand over a hovered link
                 // A resize cursor over (or while dragging) the split divider, shaped by the axis:
@@ -492,6 +502,7 @@ internal partial class Program
                         SetActive(t);
                         return IntPtr.Zero;
                     }
+                    if (TryBeginSidebarResize(mx, my)) return IntPtr.Zero;
                     // Quick terminal is a floating panel: its corner ✕ hides it, and a left-click anywhere
                     // in the "main window area" outside the panel also dismisses it (like a tool window).
                     if (_coverKind == 2)
@@ -554,6 +565,13 @@ internal partial class Program
                     return IntPtr.Zero;
                 }
             case WM_LBUTTONUP:
+                if (_sidebarResizing)
+                {
+                    ResizeSidebar(DipX(lParam));
+                    FinishSidebarResize();
+                    ReleaseCapture();
+                    return IntPtr.Zero;
+                }
                 if (_setOpen) { SettingsMouseUp(); return IntPtr.Zero; }
                 if (_pressBtn is not null)
                 {
@@ -591,6 +609,7 @@ internal partial class Program
             case WM_LBUTTONDBLCLK:
                 {
                     int mx = DipX(lParam), my = DipY(lParam);   // device px -> DIP layout
+                    if (TryBeginSidebarResize(mx, my)) return IntPtr.Zero;
                     if (_dashboardOpen) { DashboardClick(mx, my, doubleClick: true); return IntPtr.Zero; }
                     if (mx < (int)_sidebarW && my >= (int)TitleBarH && my < ClientH() - (int)FooterH)
                     {
@@ -632,11 +651,23 @@ internal partial class Program
 
             case WM_MOUSEMOVE:
                 {
+                    if (_sidebarResizing)
+                    {
+                        if (((long)wParam & MK_LBUTTON) != 0) ResizeSidebar(DipX(lParam));
+                        else { FinishSidebarResize(); ReleaseCapture(); }
+                        return IntPtr.Zero;
+                    }
                     if (_setOpen) { if (_setDragRow is not null) SettingsDrag(DipX(lParam)); return IntPtr.Zero; }
                     if (!_mouseTracking)
                     {
                         var tme = new TRACKMOUSEEVENT { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<TRACKMOUSEEVENT>(), dwFlags = TME_LEAVE, hwndTrack = hwnd, dwHoverTime = 0 };
                         TrackMouseEvent(ref tme); _mouseTracking = true;
+                    }
+                    if (!_divDragging && !_sbPress && !_selecting && SidebarDividerAt(DipX(lParam), DipY(lParam)))
+                    {
+                        ClearLinkHover();
+                        SetCursor(LoadCursorW(IntPtr.Zero, IDC_SIZEWE));
+                        return IntPtr.Zero;
                     }
                     if (!_divDragging && !_sbPress && !_selecting) UpdateChromeHover(DipX(lParam), DipY(lParam));
                     if (!_divDragging && !_sbPress && !_selecting)
