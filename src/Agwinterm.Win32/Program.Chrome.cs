@@ -1740,12 +1740,32 @@ internal partial class Program
     /// active session's grid and column count, the cover, hit-testing — derives from <c>_sidebarW</c>
     /// at its next layout, so a regrid + repaint is what turns the number into a moved divider. A
     /// width verb that skipped this would change the number and nothing on screen.</summary>
-    private void SidebarWidthChanged()
+    private void SidebarWidthChanged(bool persist = true)
     {
         if (_active is not null) RegridSession(_active);
         if (_cover is not null) RegridCover();
         RequestRedraw();
+        if (persist) SaveState();
+    }
+
+    private bool SidebarDividerAt(int x, int y) =>
+        _sidebarW > 0 && !_helpOpen && !_setOpen && _palette == PaletteKind.None && !_dashboardOpen &&
+        y >= TitleBarH && y < ClientH() && Math.Abs(x - _sidebarW) <= 4;
+
+    private void ResizeSidebar(int x)
+    {
+        if (_sidebarW <= 0) return;
+        float width = Math.Clamp(x - _sidebarResizeOffset, Agwinterm.Pty.SidebarWidths.Min, Agwinterm.Pty.SidebarWidths.Max);
+        if (width == _sidebarW) return;
+        _sidebarW = _sidebarWShown = width;
+        SidebarWidthChanged(persist: false);
+    }
+
+    private void FinishSidebarResize()
+    {
+        _sidebarResizing = false;
         SaveState();
+        RequestRedraw();
     }
 
     private void ShowToast(string text, int durationMs = 1900)

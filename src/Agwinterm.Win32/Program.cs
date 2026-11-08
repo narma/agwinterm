@@ -179,6 +179,8 @@ internal partial class Program : ISessionHost, IWindowHost
     // _sidebarW on show, and it is what the state file's SidebarWidth carries — so a width set while
     // hidden is remembered across the next show and a restart instead of being lost to SidebarWFull.
     private float _sidebarWShown = SidebarWFull;
+    private bool _sidebarResizing;
+    private float _sidebarResizeOffset;
 
     // Sidebar view mode + workspace focus (Wave D1). Tree = the normal workspace→session outline;
     // Flagged = a flat working-set of every flagged session across all workspaces. Focus (tree only)

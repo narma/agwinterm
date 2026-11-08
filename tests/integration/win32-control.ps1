@@ -37,6 +37,9 @@ namespace Agwinterm.Win32ControlTest
         [DllImport("user32.dll")]
         public static extern IntPtr SendMessageW(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        public static extern uint GetDpiForWindow(IntPtr hwnd);
+
         [DllImport("user32.dll")] static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 
         public static void PostReturn(IntPtr h) {
@@ -1362,6 +1365,38 @@ for ($i = 0; $i -lt 60; $i++) { & '__CTL__' session overlay resize --size-percen
         $badOp = Invoke-Ctl @('sidebar', 'sideways')
         Check 'a sidebar op the app cannot do is refused, not acknowledged' `
             ((-not $badOp.ok) -and ([string]$badOp.error).Contains('sideways')) "reply=$($badOp | ConvertTo-Json -Compress)"
+        # Exercise the actual mouse path, including capture loss and range limits.
+        $sidebarHwnd = $process.MainWindowHandle
+        $sidebarScale = [Agwinterm.Win32ControlTest.NativeMethods]::GetDpiForWindow($sidebarHwnd) / 96.0
+        function Send-SidebarMouse([uint32]$message, [int]$x, [int]$buttons) {
+            $px = [int][Math]::Round($x * $sidebarScale)
+            $py = [int][Math]::Round(160 * $sidebarScale)
+            $packed = (($py -band 0xffff) -shl 16) -bor ($px -band 0xffff)
+            [void][Agwinterm.Win32ControlTest.NativeMethods]::SendMessageW($sidebarHwnd, $message, [IntPtr]$buttons, [IntPtr]$packed)
+        }
+        Send-SidebarMouse 0x0201 318 1
+        Send-SidebarMouse 0x0200 398 1
+        Send-SidebarMouse 0x0202 398 0
+        $dragWidth = Invoke-Ctl @('sidebar', 'width')
+        $dragMetrics = Invoke-Ctl @('session', 'metrics', '--target', $sessionId)
+        Check 'mouse drag resizes the sidebar without jumping at the grab offset' ($dragWidth.result.width -eq 400) "$($dragWidth | ConvertTo-Json -Compress)"
+        Check 'mouse drag regrids the active terminal' ($dragMetrics.ok -and $dragMetrics.result.widthPx -lt $metricsAfter.result.widthPx) "$($dragMetrics | ConvertTo-Json -Compress)"
+        $dragStateFile = Wait-StateFile { param($t) $t -match '"SidebarWidth":\s*400' }
+        Check 'mouse-resized sidebar width is persisted' ([bool]$dragStateFile)
+        Send-SidebarMouse 0x0201 400 1
+        Send-SidebarMouse 0x0200 900 1
+        $maxDrag = Invoke-Ctl @('sidebar', 'width')
+        Send-SidebarMouse 0x0200 10 1
+        Send-SidebarMouse 0x0202 10 0
+        $minDrag = Invoke-Ctl @('sidebar', 'width')
+        Check 'mouse drag clamps at the supported width limits' ($maxDrag.result.width -eq 600 -and $minDrag.result.width -eq 120)
+        Send-SidebarMouse 0x0201 120 1
+        Send-SidebarMouse 0x0200 280 1
+        [void][Agwinterm.Win32ControlTest.NativeMethods]::SendMessageW($sidebarHwnd, 0x0215, [IntPtr]0, [IntPtr]0)
+        Send-SidebarMouse 0x0200 350 1
+        $captureWidth = Invoke-Ctl @('sidebar', 'width')
+        Send-SidebarMouse 0x0202 350 0
+        Check 'losing mouse capture stops sidebar resizing' ($captureWidth.result.width -eq 280)
         Invoke-Ctl @('sidebar', 'width', '220') | Out-Null
 
         Invoke-Ctl @('sidebar', 'hide') | Out-Null
