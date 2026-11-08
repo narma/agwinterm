@@ -6,6 +6,8 @@ using Vortice.DirectWrite;
 // Host-free: DirectWrite layouts and offscreen WIC targets only; no windows or input.
 using var factory = DWrite.DWriteCreateFactory<IDWriteFactory>();
 using var format = factory.CreateTextFormat("Consolas", 14f);
+CellBackgroundChecks.Run();
+if (args.Contains("--cell-background-only")) return;
 RasterChecks.Run(factory, format);
 if (args.Contains("--raster-only")) return;
 using var bold = factory.CreateTextFormat("Consolas", null, FontWeight.Bold, FontStyle.Normal, FontStretch.Normal, 14f, "en-us");
