@@ -5,6 +5,53 @@ namespace Agwinterm.Pty.Tests;
 public sealed class GuiInstanceTests
 {
     [Fact]
+    public void LibraryOwnershipUsesTheCrossSessionUserNamespace()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "gui-instance-" + Guid.NewGuid().ToString("N"));
+        string key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())));
+        using var owner = new GuiInstance(directory);
+        Task.Factory.StartNew(() =>
+        {
+            using var shared = Mutex.OpenExisting("agwinterm-gui-" + key,
+                new NamedWaitHandleOptions { CurrentUserOnly = true, CurrentSessionOnly = false });
+            bool acquired = shared.WaitOne(0);
+            if (acquired) shared.ReleaseMutex();
+            Assert.False(acquired);
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).GetAwaiter().GetResult();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ForwardingWaitsForApplicationAndDoesNotAcknowledgeFailure(bool fail)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "gui-instance-" + Guid.NewGuid().ToString("N"));
+        using var owner = new GuiInstance(directory);
+        using var entered = new ManualResetEventSlim();
+        using var apply = new ManualResetEventSlim();
+        owner.Listen(_ =>
+        {
+            entered.Set();
+            if (!apply.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+            if (fail) throw new InvalidOperationException("window closed");
+        });
+        var forward = Task.Factory.StartNew(() =>
+        {
+            using var duplicate = new GuiInstance(directory);
+            if (fail) Assert.ThrowsAny<IOException>(() => duplicate.ForwardAsync(new()).GetAwaiter().GetResult());
+            else duplicate.ForwardAsync(new()).GetAwaiter().GetResult();
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            Assert.False(forward.IsCompleted);
+        }
+        finally { apply.Set(); }
+        forward.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+    }
+
+    [Fact]
     public void DuplicateLaunchForwardsWithoutOwningLibraryAndOwnerCanRestart()
     {
         string directory = Path.Combine(Path.GetTempPath(), "gui-instance-" + Guid.NewGuid().ToString("N"));

@@ -23,7 +23,9 @@ public sealed class GuiInstance : IDisposable
         string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             Path.GetFullPath(libraryDirectory).TrimEnd('\\', '/').ToUpperInvariant())));
         _pipeName = "agwinterm-gui-" + key;
-        _mutex = new Mutex(false, @"Local\" + _pipeName);
+        // AppDir and the host pipes are shared across Windows logon sessions.
+        _mutex = new Mutex(false, _pipeName, new NamedWaitHandleOptions
+        { CurrentUserOnly = true, CurrentSessionOnly = false });
         try { IsOwner = _mutex.WaitOne(0); }
         catch (AbandonedMutexException) { IsOwner = true; }
     }
@@ -53,7 +55,7 @@ public sealed class GuiInstance : IDisposable
                     launch(request);
                     await pipe.WriteAsync(new byte[] { 1 }, timeout.Token).ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or InvalidOperationException)
+                catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or InvalidOperationException or TimeoutException)
                 { System.Diagnostics.Trace.WriteLine("GUI launch forwarding: " + ex.Message); }
             }
         });

@@ -756,7 +756,7 @@ internal partial class Program : ISessionHost, IWindowHost
             front ??= w;
         }
         Frontmost = front!;
-        guiInstance?.Listen(launch => LiveWindow().PostVerb(() =>
+        guiInstance?.Listen(launch => LiveWindow().InvokeOnUiQueued(() =>
         {
             var window = Frontmost;
             if (launch.NewWindow)
@@ -775,6 +775,7 @@ internal partial class Program : ISessionHost, IWindowHost
             else if (IsIconic(window._hwnd)) ShowWindow(window._hwnd, SW_RESTORE);
             if (launch.Fullscreen && !window._fullscreen) window.ToggleFullscreen();
             SetForegroundWindow(window._hwnd);
+            return 0; // Acknowledge only after the UI has applied the launch.
         }));
         // Experimental knobs announce themselves once at startup — never a silent mystery.
         if (_emulatorCoreNote is { } note)
