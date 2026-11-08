@@ -4,7 +4,12 @@ The [single-owner contract](../../docs/single-owner-contracts.md) explains which
 
 Windows sessions use Ghostty for terminal state. Installed configurations that previously selected Managed or Rust migrate to Ghostty. Hosted sessions keep their terminal in the application host and send viewport frames to the UI.
 
-The Windows adapter pins Ghostty at `2c76f29972dad21d3f2cc0efde2517a6fa8fed56` with Zig 0.17.0. This revision freezes the layouts of callback payloads, unifies cursor and image-layer enums, gives key and mouse setters explicit results, and exposes Kitty image pixels as one borrowed pointer-and-length value. The adapter checks encoder results and copies image bytes into its frame-owned cache while the native image is valid. Upstream also fixes the cursor pin after resize and how Kitty resolves placeholders and numbered images. See the [upstream changes](https://github.com/ghostty-org/ghostty/compare/f5a1a0fedd8762d490bc2951dc4b63a0f1b030e0...2c76f29972dad21d3f2cc0efde2517a6fa8fed56).
+Adapter ABI 11 carries underline style, resolved underline color and color source,
+plus overline, blink and invisible attributes. Hosted frame revision 4 and disk buffer fields preserve
+these decorations. Palette colors come from the captured render state, including
+held frames, rather than the live terminal. GUI and host require matching frame revisions.
+
+The Windows adapter pins libghostty-vt **1.0.0** (`vt-1.0.0`, commit `0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec`) with Zig 0.17.0. This is the first stable C ABI release; upstream promises compatibility across 1.x. Snapshot bytes are versioned separately and are not covered by that promise. Our history and Unicode search extensions still build against this release. See the [official documentation](https://lib.ghostty.org/vt/) and [upstream changes](https://github.com/ghostty-org/ghostty/compare/2c76f29972dad21d3f2cc0efde2517a6fa8fed56...vt-1.0.0).
 
 The build applies the history import and Unicode search extensions to the pinned checkout and records their hashes. Zig builds the Windows GNU target. The shipped DLLs load with the Windows inbox CRT.
 
@@ -33,6 +38,13 @@ teardown disposes its core explicitly, including failed/late process starts.
 Callbacks copy bounded host effects into a managed queue; they never reenter
 the terminal or throw across the C boundary.
 
+Clipboard requests are the synchronous exception: OSC 52/5522 use a bounded
+MIME exchange and reply before the native callback returns. Hosted sessions use
+correlated duplex effects, independent of frame credit and terminal query locks.
+Reads and MIME listings require `clipboard-read=true`; writes honor
+`clipboard-write`. See [terminal clipboard protocols](../../docs/terminal-clipboard.md)
+for Windows format mappings, limits, cancellation and timeout behavior.
+
 Kitty direct payload storage is capped at 64 MiB per screen (within the shared
 256 MiB terminal allocation budget). PNG decoding uses Windows WIC, with at most
 16 million decoded pixels, and returns RGBA using Ghostty's supplied allocator.
@@ -57,6 +69,22 @@ History has a 64 MiB byte budget in addition to its configured line limit.
 Mouse and text paste use upstream encoders, including native mode selection,
 bracketed paste and control-character sanitization. Windows keyboard events use
 the upstream key encoder; DEC 9001 remains the Windows-specific path.
+The host theme answers CSI ? 996 n and scheme changes notify mode 2031 subscribers,
+including idle local and hosted sessions. Application OSC background overrides do
+not change the reported host scheme. Size queries use the pane and cell geometry;
+XTVERSION identifies Agwinterm and its embedded library release.
+Cell, word, logical-line and rectangular drags use native gesture bounds with a
+tracked press origin. Windows hit testing, click counts and autoscroll remain in
+the UI; hosted gestures execute in the terminal owner. Ordinary copy uses the
+native plain formatter with Windows line endings and physical rows for rectangles.
+Immutable text, formatted snapshots and saved-frame fallback remain independent
+of live terminal state. The `copy_selection_html` and `copy_selection_vt` actions
+use snapshots captured by the native formatter at selection time (100,000 bytes
+per formatted representation); HTML includes a plain-text clipboard
+fallback. For example, `map ctrl+alt+c = copy_selection_html` enables formatted
+copy without changing ordinary copy shortcuts. Hosted selection replies carry
+formatted snapshots to the GUI; `export_selection_text/html/vt` saves them locally
+through the Windows save dialog, even after the owner evicts the selected rows.
 History captures include native graphics and hyperlinks. Capture temporarily
 selects the requested viewport under the session lock and restores the live
 viewport before returning; conversion and drawing run outside the lock.

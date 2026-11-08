@@ -100,7 +100,19 @@ internal partial class Program : ISessionHost, IWindowHost
     private static Theme? _themeBeforePreview;                   // saved when the theme picker opens (Esc reverts)
     private static List<Theme> _allThemes = new();
     private static Agwinterm.Pty.ShellProfiles.Config _profileCfg = new();   // shell profiles (profiles.json); app-global
-    private ISession? _session;   // mirrors the ACTIVE SURFACE (active pane, or a shown cover)
+    private ISession? _inputSession;
+    // Mirrors the active surface. All pane, session and cover transitions use this setter.
+    private ISession? _session
+    {
+        get => _inputSession;
+        set
+        {
+            if (ReferenceEquals(_inputSession, value)) return;
+            if (_windowActive) ReportTerminalFocus(_inputSession, false);
+            _inputSession = value;
+            if (_windowActive) ReportTerminalFocus(_inputSession, true);
+        }
+    }
     // Auxiliary "cover" terminal drawn over the content region: scratch (per-session) or quick (per-app).
     private Pane? _cover;                // the shown cover, or null
     private int _coverKind;              // 0 none, 1 scratch, 2 quick, 3 overlay
@@ -388,6 +400,10 @@ internal partial class Program : ISessionHost, IWindowHost
         // Text selection (absolute line index: [0..HistoryCount) history, then the live grid rows).
         public bool HasSel;
         public int SelAncLine, SelAncCol, SelFocLine, SelFocCol;
+        // Inclusive cell endpoints need a direction even when only one cell is selected.
+        public int? SelKeyboardDirection;
+        public object? SelKeyboardRead;
+        public Queue<(int Dx, int Dy)>? SelKeyboardSteps;
         // The buffer as it was when the selection was made. Absolute indices only mean anything
         // relative to this: scrolling leaves them alone, but EVICTION renumbers, and the alt screen
         // is a different buffer entirely. Everything is recorded at selection time and compared on
@@ -401,10 +417,15 @@ internal partial class Program : ISessionHost, IWindowHost
         public bool BlockSel;   // rectangular (Alt+drag) selection: clip each row to [minCol,maxCol]
         public ContentSelection? SelContent;
         public GhosttySelection? SelNative;
+        public SelectionFormats? SelFormats;
         public OwnerSelection? SelOwner;
+        public GhosttySelectionGesture? SelGesture;
+        public string? SelGestureId;
+        public int SelGestureBehavior, SelGestureRow, SelGestureColumn;
         public bool SelContentVisible = true;
         public void ReleaseSelectionAnchors()
         {
+            SelFormats=null;
             SelOwner?.Dispose(); SelOwner=null;
             if (SelNative is null) return;
             lock (S.SyncRoot)
@@ -412,7 +433,8 @@ internal partial class Program : ISessionHost, IWindowHost
                 SelNative?.Dispose(); SelNative = null;
             }
         }
-        public void ClearSel() { HasSel = false; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); }
+        public void EndSelectionGesture() { lock(S.SyncRoot) { SelGesture?.Dispose(); SelGesture=null; SelGestureId=null; } }
+        public void ClearSel() { HasSel = false; SelKeyboardDirection = null; SelKeyboardRead = null; SelKeyboardSteps = null; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); EndSelectionGesture(); }
         public int UiaAnnouncedAbs = -1;   // absolute buffer line (history + cursor row) last spoken to a screen reader
     }
 

@@ -147,11 +147,72 @@ public sealed unsafe class GhosttyVt : IDisposable
         return new GhosttyAnchor(GhosttyNative.AnchorHandle.Create(_handle, (uint)col, (uint)row));
     }
     public bool Win32InputMode => _windows.Enabled;
-    public IHostActions? Host { get; set; }
+    private IHostActions? _host;
+    public IHostActions? Host { get => _host; set { _host=value; _events.Host=value is null ? null : new(value); } }
     private (Color Foreground, Color Background)? _hostColors;
     private IReadOnlyList<Color>? _hostPalette;
     private Color? _hostCursor;
     public long ThemeVersion { get; private set; }
+    public string FormatSelection(int ar,int ac,int fr,int fc,bool block,int format,int maximumBytes=100000)
+    {
+        CheckAlive();
+        if(maximumBytes < 1) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        byte[] buffer=new byte[Math.Min(maximumBytes,4096)];
+        while(true)
+        {
+            fixed(byte* ptr=buffer)
+            {
+                int result=GhosttyNative.FormatSelection(_handle,checked((uint)ar),checked((uint)ac),checked((uint)fr),checked((uint)fc),
+                    block ? 1u : 0u,checked((uint)format),ptr,(nuint)buffer.Length,out nuint length);
+                if(result == -3)
+                {
+                    if(length > (nuint)maximumBytes || length <= (nuint)buffer.Length)
+                        throw new InvalidDataException("Formatted selection exceeds the copy limit.");
+                    buffer=new byte[checked((int)length)];
+                    continue;
+                }
+                GhosttyNative.Check(result);
+                return Encoding.UTF8.GetString(buffer,0,checked((int)length));
+            }
+        }
+    }
+    public bool SelectionDrag(int ar,int ac,int fr,int fc,int behavior,bool block,string delimiters,
+        out int startRow,out int startCol,out int endRow,out int endCol)
+    {
+        CheckAlive();
+        if(behavior is < 0 or > 3 || delimiters.Length > 4094) throw new ArgumentOutOfRangeException(nameof(behavior));
+        uint[] boundaries=(delimiters+" \0").EnumerateRunes().Select(r=>(uint)r.Value).Distinct().ToArray();
+        uint* bounds=stackalloc uint[4];
+        int result;
+        fixed(uint* ptr=boundaries)
+            result=GhosttyNative.SelectionDrag(_handle,checked((uint)ar),checked((uint)ac),checked((uint)fr),checked((uint)fc),
+                (uint)behavior,block ? 1u : 0u,ptr,(nuint)boundaries.Length,bounds);
+        startRow=startCol=endRow=endCol=0;
+        if(result == -4) return false;
+        GhosttyNative.Check(result);
+        startRow=checked((int)bounds[0]); startCol=checked((int)bounds[1]);
+        endRow=checked((int)bounds[2]); endCol=checked((int)bounds[3]);
+        return true;
+    }
+    public bool SelectBounds(int kind, int row, int column, string delimiters,
+        out int ar, out int ac, out int fr, out int fc)
+    {
+        CheckAlive();
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        if (delimiters.Length > 4094) throw new ArgumentOutOfRangeException(nameof(delimiters));
+        uint[] boundaries = (delimiters + " \0").EnumerateRunes().Select(r => (uint)r.Value).Distinct().ToArray();
+        uint* bounds = stackalloc uint[4];
+        int result;
+        fixed (uint* ptr = boundaries)
+            result = GhosttyNative.SelectBounds(_handle, (uint)kind, (uint)column, (uint)row, ptr, (nuint)boundaries.Length, bounds);
+        ar = ac = fr = fc = 0;
+        if (result == -4) return false;
+        GhosttyNative.Check(result);
+        ar = checked((int)bounds[0]); ac = checked((int)bounds[1]);
+        fr = checked((int)bounds[2]); fc = checked((int)bounds[3]);
+        return true;
+    }
     public void SyncHostColors()
     {
         var colors = Host?.DefaultColors;
@@ -171,7 +232,7 @@ public sealed unsafe class GhosttyVt : IDisposable
             fixed (uint* ptr = packed) GhosttyNative.Check(GhosttyNative.Theme(_handle, ptr, Pack(cursor ?? colors?.Foreground ?? Color.DefaultForeground)));
             _hostPalette = palette; _hostCursor = cursor; changed = true;
         }
-        if (changed) { ThemeVersion++; RefreshInfo(); }
+        if (changed) { ThemeVersion++; RefreshInfo(); DrainEvents(); }
     }
     public string Title { get; private set; } = "";
     private Func<string, bool>? _titleFilter;
@@ -481,7 +542,9 @@ public sealed unsafe class GhosttyVt : IDisposable
         var link = cell.LinkLength is 0 or uint.MaxValue ? null : new TerminalHyperlink(
             Encoding.UTF8.GetString(text.AsSpan(checked((int)cell.LinkOffset), checked((int)cell.LinkLength))));
         return new Cell((int)cell.Rune, Unpack(cell.Fg), Unpack(cell.Bg), (CellAttributes)cell.Attributes,
-            (byte)cell.Width, Spec(cell.FgKind, cell.FgValue), Spec(cell.BgKind, cell.BgValue), link, grapheme);
+            (byte)cell.Width, Spec(cell.FgKind, cell.FgValue), Spec(cell.BgKind, cell.BgValue), link, grapheme,
+            (UnderlineStyle)cell.UnderlineStyle, cell.UnderlineKind == 0 ? null : Unpack(cell.UnderlineColor),
+            Spec(cell.UnderlineKind, cell.UnderlineValue));
     }
     private static Color Unpack(uint color) => new((byte)(color >> 16), (byte)(color >> 8), (byte)color);
     private static ColorSpec Spec(uint kind, uint value) => (ColorSpecKind)kind switch

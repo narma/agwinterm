@@ -39,6 +39,9 @@ public static class AgtermSshDiscoveryClient
         foreach (string arg in WslLiveProfiles.ResolvedSelectors(target.Distribution, target.User)) start.ArgumentList.Add(arg);
         start.ArgumentList.Add("--exec");
         start.ArgumentList.Add("/usr/bin/env");
+        // This is the attachment PTY, not the already-running origin workload.
+        // OpenSSH sends TERM with the PTY request without requiring AcceptEnv.
+        if (terminal) start.ArgumentList.Add("TERM=" + Agwinterm.Core.TerminalIdentity.Term);
         if (target.AgentSocket is not null) start.ArgumentList.Add("SSH_AUTH_SOCK=" + target.AgentSocket);
         foreach (string arg in new[] { "ssh", terminal ? "-tt" : "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
             "-o", "UpdateHostKeys=no", "-o", "ConnectTimeout=5", "-o", "ConnectionAttempts=1",

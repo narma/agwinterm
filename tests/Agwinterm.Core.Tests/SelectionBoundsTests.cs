@@ -43,7 +43,7 @@ public class SelectionBoundsTests
         .GetMethod("ClampSel", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("Program.ClampSel is gone — the selection bound moved, so this test must follow it");
 
-    /// <summary>A Pane without running its constructor: ClampSel touches only the Sel* fields.</summary>
+    /// <summary>A Pane field bag; Run supplies the headless session needed to clear a native gesture.</summary>
     private static object NewPane(int ancLine, int ancCol, int focLine, int focCol, bool block = false)
     {
         object p = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(PaneType);
@@ -57,7 +57,15 @@ public class SelectionBoundsTests
     private static int Get(object pane, string field) => (int)PaneType.GetField(field)!.GetValue(pane)!;
 
     private static bool Run(object pane, int hist, int rows, int cols, bool alt)
-        => (bool)Clamp.Invoke(null, new object[] { pane, hist, rows, cols, alt })!;
+    {
+        // Clearing a selection now disposes its native gesture under the session lock.
+        // Supply a real headless owner instead of an incomplete Pane field bag.
+        var type=Assembly.LoadFrom(Path.Combine(Path.GetDirectoryName(Ui.Location)!,"Agwinterm.Pty.dll"))
+            .GetType("Agwinterm.Pty.TerminalSession",true)!;
+        using var session=(IDisposable)Activator.CreateInstance(type,cols,rows)!;
+        PaneType.GetField("S")!.SetValue(pane,session);
+        return (bool)Clamp.Invoke(null, new object[] { pane, hist, rows, cols, alt })!;
+    }
 
     [Fact]
     public void AltScreen_SelectionCannotReachTheOtherScreensHistory()

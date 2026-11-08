@@ -47,6 +47,11 @@ public static class BufferPersist
         HyperlinkUri = c.Hyperlink?.Uri ?? "",
         HyperlinkParameters = c.Hyperlink?.Parameters ?? "",
         Grapheme = c.Grapheme ?? "",
+        UnderlineStyle = (uint)c.UnderlineStyle,
+        UnderlineColor = Pack(c.UnderlineColor ?? default),
+        UnderlineKind = (uint)c.UnderlineSpec.Kind,
+        UnderlineIndex = c.UnderlineSpec.Index,
+        UnderlineRgb = Pack(c.UnderlineSpec.Rgb),
     };
 
     internal static Cell FromP(PCell p) => new(
@@ -54,7 +59,9 @@ public static class BufferPersist
         new ColorSpec((ColorSpecKind)p.FgKind, (byte)p.FgIndex, Unpack(p.FgRgb)),
         new ColorSpec((ColorSpecKind)p.BgKind, (byte)p.BgIndex, Unpack(p.BgRgb)),
         p.HyperlinkUri.Length == 0 ? null : new TerminalHyperlink(p.HyperlinkUri, p.HyperlinkParameters),
-        p.Grapheme.Length == 0 ? null : p.Grapheme);
+        p.Grapheme.Length == 0 ? null : p.Grapheme, (UnderlineStyle)p.UnderlineStyle,
+        p.UnderlineKind == 0 ? null : Unpack(p.UnderlineColor),
+        new ColorSpec((ColorSpecKind)p.UnderlineKind, (byte)p.UnderlineIndex, Unpack(p.UnderlineRgb)));
 
     private static bool IsEmpty(Cell cell) => cell.Rune is 0 or 32 && cell.Grapheme is null && cell.Hyperlink is null
         && cell.Attributes == CellAttributes.None && cell.FgSpec.Kind == ColorSpecKind.Default && cell.BgSpec.Kind == ColorSpecKind.Default;

@@ -95,6 +95,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $PowerShellHome 'pwsh.exe'))) {
 $needsRuntime = $false
 $runtimeBands = @{}
 $binaries = @($Exe, $CtlExe)
+if ($Test -eq 'PtyProcessContracts') {
+    # Self-contained GUI/CLI builds do not supply the runtime used by VSTest.
+    $binaries += Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net10.0-windows/Agwinterm.Pty.Tests.dll'
+    # The staged VSTest runner rolls forward to the tests' runtime band.
+}
 if ($definition.Gate) { $binaries += $GateExe }
 foreach ($binary in $binaries) {
     $runtimeConfig = [IO.Path]::ChangeExtension($binary, '.runtimeconfig.json')

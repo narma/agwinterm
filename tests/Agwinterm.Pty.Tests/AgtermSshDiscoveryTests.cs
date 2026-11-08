@@ -6,6 +6,17 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgtermSshDiscoveryTests
 {
+    [Fact]
+    public void AttachmentPinsPortableTermWithoutChangingDiscoveryOrOriginCommand()
+    {
+        var target = new AgtermSshTarget("Ubuntu", "alice", "origin");
+        var attach = AgtermSshDiscoveryClient.CommandInfo(target, true, "exec existing-workload");
+        Assert.Contains("TERM=xterm-256color", attach.ArgumentList);
+        Assert.True(attach.ArgumentList.IndexOf("TERM=xterm-256color") < attach.ArgumentList.IndexOf("ssh"));
+        Assert.Equal("exec existing-workload", attach.ArgumentList[^1]);
+        Assert.DoesNotContain("TERM=xterm-256color", AgtermSshDiscoveryClient.StartInfo(target).ArgumentList);
+    }
+
     [Theory]
     [InlineData("-oProxyCommand=evil")]
     [InlineData("host;echo")]

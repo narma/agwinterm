@@ -20,9 +20,9 @@ try
     File.Copy(Path.Combine(args[0], "ghostty-vt.provenance.json"), manifest);
     string currentManifest = File.ReadAllText(manifest);
     var oldAbi = System.Text.Json.Nodes.JsonNode.Parse(currentManifest)!;
-    oldAbi["abi"] = 4;
+    oldAbi["abi"] = 10;
     File.WriteAllText(manifest, oldAbi.ToJsonString());
-    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous title-event ABI is rejected before loading");
+    Check(!GhosttyVt.TryLoad(mismatchDirectory, out _), "previous adapter ABI without concealed text is rejected before loading");
     File.WriteAllText(manifest, currentManifest);
     File.WriteAllBytes(Path.Combine(mismatchDirectory, "ghostty-vt.dll"), [0]);
     Check(!GhosttyVt.TryLoad(mismatchDirectory, out string? mismatch) && mismatch!.Contains("hash mismatch"),
@@ -116,6 +116,273 @@ using (var core = new GhosttyTerminalCore(20, 6, CursorStyle.Bar, false))
         "RIS resets live cursor and margin metadata");
     core.Feed("\u001b]111\a"u8);
     Check(core.DynamicBg == 0, "OSC 111 removes background override presence");
+}
+
+using(var outputCore=new GhosttyTerminalCore(12,8))
+{
+    Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output requires shell marks");
+    outputCore.Feed("\u001b]133;A\a$ \u001b]133;B\afirst\r\n\u001b]133;C\aFIRST-output-wrapped\r\n\u001b]133;D;0\a\u001b]133;A\a$ \u001b]133;B\asecond\r\n\u001b]133;C\aSECOND\r\n\u001b]133;D;0\a\u001b]133;A\a$ \u001b]133;B\a"u8);
+    Check(outputCore.SelectCommandOutput(0,0,true,out int ar,out int ac,out int fr,out int fc) &&
+        outputCore.FormatSelection(ar,ac,fr,fc,false,0) == "SECOND","latest command output excludes prompts and command input");
+    Check(outputCore.SelectCommandOutput(1,2,false,out ar,out ac,out fr,out fc) &&
+        outputCore.FormatSelection(ar,ac,fr,fc,false,0) == "FIRST-output-wrapped","selected command output follows native wrapped bounds");
+    Check(!outputCore.SelectCommandOutput(0,0,false,out _,out _,out _,out _),"prompt cells are not command output");
+    outputCore.Feed("\u001b[?1049h"u8);
+    Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output refuses alternate screen");
+}
+
+using(var outputCore=new GhosttyTerminalCore(40,5))
+{
+    outputCore.Feed("\u001b]133;A\a$ \u001b]133;B\acmd \u001b]133;C\ainline output\r\n\u001b]133;D;0\a\u001b]133;A\a$ \u001b]133;B\a"u8);
+    Check(outputCore.SelectCommandOutput(0,0,true,out int ar,out int ac,out int fr,out int fc) &&
+        outputCore.FormatSelection(ar,ac,fr,fc,false,0) == "inline output","command output can begin after command text on the same row");
+    outputCore.Feed("\u001b[?2026h"u8);
+    Check(!outputCore.SelectCommandOutput(0,0,true,out _,out _,out _,out _),"command output does not select unseen synchronized content");
+}
+
+using(var retainedCore=new GhosttyTerminalCore(40,5))
+{
+    retainedCore.Feed("\u001b[31mretained русский\u001b[0m"u8);
+    using var selected=retainedCore.CreateSelection(0,0,0,15,false);
+    var formats=selected.Formats;
+    Check(formats.Vt is not null && formats.Html is not null,"selection captures HTML and VT before history changes");
+    retainedCore.Feed("\u001b[2J\u001b[3J\u001b[Hreplacement"u8);
+    Check(!selected.TryLocate(out _,out _,out _,out _),"evicted selection loses live coordinates");
+    Check(selected.Formats == formats && formats.Html!.Contains("retained") && formats.Vt!.Contains("\u001b["),"formatted selection survives erased native rows");
+    Check(formats.FileContent(2)!.Contains("<meta charset=\"utf-8\">") && formats.FileContent(0) == selected.Text,
+        "exports provide UTF-8 HTML document and unchanged plain text");
+}
+
+using (var selectionCore = new GhosttyTerminalCore(5, 4))
+{
+    selectionCore.Feed("abcdefgh"u8);
+    Check(selectionCore.SelectBounds(0,1,1,"",out int ar,out int ac,out int fr,out int fc) &&
+        ar == 0 && ac == 0 && fr == 1 && fc == 2, "native word selection crosses soft wraps");
+    using var selected = selectionCore.CreateSelection(ar,ac,fr,fc,false);
+    Check(selected.Text == "abcdefgh", "native word bounds preserve logical copy text");
+    Check(selectionCore.SelectBounds(0,1,1,"e",out ar,out ac,out fr,out fc) && ar == 1 && ac == 0 && fr == 1 && fc == 2,
+        "native word selection honors configured delimiters across wraps");
+    Check(selectionCore.SelectBounds(1,1,0,"",out ar,out ac,out fr,out fc) && ar == 0 && fr == 1,
+        "native line selection follows a wrapped logical line");
+    Check(selectionCore.FormatSelection(0,0,1,2,false,0) == "abcdefgh", "native formatter unwraps selected plain text");
+    string html=selectionCore.FormatSelection(0,0,1,2,false,2);
+    Check(html.Contains("abcdefgh") && html.Contains('<'), "native formatter exports selected HTML");
+    bool limited=false;
+    try { selectionCore.FormatSelection(0,0,1,2,false,2,4); } catch(InvalidDataException) { limited=true; }
+    Check(limited,"formatted selection respects its output limit");
+}
+
+using (var core = new GhosttyTerminalCore(30, 6))
+{
+    core.Feed("alpha beta gamma\r\n0123456789\r\nABCDEFGHIJ"u8);
+    string Drag(GhosttySelectionGesture gesture,int row,int col,bool block=false)
+    {
+        Check(gesture.Update(row,col,block,out int ar,out int ac,out int fr,out int fc),"native gesture produces bounds");
+        return TerminalSelectionText.Read(core,ar,ac,fr,fc,block);
+    }
+    using var word=new GhosttySelectionGesture(core,0,7,1,"");
+    Check(Drag(word,0,13) == "beta gamma","double-click drag extends by whole words");
+    Check(Drag(word,0,1) == "alpha beta","word drag reverses around the original press");
+    Check(Drag(word,0,7) == "beta","word drag retracts to the original word");
+    using var forward=new GhosttySelectionGesture(core,1,2,0,"");
+    using var reverse=new GhosttySelectionGesture(core,2,5,0,"");
+    Check(Drag(forward,2,5,true) == "2345\r\nCDEF","native rectangular gesture clips each physical row");
+    Check(Drag(reverse,1,2,true) == "2345\r\nCDEF","reverse rectangular gesture has identical text");
+    Check(Drag(reverse,2,2) == "CDEF","reverse cell drag includes both endpoints");
+    using var line=new GhosttySelectionGesture(core,1,3,2,"");
+    Check(Drag(line,2,2) == "0123456789\r\nABCDEFGHIJ","triple-click drag extends by whole lines");
+    using var saved=core.CreateSelection(1,2,2,5,true);
+    core.Feed("\u001b[2J"u8);
+    Check(!saved.TryLocate(out _,out _,out _,out _) && saved.Text == "2345\r\nCDEF","redraw invalidates bounds but retains native copied text");
+}
+
+using(var core=new GhosttyTerminalCore(100,100))
+{
+    string text=new('x',8000);
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(text));
+    Check(TerminalSelectionText.Read(core,0,0,79,99,false) == text,"plain copy grows its native output buffer beyond 4 KiB");
+    bool limited=false;
+    try { TerminalSelectionText.Read(core,0,0,79,99,false,7000); } catch(InvalidDataException) { limited=true; }
+    Check(limited,"plain native copy enforces the managed character limit");
+    using var gesture=new GhosttySelectionGesture(core,0,50,0,"");
+    core.Resize(50,100);
+    Check(gesture.Update(1,55 % 50,false,out int ar,out int ac,out int fr,out int fc) && ar == 1 && ac == 0 && fr == 1 && fc == 5,
+        "gesture press origin follows reflow before the next drag");
+}
+
+using(var core=new GhosttyTerminalCore(20,4))
+{
+    core.Feed(System.Text.Encoding.UTF8.GetBytes("a\u2028b\r\nc"));
+    Check(TerminalSelectionText.Read(core,0,0,1,0,false) == "a\u2028b\r\nc",
+        "Windows newline conversion preserves printed Unicode line separators");
+}
+
+using(var core=new GhosttyTerminalCore(20,5))
+{
+    var host=new Host(); core.Host=host;
+    ClipboardRequest? received=null;
+    host.ClipboardHandler=request=> { received=request; return new(0); };
+    const string begin="\u001b]5522;type=write:id=c1\u001b\\";
+    const string end="\u001b]5522;type=wdata\u001b\\";
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+"\u001b]5522;type=wdata:mime=dGV4dC9wbGFpbg==;R2hvc3Q=\u001b\\"));
+    Check(received is null,"OSC 5522 does not publish partial transactions");
+    core.Feed(System.Text.Encoding.UTF8.GetBytes("\u001b]5522;type=wdata:mime=dGV4dC9wbGFpbg==;dHk=\u001b\\"+
+        "\u001b]5522;type=wdata:mime=dGV4dC9odG1s;PGI+aGk8L2I+\u001b\\"+end));
+    Check(received?.Contents.Length == 2 && System.Text.Encoding.UTF8.GetString(received.Contents[0].Data) == "Ghostty",
+        "OSC 5522 joins chunks and delivers all MIME representations atomically");
+    Check(host.Replies.Contains("status=DONE:id=c1"),"OSC 5522 success follows the synchronous host result");
+    foreach(var (status,name) in new[]{(1,"EPERM"),(2,"ENOSYS"),(3,"EBUSY"),(4,"EINVAL"),(5,"EIO")})
+    {
+        host.ClipboardHandler=_=>new(status); host.Replies="";
+        core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+end));
+        Check(host.Replies.Contains("status="+name+":id=c1"),"OSC 5522 forwards "+name);
+    }
+    host.Replies=""; host.ClipboardHandler=request=>new(0,[new("text/plain","hello"u8.ToArray())],["text/plain"]);
+    core.Feed("\u001b]5522;type=read:id=r1;dGV4dC9wbGFpbg==\u001b\\"u8);
+    Check(host.Replies.Contains("status=DATA:id=r1:mime=dGV4dC9wbGFpbg==;aGVsbG8=") && host.Replies.Contains("status=DONE:id=r1"),
+        "OSC 5522 read returns native MIME data and completion");
+    host.Replies=""; host.ClipboardHandler=_=>ClipboardResult.Denied;
+    core.Feed("\u001b]5522;type=read:id=r2;dGV4dC9wbGFpbg==\u001b\\"u8);
+    Check(host.Replies.Contains("status=EPERM:id=r2"),"OSC 5522 denied read never returns clipboard data");
+    host.Replies=""; host.ClipboardHandler=_=>throw new IOException("test");
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+end));
+    Check(host.Replies.Contains("status=EIO:id=c1"),"clipboard exceptions cannot cross the native callback boundary");
+    received=null; host.Replies=""; host.ClipboardHandler=request=> { received=request; return new(0); };
+    string oversized=Convert.ToBase64String(new byte[ClipboardRequest.MaximumBytes+1]);
+    core.Feed(System.Text.Encoding.UTF8.GetBytes(begin+"\u001b]5522;type=wdata:mime=YXBwbGljYXRpb24vb2N0ZXQtc3RyZWFt;"+oversized+"\u001b\\"+end));
+    Check(received is null && host.Replies.Contains("status=EFBIG"),"oversized OSC 5522 writes are rejected before host clipboard access");
+    host.Replies=""; host.ClipboardHandler=_=>new(0,[new("text/plain",new byte[800000])]);
+    core.Feed("\u001b]5522;type=read:id=large;dGV4dC9wbGFpbg==\u001b\\"u8);
+    Check(host.Replies.Length > 1024*1024 && host.Replies.Contains("status=DONE:id=large"),
+        "large clipboard reply survives base64 expansion in the native event queue");
+}
+
+using (var themeCore = new GhosttyTerminalCore(20, 5))
+{
+    var themeHost = new Host { Colors = (Color.DefaultForeground, Color.DefaultBackground) };
+    themeCore.Host = themeHost;
+    themeCore.Feed("\u001b[?996n"u8);
+    Check(themeHost.Replies == "\u001b[?997;1n", "dark theme query uses native reply");
+    themeHost.Replies = "";
+    themeHost.Colors = (Color.DefaultBackground, new Color(255, 255, 255));
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "", "theme change is silent without subscription");
+    themeCore.Feed("\u001b[?996n"u8);
+    Check(themeHost.Replies == "\u001b[?997;2n", "light theme query uses updated host theme");
+    themeCore.Feed("\u001b[?2031h"u8);
+    themeHost.Replies = "";
+    themeHost.Colors = (Color.DefaultForeground, Color.DefaultBackground);
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "\u001b[?997;1n", "subscribed theme change replies without further output or paint");
+    themeHost.Replies = "";
+    themeCore.SyncTheme();
+    themeHost.Colors = (Color.DefaultForeground, new Color(10, 20, 30));
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "", "same scheme and repeated synchronization do not notify");
+    themeCore.Feed("\u001b]11;#ffffff\a\u001b[?996n"u8);
+    Check(themeHost.Replies == "\u001b[?997;1n", "OSC background override does not change host theme identity");
+    themeCore.Feed("\u001b[?2031l"u8);
+    themeHost.Replies = "";
+    themeHost.Colors = (Color.DefaultBackground, new Color(255, 255, 255));
+    themeCore.SyncTheme();
+    Check(themeHost.Replies == "", "unsubscribed theme changes remain silent");
+}
+
+using (var identity = new GhosttyVt(20,5))
+{
+    var host = new Host(); identity.Host = host;
+    identity.Feed("\u001b[c\u001b[>c\u001b[=c"u8);
+    Check(host.Replies == "\u001b[?62;22c\u001b[>1;0;0c\u001bP!|00000000\u001b\\", "DA reports conservative VT220 color capabilities without Sixel");
+    host.Replies = "";
+    identity.Feed("\u001bP+q544E\u001b\\"u8);
+    Check(host.Replies == "", "unknown per-session TN is not advertised");
+    identity.Feed("\u001bP+q436F;524742;5463;4245;4D73;53796E63\u001b\\"u8);
+    Check(host.Replies.Contains("1+r436F=323536") && host.Replies.Contains("1+r524742=38") &&
+        host.Replies.Contains("1+r5463\u001b\\") && host.Replies.Contains("1+r4245=") &&
+        host.Replies.Contains("1+r4D73=") && host.Replies.Contains("1+r53796E63="),
+        "capability filtering preserves colors, bracketed paste, clipboard and synchronized output");
+    host.Replies = "";
+    foreach (byte value in "\u001bP+q626C696E6B;524742;544E\u001b\\"u8)
+        identity.Feed(new byte[] { value });
+    Check(host.Replies == "\u001bP1+r626C696E6B=1B5B356D\u001b\\\u001bP1+r524742=38\u001b\\", "fragmented query advertises blink and RGB while leaving TN unset");
+}
+
+using (var concealed = new GhosttyTerminalCore(20,5))
+using (var restoredConceal = new GhosttyTerminalCore(20,5))
+{
+    concealed.Feed("\u001b[8;4:3;53mA \u001b[28mB\u001b[8mC\u001b[0mD"u8);
+    Check(concealed.Screen[0,0].Attributes.HasFlag(CellAttributes.Invisible) &&
+        concealed.Screen[0,1].Attributes.HasFlag(CellAttributes.Invisible), "SGR 8 preserves conceal on glyphs and decorated blanks");
+    Check(!concealed.Screen[0,2].Attributes.HasFlag(CellAttributes.Invisible) &&
+        !concealed.Screen[0,4].Attributes.HasFlag(CellAttributes.Invisible), "SGR 28 and 0 clear conceal");
+    concealed.BeginPaint(); var held = concealed.CompletePaint();
+    using var selection = concealed.CreateSelection(0,0,0,4,false);
+    Check(selection!.Text == "A BCD", "conceal is presentation-only and preserves copied text");
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(concealed),out var saved), "concealed history serializes");
+    BufferPersist.Restore(restoredConceal,saved);
+    Check(restoredConceal.GetHistoryCell(0,0).Attributes.HasFlag(CellAttributes.Invisible) &&
+        restoredConceal.GetHistoryCell(0,0).UnderlineStyle == UnderlineStyle.Curly, "history import preserves conceal and decorations");
+    concealed.Feed("\u001b[H\u001b[0mX"u8);
+    Check(held[0,0].Attributes.HasFlag(CellAttributes.Invisible) &&
+        !concealed.Screen[0,0].Attributes.HasFlag(CellAttributes.Invisible), "retained frame preserves conceal after repaint");
+}
+
+using (var blinking = new GhosttyTerminalCore(20,5))
+using (var restoredBlink = new GhosttyTerminalCore(20,5))
+{
+    blinking.Feed("\u001b[5;4:3;53mA \u001b[6mB\u001b[25mC\u001b[5mD\u001b[0mE"u8);
+    Check(Enumerable.Range(0,3).All(c=>blinking.Screen[0,c].Attributes.HasFlag(CellAttributes.Blink)),
+        "SGR 5 and 6 preserve blink on text and decorated blanks");
+    Check(!blinking.Screen[0,3].Attributes.HasFlag(CellAttributes.Blink) && !blinking.Screen[0,5].Attributes.HasFlag(CellAttributes.Blink),
+        "SGR 25 and 0 reset blinking independently");
+    blinking.BeginPaint(); var held = blinking.CompletePaint();
+    using var selection = blinking.CreateSelection(0,0,0,5,false);
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(blinking),out var saved), "blinking history serializes");
+    BufferPersist.Restore(restoredBlink,saved);
+    Check(restoredBlink.GetHistoryCell(0,0).Attributes.HasFlag(CellAttributes.Blink) &&
+        restoredBlink.GetHistoryCell(0,0).UnderlineStyle == UnderlineStyle.Curly, "history import preserves blink and decorations together");
+    blinking.Feed("\u001b[H\u001b[0mX"u8);
+    Check(held[0,0].Attributes.HasFlag(CellAttributes.Blink) && !blinking.Screen[0,0].Attributes.HasFlag(CellAttributes.Blink) &&
+        selection!.Text == "A BCDE", "blink presentation never changes retained cells or selected text");
+}
+
+using (var decorated = new GhosttyTerminalCore(20,5))
+using (var restored = new GhosttyTerminalCore(20,5))
+{
+    decorated.Feed("\u001b]4;42;#123456\a\u001b[4:3;58:5:42;53mA \u001b[4:2;58:2::200:30:70mB\u001b[59;55;4:5mC\u001b[24mD"u8);
+    var a=decorated.Screen[0,0];
+    Check(a.UnderlineStyle == UnderlineStyle.Curly && a.UnderlineColor == new Color(18,52,86) &&
+        a.UnderlineSpec == ColorSpec.Indexed(42) && a.Attributes.HasFlag(CellAttributes.Overline), "native cells retain indexed curly underline and overline");
+    Check(decorated.Screen[0,1].UnderlineStyle == UnderlineStyle.Curly && decorated.Screen[0,2].UnderlineColor == new Color(200,30,70) &&
+        decorated.Screen[0,2].UnderlineStyle == UnderlineStyle.Double, "blank and adjacent colored decorations stay distinct");
+    Check(decorated.Screen[0,3].UnderlineColor is null && !decorated.Screen[0,3].Attributes.HasFlag(CellAttributes.Overline) &&
+        decorated.Screen[0,4].UnderlineStyle == UnderlineStyle.None, "SGR 59 55 and 24 reset independent decorations");
+    decorated.BeginPaint(); var old=decorated.CompletePaint();
+    decorated.Feed("\u001b]4;42;#aabbcc\a"u8);
+    Check(decorated.Screen[0,0].UnderlineColor == new Color(170,187,204) && old[0,0].UnderlineColor == a.UnderlineColor,
+        "palette changes recolor underline without mutating held frames");
+    Check(BufferPersist.TryParse(BufferPersist.Serialize(decorated),out var saved), "decorated history serializes");
+    BufferPersist.Restore(restored,saved);
+    var imported=restored.GetHistoryCell(0,0);
+    Check(imported.UnderlineStyle == UnderlineStyle.Curly && imported.UnderlineSpec == ColorSpec.Indexed(42) &&
+        imported.Attributes.HasFlag(CellAttributes.Overline), "restored history keeps underline style color source and overline");
+    var host=new Host(); decorated.Host=host;
+    decorated.Feed("\u001bP+q5375;536D756C78;536574756C63;536D6F6C;526D6F6C\u001b\\"u8);
+    Check(new[]{"5375","536D756C78","536574756C63","536D6F6C","526D6F6C"}.All(k=>host.Replies.Contains("1+r"+k)),
+        "supported underline and overline capabilities are advertised again");
+}
+
+using (var geometry = new GhosttyVt(20,5))
+{
+    var host=new Host(); geometry.Host=host;
+    geometry.Resize(30,10,9,19);
+    geometry.Feed("\u001b[14t\u001b[16t\u001b[18t"u8);
+    Check(host.Replies == "\u001b[4;190;270t\u001b[6;19;9t\u001b[8;10;30t", "native size queries report pane and cell geometry");
+    geometry.Feed("\u001b[?2048h"u8); host.Replies="";
+    geometry.Resize(40,12,10,20);
+    Check(host.Replies == "\u001b[48;12;40;240;400t", "subscribed resize reports updated geometry");
+    host.Replies=""; geometry.Feed("\u001b[>q"u8);
+    Check(host.Replies.Contains("Agwinterm (libghostty-vt 1.0.0)"), "terminal version identifies the embedding application");
 }
 
 using (var core = new GhosttyTerminalCore(20, 5))
@@ -243,7 +510,7 @@ using (var vt = new GhosttyVt(40, 8))
     vt.Feed("\u001b]777;notify;title;body\a\u001b]9;4;1;42\a\u001b]52;c;aGVsbG8=\a"u8);
     Check(host.Notification == "title:body" && host.ProgressValue == 42, "notification and progress effects");
     Check(host.Clipboard == "hello", "write-only clipboard effect");
-    vt.Feed("\u001b]52;c;?\a"u8); Check(host.Replies.Length == 0, "clipboard reads remain disabled");
+    vt.Feed("\u001b]52;c;?\a"u8); Check(!host.Replies.Contains("aGVsbG8=") && host.Replies.Contains("]52;"), "denied OSC 52 read replies without clipboard data");
     vt.Feed("\u001b]777;agwinterm;command-finished;0123456789abcdef0123456789abcdef;1\a"u8);
     Check(host.Completed == 1, "authenticated shell completion is forwarded");
     vt.Feed("\u001b]133;A\a$ \u001b]133;B\acommand\r\n\u001b]133;C\aoutput\r\n\u001b]133;D;7\a"u8);
@@ -878,6 +1145,14 @@ sealed class Host : IHostActions
     public void Notify(string title, string body) => Notification = title + ":" + body;
     public void Progress(int state, int value) => ProgressValue = value;
     public void ClipboardWrite(string text) => Clipboard = text;
+    public Func<ClipboardRequest,ClipboardResult>? ClipboardHandler;
+    public ClipboardResult ClipboardExchange(ClipboardRequest request)
+    {
+        if(ClipboardHandler is { } handler) return handler(request);
+        if(request.Read) return ClipboardResult.Denied;
+        Clipboard=System.Text.Encoding.UTF8.GetString(request.Contents.FirstOrDefault()?.Data ?? []);
+        return new(0);
+    }
     public (Color Foreground, Color Background)? Colors;
     public Color[]? Palette;
     public Color? Cursor;

@@ -341,10 +341,22 @@ internal partial class Program
     // D2DERR_RECREATE_TARGET: the device is lost and every device-bound resource must be rebuilt.
     private const int D2DERR_RECREATE_TARGET = unchecked((int)0x8899000C);
 
+    private const int TextBlinkTimer = 15;
+    private bool _textBlinkOn = true, _textBlinkVisible, _textBlinkArmed;
+    private void UpdateTextBlinkTimer()
+    {
+        bool active = _textBlinkVisible && !IsIconic(_hwnd);
+        if (active == _textBlinkArmed) return;
+        _textBlinkArmed = active;
+        if (active) SetTimer(_hwnd,(IntPtr)TextBlinkTimer,500,IntPtr.Zero);
+        else { KillTimer(_hwnd,(IntPtr)TextBlinkTimer); _textBlinkOn = true; }
+    }
+
     private void Render()
     {
         UpdateWebPresentation();
         if (_rt is null || _brush is null) return;
+        _textBlinkVisible = false;
         long tStart = Stopwatch.GetTimestamp();
         _uploadCount = 0; _uploadMs = 0;
         _soloDrawMs = 0; _soloDrawCount = 0;
@@ -358,6 +370,7 @@ internal partial class Program
         try
         {
             RenderBody();
+            UpdateTextBlinkTimer();
             PruneHiddenImageOwners();
             PruneGhosttyImages();
             if (_perfLog is not null) bodyMs = Stopwatch.GetElapsedTime(tStart).TotalMilliseconds;
@@ -402,9 +415,9 @@ internal partial class Program
 
     /// <summary>The SGR attributes the renderer styles text with (colour attrs resolve in EffectiveFg/Bg).</summary>
     private const CellAttributes StyleMask =
-        CellAttributes.Bold | CellAttributes.Italic | CellAttributes.Underline | CellAttributes.Strikethrough;
+        CellAttributes.Bold | CellAttributes.Italic | CellAttributes.Underline | CellAttributes.Strikethrough | CellAttributes.Overline | CellAttributes.Blink;
     /// <summary>The subset drawn as decoration lines — the only styling visible on a blank cell.</summary>
-    private const CellAttributes LineMask = CellAttributes.Underline | CellAttributes.Strikethrough;
+    private const CellAttributes LineMask = CellAttributes.Underline | CellAttributes.Strikethrough | CellAttributes.Overline;
 
     // OSC 8 links are visibly underlined even when the application sends no SGR 4.
     // Keep this a presentation choice: the cell's original SGR attributes remain intact.
@@ -454,13 +467,59 @@ internal partial class Program
         var rt = _rt!;
         var brush = _brush!;
         // Underline / strikethrough lines for a run (brush colour = the run's fg, set by the caller).
-        void DrawDecorations(float x, float w, float yy, CellAttributes a)
+        void DrawDecorations(float x, float w, float yy, CellAttributes a, Cell cell)
         {
             float th = MathF.Max(1f, MathF.Round(ch * 0.05f));
-            if ((a & CellAttributes.Underline) != 0)
-                rt.FillRectangle(new Rect(x, yy + ch - th - 0.5f, w, th), brush);
+            if ((a & CellAttributes.Overline) != 0)
+                rt.FillRectangle(new Rect(x, MathF.Round(yy + th), w, th), brush);
             if ((a & CellAttributes.Strikethrough) != 0)
                 rt.FillRectangle(new Rect(x, yy + MathF.Round(ch * 0.52f), w, th), brush);
+            if ((a & CellAttributes.Underline) == 0) return;
+            var foreground = brush.Color;
+            // OSC 8's UI underline uses the text color; SGR 58 only colors an actual SGR underline.
+            if ((cell.Attributes & CellAttributes.Underline) != 0 && cell.UnderlineColor is { } color)
+                brush.Color = C4(color);
+            float bottom = MathF.Round(yy + ch - th - 1);
+            var shape = cell.UnderlineStyle;
+            if ((cell.Attributes & CellAttributes.Underline) == 0) shape = UnderlineStyle.Single;
+            if (shape is UnderlineStyle.None or UnderlineStyle.Single or UnderlineStyle.Double)
+            {
+                rt.FillRectangle(new Rect(x, bottom, w, th), brush);
+                if (shape == UnderlineStyle.Double)
+                    rt.FillRectangle(new Rect(x, bottom - 2 * th, w, th), brush);
+            }
+            else
+            {
+                // Anchor patterns to the grid, not text runs: a color/style split must not restart a wave.
+                float period = shape == UnderlineStyle.Dotted ? 3 * th : 6 * th;
+                rt.PushAxisAlignedClip(new Rect(x, yy, w, ch), AntialiasMode.Aliased);
+                try
+                {
+                    float start = ox + MathF.Floor((x - ox) / period) * period;
+                    if (shape == UnderlineStyle.Curly)
+                    {
+                        using var geometry = _d2d.CreatePathGeometry();
+                        using (var sink = geometry.Open())
+                        {
+                            float mid = bottom - th;
+                            sink.BeginFigure(new System.Numerics.Vector2(start,mid),FigureBegin.Hollow);
+                            for (float px=start; px<x+w; px+=period)
+                            {
+                                sink.AddQuadraticBezier(new QuadraticBezierSegment {
+                                    Point1=new(px+period/4,mid+2*th), Point2=new(px+period/2,mid) });
+                                sink.AddQuadraticBezier(new QuadraticBezierSegment {
+                                    Point1=new(px+3*period/4,mid-2*th), Point2=new(px+period,mid) });
+                            }
+                            sink.EndFigure(FigureEnd.Open); sink.Close();
+                        }
+                        rt.DrawGeometry(geometry,brush,th);
+                    }
+                    else for (float px=start; px<x+w; px+=period)
+                        rt.FillRectangle(new Rect(px,bottom,shape == UnderlineStyle.Dotted ? th : 4*th,th),brush);
+                }
+                finally { rt.PopAxisAlignedClip(); }
+            }
+            brush.Color = foreground;
         }
         // Snapshot the visible viewport under the session lock (sub-ms), then draw OUTSIDE it.
         // Holding the lock for the whole frame serializes rendering against the PTY pump's Feed,
@@ -674,6 +733,14 @@ internal partial class Program
                     // Blanks normally draw nothing — but an underlined/struck blank must still get
                     // its decoration line, so those start a run like any glyph does.
                     if (cell.Width == 0 || (startBlank && (DisplayStyle(cell) & LineMask) == 0)) { c++; continue; }
+                    // Conceal suppresses all foreground ink, including links and decorations.
+                    // Keep the cell and its background intact for selection, export and history.
+                    if (cell.Attributes.HasFlag(CellAttributes.Invisible)) { c++; continue; }
+                    if (cell.Attributes.HasFlag(CellAttributes.Blink))
+                    {
+                        _textBlinkVisible = true;
+                        if (!_textBlinkOn) { c++; continue; }
+                    }
                     Color runFg = EffectiveFg(cell, localBackground, resolvedColors);
                     CellAttributes runStyle = DisplayStyle(cell);
                     if (cell.Grapheme is { } cluster)
@@ -682,7 +749,7 @@ internal partial class Program
                         brush.Color = C4(runFg);
                         var glyph = _soloGlyphs.Get(_dwrite, cluster, StyleFmt(fmt, runStyle), cell.Width * cw, ch);
                         DrawSoloLayout(rt, brush, glyph, x, y, cell.Width * cw, ch);
-                        DrawDecorations(x, cell.Width * cw, y, runStyle);
+                        DrawDecorations(x, cell.Width * cw, y, runStyle, cell);
                         c++; continue;
                     }
                     // Only claim the vector renderer's implemented set. Other glyphs retain the
@@ -693,7 +760,7 @@ internal partial class Program
                         if (!DrawBoxGlyph(rt, brush, cell.Rune, bx, y, cw, ch, C4(runFg)))
                         { brush.Color = C4(runFg); rt.DrawText(RuneStr(cell.Rune), StyleFmt(fmt, runStyle), new Rect(bx, y, cw, ch), brush, DrawTextOptions.Clip); }
                         brush.Color = C4(runFg);
-                        DrawDecorations(bx, cw, y, runStyle);
+                        DrawDecorations(bx, cw, y, runStyle, cell);
                         c++; continue;
                     }
                     if (cell.Width == 2 || cell.Rune > 0xFFFF || !GridTrue(cell.Rune))
@@ -715,7 +782,7 @@ internal partial class Program
                             && (nxt.Rune == ' ' || nxt.Rune == '\0'))
                             clipCells = 2;
                         DrawSoloGlyph(rt, brush, cell.Rune, StyleFmt(fmt, runStyle), wx, y, clipCells * cw, ch);
-                        DrawDecorations(wx, cell.Width * cw, y, runStyle);
+                        DrawDecorations(wx, cell.Width * cw, y, runStyle, cell);
                         c++;
                         continue;
                     }
@@ -731,7 +798,10 @@ internal partial class Program
                         if (!blank && !GridTrue(cc.Rune)) break;   // fallback glyph → its own solo draw
                         // Blanks only need matching decoration lines (bold/italic is invisible on a
                         // space); glyphs must match colour AND full style to share the run's format.
-                        if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask)) break; }
+                        if (cc.UnderlineStyle != cell.UnderlineStyle || cc.UnderlineColor != cell.UnderlineColor ||
+                            (cc.Attributes & (CellAttributes.Blink | CellAttributes.Invisible)) !=
+                            (cell.Attributes & (CellAttributes.Blink | CellAttributes.Invisible))) break;
+                        if (blank) { if ((DisplayStyle(cc) & LineMask) != (runStyle & LineMask) || (runStyle & LineMask) != 0 && EffectiveFg(cc, localBackground, resolvedColors) != runFg) break; }
                         else if (EffectiveFg(cc, localBackground, resolvedColors) != runFg || DisplayStyle(cc) != runStyle) break;
                         _run.Append(blank ? ' ' : (char)cc.Rune);
                         c++;
@@ -749,7 +819,7 @@ internal partial class Program
                         // Decoration lines span the whole run — including trailing blanks, which the
                         // text draw trims but which joined precisely because their lines match.
                         brush.Color = C4(runFg);
-                        DrawDecorations(ox + start * cw, (c - start) * cw, y, runStyle);
+                        DrawDecorations(ox + start * cw, (c - start) * cw, y, runStyle, cell);
                     }
                 }
             }

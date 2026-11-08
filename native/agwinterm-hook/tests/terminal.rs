@@ -3,6 +3,23 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
 
+#[test]
+fn terminal_type_defaults_only_when_missing_or_empty() {
+    for value in [None, Some(""), Some("screen-256color")] {
+        let mut command = Command::new("timeout");
+        command.args(["10", env!("CARGO_BIN_EXE_agwinterm-hook"), "--pty", "80", "24",
+            "/bin/sh", "-c", "printf '%s' \"$TERM\""])
+            .env_remove("TERM").stdin(Stdio::piped()).stdout(Stdio::piped());
+        if let Some(term) = value { command.env("TERM", term); }
+        let mut child = command.spawn().unwrap();
+        let _input = child.stdin.take().unwrap();
+        let mut output = String::new();
+        child.stdout.take().unwrap().read_to_string(&mut output).unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_eq!(output, value.filter(|v| !v.is_empty()).unwrap_or("xterm-256color"));
+    }
+}
+
 // Exercise the shipped wire format through a real controlling terminal. Keep
 // stdin open until exit, just as the Windows session owner does.
 #[test]

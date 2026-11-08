@@ -280,7 +280,7 @@ public sealed partial class ServerSession : ISession
                     if (_startFence.IsClosed) return;
                     // Even the first attachment can follow output from a fast child.
                     // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
-                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0)) && (Cols != cols || Rows != rows))
+                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? PresentationFrameCodec.Revision : 0)) && (Cols != cols || Rows != rows))
                         Resize(Cols, Rows);
                 }
                 catch
@@ -319,7 +319,7 @@ public sealed partial class ServerSession : ISession
             {
                 if (UsesPresentation)
                 {
-                    if (att.PresentationRevision != 1 || att.Input is null || att.AttachmentEpoch == 0 ||
+                    if (att.PresentationRevision != PresentationFrameCodec.Revision || att.Input is null || att.AttachmentEpoch == 0 ||
                         string.IsNullOrEmpty(att.QueryPipe) || string.IsNullOrEmpty(att.EffectPipe))
                         throw new IOException("Missing negotiated presentation transport.");
                     _attachmentEpoch = att.AttachmentEpoch;
@@ -444,7 +444,7 @@ public sealed partial class ServerSession : ISession
     {
         if (_startFence.IsClosed) return false;
         PtyHostAttachment att;
-        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? 1u : 0); _creationHostPid = client.HostPid; }
+        try { var client = _backend.Client; att = client.Attach(_id, repaint: true, creationTicket: expectedCreationTicket ?? "", nativeSnapshot: true, presentationRevision: UsesPresentation ? PresentationFrameCodec.Revision : 0); _creationHostPid = client.HostPid; }
         catch
         {
             // Recovery may find a checkpoint written before Create reached publication.

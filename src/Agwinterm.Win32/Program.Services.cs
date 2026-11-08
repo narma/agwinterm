@@ -695,6 +695,9 @@ internal partial class Program
         {
             foreach (var pane in window.ThemeSurfaces())
                 if (pane.S is ServerSession server) server.UpdateTheme();
+                else
+                    lock (pane.S.SyncRoot)
+                        if (pane.S.Emulator is GhosttyTerminalCore native) native.SyncTheme();
             window.RequestRedraw();
         }
     }
@@ -1024,7 +1027,7 @@ internal partial class Program
         "show-scratch-button", "show-split-button", "show-dashboard-button", "show-quick-button", "show-menu-bar",
         "quick-terminal-size", "quick-terminal-hotkey",
         "attention-button", "status-color-active", "status-color-blocked", "status-color-completed",
-        "paste-protection", "clipboard-write", "notification-flash", "claude-update-check", "update-check",
+        "paste-protection", "clipboard-write", "clipboard-read", "notification-flash", "claude-update-check", "update-check",
         "session-host", "fresh-env", "emulator-core",
     };
 
@@ -1116,6 +1119,7 @@ internal partial class Program
         "emulator-core" => _config.EmulatorCore,
         "paste-protection" => _config.PasteProtection ? "true" : "false",
         "clipboard-write" => _config.ClipboardWrite ? "true" : "false",
+        "clipboard-read" => _config.ClipboardRead ? "true" : "false",
         "attention-button" => _config.AttentionButton ? "true" : "false",
         "status-color-active" => _config.StatusColorActive,
         "status-color-blocked" => _config.StatusColorBlocked,

@@ -33,6 +33,7 @@ internal sealed class HostPresentationChannel
     public string QueryPipeName { get; }
     public string EffectPipeName => _effects.PipeName;
     public void PublishEffect(Proto.PresentationEffect effect) => _effects.Publish(effect);
+    public ClipboardResult ExchangeClipboard(ClipboardRequest request) => _effects.ExchangeClipboard(request);
     public Action<string,long>? ProgramStatusReceived;
     public Task Completion { get; private set; } = Task.CompletedTask;
 
@@ -56,6 +57,7 @@ internal sealed class HostPresentationChannel
     }
     public void Cancel()
     {
+        _effects.Complete();
         // Revocation and acceptance share a gate. Once replacement attach has
         // cancelled this channel, no late decoded input/resize can be accepted.
         lock(_acceptanceGate) lock (_signalGate) if (!_finished) _cancel.Cancel();
@@ -85,6 +87,7 @@ internal sealed class HostPresentationChannel
         { if(ex is not OperationCanceledException) System.Diagnostics.Trace.WriteLine("Owner presentation ended: "+ex); }
         finally
         {
+            _effects.Complete();
             _cancel.Cancel();
             try { await Task.WhenAll(queries,_effectWriter).ConfigureAwait(false); }
             catch(Exception ex) when(ex is IOException or OperationCanceledException) { }

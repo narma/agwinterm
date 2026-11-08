@@ -34,8 +34,9 @@ public sealed class ContentSelection
     // not for all of those intermediate selections, and never allocate a string per BMP cell.
     public string Text => _text ??= BuildText();
 
-    public ContentSelection(ScreenBuffer screen, int first, int startCol, int last, int endCol, bool block)
+    public ContentSelection(ScreenBuffer screen, int first, int startCol, int last, int endCol, bool block,string? selectedText=null)
     {
+        _text=selectedText;
         _cols = screen.Cols; _originalRows = screen.Rows;
         _frame = new uint[_cols * _originalRows];
         screen.CopyTextTo(_frame, _textMap, add: true);

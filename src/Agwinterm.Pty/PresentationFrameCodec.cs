@@ -6,11 +6,12 @@ using Google.Protobuf;
 
 namespace Agwinterm.Pty;
 
-/// <summary>Revision 1: protobuf metadata plus changed rows with run-length encoded cells.
+/// <summary>Revision 4 adds concealed text to decorated run-length encoded cells.
 /// A delta always names its exact base. Both peers cap records before allocating, and
 /// a reader never publishes a partially decoded viewport. No native or VT state crosses.</summary>
 internal static class PresentationFrameCodec
 {
+    public const uint Revision = 4;
     public const int MaximumBytes = 16 * 1024 * 1024;
     private const int MaximumStringBytes = 64 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, true);
@@ -24,7 +25,7 @@ internal static class PresentationFrameCodec
         if (previous is not null && (previous.Identity.Incarnation != id.Incarnation ||
             previous.Identity.AttachmentEpoch != id.AttachmentEpoch || previous.Identity.ViewportRevision != id.ViewportRevision ||
             previous.State.Columns != s.Columns || previous.State.Rows != s.Rows)) previous = null;
-        var header = new PresentationFrameHeader { Revision = 1, Incarnation = id.Incarnation,
+        var header = new PresentationFrameHeader { Revision = Revision, Incarnation = id.Incarnation,
             AttachmentEpoch = id.AttachmentEpoch, Sequence = id.Sequence, BaseSequence = previous?.Identity.Sequence ?? 0,
             ViewportRevision = id.ViewportRevision, TerminalGeneration = id.TerminalGeneration,
             Cols = (uint)s.Columns, Rows = (uint)s.Rows, HistoryRows = (uint)s.HistoryRows, ScrollOffset = (uint)s.ScrollOffset,
@@ -97,7 +98,7 @@ internal static class PresentationFrameCodec
         if (headerSize < 1 || headerSize > 8 * 1024 * 1024 || headerSize > stream.Length-stream.Position-4)
             throw new InvalidDataException("Invalid presentation header length.");
         var h = PresentationFrameHeader.Parser.ParseFrom(reader.ReadBytes(headerSize));
-        if (h.Revision != 1 || h.Incarnation != incarnation || h.AttachmentEpoch != epoch || epoch == 0 ||
+        if (h.Revision != Revision || h.Incarnation != incarnation || h.AttachmentEpoch != epoch || epoch == 0 ||
             h.Sequence == 0 || h.Sequence > long.MaxValue || h.BaseSequence >= h.Sequence || h.TerminalGeneration < 0 ||
             h.ScrollGeneration < 0 || h.CursorShape > 6 || h.KeyboardFlags > int.MaxValue || (h.Modes & ~TerminalFrameState.KnownModes) != 0 ||
             h.Cols is < 1 or > 32768 || h.Rows is < 1 or > 32768 ||
@@ -198,14 +199,20 @@ internal static class PresentationFrameCodec
         w.Write(c.Rune); w.Write(Pack(c.Foreground)); w.Write(Pack(c.Background)); w.Write((uint)c.Attributes); w.Write(c.Width);
         WriteSpec(w,c.FgSpec); WriteSpec(w,c.BgSpec); WriteString(w,c.Grapheme);
         WriteString(w,c.Hyperlink?.Uri); if (c.Hyperlink is not null) WriteString(w,c.Hyperlink.Parameters);
+        w.Write((byte)c.UnderlineStyle); w.Write(c.UnderlineColor.HasValue);
+        if (c.UnderlineColor is { } color) w.Write(Pack(color));
+        WriteSpec(w,c.UnderlineSpec);
     }
     private static Cell ReadCell(BinaryReader r)
     {
         int rune = r.ReadInt32(); var fg = Unpack(r.ReadUInt32()); var bg = Unpack(r.ReadUInt32());
         var attributes = (CellAttributes)r.ReadUInt32(); byte width = r.ReadByte();
-        if (!Rune.IsValid(rune) || width > 2 || ((uint)attributes & ~63u) != 0) throw new InvalidDataException("Invalid presentation cell.");
+        if (!Rune.IsValid(rune) || width > 2 || ((uint)attributes & ~511u) != 0) throw new InvalidDataException("Invalid presentation cell.");
         var fgSpec = ReadSpec(r); var bgSpec = ReadSpec(r); string? grapheme = ReadString(r), uri = ReadString(r);
         var link = uri is null ? null : new TerminalHyperlink(uri, ReadString(r) ?? "");
-        return new(rune,fg,bg,attributes,width,fgSpec,bgSpec,link,grapheme);
+        var underline = (UnderlineStyle)r.ReadByte();
+        if (underline > UnderlineStyle.Dashed) throw new InvalidDataException("Invalid underline style.");
+        Color? underlineColor = r.ReadBoolean() ? Unpack(r.ReadUInt32()) : null;
+        return new(rune,fg,bg,attributes,width,fgSpec,bgSpec,link,grapheme,underline,underlineColor,ReadSpec(r));
     }
 }

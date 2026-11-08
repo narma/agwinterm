@@ -266,7 +266,8 @@ internal partial class Program
             // scripts) can detect that they're running inside agwinterm. (agterm #203.)
             ["TERM_PROGRAM"] = "agwinterm",
             ["TERM_PROGRAM_VERSION"] = _termProgramVersion,
-            // 24-bit color. Without it (and without TERM, which Windows shells leave unset) apps that
+            ["TERM"] = TerminalIdentity.Term,
+            // 24-bit color. Without it, apps that
             // size their palette from the environment, Codex among them, fall back to 16 colors (#339).
             ["COLORTERM"] = "truecolor",
             // Claude Code 2.1.186+ otherwise leaves ~~markers~~ literal for unrecognized terminals.
@@ -457,6 +458,7 @@ internal partial class Program
             if (!Program._config.ClipboardWrite) { VtLog.Write(_pane.Id, "OSC", $"52 clipboard write DENIED by config ({text.Length} chars)"); return; }
             _app.Post(() => _app.ClipboardSet(text));
         }
+        public ClipboardResult ClipboardExchange(ClipboardRequest request) => _app.ExchangeTerminalClipboard(request);
         public void Respond(string reply)
         {
             // A late terminal query may be parsed while final output is settling after child death.

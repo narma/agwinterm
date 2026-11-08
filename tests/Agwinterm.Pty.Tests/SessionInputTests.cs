@@ -157,7 +157,7 @@ public class SessionInputTests
         List(ws, "Sessions").Add(background); List(ws, "Sessions").Add(shown);
         Set(app, "_workspaces", Activator.CreateInstance(program.GetField("_workspaces", BindingFlags.NonPublic | BindingFlags.Instance)!.FieldType)!);
         List(app, "_workspaces").Add(ws);
-        Set(app, "_active", shown); Set(app, "_session", visible); Set(app, "_broadcast", true);
+        Set(app, "_active", shown); SetInputSurface(app, visible); Set(app, "_broadcast", true);
         var run = program.GetMethod("RunCommandText", BindingFlags.NonPublic | BindingFlags.Instance)!;
         string result = (string)run.Invoke(app, ["{AGW_SESSION_ID}|{AGW_PANE_ID}|{AGW_WORKSPACE}|{AGW_CWD}", "send", "background"])!;
         Assert.Equal(0, visible.Attempts);
@@ -194,7 +194,7 @@ public class SessionInputTests
         Set(pane, "S", active); Set(pane, "ReadOnly", !closed); Set(pane, "HasSel", true); Set(pane, "ScrollOffset", 5);
         Set(sibling, "S", live); Set(ses, "Ws", ws);
         List(ses, "Panes").Add(pane); List(ses, "Panes").Add(sibling); List(ws, "Sessions").Add(ses);
-        Set(app, "_active", ses); Set(app, "_session", active); Set(app, "_broadcast", true);
+        Set(app, "_active", ses); SetInputSurface(app, active); Set(app, "_broadcast", true);
         Set(app, "_workspaces", Activator.CreateInstance(program.GetField("_workspaces", BindingFlags.NonPublic | BindingFlags.Instance)!.FieldType)!);
         var method = program.GetMethod(command ? "RunCommandText" : "Send", BindingFlags.NonPublic | BindingFlags.Instance)!;
         var result = method.Invoke(app, command ? ["payload", "send", null] : ["payload", true]);
@@ -234,7 +234,7 @@ public class SessionInputTests
         ((System.Collections.IList)ses.GetType().GetField("Panes")!.GetValue(ses)!).Add(pane);
         if (paneOverlay) Set(pane.GetType().GetField("Overlay")!.GetValue(pane)!, "Term", overlay);
         else Set(app, "_cover", overlay);
-        Set(app, "_active", ses); Set(app, "_session", cover); Set(app, "_broadcast", true);
+        Set(app, "_active", ses); SetInputSurface(app, cover); Set(app, "_broadcast", true);
         Assert.False((bool)program.GetProperty("BroadcastActive", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(app)!);
         var result = program.GetMethod(command ? "RunCommandText" : "Send", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(app, command ? ["payload", "send", null] : ["payload", true]);
         Assert.Equal(0, shell.Attempts);
@@ -292,6 +292,9 @@ public class SessionInputTests
         Set(slot, "OriginJob", Job()); Complete();
         Assert.Equal("exit 23", Result());
     }
+
+    private static void SetInputSurface(object app, ISession session)
+        => app.GetType().GetProperty("_session", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(app, session);
 
     private static Type LoadProgram()
     {

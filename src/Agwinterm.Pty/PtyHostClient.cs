@@ -92,7 +92,7 @@ public sealed class PtyHostClient : IDisposable
         string? cwd = null, IReadOnlyDictionary<string, string>? env = null, bool verbatim = false, bool deElevate = false,
         bool freshEnv = true, string creationTicket = "", string emulatorCore = "", bool singleOwner = false)
     {
-        if (singleOwner && PresentationRevision != 1) throw new NotSupportedException("Host does not support single-owner presentation revision 1");
+        if (singleOwner && PresentationRevision != PresentationFrameCodec.Revision) throw new NotSupportedException("Host does not support single-owner presentation revision 4");
         if (cols < 0 || rows < 0 || cols > 10000 || rows > 10000)
             throw new ArgumentOutOfRangeException(nameof(cols), "create cols/rows must be in 0..10000 (zero selects defaults)");
         var create = new Create
@@ -148,7 +148,7 @@ public sealed class PtyHostClient : IDisposable
     /// reattaching an existing view, false right after <see cref="Create"/>.</summary>
     public PtyHostAttachment Attach(string id, bool repaint = false, int timeoutMs = 5000, string creationTicket = "", bool nativeSnapshot = false, uint presentationRevision = 0)
     {
-        if (presentationRevision != 0 && (presentationRevision != 1 || PresentationRevision != 1))
+        if (presentationRevision != 0 && (presentationRevision != PresentationFrameCodec.Revision || PresentationRevision != PresentationFrameCodec.Revision))
             throw new NotSupportedException("Host does not support requested presentation revision");
         var reply = Request(new Request { Attach = new Attach { Id = id, Repaint = repaint, CreationTicket = creationTicket, NativeSnapshot = nativeSnapshot, PresentationRevision = presentationRevision } }).Attach;
         if (creationTicket.Length > 0 && reply.CreationTicket != creationTicket) throw new IOException("pty-host attachment incarnation changed");

@@ -8,12 +8,16 @@
 #endif
 
 typedef struct AgwVt AgwVt;
+typedef void (*AgwVtClipboard)(void*, uint32_t, uint32_t, const void*, const void*, size_t, const void*, size_t, uint32_t);
+AGWVT_API void agwvt_clipboard_callback(AgwVt*, AgwVtClipboard);
+AGWVT_API void agwvt_clipboard_reply(const void*, uint32_t, uint32_t, const void*, size_t, const void*, size_t);
 // All public fields are fixed-width, without C bool, enums or borrowed pointers.
 typedef struct {
     uint32_t rune, fg, bg, attrs, width;
     uint32_t fg_kind, fg_value, bg_kind, bg_value;
     uint32_t text_offset, text_length;
     uint32_t link_offset, link_length;
+    uint32_t underline_style, underline_color, underline_kind, underline_value;
 } AgwVtCell;
 typedef struct {
     uint32_t cols, rows, cursor_col, cursor_row, cursor_visible, alt_screen;
@@ -82,6 +86,12 @@ AGWVT_API int agwvt_read_row(AgwVt* vt, uint32_t row, uint32_t history, AgwVtCel
 AGWVT_API int agwvt_text(AgwVt* vt, uint32_t kind, uint8_t* text, size_t capacity, size_t* length);
 AGWVT_API int agwvt_marks(AgwVt* vt, AgwVtMark* marks, size_t capacity, size_t* count);
 AGWVT_API int agwvt_anchor_new(AgwVt* vt, uint32_t col, uint32_t row, void** anchor);
+AGWVT_API int agwvt_select_bounds(AgwVt* vt, uint32_t kind, uint32_t col, uint32_t row,
+    const uint32_t* delimiters, size_t count, uint32_t* bounds);
+AGWVT_API int agwvt_selection_drag(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uint32_t fc,
+    uint32_t behavior, uint32_t rectangle, const uint32_t* delimiters, size_t count, uint32_t* bounds);
+AGWVT_API int agwvt_format_selection(AgwVt* vt, uint32_t ar, uint32_t ac, uint32_t fr, uint32_t fc,
+    uint32_t block, uint32_t format, uint8_t* output, size_t capacity, size_t* length);
 AGWVT_API int agwvt_anchor_point(void* anchor, uint32_t* col, uint32_t* row);
 AGWVT_API void agwvt_anchor_free(void* anchor);
 AGWVT_API int agwvt_snapshot(AgwVt* vt, uint8_t** bytes, size_t* length);

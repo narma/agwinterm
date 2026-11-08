@@ -7,6 +7,18 @@ namespace Agwinterm.Win32;
 
 internal partial class Program
 {
+    private static void ReportTerminalFocus(ISession? session, bool focused)
+    {
+        if (session is null || session.HasExited) return;
+        try
+        {
+            // Owners inspect mode 1004 at consumption time, avoiding stale hosted frame modes.
+            if (HasSemanticInput(session)) SubmitOwnerInput(session, new TerminalInput.Focus(focused));
+            else if (session.Emulator.FocusReporting)
+                SessionInput.TryWrite(session, focused ? "\x1b[I"u8 : "\x1b[O"u8);
+        }
+        catch (ObjectDisposedException) { } // A closing surface may already have released its owner.
+    }
     private static bool HasOwnerInput(ISession session) => session.Emulator is GhosttyTerminalCore or PresentedTerminalView;
     private static bool HasSemanticInput(ISession session) => session.Presentation is not null || session is ServerSession { UsesPresentation: true };
     private static TerminalInputAcceptance SubmitOwnerInput(ISession session, TerminalInput input)

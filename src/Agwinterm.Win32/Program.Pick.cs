@@ -8,7 +8,7 @@ internal partial class Program : IPickHost
 {
     private static readonly PickRegistry Picks = new();
     private NativePicker? _nativePick;
-    private bool NativeDialogOpen => _nativePick is not null || _nativeAsk is not null || _originQuestion is not null;
+    private bool NativeDialogOpen => _selectionSaveDialog || _nativePick is not null || _nativeAsk is not null || _originQuestion is not null;
 
     public string OpenPick(PickSpec spec, string? window, bool follow)
     {

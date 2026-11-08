@@ -30,6 +30,7 @@ public static class NativeInputSink {
     [DllImport("kernel32.dll")] static extern bool SetConsoleMode(IntPtr h,uint mode);
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool ReadConsoleW(IntPtr h,[Out] char[] text,uint count,out uint read,IntPtr control);
     public static void Run(string log) {
+        System.IO.File.WriteAllText(log+".environment", Environment.GetEnvironmentVariable("TERM")+"|"+Environment.GetEnvironmentVariable("TERM_PROGRAM")+"|"+Environment.GetEnvironmentVariable("COLORTERM"));
         Console.InputEncoding=System.Text.Encoding.UTF8;
         Console.OutputEncoding=new System.Text.UTF8Encoding(false);
         if(!SetConsoleMode(GetStdHandle(-10),0x200)||!SetConsoleMode(GetStdHandle(-11),7)) throw new Exception("VT console mode");
@@ -75,7 +76,25 @@ try {
     $ready=$false
     for($i=0;$i-lt 100;$i++) {if(([string](Rpc 'session.text' @{} $inputSession)).Contains('INPUT-SINK-READY')){$ready=$true;break};Start-Sleep -Milliseconds 100}
     if(-not $ready){throw 'Input byte sink did not start'}
+    Check 'Child receives portable TERM and Agwinterm truecolor identity' ((Get-Content -LiteralPath ($inputLog+'.environment') -Raw) -ceq 'xterm-256color|agwinterm|truecolor')
+    . "$PSScriptRoot/ghostty-focus-ui-cases.ps1"
+    InputCheck 'DA capabilities reach the child through the session owner' ($esc+'[?62;22c'+$esc+'[>1;0;0c') {
+        $null=Rpc 'session.write' @{text=($esc+'[c'+$esc+'[>c')} $inputSession
+    }
+    InputCheck 'Unknown per-session TN remains silent' '' {
+        $null=Rpc 'session.write' @{text=($esc+'P+q544E'+$esc+'\')} $inputSession
+    }
+    InputCheck 'Blink capability reaches the child' ($esc+'P1+r626C696E6B=1B5B356D'+$esc+'\') {
+        $null=Rpc 'session.write' @{text=($esc+'P+q626C696E6B'+$esc+'\')} $inputSession
+    }
+    InputCheck 'Truecolor capability survives session transport' ($esc+'P1+r524742=38'+$esc+'\') {
+        $null=Rpc 'session.write' @{text=($esc+'P+q524742'+$esc+'\')} $inputSession
+    }
+    InputCheck 'Colored underline and overline capabilities reach the child' ($esc+'P1+r5375'+$esc+'\'+$esc+'P1+r536D6F6C=1B5B35336D'+$esc+'\') {
+        $null=Rpc 'session.write' @{text=($esc+'P+q5375;536D6F6C'+$esc+'\')} $inputSession
+    }
     $null=Rpc 'session.write' @{text=($esc+'[?9001l')} $inputSession
+    . "$PSScriptRoot/ghostty-clipboard-ui-cases.ps1"
     [void][GhosttyInputFixture]::SetForegroundWindow($hwnd)
     Start-Sleep -Milliseconds 150
     if([GhosttyInputFixture]::GetForegroundWindow()-ne $hwnd){throw 'Input fixture does not own foreground'}

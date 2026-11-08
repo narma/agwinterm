@@ -191,8 +191,19 @@ internal partial class Program
             case "toggle_read_only": if (ActiveSurface() is { } rp) { rp.ReadOnly = !rp.ReadOnly; ShowToast(rp.ReadOnly ? "pane read-only ON" : "pane read-only off"); RequestRedraw(); } break;
             case "previous_prompt": JumpPrompt(-1); break;
             case "next_prompt": JumpPrompt(1); break;
+            case "select_command_output": if(ActiveSurface() is { } so) SelectCommandOutput(so,false); break;
+            case "copy_command_output": if(ActiveSurface() is { } co) SelectCommandOutput(co,true); break;
             case "select_all": if (ActiveSurface() is { } sa) SelectAll(sa); break;
+            case "extend_selection_left": if (ActiveSurface() is { } sl) ExtendKeyboardSelection(sl, -1, 0); break;
+            case "extend_selection_right": if (ActiveSurface() is { } sr) ExtendKeyboardSelection(sr, 1, 0); break;
+            case "extend_selection_up": if (ActiveSurface() is { } su) ExtendKeyboardSelection(su, 0, -1); break;
+            case "extend_selection_down": if (ActiveSurface() is { } sd) ExtendKeyboardSelection(sd, 0, 1); break;
             case "copy_selection": if (ActiveSurface() is { } sc && HasLiveSel(sc)) CopySelection(sc); break;
+            case "copy_selection_html": if (ActiveSurface() is { } html && HasLiveSel(html)) _=CopyFormattedSelection(html,2); break;
+            case "copy_selection_vt": if (ActiveSurface() is { } vt && HasLiveSel(vt)) _=CopyFormattedSelection(vt,1); break;
+            case "export_selection_text": if(ActiveSurface() is { } et && HasLiveSel(et)) _=ExportSelection(et,0); break;
+            case "export_selection_html": if(ActiveSurface() is { } eh && HasLiveSel(eh)) _=ExportSelection(eh,2); break;
+            case "export_selection_vt": if(ActiveSurface() is { } ev && HasLiveSel(ev)) _=ExportSelection(ev,1); break;
             case "paste": if (ActiveSurface() is { } sp2) PasteInto(sp2); break;
         }
     }
@@ -813,8 +824,11 @@ internal partial class Program
     /// something relative to this snapshot, and ReconcileSel reconciles the two later.</summary>
     private void StampSel(Pane p) => StampSelection(p,all:false);
 
-    private void StampSelection(Pane p,bool all)
+    private void StampSelection(Pane p,bool all,string? unit=null,bool gesture=false)
     {
+        p.SelKeyboardDirection = null;
+        p.SelKeyboardRead = null;
+        p.SelKeyboardSteps = null;
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
         {
@@ -837,7 +851,9 @@ internal partial class Program
                 try { fallback=TerminalSelectionText.Read(remote,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,100000); }
                 catch(NotSupportedException) { } catch(InvalidDataException) { }
                 p.SelOwner=new(presentation,frame.Identity,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
-                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen),fallback,()=>RequestRedraw());
+                    p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen,unit,_config.WordDelimiters,
+                    gesture ? p.SelGestureId : null,p.SelGestureBehavior,p.SelGestureRow,p.SelGestureColumn),
+                    unit is null && (!gesture || p.SelGestureBehavior == 0) ? fallback : null,()=>RequestRedraw());
                 return;
             }
             if (em is GhosttyTerminalCore held && held.SynchronizedOutput)
@@ -849,6 +865,7 @@ internal partial class Program
                     p.SelContent = new ContentSelection(frame, first - em.HistoryCount, Math.Clamp(from, 0, frame.Cols - 1),
                         last - em.HistoryCount, Math.Clamp(to, 0, frame.Cols - 1), p.BlockSel);
                     p.SelContentVisible = false;
+                    p.SelFormats=new(p.SelContent.Text,null,null);
                     return;
                 }
             }
@@ -857,13 +874,17 @@ internal partial class Program
                 NormSel(p, out int first, out int from, out int last, out int to);
                 if (first >= em.HistoryCount)
                     p.SelContent = new ContentSelection(em.Screen, first - em.HistoryCount, from,
-                        last - em.HistoryCount, to, p.BlockSel);
+                        last - em.HistoryCount, to, p.BlockSel,
+                        em is GhosttyTerminalCore ? TerminalSelectionText.Read(em,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel) : null);
             }
             if (em is GhosttyTerminalCore ghostty && p.SelContent is null &&
                 ClampSel(p, em.HistoryCount, em.Screen.Rows, em.Screen.Cols, em.IsAltScreen))
             {
                 p.SelNative = ghostty.CreateSelection(p.SelAncLine, p.SelAncCol, p.SelFocLine, p.SelFocCol, p.BlockSel);
             }
+            if(p.SelNative is { } native) p.SelFormats=native.Formats;
+            else if(p.SelContent is { } content && em is GhosttyTerminalCore current)
+                p.SelFormats=SelectionFormats.Capture(current,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,content.Text);
         }
     }
 
@@ -911,7 +932,7 @@ internal partial class Program
         {
             if (em.SynchronizedOutput) { p.SelContentVisible = false; return true; }
             if (!nativeSelection.TryLocate(out int anchorRow, out int anchorCol, out int focusRow, out int focusCol))
-            { p.ClearSel(); return false; }
+            { p.SelContentVisible=false; return true; }
             p.SelContentVisible = true;
             p.SelAncLine = anchorRow; p.SelAncCol = anchorCol;
             p.SelFocLine = focusRow; p.SelFocCol = focusCol;
@@ -997,6 +1018,125 @@ internal partial class Program
         }
     }
 
+    // Shift selection is a normal bindable action, not a modal keyboard grab.
+    // Reconstruct caret boundaries from reconciled inclusive cells on every step so
+    // native reflow/scroll tracking remains authoritative.
+    private void ExtendKeyboardSelection(Pane p, int dx, int dy)
+        => ExtendKeyboardSelectionWithCell(p, dx, dy, null);
+
+    private void ExtendKeyboardSelectionWithCell(Pane p, int dx, int dy, byte? resolvedWidth)
+    {
+        lock (p.S.SyncRoot)
+        {
+            if (p.SelKeyboardRead is not null)
+            {
+                var steps = p.SelKeyboardSteps ??= new();
+                if (steps.Count < 256) steps.Enqueue((dx, dy));
+                return;
+            }
+            bool existing = (p.HasSel || p.SelKeyboardDirection == 0) && ReconcileSel(p);
+            if (existing && !CanExtendSelection(p))
+            {
+                if (p.HasSel) return; // preserve a retained offscreen selection
+                existing = false; // an empty caret must not block starting again after output
+            }
+            var em = p.S.Emulator;
+            int cols = em.Screen.Cols, rows = em.Screen.Rows, hist = em.HistoryCount;
+            if (cols <= 0 || rows <= 0) return;
+            long min = (long)(em.IsAltScreen ? hist : 0) * cols;
+            long end = (long)(hist + rows) * cols;
+            long anchor, focus;
+            if (existing)
+            {
+                anchor = (long)p.SelAncLine * cols + p.SelAncCol;
+                focus = (long)p.SelFocLine * cols + p.SelFocCol;
+                int direction = p.SelKeyboardDirection ?? (focus >= anchor ? 1 : -1);
+                if (direction > 0) focus++;
+                else if (direction < 0) anchor++;
+            }
+            else
+            {
+                p.ClearSel();
+                // The terminal cursor belongs to the live screen, regardless of viewport scroll.
+                anchor = focus = (long)(hist + em.CursorRow) * cols + em.CursorCol;
+            }
+            anchor = Math.Clamp(anchor, min, end);
+            focus = Math.Clamp(focus + dx + (long)dy * cols, min, end);
+            // A CJK/emoji spacer is not a separate character boundary.
+            if (focus > min && focus < end)
+            {
+                int line = (int)(focus / cols), col = (int)(focus % cols);
+                byte width;
+                if (resolvedWidth is { } supplied) width = supplied;
+                else if (em is PresentedTerminalView view)
+                {
+                    // Screen is the displayed viewport, not the live screen. Uncached
+                    // history/live cells must be read from the owner at this generation.
+                    if (view.TryGetCachedCell(line, col, out var cached)) width = cached.Width;
+                    else
+                    {
+                        using var frame = view.AcquireFrame();
+                        if (frame is not null && p.S.Presentation is { } presentation)
+                        {
+                            var pending = p.SelKeyboardRead = new object();
+                            _ = ReadKeyboardSelectionCell(p, presentation, frame.Identity, line, col, dx, dy, pending);
+                        }
+                        return;
+                    }
+                }
+                else width = (line < hist ? em.GetHistoryCell(line, col) : em.Screen[line - hist, col]).Width;
+                if (width == 0) focus = Math.Clamp(focus + (dx < 0 || dy < 0 ? -1 : 1), min, end);
+            }
+            int nextDirection = Math.Sign(focus - anchor);
+            long anchorCell = Math.Clamp(anchor - (nextDirection < 0 ? 1 : 0), min, end - 1);
+            long focusCell = Math.Clamp(focus - (nextDirection > 0 ? 1 : 0), min, end - 1);
+            p.EndSelectionGesture();
+            p.SelAncLine = (int)(anchorCell / cols); p.SelAncCol = (int)(anchorCell % cols);
+            p.SelFocLine = (int)(focusCell / cols); p.SelFocCol = (int)(focusCell % cols);
+            p.BlockSel = false;
+            p.HasSel = nextDirection != 0;
+            StampSel(p);
+            p.SelKeyboardDirection = nextDirection;
+            int top = hist - Math.Clamp(p.ScrollOffset, 0, hist);
+            if (em.IsAltScreen) p.ScrollOffset = 0;
+            else if (p.SelFocLine < top) p.ScrollOffset = Math.Clamp(hist - p.SelFocLine, 0, hist);
+            else if (p.SelFocLine >= top + rows)
+                p.ScrollOffset = Math.Clamp(hist - p.SelFocLine + rows - 1, 0, hist);
+        }
+        RequestRedraw();
+    }
+
+    private async Task ReadKeyboardSelectionCell(Pane p, ISessionPresentation presentation,
+        TerminalFrameIdentity identity, int row, int column, int dx, int dy, object pending)
+    {
+        byte? width = null;
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var reply = await presentation.QueryAsync(new(identity.Incarnation, identity.AttachmentEpoch,
+                identity.TerminalGeneration, "text-cells", row, 1), deadline.Token).ConfigureAwait(false);
+            if (reply.Status == "ok" && !reply.Truncated && reply.Generation == identity.TerminalGeneration
+                && reply.Rows.Count == 1 && JsonSerializer.Deserialize<TerminalTextCell[]>(reply.Rows[0]) is { } cells
+                && (uint)column < cells.Length && cells[column].Width <= 2)
+                width = cells[column].Width;
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or JsonException)
+        { System.Diagnostics.Trace.WriteLine("Keyboard selection query ended: " + ex.Message); }
+        Post(() =>
+        {
+            if (!ReferenceEquals(p.SelKeyboardRead, pending)) return;
+            var queued = p.SelKeyboardSteps;
+            p.SelKeyboardRead = null; p.SelKeyboardSteps = null;
+            using var frame = (p.S.Emulator as PresentedTerminalView)?.AcquireFrame();
+            if (width is null || frame is null || frame.Identity.Incarnation != identity.Incarnation
+                || frame.Identity.AttachmentEpoch != identity.AttachmentEpoch
+                || frame.Identity.TerminalGeneration != identity.TerminalGeneration) return;
+            ExtendKeyboardSelectionWithCell(p, dx, dy, width);
+            if (queued is not null)
+                foreach (var step in queued) ExtendKeyboardSelection(p, step.Dx, step.Dy);
+        });
+    }
+
     // ---- Keyboard mark mode (WT's markMode): build a selection without the mouse ----
     private bool _markMode;
 
@@ -1072,7 +1212,10 @@ internal partial class Program
     {
         lock (p.S.SyncRoot)
         {
+            if(p.SelOwner is not null && !p.SelContentVisible) return false;
+            if(p.SelNative is not null && !p.SelContentVisible && !p.S.Emulator.SynchronizedOutput) return false;
             if (p.SelContent is null) return true;
+            if(p.S.Emulator.SynchronizedOutput) return true;
             int hist = p.S.Emulator.HistoryCount, end = hist + p.S.Emulator.Screen.Rows;
             return p.SelContentVisible && p.SelAncLine >= hist && p.SelAncLine < end
                 && p.SelFocLine >= hist && p.SelFocLine < end;
@@ -1086,12 +1229,33 @@ internal partial class Program
             if (extend && HasLiveSel(p))
             {
                 if (!CanExtendSelection(p)) return false;
+                StartSelectionGesture(p,p.SelAncLine,p.SelAncCol,0);
                 p.BlockSel = block;
-                p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampSel(p);
+                p.SelFocLine = line; p.SelFocCol = col; _selMoved = true; StampGesture(p);
             }
-            else { p.BlockSel = block; p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
+            else { StartSelectionGesture(p,line,col,0); p.BlockSel = block; p.SelAncLine = p.SelFocLine = line; p.SelAncCol = p.SelFocCol = col; p.HasSel = false; _selMoved = false; StampSel(p); }
             return true;
         }
+    }
+
+    private void StartSelectionGesture(Pane p,int row,int column,int behavior)
+    {
+        p.EndSelectionGesture();
+        p.SelGestureRow=row; p.SelGestureColumn=column; p.SelGestureBehavior=behavior;
+        if(p.S.Emulator.SynchronizedOutput) return;
+        p.SelGestureId=Guid.NewGuid().ToString("N");
+        if(p.S.Emulator is GhosttyTerminalCore core)
+            p.SelGesture=new(core,row,column,behavior,_config.WordDelimiters);
+    }
+
+    private void StampGesture(Pane p)
+    {
+        if(p.SelGesture is { } gesture && !p.S.Emulator.SynchronizedOutput)
+        {
+            if(!gesture.Update(p.SelFocLine,p.SelFocCol,p.BlockSel,out int ar,out int ac,out int fr,out int fc)) return;
+            p.SelAncLine=ar; p.SelAncCol=ac; p.SelFocLine=fr; p.SelFocCol=fc;
+        }
+        StampSelection(p,false,gesture:p.SelGestureId is not null);
     }
 
     private void UpdateSelect(Pane p, int line, int col)
@@ -1102,17 +1266,19 @@ internal partial class Program
             // rows until they return; only an invalidated selection starts a new drag segment.
             bool reconciled = ReconcileSel(p);
             if (p.HasSel && reconciled && !CanExtendSelection(p)) return;
-            if (!reconciled || !p.SelContentVisible)
+            if (!reconciled || (!p.SelContentVisible && !p.S.Emulator.SynchronizedOutput))
             {
                 p.SelAncLine = line; p.SelAncCol = col;
             }
             p.SelFocLine = line; p.SelFocCol = col; p.HasSel = true; _selMoved = true;
-            StampSel(p);
+            StampGesture(p);
         }
     }
 
     private void SelectWord(Pane p, int line, int col)
     {
+        lock(p.S.SyncRoot) StartSelectionGesture(p,line,col,1);
+        if (SelectNativeUnit(p,line,col,"word",0)) return;
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
         {
@@ -1133,8 +1299,30 @@ internal partial class Program
 
     private void SelectLine(Pane p, int line)
     {
+        lock(p.S.SyncRoot) StartSelectionGesture(p,line,0,2);
+        if (SelectNativeUnit(p,line,0,"line",1)) return;
         int cols; lock (p.S.SyncRoot) cols = p.S.Emulator.Screen.Cols;
         p.SelAncLine = p.SelFocLine = line; p.SelAncCol = 0; p.SelFocCol = cols - 1; p.HasSel = true; StampSel(p);
+    }
+
+    private bool SelectNativeUnit(Pane p,int line,int col,string unit,int kind)
+    {
+        lock(p.S.SyncRoot)
+        {
+            if(p.S.Emulator.SynchronizedOutput) return false;
+            if(p.S.Emulator is PresentedTerminalView)
+            {
+                p.SelAncLine=p.SelFocLine=line; p.SelAncCol=p.SelFocCol=col;
+                p.BlockSel=false; p.HasSel=true; StampGesture(p);
+                return true;
+            }
+            if(p.S.Emulator is not GhosttyTerminalCore core) return false;
+            if(!core.SelectBounds(kind,line,col,_config.WordDelimiters,out int ar,out int ac,out int fr,out int fc))
+            { p.ClearSel(); return true; }
+            p.SelAncLine=ar; p.SelAncCol=ac; p.SelFocLine=fr; p.SelFocCol=fc;
+            p.BlockSel=false; p.HasSel=true; StampSel(p);
+            return true;
+        }
     }
 
     /// <summary>Copy the selection; false if there was nothing to copy. A live selection can still
@@ -1172,7 +1360,8 @@ internal partial class Program
         string t = SelectionText(pane);
         copied = t;
         bool any = t.AsSpan().IndexOfAnyExcept('\r', '\n', ' ') >= 0;
-        if (any) ClipboardSet(t); else copied = "";
+        if (any && !ClipboardSet(t)) { copied=""; return false; }
+        if (!any) copied = "";
         if (clear) pane.ClearSel();
         RequestRedraw();
         return any;
@@ -1506,28 +1695,28 @@ internal partial class Program
         }
     }
 
-    private void ClipboardSet(string text)
+    private bool ClipboardSetCore(string text)
     {
         // Build the handle before touching the clipboard so a failed alloc never leaves it emptied.
         byte[] buf = Encoding.Unicode.GetBytes(text + "\0");
         IntPtr h = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)(uint)buf.Length);
-        if (h == IntPtr.Zero) return;
+        if (h == IntPtr.Zero) return false;
         IntPtr p = GlobalLock(h);
-        if (p == IntPtr.Zero) { GlobalFree(h); return; }
+        if (p == IntPtr.Zero) { GlobalFree(h); return false; }
         Marshal.Copy(buf, 0, p, buf.Length);
         GlobalUnlock(h);
 
-        if (!OpenClipboardRetry()) { GlobalFree(h); return; }
+        if (!OpenClipboardRetry()) { GlobalFree(h); return false; }
         try
         {
-            EmptyClipboard();
-            if (SetClipboardData(CF_UNICODETEXT, h) == IntPtr.Zero)
-                GlobalFree(h); // ownership only transfers to the clipboard on success
+            if (!EmptyClipboard() || SetClipboardData(CF_UNICODETEXT, h) == IntPtr.Zero)
+            { GlobalFree(h); return false; }
+            return true;
         }
         finally { CloseClipboard(); }
     }
 
-    private string ClipboardGet()
+    private string ClipboardGetCore()
     {
         if (!OpenClipboardRetry()) return "";
         try
@@ -1650,7 +1839,13 @@ internal partial class Program
                 // selection only when copy-on-ctrl-c is on — otherwise it falls through and interrupts,
                 // so with nothing selected (or the option off) the shell still gets ^C.
                 if (shift) { if (HasLiveSel(ap) && CopySelection(ap)) ShowToast("Text copied", 500); return true; }
-                if (_config.CopyOnCtrlC && HasLiveSel(ap) && CopySelection(ap)) { ShowToast("Text copied", 500); return true; }
+                if (_config.CopyOnCtrlC && HasLiveSel(ap))
+                {
+                    if(CopySelection(ap)) { ShowToast("Text copied", 500); return true; }
+                    // Failed writes retain the selection; blank selections are cleared
+                    // and must still let Ctrl+C interrupt the child.
+                    if(HasLiveSel(ap)) return true;
+                }
                 // plain Ctrl+C with no selection, nothing under it, or the option off falls through
                 // to the interrupt below
             }

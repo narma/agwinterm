@@ -66,6 +66,8 @@ public sealed class PtyHostServer : IDisposable
         private List<string> _pending = new();
         public Action<string>? ResponseSink;
         public Action<PresentationEffect>? EffectSink;
+        public Func<ClipboardRequest,ClipboardResult>? ClipboardSink;
+        public ClipboardResult ClipboardExchange(ClipboardRequest request) => ClipboardSink?.Invoke(request) ?? ClipboardResult.Denied;
         public int ProgressState, ProgressValue;
         public string RoleNotice="";
         public readonly ProgramStatusRecords ProgramStatuses = new();
@@ -212,7 +214,7 @@ public sealed class PtyHostServer : IDisposable
         // The handshake is the protocol's forward-compat seam: a client offering a DIFFERENT
         // version is refused loudly (never half-understood), and the reply names ours.
         return h.Protocol == ProtocolVersion
-            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1, PresentationRevision = 1 } }
+            ? new Reply { Ok = true, Hello = new HelloReply { Protocol = ProtocolVersion, Pid = (uint)Environment.ProcessId, CreationRevision = 1, CoreSelectionRevision = 1, ThemeRevision = 1, PresentationRevision = PresentationFrameCodec.Revision } }
             : Err($"protocol mismatch: host={ProtocolVersion} client={h.Protocol}");
     }
 
@@ -251,10 +253,11 @@ public sealed class PtyHostServer : IDisposable
             {
                 hosted.Input = new OwnerInputQueue(session);
                 hosted.Replies.EffectSink = effect => hosted.Presentation?.PublishEffect(effect);
+                hosted.Replies.ClipboardSink = request => hosted.Presentation?.ExchangeClipboard(request) ?? ClipboardResult.Denied;
                 ((GhosttyTerminalCore)session.Emulator).SetTitleFilter(hosted.Replies.ConsumeTitle);
                 hosted.Replies.ResponseSink = reply =>
                 {
-                    if (hosted.Input.Submit(new TerminalInput.Raw(System.Text.Encoding.UTF8.GetBytes(reply))) != TerminalInputAcceptance.Accepted)
+                    if (hosted.Input.SubmitResponse(System.Text.Encoding.UTF8.GetBytes(reply)) != TerminalInputAcceptance.Accepted)
                         session.MarkInputClosed();
                 };
             }
@@ -399,7 +402,7 @@ public sealed class PtyHostServer : IDisposable
     {
         if (a.PresentationRevision != 0)
         {
-            if (a.PresentationRevision != 1 || !hosted.SingleOwner || hosted.S.Emulator is not GhosttyTerminalCore)
+            if (a.PresentationRevision != PresentationFrameCodec.Revision || !hosted.SingleOwner || hosted.S.Emulator is not GhosttyTerminalCore)
                 return Err("requested presentation transport is unavailable for this session");
             lock (hosted.DataLock)
             {
@@ -426,7 +429,7 @@ public sealed class PtyHostServer : IDisposable
                 },TaskScheduler.Default);
                 return new Reply { Ok = true, Attach = new AttachReply { Pipe = channel.FramePipeName,
                     InputPipe = channel.InputPipeName, QueryPipe = channel.QueryPipeName, EffectPipe=channel.EffectPipeName,
-                    PresentationRevision = 1, AttachmentEpoch = epoch,
+                    PresentationRevision = PresentationFrameCodec.Revision, AttachmentEpoch = epoch,
                     CreationTicket = hosted.Creation.Ticket, EmulatorCore = "ghostty", Cols = (uint)hosted.S.Cols,
                     Rows = (uint)hosted.S.Rows, ChildPid = (uint)(hosted.S.ChildProcessId ?? 0),
                     HasExited = hosted.S.HasExited, ExitCode = hosted.S.ExitCode ?? 0 } };
@@ -571,6 +574,7 @@ public sealed class PtyHostServer : IDisposable
 
     private Reply HandleTheme(ThemeUpdate update) => WithSession(update.Id, h =>
     {
+        List<string>? replies = null;
         var colors = ThemeColors.Parse(update.Colors);
         var palette = ThemeColors.ParsePalette(update.Palette);
         var cursor = ThemeColors.ParseColor(update.Cursor);
@@ -589,7 +593,14 @@ public sealed class PtyHostServer : IDisposable
                     native.SetCursorDefault(style, (update.CursorDefault & 1) != 0);
                 }
             }
+            if (!h.SingleOwner) replies = h.Replies.Take();
         }
+        // Theme notifications can originate without a subsequent output chunk.
+        // Legacy attachments answer from their replica; detached owners answer here.
+        if (replies is not null)
+            lock (h.DataLock)
+                if (h.Data is null)
+                    foreach (var reply in replies) SessionInput.TryWrite(h.S, System.Text.Encoding.UTF8.GetBytes(reply));
         h.Presentation?.Signal();
         return Ok();
     }, update.CreationTicket);

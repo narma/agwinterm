@@ -237,6 +237,13 @@ internal partial class Program
                 return IntPtr.Zero;
 
             case WM_TIMER:
+                if ((int)wParam == TextBlinkTimer)
+                {
+                    if (!_textBlinkArmed) return IntPtr.Zero;
+                    if (IsIconic(hwnd)) { _textBlinkVisible = false; UpdateTextBlinkTimer(); }
+                    else { _textBlinkOn = !_textBlinkOn; RequestRedraw(); }
+                    return IntPtr.Zero;
+                }
                 if ((int)wParam == HudTimer) { HudTick(); return IntPtr.Zero; }
                 if ((int)wParam == 2) { _toastText = null; _toastTarget = null; KillTimer(hwnd, (IntPtr)2); InvalidateRect(hwnd, IntPtr.Zero, false); return IntPtr.Zero; }
                 if ((int)wParam == SelAutoTimer) { SelAutoscrollTick(); return IntPtr.Zero; }
@@ -575,6 +582,7 @@ internal partial class Program
                     var sp = _selPane; _selPane = null;
                     if (!_selMoved) { ActiveSurface()?.ClearSel(); RequestRedraw(); } // plain click clears
                     else if (sp is not null) FinalizeSelection(sp);                   // copy-on-select
+                    sp?.EndSelectionGesture();
                     return IntPtr.Zero;
                 }
                 if (InContent(lParam)) { SendMousePx(0, lParam, false); }
@@ -593,8 +601,9 @@ internal partial class Program
                     {
                         var (line, col) = CellAtPx(h0.pane, h0.ox, h0.oy, h0.cw, h0.ch, mx, my);
                         SelectWord(h0.pane, line, col);
-                        _clickCount = 2; _lastClickMs = Environment.TickCount; _selMoved = true; _selecting = false;
-                        FinalizeSelection(h0.pane);
+                        _clickCount = 2; _lastClickMs = Environment.TickCount; _selMoved = true; _selecting = true;
+                        _selPane=h0.pane; _selMouseX=mx; _selAutoDir=0;
+                        SetCapture(hwnd);
                         RequestRedraw();
                     }
                     return IntPtr.Zero;
@@ -725,11 +734,7 @@ internal partial class Program
                 if (!_windowActive) { _altArmed = false; LeaveMenuBar(); }   // an Alt+Tab away is not a lone Alt tap
                 // Focus reporting (DECSET ?1004): on a real focus transition, tell the active pane's
                 // app the terminal gained (ESC[I) or lost (ESC[O) focus, so it can pause/resume.
-                if (_windowActive != wasActive && _session is { } fs)
-                {
-                    if (HasSemanticInput(fs)) SubmitOwnerInput(fs,new TerminalInput.Focus(_windowActive));
-                    else if (fs.Emulator.FocusReporting) SessionInput.TryWrite(fs, _windowActive ? "\x1b[I"u8 : "\x1b[O"u8);
-                }
+                if (_windowActive != wasActive) ReportTerminalFocus(_session, _windowActive);
                 if (_config.UnfocusedDim > 0) RequestRedraw();
                 if (_isQuickWindow && !_windowActive && _quickVisible && !_quickPinned
                     && (lParam == IntPtr.Zero || GetAncestor(lParam, 3 /* GA_ROOTOWNER */) != _hwnd)) DismissQuick(blur: true);

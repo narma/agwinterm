@@ -140,6 +140,9 @@ Check-PalettePixels 'Ghostty OSC palette survives live theme change' 12 34 56
 $null = Rpc 'session.write' @{text=($esc+']104;1'+[char]7)} $session
 Check-PalettePixels 'Ghostty palette reset uses new theme' 191 97 106
 $null = Rpc 'config.set' @{key='theme';value='default'}
+. "$PSScriptRoot/ghostty-decoration-ui-cases.ps1"
+. "$PSScriptRoot/ghostty-blink-ui-cases.ps1"
+. "$PSScriptRoot/ghostty-conceal-ui-cases.ps1"
 $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='
 $images = $esc+'[5;5H'+$esc+'_Ga=T,f=100,i=101,c=8,r=4,C=1;'+$png+$esc+'\'+
     $esc+'[5;17H'+$esc+'_Ga=T,f=32,s=1,v=1,i=102,c=8,r=4,C=1;Ed9J/w=='+$esc+'\'

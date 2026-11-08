@@ -158,6 +158,28 @@ public sealed class GhosttyTerminalCore : ITerminalCore, IDisposable
     // tracked positions, so it does not infer eviction counts from this value.
     public long ScrollGeneration => _vt.ScrollEpoch;
     public GhosttyAnchor TrackPoint(int row, int col) => _vt.TrackPoint(row, col);
+    public bool SelectCommandOutput(int row,int column,bool latest,out int ar,out int ac,out int fr,out int fc)
+    {
+        ar=ac=fr=fc=0;
+        if(IsAltScreen || SynchronizedOutput) return false;
+        if(!latest) return SelectBounds(2,row,column,"",out ar,out ac,out fr,out fc);
+        var mark=Marks.LastOrDefault(m=>m.OutputLine >= 0);
+        if(mark is null) return false;
+        // OSC 133 C may start output in the middle of a physical row. The
+        // library identifies semantic cells and derives the entire region.
+        for(int col=0;col<Cols;col++)
+            if(SelectBounds(2,mark.OutputLine,col,"",out ar,out ac,out fr,out fc)) return true;
+        return false;
+    }
+
+    public string FormatSelection(int ar,int ac,int fr,int fc,bool block,int format,int maximumBytes=100000)
+        => _vt.FormatSelection(ar,ac,fr,fc,block,format,maximumBytes);
+    public bool SelectBounds(int kind, int row, int column, string delimiters,
+        out int ar, out int ac, out int fr, out int fc)
+        => _vt.SelectBounds(kind, row, column, delimiters, out ar, out ac, out fr, out fc);
+    public bool SelectionDrag(int ar,int ac,int fr,int fc,int behavior,bool block,string delimiters,
+        out int startRow,out int startCol,out int endRow,out int endCol)
+        => _vt.SelectionDrag(ar,ac,fr,fc,behavior,block,delimiters,out startRow,out startCol,out endRow,out endCol);
     public GhosttySelection CreateSelection(int ar, int ac, int fr, int fc, bool block,int maximumCharacters=int.MaxValue)
         => new(this, ar, ac, fr, fc, block,maximumCharacters);
     private void ReadHistory(int row)
