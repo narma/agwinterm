@@ -827,6 +827,8 @@ internal partial class Program
     private void StampSelection(Pane p,bool all,string? unit=null,bool gesture=false)
     {
         p.SelKeyboardDirection = null;
+        p.SelKeyboardRead = null;
+        p.SelKeyboardSteps = null;
         var em = p.S.Emulator;
         lock (p.S.SyncRoot)
         {
@@ -1020,9 +1022,18 @@ internal partial class Program
     // Reconstruct caret boundaries from reconciled inclusive cells on every step so
     // native reflow/scroll tracking remains authoritative.
     private void ExtendKeyboardSelection(Pane p, int dx, int dy)
+        => ExtendKeyboardSelectionWithCell(p, dx, dy, null);
+
+    private void ExtendKeyboardSelectionWithCell(Pane p, int dx, int dy, byte? resolvedWidth)
     {
         lock (p.S.SyncRoot)
         {
+            if (p.SelKeyboardRead is not null)
+            {
+                var steps = p.SelKeyboardSteps ??= new();
+                if (steps.Count < 256) steps.Enqueue((dx, dy));
+                return;
+            }
             bool existing = (p.HasSel || p.SelKeyboardDirection == 0) && ReconcileSel(p);
             if (existing && !CanExtendSelection(p))
             {
@@ -1055,8 +1066,26 @@ internal partial class Program
             if (focus > min && focus < end)
             {
                 int line = (int)(focus / cols), col = (int)(focus % cols);
-                var cell = line < hist ? em.GetHistoryCell(line, col) : em.Screen[line - hist, col];
-                if (cell.Width == 0) focus = Math.Clamp(focus + (dx < 0 || dy < 0 ? -1 : 1), min, end);
+                byte width;
+                if (resolvedWidth is { } supplied) width = supplied;
+                else if (em is PresentedTerminalView view)
+                {
+                    // Screen is the displayed viewport, not the live screen. Uncached
+                    // history/live cells must be read from the owner at this generation.
+                    if (view.TryGetCachedCell(line, col, out var cached)) width = cached.Width;
+                    else
+                    {
+                        using var frame = view.AcquireFrame();
+                        if (frame is not null && p.S.Presentation is { } presentation)
+                        {
+                            var pending = p.SelKeyboardRead = new object();
+                            _ = ReadKeyboardSelectionCell(p, presentation, frame.Identity, line, col, dx, dy, pending);
+                        }
+                        return;
+                    }
+                }
+                else width = (line < hist ? em.GetHistoryCell(line, col) : em.Screen[line - hist, col]).Width;
+                if (width == 0) focus = Math.Clamp(focus + (dx < 0 || dy < 0 ? -1 : 1), min, end);
             }
             int nextDirection = Math.Sign(focus - anchor);
             long anchorCell = Math.Clamp(anchor - (nextDirection < 0 ? 1 : 0), min, end - 1);
@@ -1075,6 +1104,37 @@ internal partial class Program
                 p.ScrollOffset = Math.Clamp(hist - p.SelFocLine + rows - 1, 0, hist);
         }
         RequestRedraw();
+    }
+
+    private async Task ReadKeyboardSelectionCell(Pane p, ISessionPresentation presentation,
+        TerminalFrameIdentity identity, int row, int column, int dx, int dy, object pending)
+    {
+        byte? width = null;
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var reply = await presentation.QueryAsync(new(identity.Incarnation, identity.AttachmentEpoch,
+                identity.TerminalGeneration, "text-cells", row, 1), deadline.Token).ConfigureAwait(false);
+            if (reply.Status == "ok" && !reply.Truncated && reply.Generation == identity.TerminalGeneration
+                && reply.Rows.Count == 1 && JsonSerializer.Deserialize<TerminalTextCell[]>(reply.Rows[0]) is { } cells
+                && (uint)column < cells.Length && cells[column].Width <= 2)
+                width = cells[column].Width;
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or JsonException)
+        { System.Diagnostics.Trace.WriteLine("Keyboard selection query ended: " + ex.Message); }
+        Post(() =>
+        {
+            if (!ReferenceEquals(p.SelKeyboardRead, pending)) return;
+            var queued = p.SelKeyboardSteps;
+            p.SelKeyboardRead = null; p.SelKeyboardSteps = null;
+            using var frame = (p.S.Emulator as PresentedTerminalView)?.AcquireFrame();
+            if (width is null || frame is null || frame.Identity.Incarnation != identity.Incarnation
+                || frame.Identity.AttachmentEpoch != identity.AttachmentEpoch
+                || frame.Identity.TerminalGeneration != identity.TerminalGeneration) return;
+            ExtendKeyboardSelectionWithCell(p, dx, dy, width);
+            if (queued is not null)
+                foreach (var step in queued) ExtendKeyboardSelection(p, step.Dx, step.Dy);
+        });
     }
 
     // ---- Keyboard mark mode (WT's markMode): build a selection without the mouse ----

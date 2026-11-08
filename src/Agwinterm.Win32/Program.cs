@@ -402,6 +402,8 @@ internal partial class Program : ISessionHost, IWindowHost
         public int SelAncLine, SelAncCol, SelFocLine, SelFocCol;
         // Inclusive cell endpoints need a direction even when only one cell is selected.
         public int? SelKeyboardDirection;
+        public object? SelKeyboardRead;
+        public Queue<(int Dx, int Dy)>? SelKeyboardSteps;
         // The buffer as it was when the selection was made. Absolute indices only mean anything
         // relative to this: scrolling leaves them alone, but EVICTION renumbers, and the alt screen
         // is a different buffer entirely. Everything is recorded at selection time and compared on
@@ -432,7 +434,7 @@ internal partial class Program : ISessionHost, IWindowHost
             }
         }
         public void EndSelectionGesture() { lock(S.SyncRoot) { SelGesture?.Dispose(); SelGesture=null; SelGestureId=null; } }
-        public void ClearSel() { HasSel = false; SelKeyboardDirection = null; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); EndSelectionGesture(); }
+        public void ClearSel() { HasSel = false; SelKeyboardDirection = null; SelKeyboardRead = null; SelKeyboardSteps = null; SelContent = null; SelContentVisible = true; ReleaseSelectionAnchors(); EndSelectionGesture(); }
         public int UiaAnnouncedAbs = -1;   // absolute buffer line (history + cursor row) last spoken to a screen reader
     }
 

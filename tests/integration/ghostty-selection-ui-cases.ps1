@@ -160,6 +160,18 @@ try {
         $null=Rpc 'keymap.reload' @{}
         $null=Rpc 'selection.clear' @{} $selectionSession
     }
+    $historyText=("HISTORY`r`n" * ($selectionMetrics.rows+5))
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[3J'+$esc+'[H'+$historyText+$esc+'[H')} $selectionSession
+    Start-Sleep -Milliseconds 350
+    SelectionChord 0x26
+    CheckSelection 'Shift+Up reads selection cells beyond the displayed history edge' 'HISTORY'
+    SelectionChord 0x26
+    CheckSelection 'Shift+Up keeps extending across the scrolled history edge' "HISTORY`r`nHISTORY"
+    $null=Rpc 'selection.clear' @{} $selectionSession
+    $null=Rpc 'session.write' @{text=($esc+'[2J'+$esc+'[3J'+$esc+'[H'+"alpha beta gamma`r`n0123456789`r`nABCDEFGHIJ"+$esc+'[H')} $selectionSession
+    # Return to the live viewport after the keyboard selection scrolled into history.
+    SelectionChord 0x23
+    Start-Sleep -Milliseconds 350
     SelectionMouse 0x203 0 7
     SelectionMouse 0x200 0 13
     CheckSelection 'Double-click drag extends by whole words' 'beta gamma'
