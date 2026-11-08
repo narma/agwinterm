@@ -502,15 +502,7 @@ internal partial class Program
                         SetActive(t);
                         return IntPtr.Zero;
                     }
-                    if (SidebarDividerAt(mx, my))
-                    {
-                        _sidebarResizing = true;
-                        _sidebarResizeOffset = mx - _sidebarW;
-                        ClearLinkHover();
-                        SetCapture(hwnd);
-                        SetCursor(LoadCursorW(IntPtr.Zero, IDC_SIZEWE));
-                        return IntPtr.Zero;
-                    }
+                    if (TryBeginSidebarResize(mx, my)) return IntPtr.Zero;
                     // Quick terminal is a floating panel: its corner ✕ hides it, and a left-click anywhere
                     // in the "main window area" outside the panel also dismisses it (like a tool window).
                     if (_coverKind == 2)
@@ -617,7 +609,7 @@ internal partial class Program
             case WM_LBUTTONDBLCLK:
                 {
                     int mx = DipX(lParam), my = DipY(lParam);   // device px -> DIP layout
-                    if (SidebarDividerAt(mx, my)) return IntPtr.Zero;
+                    if (TryBeginSidebarResize(mx, my)) return IntPtr.Zero;
                     if (_dashboardOpen) { DashboardClick(mx, my, doubleClick: true); return IntPtr.Zero; }
                     if (mx < (int)_sidebarW && my >= (int)TitleBarH && my < ClientH() - (int)FooterH)
                     {

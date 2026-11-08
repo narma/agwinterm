@@ -1752,6 +1752,17 @@ internal partial class Program
         _sidebarW > 0 && !_helpOpen && !_setOpen && _palette == PaletteKind.None && !_dashboardOpen &&
         y >= TitleBarH && y < ClientH() && Math.Abs(x - _sidebarW) <= 4;
 
+    private bool TryBeginSidebarResize(int x, int y)
+    {
+        if (!SidebarDividerAt(x, y)) return false;
+        _sidebarResizing = true;
+        _sidebarResizeOffset = x - _sidebarW;
+        ClearLinkHover();
+        SetCapture(_hwnd);
+        SetCursor(LoadCursorW(IntPtr.Zero, IDC_SIZEWE));
+        return true;
+    }
+
     private void ResizeSidebar(int x)
     {
         if (_sidebarW <= 0) return;
@@ -1764,6 +1775,7 @@ internal partial class Program
     private void FinishSidebarResize()
     {
         _sidebarResizing = false;
+        RegridAllSessions(); // settle inactive PTYs before a later session switch
         SaveState();
         RequestRedraw();
     }
