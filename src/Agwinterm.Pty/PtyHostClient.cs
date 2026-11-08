@@ -28,6 +28,7 @@ public sealed class PtyHostClient : IDisposable
 {
     private readonly Stream _pipe;
     private readonly object _io = new();
+    private readonly int _requestTimeoutMs;
     private bool _unusable;
     public bool IsUsable => !Volatile.Read(ref _unusable);
     public uint CreationRevision { get; private set; }
@@ -44,7 +45,11 @@ public sealed class PtyHostClient : IDisposable
         return true;
     }
 
-    internal PtyHostClient(Stream pipe, uint creationRevision = 0) { _pipe = pipe; CreationRevision = creationRevision; }
+    internal PtyHostClient(Stream pipe, uint creationRevision = 0, int requestTimeoutMs = 15000)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestTimeoutMs);
+        _pipe = pipe; CreationRevision = creationRevision; _requestTimeoutMs = requestTimeoutMs;
+    }
 
     /// <summary>Whether a pty-host is answering for this app id (cheap probe, no handshake).</summary>
     public static bool IsRunning(string appId)
@@ -58,20 +63,22 @@ public sealed class PtyHostClient : IDisposable
         catch { return false; }
     }
 
-    /// <summary>Connect and handshake. Throws on timeout or protocol mismatch — a version mismatch
-    /// must fail loudly at the seam, never surface as garbled sessions later.</summary>
+    /// <summary>Connect and handshake. The pipe discovery budget is <paramref name="timeoutMs"/>;
+    /// an answering peer gets at least three seconds for its hello reply. A reply timeout is an
+    /// IOException, distinct from failing to find a host. Protocol mismatches fail at this seam.</summary>
     public static PtyHostClient Connect(string appId, int timeoutMs = 3000)
     {
-        // Deliberately a SYNCHRONOUS pipe handle (no PipeOptions.Asynchronous): every control
-        // request is sync request/response under a lock, and a sync operation on an async handle
-        // secretly runs overlapped IO — closing the pipe with such an op in flight is the crash
-        // class behind issue #118. A sync handle keeps this path on plain blocking syscalls.
-        var pipe = new NamedPipeClientStream(".", PtyHostServer.ControlPipeName(appId), PipeDirection.InOut);
+        // Cancellation requires an asynchronous handle. Request waits for each operation
+        // (including cancellation) to finish BEFORE disposing it: no overlapped IO can
+        // outlive the handle, preserving the #118 lifetime rule.
+        var pipe = new NamedPipeClientStream(".", PtyHostServer.ControlPipeName(appId), PipeDirection.InOut, PipeOptions.Asynchronous);
         var client = new PtyHostClient(pipe);
         try
         {
             pipe.Connect(timeoutMs);
-            var reply = client.Request(new Request { Hello = new Hello { Protocol = PtyHostServer.ProtocolVersion } });
+            // The backend's 200-ms probe only budgets finding a pipe. Give an
+            // already connected, busy host a normal handshake budget.
+            var reply = client.Request(new Request { Hello = new Hello { Protocol = PtyHostServer.ProtocolVersion } }, Math.Max(timeoutMs, 3000));
             if (reply.Hello.Protocol != PtyHostServer.ProtocolVersion)
                 throw new InvalidOperationException("pty-host protocol mismatch");
             client.CreationRevision = reply.Hello.CreationRevision;
@@ -229,34 +236,38 @@ public sealed class PtyHostClient : IDisposable
 
     /// <summary>One framed request/response over the control pipe. Throws on transport errors and
     /// on <c>ok:false</c> replies (the error message travels in the exception).</summary>
-    private Reply Request(Request req)
+    private Reply Request(Request req, int? timeoutMs = null)
     {
         Reply reply;
         lock (_io)
         {
             if (_unusable) throw new IOException("pty-host connection was retired; requests must not be replayed");
             byte[] payload = req.ToByteArray();
+            using var deadline = new CancellationTokenSource(timeoutMs ?? _requestTimeoutMs);
             try
             {
-                Span<byte> len = stackalloc byte[4];
-                BitConverter.TryWriteBytes(len, payload.Length);
-                _pipe.Write(len);
-                _pipe.Write(payload);
-                _pipe.Flush();
+                var len = BitConverter.GetBytes(payload.Length);
+                _pipe.WriteAsync(len, deadline.Token).AsTask().GetAwaiter().GetResult();
+                _pipe.WriteAsync(payload, deadline.Token).AsTask().GetAwaiter().GetResult();
+                _pipe.FlushAsync(deadline.Token).GetAwaiter().GetResult();
 
                 var lenBuf = new byte[4];
-                _pipe.ReadExactly(lenBuf);
+                _pipe.ReadExactlyAsync(lenBuf, deadline.Token).AsTask().GetAwaiter().GetResult();
                 int n = BitConverter.ToInt32(lenBuf);
                 if (n < 0 || n > 16 * 1024 * 1024) throw new IOException("pty-host sent a garbled frame");
                 var buf = new byte[n];
-                _pipe.ReadExactly(buf);
+                _pipe.ReadExactlyAsync(buf, deadline.Token).AsTask().GetAwaiter().GetResult();
                 reply = Reply.Parser.ParseFrom(buf);
                 if (reply.Ok) ValidateReply(req, reply);
             }
-            catch
+            catch (Exception ex)
             {
                 _unusable = true;
                 try { _pipe.Dispose(); } catch { }
+                // A connected peer may have executed the request. This is not a
+                // connection timeout (which callers may handle by spawning a host).
+                if (ex is OperationCanceledException && deadline.IsCancellationRequested)
+                    throw new IOException("pty-host reply timed out; the connection was retired and the request must not be replayed", ex);
                 throw;
             }
         }

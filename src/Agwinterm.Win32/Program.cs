@@ -584,6 +584,7 @@ internal partial class Program : ISessionHost, IWindowHost
     // ---- CLI launch args (wt-style, applied to the first window): ----
     //   Agwinterm.Win32.exe [-p|--profile NAME] [-d|--dir PATH] [--maximized] [--fullscreen]
     private static bool _argNoRestore;   // --no-restore: fresh window, don't reopen the saved tree (elevated launch)
+    private static bool _argElevatedProfile;
     private static string? _argPipe;     // --pipe <name>: control-pipe name (default = the instance id)
     private static string? _argProfile;
 
@@ -638,6 +639,7 @@ internal partial class Program : ISessionHost, IWindowHost
                 case "--maximized": _argMaximized = true; break;
                 case "--fullscreen": _argFullscreen = true; break;
                 case "--no-restore": _argNoRestore = true; break;
+                case "--elevated-profile": _argElevatedProfile = true; break;
                 case "--pipe" when i + 1 < args.Length: _argPipe = args[++i]; break;
                 case "--pty-host": _argPtyHost = true; break;
                 case "--conpty" when i + 1 < args.Length: _argConpty = args[++i]; break;
@@ -676,6 +678,19 @@ internal partial class Program : ISessionHost, IWindowHost
                 start.ArgumentList.Add(_argConpty);
             }
             Process.Start(start)?.Dispose();
+            return;
+        }
+        // Explicit elevated profile launches intentionally use a separate process
+        // and never restore the ordinary window library.
+        using var guiInstance = _argElevatedProfile && _argNoRestore && IsElevated() ? null : new GuiInstance(AppDir);
+        if (guiInstance is { IsOwner: false })
+        {
+            try { guiInstance.ForwardAsync(new(_argDir, _argProfile, _argNoRestore, _argMaximized, _argFullscreen)).GetAwaiter().GetResult(); }
+            catch (Exception ex)
+            {
+                MessageBoxW(IntPtr.Zero, "Agwinterm is already running, but could not open the requested window.\n" + ex.Message, AppName, 0x10);
+                Environment.ExitCode = 1;
+            }
             return;
         }
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -741,12 +756,34 @@ internal partial class Program : ISessionHost, IWindowHost
             front ??= w;
         }
         Frontmost = front!;
+        guiInstance?.Listen(launch => LiveWindow().PostVerb(() =>
+        {
+            var window = Frontmost;
+            if (launch.NewWindow)
+            {
+                var meta = new WinMeta { Id = Guid.NewGuid().ToString(), Name = "", IsOpen = true };
+                CascadeGeometry(meta);
+                lock (_windowIndex) _windowIndex.Add(meta);
+                _argProfile = launch.Profile; _argDir = launch.Directory;
+                window = CreateWindowInstance(meta);
+                Frontmost = window; _frontmostId = meta.Id;
+                SaveIndex();
+            }
+            else if (launch.Directory is not null || launch.Profile is not null)
+                window.CreateSession(Guid.NewGuid().ToString(), null, launch.Directory, window.ActiveWorkspace(), makeActive: true, profileName: launch.Profile);
+            if (launch.Maximized) ShowWindow(window._hwnd, SW_MAXIMIZE);
+            else if (IsIconic(window._hwnd)) ShowWindow(window._hwnd, SW_RESTORE);
+            if (launch.Fullscreen && !window._fullscreen) window.ToggleFullscreen();
+            SetForegroundWindow(window._hwnd);
+        }));
         // Experimental knobs announce themselves once at startup — never a silent mystery.
         if (_emulatorCoreNote is { } note)
             front!.Post(() => front.ShowToast(note, 6000));
         if (_fontFallbackNote is { } fontNote)
             front!.Post(() => front.ShowToast(fontNote, 8000));
-        if (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null)
+        // A deliberately fresh/elevated window did not enumerate the saved
+        // library, so its missing claims are NOT evidence of abandoned shells.
+        if (!_argNoRestore && (_sessionBackend is ServerSessionBackend || _liveSessionBackend is not null))
         {
             // All restore handles have already claimed their hosted IDs in the backend. New
             // handles claim before async creation too, not after publication in the UI tree.

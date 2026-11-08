@@ -640,7 +640,7 @@ internal partial class Program
         try
         {
             string exe = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Agwinterm.Win32.exe");
-            ShellExecuteW(_hwnd, "runas", exe, $"--profile \"{profileName}\" --no-restore", null, SW_SHOW);
+            ShellExecuteW(_hwnd, "runas", exe, $"--profile \"{profileName}\" --no-restore --elevated-profile", null, SW_SHOW);
         }
         catch (Exception ex) { ShowToast("elevated launch failed: " + ex.Message); }
     }
