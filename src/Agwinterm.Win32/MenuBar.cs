@@ -570,7 +570,16 @@ internal partial class Program
         var sb = new StringBuilder();
         sb.Append("agwinterm ").Append(_termProgramVersion);
         if (commit.Length > 0) sb.Append(" (").Append(commit.Length > 12 ? commit[..12] : commit).Append(')');
-        sb.Append("\n\nAgwinterm for Windows, maintained by narma.\nBased on Boris Kudriashov's agwinterm and inspired by umputun's agterm.\n\nhttps://github.com/narma/agwinterm\n\nMIT © Boris Kudriashov");
-        MessageBoxW(_hwnd, sb.ToString(), "About agwinterm", MB_OK | MB_ICONINFORMATION);
+        sb.Append("\n\nWindows terminal for AI coding agents");
+        sb.Append("\n\nDeveloped and maintained by Sergei Rublev.");
+        sb.Append("\nBased on the original agwinterm by Boris Kudriashov.");
+        sb.Append("\nInspired by agterm by umputun.");
+        sb.Append("\n\nhttps://github.com/narma/agwinterm");
+        // Keep aligned with native/ghostty-vt/pin.json and agwvt.c's terminal version.
+        sb.Append("\n\nTerminal engine: libghostty-vt 1.0.0");
+        sb.Append("\nBy Mitchell Hashimoto and Ghostty contributors.");
+        sb.Append("\nhttps://lib.ghostty.org/vt/");
+        sb.Append("\n\nLicensed under the MIT License.");
+        AboutDialog.Show(_hwnd, sb.ToString());
     }
 }
