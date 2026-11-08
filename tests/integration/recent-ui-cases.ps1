@@ -92,27 +92,33 @@ $null=Rpc 'recent.clear' @{} -NoTarget -Window ''
 Check 'clear is persisted independently of restore state' (RecentWait {
     try { ((Get-Content (Join-Path $appDir 'recent.json') -Raw|ConvertFrom-Json).Sessions.Count)-eq 0 -and (Test-Path (Join-Path $appDir 'windows')) } catch { $false }
 })
-# A second actual app process uses the same history identity and a different control pipe.
+# A second launch forwards a fresh window to the library owner even with a different pipe.
+# Independent writer merge/stale-baseline behavior is covered by RecentHistoryTests.
 $peerPipe=$pipe+'-recent-peer'; $peerJob=[HudOwnedJob]::new()
+$peerWindow=$null
+$existingWindows=@((Rpc 'window.list' @{} -NoTarget -Window '').windows.id)
 function PeerRecentCtl([string[]]$arguments) {
-    $reply=((& $ctl @arguments --pipe $peerPipe --json)-join "`n")|ConvertFrom-Json
+    $windowArgs=if($arguments[0]-eq 'recent'){@()}else{@('--window',$peerWindow)}
+    $reply=((& $ctl @arguments --pipe $pipe @windowArgs --json)-join "`n")|ConvertFrom-Json
     if(-not $reply.ok){throw "Peer CLI failed: $($reply|ConvertTo-Json -Compress)"}
     $reply.result
 }
 try {
     $peerJob.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $peerPipe --no-restore --default-session-host inprocess",$root)
-    if(-not (RecentWait {try{$null=PeerRecentCtl @('tree');$true}catch{$false}})){throw 'Recent peer did not start'}
-    $null=PeerRecentCtl @('recent','list') # Cache an empty baseline before the other process adds.
+    if(-not (RecentWait {@((Rpc 'window.list' @{} -NoTarget -Window '').windows|Where-Object {$_.open -and $_.id -notin $existingWindows}).Count-eq 1})){throw 'Forwarded recent window did not open'}
+    $peerWindow=[string]@((Rpc 'window.list' @{} -NoTarget -Window '').windows|Where-Object {$_.open -and $_.id -notin $existingWindows})[0].id
+    Check 'duplicate launch forwards exactly one fresh history window' ($peerWindow-ne $dest)
+    $null=PeerRecentCtl @('recent','list')
     $primary=[string](Rpc 'session.new' @{name='primary-history-member'} -Window $dest)
     if(-not (RecentWait {@((Rpc 'tree' @{} -NoTarget -Window $dest).workspaces.sessions|Where-Object id -eq $primary).Count-eq 1})){throw 'Primary history session did not appear'}
     $null=Rpc 'session.close' @{} $primary -Window $dest
-    $null=RecentList # Drain the primary mutation before exercising the peer's stale baseline.
+    $null=RecentList # Drain the primary mutation before adding from the other window.
     $peer=[string](PeerRecentCtl @('session','new','--name','peer-history-member'))
     if(-not (RecentWait {@((PeerRecentCtl @('tree')).workspaces.sessions|Where-Object id -eq $peer).Count-eq 1})){throw 'Peer history session did not appear'}
     $null=PeerRecentCtl @('session','close',$peer)
     $null=PeerRecentCtl @('recent','list')
     $shared=(RecentList).entries
-    Check 'separate app processes retain each others recent additions' (@($shared|Where-Object name -eq 'primary-history-member').Count-eq 1 -and @($shared|Where-Object name -eq 'peer-history-member').Count-eq 1)
+    Check 'separate windows retain each others recent additions' (@($shared|Where-Object name -eq 'primary-history-member').Count-eq 1 -and @($shared|Where-Object name -eq 'peer-history-member').Count-eq 1)
     $null=Rpc 'recent.clear' @{} -NoTarget -Window ''
     $null=RecentList
     $newPeer=[string](PeerRecentCtl @('session','new','--name','peer-after-clear'))
@@ -120,5 +126,5 @@ try {
     $null=PeerRecentCtl @('session','close',$newPeer)
     $null=PeerRecentCtl @('recent','list')
     $shared=@((RecentList).entries)
-    Check 'stale peer cannot resurrect history cleared by another process' ($shared.Count-eq 1 -and $shared[0].name-eq 'peer-after-clear')
+    Check 'peer window does not resurrect history cleared by another window' ($shared.Count-eq 1 -and $shared[0].name-eq 'peer-after-clear')
 } finally { $peerJob.Finish() }
