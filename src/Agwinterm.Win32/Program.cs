@@ -229,6 +229,7 @@ internal partial class Program : ISessionHost, IWindowHost
     private Rect _toastRect;     // last-drawn banner rect (for click-to-jump hit-testing)
     private bool _trayAdded;     // whether the Shell_NotifyIcon tray icon has been created (for OS balloons)
     private IntPtr _hIconTray;   // app icon at the tray's small-icon size (falls back to IDI_APPLICATION)
+    private bool _ownsTrayIcon; // the small window-icon fallback is borrowed
 
     // Terminal text selection drag + multi-click (word/line) tracking.
     private bool _selecting;       // left-drag selecting text in the content region
@@ -881,6 +882,7 @@ internal partial class Program : ISessionHost, IWindowHost
             {
                 int trayPx = GetSystemMetricsForDpi(SM_CXSMICON, GetDpiForWindow(_hwnd));
                 _hIconTray = LoadImageW(IntPtr.Zero, icoPath, IMAGE_ICON, trayPx, trayPx, LR_LOADFROMFILE);
+                _ownsTrayIcon = _hIconTray != IntPtr.Zero;
             }
             if (_hIconTray == IntPtr.Zero) _hIconTray = hIconSm;
             if (hIconBig != IntPtr.Zero) SendMessageW(_hwnd, WM_SETICON, (IntPtr)ICON_BIG, hIconBig);

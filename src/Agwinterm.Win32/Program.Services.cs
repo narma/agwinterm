@@ -231,9 +231,16 @@ internal partial class Program
 
     private void RemoveTrayIcon()
     {
-        if (!_trayAdded) return;
-        try { var d = new NOTIFYICONDATAW { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NOTIFYICONDATAW>(), hWnd = _hwnd, uID = 1 }; Shell_NotifyIconW(NIM_DELETE, ref d); } catch { }
+        if (_trayAdded)
+        {
+            try { var d = new NOTIFYICONDATAW { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NOTIFYICONDATAW>(), hWnd = _hwnd, uID = 1 }; Shell_NotifyIconW(NIM_DELETE, ref d); } catch { }
+        }
         _trayAdded = false;
+        // Boot allocates this even if no notification is ever displayed.
+        // The fallback belongs to the window; only destroy our separate allocation.
+        if (_ownsTrayIcon) DestroyIcon(_hIconTray);
+        _ownsTrayIcon = false;
+        _hIconTray = IntPtr.Zero;
     }
 
     private static string SafeCwd(Ses s) { lock (s.S.SyncRoot) return s.S.Emulator.Cwd; }
