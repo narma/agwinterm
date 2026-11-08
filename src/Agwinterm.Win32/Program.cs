@@ -688,7 +688,7 @@ internal partial class Program : ISessionHost, IWindowHost
             try { guiInstance.ForwardAsync(new(_argDir, _argProfile, _argNoRestore, _argMaximized, _argFullscreen)).GetAwaiter().GetResult(); }
             catch (Exception ex)
             {
-                MessageBoxW(IntPtr.Zero, "Agwinterm is already running, but could not open the requested window.\n" + ex.Message, AppName, 0x10);
+                MessageBoxW(IntPtr.Zero, "Agwinterm is already running, but the requested launch was not confirmed.\nIt may still complete; check the existing windows before retrying.\n" + ex.Message, AppName, 0x10);
                 Environment.ExitCode = 1;
             }
             return;

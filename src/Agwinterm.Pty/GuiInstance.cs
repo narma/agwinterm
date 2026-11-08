@@ -52,7 +52,11 @@ public sealed class GuiInstance : IDisposable
                     await pipe.ReadExactlyAsync(bytes, timeout.Token).ConfigureAwait(false);
                     var request = JsonSerializer.Deserialize<Launch>(bytes);
                     if (request is null) continue;
+                    // The UI hop has its own 15-second deadline. Reading the
+                    // message must not consume the time allowed for its reply.
+                    timeout.CancelAfter(Timeout.InfiniteTimeSpan);
                     launch(request);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(5));
                     await pipe.WriteAsync(new byte[] { 1 }, timeout.Token).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or InvalidOperationException or TimeoutException)
@@ -71,6 +75,8 @@ public sealed class GuiInstance : IDisposable
         if (bytes.Length > 65536) throw new ArgumentException("Launch arguments are too large.");
         await pipe.WriteAsync(BitConverter.GetBytes(bytes.Length), timeout.Token).ConfigureAwait(false);
         await pipe.WriteAsync(bytes, timeout.Token).ConfigureAwait(false);
+        // Allow the owner's complete UI budget plus time to return its ack.
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
         var ack = new byte[1];
         await pipe.ReadExactlyAsync(ack, timeout.Token).ConfigureAwait(false);
         if (ack[0] != 1) throw new IOException("Launch was not accepted.");

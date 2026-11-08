@@ -5,6 +5,22 @@ namespace Agwinterm.Pty.Tests;
 public sealed class GuiInstanceTests
 {
     [Fact]
+    public void SlowApplicationGetsAFreshAcknowledgmentBudget()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "gui-instance-" + Guid.NewGuid().ToString("N"));
+        using var owner = new GuiInstance(directory);
+        // Exceed the five-second message-read budget while staying within the
+        // production UI hop's fifteen-second deadline (e.g. a slow UAC prompt).
+        owner.Listen(_ => Thread.Sleep(TimeSpan.FromSeconds(6)));
+        Task.Factory.StartNew(() =>
+        {
+            using var duplicate = new GuiInstance(directory);
+            duplicate.ForwardAsync(new()).GetAwaiter().GetResult();
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+            .WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
+    }
+
+    [Fact]
     public void LibraryOwnershipUsesTheCrossSessionUserNamespace()
     {
         string directory = Path.Combine(Path.GetTempPath(), "gui-instance-" + Guid.NewGuid().ToString("N"));
