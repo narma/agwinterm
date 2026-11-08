@@ -217,7 +217,7 @@ internal partial class Program
                 hWnd = _hwnd,
                 uID = 1,
                 uFlags = NIF_INFO | (_trayAdded ? 0u : (NIF_ICON | NIF_TIP)),
-                hIcon = _trayAdded ? IntPtr.Zero : LoadIconW(IntPtr.Zero, (IntPtr)32512), // IDI_APPLICATION
+                hIcon = _trayAdded ? IntPtr.Zero : (_hIconTray != IntPtr.Zero ? _hIconTray : LoadIconW(IntPtr.Zero, (IntPtr)32512)), // app icon, else IDI_APPLICATION
                 szTip = AppName,
                 szInfoTitle = string.IsNullOrEmpty(title) ? AppName : title,
                 szInfo = body.Length == 0 ? " " : body,
@@ -231,9 +231,16 @@ internal partial class Program
 
     private void RemoveTrayIcon()
     {
-        if (!_trayAdded) return;
-        try { var d = new NOTIFYICONDATAW { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NOTIFYICONDATAW>(), hWnd = _hwnd, uID = 1 }; Shell_NotifyIconW(NIM_DELETE, ref d); } catch { }
+        if (_trayAdded)
+        {
+            try { var d = new NOTIFYICONDATAW { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NOTIFYICONDATAW>(), hWnd = _hwnd, uID = 1 }; Shell_NotifyIconW(NIM_DELETE, ref d); } catch { }
+        }
         _trayAdded = false;
+        // Boot allocates this even if no notification is ever displayed.
+        // The fallback belongs to the window; only destroy our separate allocation.
+        if (_ownsTrayIcon) DestroyIcon(_hIconTray);
+        _ownsTrayIcon = false;
+        _hIconTray = IntPtr.Zero;
     }
 
     private static string SafeCwd(Ses s) { lock (s.S.SyncRoot) return s.S.Emulator.Cwd; }
