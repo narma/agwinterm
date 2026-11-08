@@ -18,6 +18,14 @@ internal partial class Program
         private int _refreshing,_disposed;
         private long _requestedGeneration=-1;
         public Task Ready { get; }
+        private string _creationStatus="error";
+        public string? CreationError => _creationStatus switch
+        {
+            "ok" => null,
+            "stale" => "Terminal content changed; try selecting command output again",
+            "limit" => "Command output exceeds the selection limit; select a smaller range to copy",
+            _ => "Could not read command output; try again"
+        };
         public bool CopyQueued;
         public async Task<string?> FormatAsync(int format)
         {
@@ -41,9 +49,11 @@ internal partial class Program
             try
             {
                 var result=await _presentation.QueryAsync(query,_cancel.Token).ConfigureAwait(false);
-                if(result.Status == "ok" && result.Rows.Count == 1 &&
+                if(create) _creationStatus=result.Truncated ? "limit" : result.Status == "ok" ? "error" : result.Status;
+                if(result.Status == "ok" && !result.Truncated && result.Rows.Count == 1 &&
                     JsonSerializer.Deserialize<TerminalSelectionResult>(result.Rows[0]) is { } value)
                 {
+                    if(create) _creationStatus="ok";
                     if(create && value.Valid && value.Text is { } text) Formats=new(text,value.Vt,value.Html);
                     if(!create) value=value with { Text=Text };
                     if(Volatile.Read(ref _disposed) == 0) Volatile.Write(ref _snapshot,new(result.Generation,value));

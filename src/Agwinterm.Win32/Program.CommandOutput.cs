@@ -34,6 +34,10 @@ internal partial class Program
                     _=owner.Ready.ContinueWith(_=>Post(()=>
                     {
                         if(!ReferenceEquals(pane.SelOwner,owner)) return;
+                        if(owner.CreationError is { } error)
+                        {
+                            pane.ClearSel(); ShowToast(error); RequestRedraw(); return;
+                        }
                         Finish();
                     }),TaskScheduler.Default);
                 }
