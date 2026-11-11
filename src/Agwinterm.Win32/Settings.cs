@@ -100,6 +100,7 @@ internal partial class Program
         // General
         Sec(0, "Mouse");
         Sld(0, "scroll-speed", "Scroll speed", 1, 10);
+        Drop(0, "follow-output", "Follow output", ["Only at bottom", "Always"], ["bottom", "always"]);
         Tog(0, "right-click-paste", "Right-click pastes clipboard");
         Tog(0, "copy-on-select", "Copy selection automatically");
         Tog(0, "copy-on-ctrl-c", "Ctrl+C copies the selection (else interrupts)");

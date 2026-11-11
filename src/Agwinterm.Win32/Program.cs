@@ -393,7 +393,7 @@ internal partial class Program : ISessionHost, IWindowHost
         public PaneAppearance? Appearance;
         public float Ratio = 1f;   // this pane's OWN share of the session's extent along its axis (width when vertical, height when horizontal); PaneLayout normalises by the sum
         public int ScrollOffset;   // lines scrolled up from the live bottom (0 = live; clamped to HistoryCount)
-        public long LastScrollGen; // emulator ScrollGeneration last seen on output (detects real scroll vs in-place repaint)
+        public long LastScrollGen; // emulator ScrollGeneration last seen during paint (UI thread only)
         public int SyncRedrawPending;
         public int Unread;         // unread desktop-notification count (OSC 9/777 / notify) since last visit
         public NotificationCategory UnreadCategory; // highest priority among unread notifications

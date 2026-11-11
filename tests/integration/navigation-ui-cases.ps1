@@ -116,7 +116,10 @@ $wheelPane=[string](Rpc 'session.split' @{op='on';axis='vertical'} $session)
 $null=Rpc 'session.focus' @{dir='left'}
 $lines=(1..100|ForEach-Object {"WHEEL-LINE-$_"})-join "`r`n"
 $null=Rpc 'session.write' @{text=($esc+'[?1000h')} $session
-$null=Rpc 'session.write' @{text=($esc+'[?1000l'+$lines)} $wheelPane
+Check 'wheel pane owner is attached before writing history' (NavWait {
+    try { $null=Rpc 'session.write' @{text=($esc+'[?1000l'+$lines)} $wheelPane; return $true }
+    catch { return $false }
+})
 $wheelBefore=NavPixels 'wheel-under-pointer-before'
 $wheelPoint=[NavWheel+POINT]::new();$wheelPoint.x=[int]($wheelBefore.width*0.75);$wheelPoint.y=[int]($wheelBefore.height*0.5)
 if(-not [NavWheel]::ClientToScreen($hwnd,[ref]$wheelPoint)){throw 'Wheel coordinate conversion failed'}
@@ -125,6 +128,42 @@ $wheelPosition=[IntPtr]([int64](($wheelPoint.y-band 0xffff)-shl 16)-bor ($wheelP
 $wheelAfter=NavPixels 'wheel-under-pointer-after'
 Check 'wheel scrolls unfocused history while focused sibling reports mouse' ((PixelDifference $wheelBefore $wheelAfter ([int]($wheelBefore.width*0.55)) 80 ([int]($wheelBefore.width*0.4)) ([int]($wheelBefore.height*0.65)))-gt 100)
 $null=Rpc 'session.write' @{text=($esc+'[?1000l')} $session
+$followRegion=@(([int]($wheelBefore.width*0.55)),80,([int]($wheelBefore.width*0.4)),([int]($wheelBefore.height*0.65)))
+$null=Rpc 'config.set' @{key='cursor-blink';value='false'}
+$readBefore=NavPixels 'follow-output-reading-before'
+foreach($batch in 1..3) {
+    $null=Rpc 'session.write' @{text="`r`nNEW-OUTPUT-$batch`r`n"} $wheelPane
+}
+# Hosted writes are queued. Unchanged pixels prove nothing until the owner has
+# consumed the last batch; fail closed if that acknowledgement never arrives.
+$followOutputReceived=NavWait {
+    try { return ([string](Rpc 'session.text' @{} $wheelPane)).Contains('NEW-OUTPUT-3') }
+    catch { return $false }
+}
+Check 'terminal owner received the final output batch before comparing scroll position' $followOutputReceived
+if(-not $followOutputReceived){throw 'Final follow-output marker did not reach the terminal buffer'}
+$readAfter=NavStablePixels 'follow-output-reading-after' $followRegion
+Check 'default output following keeps scrolled text stationary' ((PixelDifference $readBefore $readAfter @followRegion)-eq 0)
+# Each wheel message advances one configured step, regardless of delta magnitude.
+foreach($step in 1..20) {
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x20a,[IntPtr](-120-shl 16),$wheelPosition)
+}
+$liveBefore=NavPixels 'follow-output-live-before'
+Check 'downward wheel returns from history to the live end' ((PixelDifference $readAfter $liveBefore @followRegion)-gt 100)
+$null=Rpc 'session.write' @{text="`r`nLIVE-END-ADVANCES`r`n"} $wheelPane
+Check 'returning to bottom resumes following output' (NavWait {
+    $liveAfter=NavPixels 'follow-output-live-after'
+    return (PixelDifference $liveBefore $liveAfter @followRegion)-gt 100
+})
+$null=Rpc 'config.set' @{key='follow-output';value='always'}
+[void][HudOwnedJob]::SendMessageW($hwnd,0x20a,[IntPtr](120-shl 16),$wheelPosition)
+$alwaysBefore=NavPixels 'follow-output-always-before'
+$null=Rpc 'session.write' @{text="`r`nALWAYS-FOLLOW-END`r`n"} $wheelPane
+Check 'always-follow setting restores jump to bottom on output' (NavWait {
+    $alwaysAfter=NavPixels 'follow-output-always-after'
+    return (PixelDifference $alwaysBefore $alwaysAfter @followRegion)-gt 100
+})
+$null=Rpc 'config.set' @{key='follow-output';value='bottom'}
 $wheelReady=Join-Path $artifact 'wheel-reader-ready';$wheelBytes=Join-Path $artifact 'wheel-reader-bytes'
 $wheelScript=@'
 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class RawWheel { [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int n); [DllImport("kernel32.dll")] public static extern bool GetConsoleMode(IntPtr h,out uint m); [DllImport("kernel32.dll")] public static extern bool SetConsoleMode(IntPtr h,uint m); }'

@@ -188,15 +188,9 @@ internal partial class Program
             ProfileShell = sessionCommand is null && handoff is null && string.IsNullOrWhiteSpace(command) };
         if (liveRequested) ConfigureLiveTitle(pane, adopted ? restoredRemote?.AttachmentNonce ?? restoredLive?.AttachmentNonce : null);
         Observation.ObservePane(pane.Id, session.StatusSignal!);
-        // New output snaps this pane back to the live bottom when the buffer ACTUALLY scrolled (a line
-        // pushed into history) — not on every repaint. TUIs like Claude Code redraw in place without
-        // scrolling, so a mouse selection survives those frames. #copy-selection
-        //
-        // Scrolling used to DROP the selection outright here, which made Ctrl+C-copies-the-selection
-        // close to unusable next to a running agent: the agent prints, the selection you just made is
-        // gone, and Ctrl+C falls through to the interrupt — cancelling its turn. The selection is
-        // reconciled in ReconcileSel instead, on the UI thread, against the snapshot taken when it was made.
-        // This handler therefore writes NOTHING about the selection at all.
+        // Viewport following and selection reconciliation happen on the UI thread
+        // against the frame being captured. Output callbacks must not race user
+        // scrolling or overwrite the position acknowledged by a presentation frame.
         // Repaints are requested ONLY when this pane is on screen: a background tab's output flood
         // used to repaint the (unchanged!) foreground at the full frame cap, starving typing on slow
         // machines. The emulator still consumes everything; switching to the pane shows current
@@ -206,8 +200,6 @@ internal partial class Program
         {
             if (Interlocked.Exchange(ref firstOutputLogged, 1) == 0)
                 _startupJournal?.Mark("pane.first-output", pane.Id);
-            long gen = session.Emulator.ScrollGeneration;
-            if (gen != pane.LastScrollGen) { pane.LastScrollGen = gen; pane.ScrollOffset = 0; }
             // Synchronized output (DECSET ?2026): while the app is mid-frame, defer painting so a
             // partial redraw never reaches the screen — the closing 2026l chunk clears the mode and
             // paints the frame atomically. The cursor-blink InvalidateRect still repaints within ~one
