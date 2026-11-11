@@ -3,8 +3,8 @@ param([int]$Dpi = 96)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test ProgramOverlay -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
-$ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe'
+$ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $id = 'agwinterm-c2-' + [guid]::NewGuid().ToString('N')
 $state = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) $id
 $savedCaller = $env:AGWINTERM_SESSION_ID

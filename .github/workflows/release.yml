@@ -55,6 +55,12 @@ jobs:
         run: ./installer/build-portable.ps1
 
 
+      - name: Preserve update paths for older .NET 11 builds
+        shell: pwsh
+        run: |
+          Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $_.DirectoryName ($_.Name -replace '^agwinterm-', 'agwinterm-net11-'))
+          }
       # Ship a standalone control CLI for scripts and automation.
       - name: Publish standalone agwintermctl
         shell: pwsh
@@ -76,14 +82,32 @@ jobs:
             installer/Output/agwinterm-setup-*.exe
             installer/Output/agwinterm-portable-*.exe
             installer/Output/agwintermctl.exe
+            installer/Output/agwinterm-net11-*.exe
+
+      - name: Read curated release notes
+        id: notes
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $path = "docs/releases/$env:RELEASE_TAG.md"
+          if (Test-Path -LiteralPath $path) {
+            "path=$path" >> $env:GITHUB_OUTPUT
+            $title = (Get-Content -LiteralPath $path -TotalCount 1).TrimStart('#', ' ')
+            "title=$title" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          draft: true
+          name: ${{ steps.notes.outputs.title || github.ref_name }}
           files: |
             installer/Output/agwinterm-setup-*.exe
             installer/Output/agwinterm-portable-*.exe
             installer/Output/agwintermctl.exe
+            installer/Output/agwinterm-net11-*.exe
+          body_path: ${{ steps.notes.outputs.path }}
           generate_release_notes: true
           fail_on_unmatched_files: true    # every one is a hard build product now — a missing one is a broken release
 
@@ -107,7 +131,7 @@ jobs:
   # a minor bump (0.18.0) is NOT a checkpoint, so it reaches the package managers only at 0.18.9
   # unless it is pushed by hand.
   gate:
-    needs: installer
+    needs: publish-release
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.check.outputs.publish }}
@@ -210,7 +234,7 @@ jobs:
           $version = '${{ github.ref_name }}'.TrimStart('v')
           ./packaging/chocolatey/publish.ps1 -Version $version -ApiKey $env:CHOCO_API_KEY -Repository '${{ github.repository }}'
 
-  net11-installer:
+  net10-installer:
     # Publish additional assets after the main job creates the release.
     needs: [wsl-hook, installer]
     runs-on: windows-latest
@@ -221,14 +245,6 @@ jobs:
           pattern: wsl-hook-*
           merge-multiple: true
           path: artifacts/wsl-hook
-      - name: Select pinned .NET 11 RC3 SDK
-        shell: pwsh
-        run: |
-          $config = Get-Content global.json -Raw | ConvertFrom-Json
-          $config.sdk.version = '11.0.100-rc.3.26522.148'
-          $config.sdk.rollForward = 'disable'
-          $config.sdk | Add-Member -NotePropertyName allowPrerelease -NotePropertyValue $true
-          $config | ConvertTo-Json -Depth 4 | Set-Content global.json
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -239,21 +255,34 @@ jobs:
         with:
           path: artifacts/ghostty-release-native
           key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
-      - name: Build experimental .NET 11 assets
+      - name: Build supported .NET 10 assets
         shell: pwsh
         env:
-          AgwintermNet11: 'true'
+          AgwintermNet11: 'false'
         run: |
           ./installer/build.ps1
           ./installer/build-portable.ps1
-          # Separate prefix prevents existing stable updaters selecting preview assets.
+          # Explicit compatibility assets are selected only by .NET 10 builds from v0.30.5 onward.
           Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
-            Rename-Item -LiteralPath $_.FullName -NewName ($_.Name -replace '^agwinterm-', 'agwinterm-net11-')
+            Rename-Item -LiteralPath $_.FullName -NewName ($_.Name -replace '^agwinterm-', 'agwinterm-net10-')
           }
       - uses: actions/attest-build-provenance@v3
         with:
-          subject-path: installer/Output/agwinterm-net11-*.exe
+          subject-path: installer/Output/agwinterm-net10-*.exe
       - uses: softprops/action-gh-release@v3
         with:
-          files: installer/Output/agwinterm-net11-*.exe
+          draft: true
+          files: installer/Output/agwinterm-net10-*.exe
           fail_on_unmatched_files: true
+
+  publish-release:
+    # Do not advertise an update until BOTH runtime editions are downloadable.
+    needs: [installer, net10-installer]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest

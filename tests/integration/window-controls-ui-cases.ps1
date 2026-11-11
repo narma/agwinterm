@@ -1,7 +1,7 @@
 # Dot-sourced inside the private owned instance; no global input or Explorer launch.
 function WCtrl([string]$verb,$params=@{},[string]$target='active',[switch]$NoTarget,[switch]$AllowError){Rpc $verb $params $target -Window '' -NoTarget:$NoTarget -AllowError:$AllowError}
 function WWait([scriptblock]$condition){for($i=0;$i-lt 60;$i++){try{if(& $condition){return $true}}catch{};Start-Sleep -Milliseconds 100};return $false}
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $first=(WCtrl 'window.geometry').id
 $foreground=[HudOwnedJob]::GetForegroundWindow()
 $new=WCtrl 'window.new' @{name='C7 background';minimized=$true} -NoTarget
@@ -44,7 +44,7 @@ Check 'closed library window is not restored implicitly' (-not (WCtrl 'window.re
 $reveal=Rpc 'session.reveal' @{'path-only'=$true} $session -Window $first
 Check 'Windows Reveal resolves a real directory without launching Explorer' (-not $reveal.opened -and (Test-Path -LiteralPath $reveal.path -PathType Container))
 Check 'unknown Reveal target refuses' (-not (Rpc 'session.reveal' @{'path-only'=$true} 'missing' -Window $first -AllowError).ok)
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $cli=(& $ctl window new --minimized --name 'C7 CLI' --pipe $pipe --json)|ConvertFrom-Json
 Check 'actual CLI minimized creation returns effective state' ($LASTEXITCODE-eq 0 -and $cli.ok -and $cli.result.minimized)
 $cli=(& $ctl session reveal --target $session --window $first --path-only --pipe $pipe --json)|ConvertFrom-Json

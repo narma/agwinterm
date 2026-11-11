@@ -1,15 +1,15 @@
 #Requires -Version 7.0
 param(
     [string]$BaseVhd = $env:AGWINTERM_UI_BASE_VHD,
-    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
-    [string]$CtlExe = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
+    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe",
+    [string]$CtlExe = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe",
     [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','TerminalLatency','Ghostty','Agents')]
     [string[]]$Suite = @('Navigation'),
     [string]$Test = 'Hud',
     [hashtable]$TestParameters = @{},
     [string]$WebView2Home,
     [string]$PythonHome,
-    [string]$GateExe = "$PSScriptRoot/../WebViewHost.Gate/bin/Release/net10.0-windows/win-x64/WebViewHost.Gate.exe",
+    [string]$GateExe = "$PSScriptRoot/../WebViewHost.Gate/bin/Release/net11.0-windows/win-x64/WebViewHost.Gate.exe",
     [string]$PowerShellHome = $PSHOME,
     [string]$DotnetHome = "$env:ProgramFiles/dotnet",
     [string]$OutputDirectory = "$PSScriptRoot/../../artifacts/hyperv-ui/$([guid]::NewGuid().ToString('N'))",

@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslOriginExport -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference=$false
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$bin=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64'
+$bin=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64'
 $exe=Join-Path $bin 'Agwinterm.Win32.exe'
 $ctl=Join-Path $bin 'agwintermctl.exe'
 $id='agwinterm-origin-test-'+[guid]::NewGuid().ToString('N')

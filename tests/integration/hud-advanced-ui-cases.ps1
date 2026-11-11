@@ -70,7 +70,7 @@ $null=Rpc 'session.overlay' @{action='hide'} $session
 $bad=Rpc 'session.hud.open' @{message='must refuse'} $session -AllowError
 Check 'hidden program still owns the shared HUD slot' (-not $bad.ok)
 $null=Rpc 'session.overlay' @{action='close'} $session
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $file=Join-Path $artifact 'message with spaces.md';[IO.File]::WriteAllText($file,$markdown)
 $null=& $ctl session hud --file $file --markdown --no-frame --sticky --position top --size-percent 100 --hide-after 0 --font-size 16 --target $session --pipe $pipe --json
 Check 'actual CLI reads bounded UTF-8 file with additive options' ($LASTEXITCODE-eq 0 -and (Node).hud.markdown -and (Node).hud.fontSize-eq 16)

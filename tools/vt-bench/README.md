@@ -6,7 +6,7 @@ Run from the repository root (no UI, VM or PTY required):
 
 ```powershell
 dotnet build tools/vt-bench/vt-bench.csproj -c Release
-dotnet tools/vt-bench/bin/Release/net10.0/vt-bench.dll ghostty artifacts/vt-ghostty.json D:/Projects/Agwinterm/artifacts/ghostty-build/bin
+dotnet tools/vt-bench/bin/Release/net11.0/vt-bench.dll ghostty artifacts/vt-ghostty.json D:/Projects/Agwinterm/artifacts/ghostty-build/bin
 ./tools/vt-bench/summarize.ps1 -Reports artifacts/vt-ghostty.json -OutputCsv artifacts/vt-summary.csv
 ```
 

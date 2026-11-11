@@ -1,14 +1,14 @@
 #Requires -Version 7.0
 param(
-    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
-    [string]$CtlExe = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
+    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe",
+    [string]$CtlExe = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe",
     [ValidateSet('Hud','HudAdvanced','Recent','WorkingSets','Windows','Presentation','Quick','Navigation','Picker','Ask','Accessibility','Command','Menu','Clipboard','TerminalRendering','TerminalPerformance','TerminalLatency','Ghostty','Agents')]
     [string]$Suite = 'Navigation',
     [string]$Test = 'Hud',
     [hashtable]$TestParameters = @{},
     [string]$WebView2Home,
     [string]$PythonHome,
-    [string]$GateExe = "$PSScriptRoot/../WebViewHost.Gate/bin/Release/net10.0-windows/win-x64/WebViewHost.Gate.exe",
+    [string]$GateExe = "$PSScriptRoot/../WebViewHost.Gate/bin/Release/net11.0-windows/win-x64/WebViewHost.Gate.exe",
     [string]$PowerShellHome = $PSHOME,
     [string]$DotnetHome = "$env:ProgramFiles/dotnet",
     [string]$OutputDirectory = "$PSScriptRoot/../../artifacts/sandbox/$((Get-Date).ToString('yyyyMMddTHHmmss'))-$([guid]::NewGuid().ToString('N').Substring(0,8))",
@@ -97,7 +97,7 @@ $runtimeBands = @{}
 $binaries = @($Exe, $CtlExe)
 if ($Test -eq 'PtyProcessContracts') {
     # Self-contained GUI/CLI builds do not supply the runtime used by VSTest.
-    $binaries += Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net10.0-windows/Agwinterm.Pty.Tests.dll'
+    $binaries += Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net11.0-windows/Agwinterm.Pty.Tests.dll'
     # The staged VSTest runner rolls forward to the tests' runtime band.
 }
 if ($definition.Gate) { $binaries += $GateExe }
@@ -179,11 +179,11 @@ try {
     $results = Join-Path $OutputDirectory 'results'
     Write-Host "Preparing $label payload in $OutputDirectory"
     $null = New-Item -ItemType Directory -Path $payload, $results
-    Copy-Directory (Split-Path $Exe) (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64')
+    Copy-Directory (Split-Path $Exe) (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64')
     if ((Split-Path $Exe -Leaf) -ne 'Agwinterm.Win32.exe') {
-        Copy-Item -LiteralPath $Exe -Destination (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe') -Force
+        Copy-Item -LiteralPath $Exe -Destination (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe') -Force
     }
-    $ctlDirectory = Join-Path $payload 'src/Agwinterm.Ctl/bin/Release/net10.0-windows'
+    $ctlDirectory = Join-Path $payload 'src/Agwinterm.Ctl/bin/Release/net11.0-windows'
     Copy-Directory (Split-Path $CtlExe) $ctlDirectory
     if ((Split-Path $CtlExe -Leaf) -ne 'agwintermctl.exe') {
         Copy-Item -LiteralPath $CtlExe -Destination (Join-Path $ctlDirectory 'agwintermctl.exe')
@@ -200,7 +200,7 @@ try {
         if(-not(Get-ChildItem (Join-Path $DotnetHome 'sdk/*/vstest.console.deps.json') -File -ErrorAction SilentlyContinue)){
             throw 'PtyProcessContracts requires a host SDK with VSTest to stage its guest runner.'
         }
-        $testBin=Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net10.0-windows'
+        $testBin=Join-Path $repo 'tests/Agwinterm.Pty.Tests/bin/Release/net11.0-windows'
         if(-not(Test-Path (Join-Path $testBin 'Agwinterm.Pty.Tests.dll'))){throw 'Build Agwinterm.Pty.Tests in Release first.'}
         Copy-Directory $testBin (Join-Path $payload 'pty-tests')
         $sdk=Join-Path $DotnetHome ('sdk/'+(& (Join-Path $DotnetHome 'dotnet.exe') --version))

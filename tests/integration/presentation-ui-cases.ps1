@@ -79,7 +79,7 @@ Check 'legacy core and host aliases do not trigger normalization warnings' (($re
 $version=Rpc 'app.version' @{} -NoTarget
 ($version|ConvertTo-Json -Depth 5)|Set-Content (Join-Path $artifact 'version.json')
 Check 'version reports explicit metadata availability and comparison' ($version.running -and $version.path -and $version.source-eq 'running-executable-path' -and $version.comparison-in @('match','different','unknown') -and $version.availability-in @('available','missing-file','metadata-unavailable'))
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $cli=(& $ctl session appearance get --target $right --pipe $pipe --json)|ConvertFrom-Json
 Check 'actual CLI reads persistent appearance' ($LASTEXITCODE-eq 0 -and $cli.result.overrides.Text-eq 'C8 durable')
 $cli=(& $ctl keymap list --pipe $pipe --json)|ConvertFrom-Json

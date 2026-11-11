@@ -3,7 +3,7 @@
 # handoff: OpenConsole is the console delegate, OpenConsoleProxy marshals the handoff HANDLEs.
 
 param(
-    [string]$BuildDir = "$PSScriptRoot\..\src\Agwinterm.Win32\bin\Debug\net10.0-windows\win-x64",
+    [string]$BuildDir = "$PSScriptRoot\..\src\Agwinterm.Win32\bin\Debug\net11.0-windows\win-x64",
     [string]$Version  = '1.24.11321.0'
 )
 $ErrorActionPreference = 'Stop'

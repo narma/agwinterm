@@ -66,7 +66,7 @@ $opened=RecentOpen $entry.id $dest
 Check 'explicit destination restores from a closed source' ($opened.windowId-eq $dest -and $opened.outcome-eq 'completed')
 $null=Rpc 'session.close' @{} $opened.members[0].sessionId -Window $dest
 $entry=@((RecentList).entries)[0]
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $json=(& $ctl recent list --pipe $pipe --json)|ConvertFrom-Json
 Check 'actual CLI lists the same stable entry' ($LASTEXITCODE-eq 0 -and @($json.result.entries|Where-Object id -eq $entry.id).Count-eq 1)
 $savedHistory=Get-Content (Join-Path $appDir 'recent.json') -Raw

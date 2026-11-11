@@ -4,8 +4,8 @@ $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslZmxSurvival -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
-$ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$exe = Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe'
+$ctl = Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 foreach ($file in @($exe,$ctl)) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing test build: $file" } }
 $linuxScript = (& wsl.exe -d $Distro --exec wslpath -u (Join-Path $PSScriptRoot 'zmx/workload.py')).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve sentinel path' }

@@ -99,7 +99,7 @@ exit 0
         if ($testName -eq 'Conformance') { $parameters.Spec = Join-Path $root 'tests/conformance/control-api.json' }
         & "$PSScriptRoot/sandbox-ui.ps1" -Test $testName -TestParameters $parameters -Exe (Join-Path $binaries 'app.exe') -CtlExe (Join-Path $binaries 'ctl.exe') -PowerShellHome $fakePowerShell -OutputDirectory $output -PrepareOnly
         $payload = Join-Path $output 'input'
-        Check "$testName stages an alternate app filename for canonical-path runners" ((Get-FileHash (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe')).Hash -eq (Get-FileHash (Join-Path $binaries 'app.exe')).Hash)
+        Check "$testName stages an alternate app filename for canonical-path runners" ((Get-FileHash (Join-Path $payload 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe')).Hash -eq (Get-FileHash (Join-Path $binaries 'app.exe')).Hash)
         $path = Join-Path $payload $definitions[$testName].Path
         @'
 param([string]$Exe,[string]$Ctl,[switch]$Strict,[string]$Spec,[string]$Output,[int]$Runs,[string]$Installer,[string]$Portable)

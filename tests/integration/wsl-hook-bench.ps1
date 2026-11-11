@@ -3,8 +3,8 @@ if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test WslBenchmark -Parameters $PSBou
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $linuxRepo=(& wsl -d Ubuntu --exec wslpath -u $repo).Trim()
 New-Item -ItemType Directory -Force -Path (Join-Path $repo 'artifacts/wsl-hook-research') | Out-Null
-$exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
-$ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe'
+$ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $id='agwinterm-research-'+[guid]::NewGuid().ToString('N')
 $state=Join-Path $env:LOCALAPPDATA $id
 $linuxHome='/tmp/'+$id
@@ -42,7 +42,7 @@ try {
  }
  if(-not $tree.result.workspaces[0].sessions[0].id){throw "No session: $raw"}
  $session=$tree.result.workspaces[0].sessions[0].id
- & wsl -d Ubuntu --exec bash -c 'exec -a codex python3 "$@"' bench "$linuxRepo/tests/integration/wsl-hook-bench.py" $linuxHome "$linuxRepo/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe" $session $id "$linuxRepo/artifacts/wsl-hook-research/results.json"
+ & wsl -d Ubuntu --exec bash -c 'exec -a codex python3 "$@"' bench "$linuxRepo/tests/integration/wsl-hook-bench.py" $linuxHome "$linuxRepo/src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe" $session $id "$linuxRepo/artifacts/wsl-hook-research/results.json"
  if($LASTEXITCODE -ne 0){throw 'Benchmark failed'}
  $saved=Get-ChildItem -LiteralPath (Join-Path $state 'windows') -Filter '*.json' | ForEach-Object {Get-Content -LiteralPath $_.FullName -Raw}
  if(-not ($saved -join '').Contains('codex resume research-linux-session')){throw 'Linux native binding not persisted'}

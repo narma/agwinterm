@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <AgwintermFrameworkMajor>10</AgwintermFrameworkMajor>
-    <AgwintermFrameworkMajor Condition="'$(AgwintermNet11)' == 'true'">11</AgwintermFrameworkMajor>
+    <AgwintermFrameworkMajor>11</AgwintermFrameworkMajor>
+    <AgwintermFrameworkMajor Condition="'$(AgwintermNet11)' == 'false'">10</AgwintermFrameworkMajor>
   </PropertyGroup>
 </Project>

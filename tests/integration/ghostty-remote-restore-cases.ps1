@@ -6,18 +6,13 @@ if (-not $Only -or $caseName -like $Only) {
 "-- $caseName --"
 $s = $null
 try {
-    foreach ($assembly in 'Google.Protobuf.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll') {
-        [void][Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $exe) $assembly))
-    }
+    . "$PSScriptRoot/host-probe.ps1"
     $s = Start-Sandbox -Exe $exe -Ctl $ctl -Pipe 'rr-remote-upgrade' -Conf @('session-host = server','emulator-core = ghostty')
     $hostNamespace = $s.Pipe + '-owner-v1'
     $sid = Sid $s
     if (-not (Wait-Prompt $s $sid)) { throw 'Original hosted shell did not start' }
-    $probe = [Agwinterm.Pty.PtyHostClient]::Connect($hostNamespace, 3000)
-    try {
-        $original = @($probe.List() | Where-Object Id -eq $sid)[0]
-        $null = $probe.Create('abandoned-transport',80,24,'cmd.exe',[string[]]@('/c','ping -n 300 127.0.0.1'),$null,$null,$false,$false,$true,'','ghostty',$true)
-    } finally { $probe.Dispose() }
+    $original = @(Invoke-TestHostProbe $exe $hostNamespace list | Where-Object Id -eq $sid)[0]
+    Invoke-TestHostProbe $exe $hostNamespace create-abandoned
     if (-not $original.CreationTicket -or $original.ChildPid -le 0) { throw 'Missing exact hosted identity' }
     [void][AgwUi]::PostMessageW($s.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
     if (-not $s.Proc.WaitForExit(20000)) { throw 'Initial UI did not close' }
@@ -51,12 +46,9 @@ try {
         Check "$hostSetting`: remote binding adopts surviving transport" ($node.liveSessions.$sid.recovery -eq 'host-adopted') ($node | ConvertTo-Json -Depth 8 -Compress)
         Check "$hostSetting`: saved commands and buffer are not replayed" ((PaneText $s $sid) -notlike '*SHOULD-NOT-*')
         if ($hostSetting -eq 'server-rust') { Start-Sleep -Seconds 33 }
-        $probe = [Agwinterm.Pty.PtyHostClient]::Connect($hostNamespace, 3000)
-        try {
-            $hosted = @($probe.List())
-            $actual = @($hosted | Where-Object Id -eq $sid)[0]
-            Check "$hostSetting`: abandoned transport cleaned without losing restored pane" (@($hosted | Where-Object Id -eq 'abandoned-transport').Count -eq 0)
-        } finally { $probe.Dispose() }
+        $hosted = @(Invoke-TestHostProbe $exe $hostNamespace list)
+        $actual = @($hosted | Where-Object Id -eq $sid)[0]
+        Check "$hostSetting`: abandoned transport cleaned without losing restored pane" (@($hosted | Where-Object Id -eq 'abandoned-transport').Count -eq 0)
         Check "$hostSetting`: same child and exact creation ticket, attached" ($actual.Attached -and $actual.ChildPid -eq $original.ChildPid -and $actual.CreationTicket -eq $original.CreationTicket)
         [void][AgwUi]::PostMessageW($s.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
         if (-not $s.Proc.WaitForExit(20000)) { throw 'Adopting UI did not close' }

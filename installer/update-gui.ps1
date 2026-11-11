@@ -24,19 +24,11 @@ $run = Join-Path $root ('artifacts\gui-update\' + (Get-Date -Format 'yyyyMMdd-HH
 $stage = Join-Path $run 'publish'
 $backup = Join-Path $run 'backup'
 New-Item -ItemType Directory -Path $stage, $backup -Force | Out-Null
-$framework = (Get-Content (Join-Path $InstallDir 'Agwinterm.Win32.runtimeconfig.json') -Raw | ConvertFrom-Json).runtimeOptions.tfm
+# Personal local GUI updates always use .NET 11, matching full local installs.
+$framework = 'net11.0'
 $publishArgs = @('-c','Release','-r','win-x64','--self-contained','true','-p:PublishSingleFile=false',
-    '-p:PublishReadyToRun=true', "-p:Version=$version", '-o',$stage)
+    '-p:PublishReadyToRun=true','-p:AgwintermNet11=true','-p:UseRuntimeAsync=true', "-p:Version=$version", '-o',$stage)
 $sdkDir = $root
-if ($framework -eq 'net11.0') {
-    # Resolve the .NET 11 SDK independently of the repository's stable global.json.
-    $sdkDir = New-Item -ItemType Directory -Path (Join-Path $run 'sdk')
-    @{sdk=@{version='11.0.100-rc.3.26522.148';allowPrerelease=$true;rollForward='latestFeature'}} |
-        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sdkDir 'global.json') -Encoding Ascii
-    $publishArgs += '-p:AgwintermNet11=true','-p:UseRuntimeAsync=true'
-} elseif ($framework -eq 'net10.0') {
-    $publishArgs += '-p:AgwintermNet11=false'
-} else { throw "Unknown installed GUI framework: $framework" }
 Write-Host "Building GUI $version ($framework)..." -ForegroundColor Cyan
 Push-Location -LiteralPath $sdkDir
 try {

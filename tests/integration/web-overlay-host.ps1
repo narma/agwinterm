@@ -1,6 +1,6 @@
 param(
-    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
-    [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe",
+    [string]$Exe = "$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe",
+    [string]$Ctl = "$PSScriptRoot/../../src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe",
     [switch]$Cookbook,
     [switch]$CookbookOnly,
     [switch]$SplitImageOnly,

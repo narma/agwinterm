@@ -36,23 +36,46 @@ public class AppUpdateTests
         """;
 
     [Theory]
-    [InlineData(UpdateChannel.Installed, "setup")]
-    [InlineData(UpdateChannel.Portable, "portable")]
-    public void PickAsset_PreservesRuntimeVariant(UpdateChannel channel, string kind)
+    [InlineData(10, "0.30.4", false)]
+    [InlineData(10, "0.30.5", true)]
+    [InlineData(10, "0.30.6", true)]
+    [InlineData(10, "0.31.0", true)]
+    [InlineData(10, "1.0.0", true)]
+    [InlineData(10, "dev", false)]
+    [InlineData(10, "0.30.5-rc.1", false)]
+    [InlineData(11, "0.30.4", false)]
+    [InlineData(11, "0.30.5", false)]
+    [InlineData(11, "0.31.0", false)]
+    [InlineData(9, "0.31.0", false)]
+    public void PickAsset_UsesUpgradeMatrix(int runtimeMajor, string currentVersion, bool keepNet10)
     {
-        var stable = new ReleaseAsset($"agwinterm-{kind}-1.0.exe", "stable", null);
-        var preview = new ReleaseAsset($"agwinterm-net11-{kind}-1.0.exe", "preview", null);
-        var release = new ReleaseInfo("1.0", new[] { stable, preview });
-        Assert.Same(stable, AppUpdate.PickAsset(release, channel, false));
-        Assert.Same(preview, AppUpdate.PickAsset(release, channel, true));
-        Assert.Null(AppUpdate.PickAsset(new("1.0", new[] { stable }), channel, true));
-        Assert.Null(AppUpdate.PickAsset(new("1.0", new[] { preview }), channel, false));
-        Assert.Null(AppUpdate.PickAsset(release, UpdateChannel.PackageManager, true));
-#if NET11_0_OR_GREATER
-        Assert.Same(preview, AppUpdate.PickAsset(release, channel));
+        foreach (var (channel, kind) in new[] { (UpdateChannel.Installed, "setup"), (UpdateChannel.Portable, "portable") })
+        {
+            var standard = new ReleaseAsset($"agwinterm-{kind}-1.0.exe", "net11", null);
+            var compatibility = new ReleaseAsset($"agwinterm-net10-{kind}-1.0.exe", "net10", null);
+            var legacyAlias = new ReleaseAsset($"agwinterm-net11-{kind}-1.0.exe", "net11-alias", null);
+            var release = new ReleaseInfo("1.0", new[] { legacyAlias, compatibility, standard });
+            var expected = keepNet10 ? compatibility : standard;
+            Assert.Same(expected, AppUpdate.PickAsset(release, channel, runtimeMajor, currentVersion));
+            Assert.Null(AppUpdate.PickAsset(new("1.0", release.Assets.Where(a => a != expected).ToArray()),
+                channel, runtimeMajor, currentVersion));
+            Assert.Null(AppUpdate.PickAsset(release, UpdateChannel.PackageManager, runtimeMajor, currentVersion));
+        }
+    }
+
+    [Fact]
+    public void PickAsset_ProductionUsesCompiledRuntimeAndRunningVersion()
+    {
+        var standard = new ReleaseAsset("agwinterm-setup-2.0.exe", "net11", null);
+        var compatibility = new ReleaseAsset("agwinterm-net10-setup-2.0.exe", "net10", null);
+        var release = new ReleaseInfo("2.0", new[] { standard, compatibility });
+#if NET10_0
+        const int runtimeMajor = 10;
 #else
-        Assert.Same(stable, AppUpdate.PickAsset(release, channel));
+        const int runtimeMajor = 11;
 #endif
+        Assert.Same(AppUpdate.PickAsset(release, UpdateChannel.Installed, runtimeMajor, VersionReport.EntryAssemblyVersion()),
+            AppUpdate.PickAsset(release, UpdateChannel.Installed));
     }
     [Fact]
     public void ParseRelease_ReadsVersionAssetsAndDigests()
@@ -82,8 +105,8 @@ public class AppUpdateTests
     public void PickAsset_MatchesChannelToArtifact()
     {
         var rel = AppUpdate.ParseRelease(ReleaseJson)!;
-        Assert.Equal("agwinterm-setup-0.14.1.exe", AppUpdate.PickAsset(rel, UpdateChannel.Installed, false)!.Name);
-        Assert.Equal("agwinterm-portable-0.14.1-win-x64.exe", AppUpdate.PickAsset(rel, UpdateChannel.Portable, false)!.Name);
+        Assert.Equal("agwinterm-setup-0.14.1.exe", AppUpdate.PickAsset(rel, UpdateChannel.Installed, 10, "0.30.4")!.Name);
+        Assert.Equal("agwinterm-portable-0.14.1-win-x64.exe", AppUpdate.PickAsset(rel, UpdateChannel.Portable, 10, "0.30.4")!.Name);
         Assert.Null(AppUpdate.PickAsset(rel, UpdateChannel.PackageManager));   // managers own their files
     }
 

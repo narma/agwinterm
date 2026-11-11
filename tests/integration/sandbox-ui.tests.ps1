@@ -178,8 +178,8 @@ try {
         Check "$suite guest returns the runner outcome" ($result.exitCode -eq 1)
     }
     $checkout = Join-Path $temporary 'standard-build'
-    $appOutput = Join-Path $checkout 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64'
-    $ctlOutput = Join-Path $checkout 'src/Agwinterm.Ctl/bin/Release/net10.0-windows'
+    $appOutput = Join-Path $checkout 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64'
+    $ctlOutput = Join-Path $checkout 'src/Agwinterm.Ctl/bin/Release/net11.0-windows'
     $scriptDirectory = Join-Path $checkout 'tests/integration'
     $oldOutput = Join-Path $checkout 'artifacts/local'
     $null = New-Item -ItemType Directory -Path $appOutput, $ctlOutput, $scriptDirectory, $oldOutput -Force
@@ -191,8 +191,8 @@ try {
     'stale CLI' | Set-Content -LiteralPath (Join-Path $oldOutput 'agwintermctl.exe')
     $standardResult = Join-Path $temporary 'standard-result'
     & (Join-Path $scriptDirectory 'sandbox-ui.ps1') -PowerShellHome $parameters.PowerShellHome -OutputDirectory $standardResult -PrepareOnly
-    Check 'default application path uses the standard x64 Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe')) -eq 'fresh app')
-    Check 'default CLI path uses its standard Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe')) -eq 'fresh CLI')
+    Check 'default application path uses the standard x64 Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe')) -eq 'fresh app')
+    Check 'default CLI path uses its standard Release output' ((Get-Content -LiteralPath (Join-Path $standardResult 'input/src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe')) -eq 'fresh CLI')
     $prepared = Join-Path $temporary 'prepared'
     & $runner @parameters -OutputDirectory $prepared -PrepareOnly
     $xml = [xml](Get-Content -LiteralPath (Join-Path $prepared 'ui-tests.wsb') -Raw)
@@ -202,7 +202,7 @@ try {
     Check 'networking and clipboard sharing are disabled' ($xml.Configuration.Networking -eq 'Disable' -and $xml.Configuration.ClipboardRedirection -eq 'Disable')
     Check 'vGPU is enabled by default' ($xml.Configuration.vGPU -eq 'Enable')
     Check 'guest bootstrap is selected' ($xml.Configuration.LogonCommand.Command -like '*sandbox-ui-guest.ps1')
-    Check 'CLI and native application dependencies are staged' ((Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe')) -and (Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/conpty.dll')))
+    Check 'CLI and native application dependencies are staged' ((Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe')) -and (Test-Path -LiteralPath (Join-Path $prepared 'input/src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/conpty.dll')))
     Check 'self-contained payload does not copy host dotnet' (-not (Test-Path -LiteralPath (Join-Path $prepared 'input/dotnet')))
     Check 'prepare-only does not launch Sandbox or write a test result' ($global:AgwintermSandboxUiTestState.launches -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $prepared 'results/result.json')))
 

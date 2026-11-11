@@ -16,9 +16,9 @@ try {
         if ($key -notin $definition.Options) { throw "Unsupported $name parameter: $key" }
         $arguments[$key] = $run.parameters[$key]
     }
-    $appDirectory = Join-Path $WorkDirectory 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64'
+    $appDirectory = Join-Path $WorkDirectory 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64'
     $exe = Join-Path $appDirectory $run.exeName
-    $ctl = Join-Path $WorkDirectory 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+    $ctl = Join-Path $WorkDirectory 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
     $env:AGWINTERMCTL = $ctl
     if ($run.hostMetadata.commit) { $env:AGWINTERM_TEST_COMMIT = $run.hostMetadata.commit }
     if ($run.hostMetadata.sdk) { $env:AGWINTERM_TEST_SDK = $run.hostMetadata.sdk }

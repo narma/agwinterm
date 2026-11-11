@@ -5,6 +5,30 @@ System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceLis
 System.Diagnostics.Trace.AutoFlush=true;
 
 // Run inside the owned Windows VM; no UI, global configuration or user sessions are touched.
+// PowerShell may run on an older runtime and cannot load the application's assemblies.
+if (args is ["--host-probe", var probeNamespace, var operation])
+{
+    if (!System.Text.RegularExpressions.Regex.IsMatch(probeNamespace,
+        "^(rr-remote-upgrade|agwinterm-handoff-[0-9a-f]{32})-owner-v1$"))
+        throw new ArgumentException("An isolated restore or handoff fixture pipe is required.");
+    if (operation == "shutdown-if-running" && !PtyHostClient.IsRunning(probeNamespace)) return;
+    using var probe = PtyHostClient.Connect(probeNamespace, 3000);
+    switch (operation)
+    {
+        case "list":
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(probe.List()));
+            break;
+        case "create-abandoned":
+            probe.Create("abandoned-transport", 80, 24, "cmd.exe", ["/c", "ping -n 300 127.0.0.1"],
+                emulatorCore: "ghostty", singleOwner: true);
+            break;
+        case "shutdown-if-running":
+            probe.Shutdown();
+            break;
+        default: throw new ArgumentException("Unknown host probe operation.");
+    }
+    return;
+}
 if(args is ["--search-load",var searchDirectory,var samplesFile])
 {
     await OwnerSearchLoad.Measure(searchDirectory,samplesFile);

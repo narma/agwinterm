@@ -2,7 +2,7 @@
 function WSState(){(Rpc 'tree').workingSet}
 function WSSessions([string]$id){@((Rpc 'tree').workspaces|Where-Object id -eq $id).sessions}
 function WSWait([scriptblock]$condition){for($i=0;$i-lt 60;$i++){try{if(& $condition){return $true}}catch{};Start-Sleep -Milliseconds 100};return $false}
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $a=[string](Rpc 'workspace.new' @{name='Alpha';collapsed=$true} -NoTarget)
 Check 'workspace new collapsed reports an empty folded workspace' (@((Rpc 'tree').workspaces|Where-Object id -eq $a)[0].collapsed -and (WSSessions $a).Count-eq 0)
 $a1=[string](Rpc 'session.new' @{workspace=$a;name='A one';'no-select'=$true})

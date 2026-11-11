@@ -143,7 +143,7 @@ try {
     Ask-Click 1007
     Check 'scrolled custom action completes the compact form' ((Ask-Result).button-eq 'b7')
 } finally { [void][HudOwnedJob]::SetThreadDpiAwarenessContext($oldDpi) }
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $opened='{}'|& $ctl ask --no-block --pipe $pipe|ConvertFrom-Json
 Check 'actual ask CLI returns generated no-block ID' ($LASTEXITCODE-eq 0 -and $opened.id)
 $pending=& $ctl ask result $opened.id --pipe $pipe|ConvertFrom-Json

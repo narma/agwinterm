@@ -224,6 +224,8 @@ jobs:
           . ./tests/ui/lib.ps1
           $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
           if (-not $exe) { throw 'Built app not found' }
+          dotnet publish tests/Agwinterm.GhosttyServerHarness -c Release --no-self-contained -o (Join-Path (Split-Path $exe) 'ghostty-server-tests')
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           foreach ($case in @('buffer-reflow-ghostty', 'buffer-reflow-ghostty-host', 'ghostty-remote-host-adoption')) {
             ./tests/integration/restore-roundtrip.ps1 -Exe $exe -Strict -Only $case
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -466,7 +468,7 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable, net11-publish]
+    needs: [windows-tests, bridge-fixtures, portable, net10-publish]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites
@@ -474,33 +476,30 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
 
-  net11-publish:
-    name: .NET 11 RC3 publish
+  net10-publish:
+    name: .NET 10 compatibility publish
     needs: portable
     runs-on: windows-latest
     env:
-      AgwintermNet11: 'true'
+      AgwintermNet11: 'false'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
-      - name: Select .NET 11 RC3
-        shell: pwsh
-        run: |
-          $config = Get-Content global.json -Raw | ConvertFrom-Json
-          $config.sdk.version = '11.0.100-rc.3.26522.148'
-          $config.sdk.rollForward = 'disable'
-          $config.sdk | Add-Member -NotePropertyName allowPrerelease -NotePropertyValue $true
-          $config | ConvertTo-Json -Depth 4 | Set-Content global.json
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - name: Publish app and CLI with ReadyToRun and runtime async
+          dotnet-version: '10.0.x'
+      - name: Test updater and publish supported .NET 10 app, host and CLI
         shell: pwsh
         run: |
-          dotnet publish src/Agwinterm.Win32/Agwinterm.Win32.csproj -c Release -r win-x64 --self-contained true -o artifacts/net11-app
+          dotnet test tests/Agwinterm.Pty.Tests -c Release --filter FullyQualifiedName~AppUpdateTests
+          if ($LASTEXITCODE -ne 0) { throw 'Updater tests failed' }
+          dotnet publish src/Agwinterm.Host/Agwinterm.Host.csproj -c Release -r win-x64 --self-contained true -o artifacts/net10-host
+          if ($LASTEXITCODE -ne 0) { throw 'Host publish failed' }
+          dotnet publish src/Agwinterm.Win32/Agwinterm.Win32.csproj -c Release -r win-x64 --self-contained true -o artifacts/net10-app
           if ($LASTEXITCODE -ne 0) { throw 'App publish failed' }
-          dotnet publish src/Agwinterm.Ctl/Agwinterm.Ctl.csproj -c Release -r win-x64 --self-contained true -o artifacts/net11-ctl
+          dotnet publish src/Agwinterm.Ctl/Agwinterm.Ctl.csproj -c Release -r win-x64 --self-contained true -o artifacts/net10-ctl
           if ($LASTEXITCODE -ne 0) { throw 'CLI publish failed' }

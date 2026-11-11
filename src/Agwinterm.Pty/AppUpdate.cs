@@ -29,10 +29,10 @@ public sealed record ReleaseInfo(string Version, IReadOnlyList<ReleaseAsset> Ass
 /// </summary>
 public static class AppUpdate
 {
-#if NET11_0_OR_GREATER
-    private const bool Net11Build = true;
+#if NET10_0
+    private const int RuntimeMajor = 10;
 #else
-    private const bool Net11Build = false;
+    private const int RuntimeMajor = 11;
 #endif
     public const string DefaultApiUrl = "https://api.github.com/repos/narma/agwinterm/releases/latest";
 
@@ -83,18 +83,27 @@ public static class AppUpdate
     /// <summary>The release asset a channel updates from: the setup exe for installed copies, the
     /// portable exe otherwise. Null when the release carries no such asset (or for package managers,
     /// which never self-update).</summary>
-    public static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel) => PickAsset(release, channel, Net11Build);
+    public static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel) =>
+        PickAsset(release, channel, RuntimeMajor, VersionReport.EntryAssemblyVersion());
 
-    internal static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel, bool net11) => channel switch
+    // Only explicitly installed .NET 10 builds from the opt-in era keep that runtime.
+    // Older updaters select the unqualified names, which now carry .NET 11.
+    internal static ReleaseAsset? PickAsset(ReleaseInfo release, UpdateChannel channel,
+        int runtimeMajor, string currentVersion)
     {
-        UpdateChannel.Installed => release.Assets.FirstOrDefault(a =>
-            a.Name.StartsWith(net11 ? "agwinterm-net11-setup-" : "agwinterm-setup-", StringComparison.OrdinalIgnoreCase) &&
-            a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
-        UpdateChannel.Portable => release.Assets.FirstOrDefault(a =>
-            a.Name.StartsWith(net11 ? "agwinterm-net11-portable-" : "agwinterm-portable-", StringComparison.OrdinalIgnoreCase) &&
-            a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
-        _ => null,
-    };
+        bool keepNet10 = runtimeMajor == 10 && Version.TryParse(currentVersion, out var version)
+            && version >= new Version(0, 30, 5);
+        string prefix = keepNet10 ? "agwinterm-net10-" : "agwinterm-";
+        string? kind = channel switch
+        {
+            UpdateChannel.Installed => "setup-",
+            UpdateChannel.Portable => "portable-",
+            _ => null,
+        };
+        return kind is null ? null : release.Assets.FirstOrDefault(a =>
+            a.Name.StartsWith(prefix + kind, StringComparison.OrdinalIgnoreCase) &&
+            a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>Fetch and parse the latest release, or null on any failure (offline stays silent).
     /// Honors the <see cref="ApiEnvVar"/> test seam (URL override, or a local JSON file path).</summary>

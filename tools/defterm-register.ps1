@@ -9,7 +9,7 @@
 #   pwsh -File tools\defterm-register.ps1 [-BuildDir <folder with Agwinterm.Win32.exe + OpenConsole.exe + OpenConsoleProxy.dll>]
 
 param(
-    [string]$BuildDir = "$PSScriptRoot\..\src\Agwinterm.Win32\bin\Debug\net10.0-windows\win-x64"
+    [string]$BuildDir = "$PSScriptRoot\..\src\Agwinterm.Win32\bin\Debug\net11.0-windows\win-x64"
 )
 $ErrorActionPreference = 'Stop'
 
