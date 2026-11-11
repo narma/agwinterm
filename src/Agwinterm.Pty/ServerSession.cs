@@ -19,6 +19,10 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     internal string? ReplicaCore { get; }
     internal bool SingleOwner { get; }
     private readonly object _lock = new();
+    // Control requests are serialized on one pipe anyway. Await a launch slot
+    // before occupying a pool thread, rather than blocking dozens of workers
+    // on that pipe during a large restore (its IO completions need the pool too).
+    internal SemaphoreSlim LaunchGate { get; } = new(1, 1);
     private PtyHostClient? _client;
     private bool _disposed;
     private readonly StartupHostClaims _startupClaims;
@@ -76,6 +80,12 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     }
 
     internal PtyHostClient Client => EnsureClient();
+    /// <summary>One restore-time inventory, taken before launching missing panes.
+    /// Absence in this snapshot avoids queuing a synchronous Attach behind slow
+    /// shell creates on the shared control connection. Creation tickets still
+    /// arbitrate any later collision; this inventory never authorizes adoption.</summary>
+    public IReadOnlySet<string> GetExistingSessionIds() => Client.List()
+        .Select(session => session.Id).ToHashSet(StringComparer.Ordinal);
     // Reconciliation must never start a new host or reuse an ambiguous request/reply stream.
     internal PtyHostClient ConnectExisting() => PtyHostClient.Connect(_appId);
 
@@ -253,42 +263,47 @@ public sealed partial class ServerSession : ISession
     {
         try
         {
-            await Task.Run(() =>
+            await _backend.LaunchGate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                if (_startFence.IsClosed) return;
-                var client = _backend.Client;
-                if (persistTicket is not null && client.CreationRevision < 1)
-                    throw new IOException("Checkpointed transport requires creation tickets");
-                if (client.CreationRevision >= 1)
+                await Task.Run(() =>
                 {
-                    // A lost preparation reply owns no child. Once this ticket is known, close
-                    // can cancel even while the following create is still blocked on its reply.
-                    _creationHostPid = client.HostPid;
-                    _creationTicket = client.PrepareCreate(_id);
-                    if (_startFence.Created()) KillHosted();
                     if (_startFence.IsClosed) return;
-                }
-                try
-                {
-                    persistTicket?.Invoke(_creationTicket);
-                    if (_startFence.IsClosed) return;
-                    int cols = Cols, rows = Rows;
-                    client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
-                        verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket,
-                        emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation);
-                    if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
-                    if (_startFence.IsClosed) return;
-                    // Even the first attachment can follow output from a fast child.
-                    // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
-                    if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? PresentationFrameCodec.Revision : 0)) && (Cols != cols || Rows != rows))
-                        Resize(Cols, Rows);
-                }
-                catch
-                {
-                    if (_startFence.AttachmentFailed() || (_creationTicket.Length > 0 && _startFence.KillRequested)) KillHosted();
-                    throw;
-                }
-            }, ct).ConfigureAwait(false);
+                    var client = _backend.Client;
+                    if (persistTicket is not null && client.CreationRevision < 1)
+                        throw new IOException("Checkpointed transport requires creation tickets");
+                    if (client.CreationRevision >= 1)
+                    {
+                        // A lost preparation reply owns no child. Once this ticket is known, close
+                        // can cancel even while the following create is still blocked on its reply.
+                        _creationHostPid = client.HostPid;
+                        _creationTicket = client.PrepareCreate(_id);
+                        if (_startFence.Created()) KillHosted();
+                        if (_startFence.IsClosed) return;
+                    }
+                    try
+                    {
+                        persistTicket?.Invoke(_creationTicket);
+                        if (_startFence.IsClosed) return;
+                        int cols = Cols, rows = Rows;
+                        client.Create(_id, cols, rows, app, commandLine, cwd, extraEnv,
+                            verbatim: verbatimCommandLine, deElevate: deElevate, freshEnv: freshEnv, creationTicket: _creationTicket,
+                            emulatorCore: UsesPresentation ? "ghostty" : TerminalSession.CoreName(Emulator), singleOwner: UsesPresentation);
+                        if (_startFence.Created() || _startFence.KillRequested) KillHosted(); // retry exact cancellation if close raced a reply
+                        if (_startFence.IsClosed) return;
+                        // Even the first attachment can follow output from a fast child.
+                        // Ghostty transfers a native snapshot; legacy cores need a viewport repaint.
+                        if (PublishAttachment(client.Attach(_id, repaint: true, creationTicket: _creationTicket, nativeSnapshot: true, presentationRevision: UsesPresentation ? PresentationFrameCodec.Revision : 0)) && (Cols != cols || Rows != rows))
+                            Resize(Cols, Rows);
+                    }
+                    catch
+                    {
+                        if (_startFence.AttachmentFailed() || (_creationTicket.Length > 0 && _startFence.KillRequested)) KillHosted();
+                        throw;
+                    }
+                }, ct).ConfigureAwait(false);
+            }
+            finally { _backend.LaunchGate.Release(); }
         }
         catch (Exception ex)
         {

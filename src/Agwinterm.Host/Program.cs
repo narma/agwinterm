@@ -13,6 +13,7 @@ for (int i = 0; i < args.Length; i++)
 }
 if (string.IsNullOrWhiteSpace(pipe)) return 1;
 string appId = Environment.GetEnvironmentVariable("AGWINTERM_APP_ID") ?? "agwinterm";
+using var startupJournal = new StartupJournal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), appId, "logs"), "host");
 string configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
     appId, "agwinterm.conf");
 TerminalConfig config;
@@ -24,5 +25,6 @@ if (!GhosttyTerminalCore.TryLoad(AppContext.BaseDirectory, out string? error))
 TerminalSession.CoreFactory = (cols, rows) => new GhosttyTerminalCore(cols, rows, config.CursorStyle, config.CursorBlink);
 ConPtyApi.Select((conpty ?? config.Conpty) == "bundled", AppContext.BaseDirectory);
 using var server = new PtyHostServer(pipe);
+startupJournal.Mark("host.listening");
 server.Completion.Wait();
 return 0;

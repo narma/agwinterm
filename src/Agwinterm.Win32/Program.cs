@@ -664,6 +664,8 @@ internal partial class Program : ISessionHost, IWindowHost
             return;
         }
         ParseLaunchArgs(args);
+        using var startupJournal = new StartupJournal(Path.Combine(AppDir, "logs"), "gui");
+        _startupJournal = startupJournal;
         // Publish the resolved instance id so child processes and shared (Pty) helpers resolve the same
         // data dir — and a nested agwinterm inherits the dev/release identity of the one that launched it.
         Environment.SetEnvironmentVariable("AGWINTERM_APP_ID", _appId);
@@ -698,12 +700,14 @@ internal partial class Program : ISessionHost, IWindowHost
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         // Process-global setup (config/themes/keymap + window class + shared D2D/DWrite objects).
         _config = LoadOrCreateConfig();
+        _startupJournal.Mark("config.loaded");
         ConPtyApi.Select(_config.Conpty != "inbox");
         _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, HostExePath, _config.Conpty, _config.EmulatorCore);
         ResolveEmulatorCore();
         _allThemes = LoadThemes();
         _theme = FindTheme(_config.Theme);
         LoadKeymap();
+        _startupJournal.Mark("themes-keymap.loaded");
 
         IntPtr hInstance = GetModuleHandleW(null);
         _wndProc = WindowProc;
@@ -737,6 +741,7 @@ internal partial class Program : ISessionHost, IWindowHost
         _uiSmallTrim.SetTrimming(new Trimming { Granularity = TrimmingGranularity.Character }, _ellipsisSmall);
         _iconFont = NewChromeFormat("Segoe Fluent Icons", 14f, center: true);
         _iconSmall = NewChromeFormat("Segoe Fluent Icons", 10.5f, center: true);
+        _startupJournal.Mark("fonts.ready");
 
         // Multi-window: load the window library (migrating a legacy state.json), then open every
         // window that was open at last quit. Each open window is its own Program instance routed by
@@ -744,6 +749,7 @@ internal partial class Program : ISessionHost, IWindowHost
         _hInstance = hInstance;
         _profileCfg = Agwinterm.Pty.ShellProfiles.Load(AppDir);   // shell profiles (seed profiles.json on first run)
         LoadOrMigrateIndex();
+        _startupJournal.Mark("window-index.loaded");
         List<WinMeta> toOpen;
         lock (_windowIndex)
         {
@@ -800,6 +806,7 @@ internal partial class Program : ISessionHost, IWindowHost
             });
         }
 
+        _startupJournal.Mark("message-loop.ready");
         while (GetMessageW(out MSG msg, IntPtr.Zero, 0, 0) > 0)
         {
             if (DispatchWebContinuation(msg)) continue;
@@ -835,6 +842,7 @@ internal partial class Program : ISessionHost, IWindowHost
     /// <summary>Per-window bootstrap: create the HWND, its render target, and the initial session.</summary>
     private void Boot(IntPtr hInstance)
     {
+        using var bootTiming = _startupJournal?.Measure("window.boot", Id);
         RecomputeChrome();
         MeasureCell();
 
@@ -894,7 +902,6 @@ internal partial class Program : ISessionHost, IWindowHost
 
         CreateRenderTarget();
         ConfigureUia(); // every library window and the detached quick host
-        if (!_isQuickWindow) StartSession();
 
         ApplySystemTheme();   // if "follow Windows light/dark" is on, pick light/dark before the first paint
 
@@ -907,11 +914,26 @@ internal partial class Program : ISessionHost, IWindowHost
 
         if (_isQuickWindow) return; // auxiliary window is shown only by a deliberate summon
 
-        ShowWindow(_hwnd, _startMinimized ? 7 : _argMaximized || (_geoValid && _geoMax) ? SW_MAXIMIZE : SW_SHOW);
-        if (_argFullscreen) { _argFullscreen = false; ToggleFullscreen(); }   // first window only
-        _argMaximized = false;
-        _wasMaximized = IsZoomed(_hwnd);
-        ApplyWindowOpacity();
+        _startupProgress = "Opening sessions…";
+        // Show/maximize sends WM_SIZE synchronously, which can save state. Protect
+        // the existing library until StartSession has read it.
+        _restoring = true;
+        try
+        {
+            ShowWindow(_hwnd, _startMinimized ? 7 : _argMaximized || (_geoValid && _geoMax) ? SW_MAXIMIZE : SW_SHOW);
+            if (_argFullscreen) { _argFullscreen = false; ToggleFullscreen(); }   // first window only
+            _argMaximized = false;
+            _wasMaximized = IsZoomed(_hwnd);
+            ApplyWindowOpacity();
+            UpdateWindow(_hwnd);
+        }
+        finally { _restoring = false; }
+        _startupJournal?.Mark("window.first-paint", Id);
+        // Paint the frame before any host connection or saved-session restoration.
+        // Do not pump arbitrary messages while the session tree is half constructed.
+        using (_startupJournal?.Measure("window.sessions", Id)) StartSession();
+        _startupProgress = null;
+        InvalidateRect(_hwnd, IntPtr.Zero, false);
         UpdateWindow(_hwnd);
         if (_quickHost is null)
         {
