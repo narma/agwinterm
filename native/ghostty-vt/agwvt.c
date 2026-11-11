@@ -1108,6 +1108,11 @@ static GhosttyKey windows_key(uint32_t vk) {
         case VK_RWIN: return GHOSTTY_KEY_META_RIGHT;
         case VK_CAPITAL: return GHOSTTY_KEY_CAPS_LOCK;
         case VK_NUMLOCK: return GHOSTTY_KEY_NUM_LOCK;
+        case VK_SCROLL: return GHOSTTY_KEY_SCROLL_LOCK;
+        case VK_SNAPSHOT: return GHOSTTY_KEY_PRINT_SCREEN;
+        case VK_PAUSE: return GHOSTTY_KEY_PAUSE;
+        case VK_CLEAR: return GHOSTTY_KEY_NUMPAD_BEGIN;
+        case VK_SEPARATOR: return GHOSTTY_KEY_NUMPAD_SEPARATOR;
         case VK_MULTIPLY: return GHOSTTY_KEY_NUMPAD_MULTIPLY;
         case VK_ADD: return GHOSTTY_KEY_NUMPAD_ADD;
         case VK_SUBTRACT: return GHOSTTY_KEY_NUMPAD_SUBTRACT;
@@ -1238,6 +1243,16 @@ int agwvt_key(AgwVt* vt, uint32_t vk, uint32_t action, uint32_t mods,
     if (!vt || action > 2 || mods > 1023 || consumed > 1023 || text_length > 4096 ||
         (!text && text_length) || (!output && capacity) || !length) return GHOSTTY_INVALID_VALUE;
     TRY(ghostty_key_encoder_set_from_terminal(vt->key_encoder, vt->terminal));
+    // Alternate keys are a pure enhancement, not a request to disambiguate.
+    // The pinned libghostty selects its Kitty encoder for any nonzero flags,
+    // which incorrectly turns legacy Ctrl+A/Escape into CSI-u for flags=4.
+    // Override only this encoder invocation; keep negotiated terminal state.
+    GhosttyKittyKeyFlags keyboard;
+    TRY(ghostty_terminal_get(vt->terminal, GHOSTTY_TERMINAL_DATA_KITTY_KEYBOARD_FLAGS, &keyboard));
+    if (keyboard == GHOSTTY_KITTY_KEY_REPORT_ALTERNATES) {
+        GhosttyKittyKeyFlags legacy = GHOSTTY_KITTY_KEY_DISABLED;
+        TRY(ghostty_key_encoder_set(vt->key_encoder, GHOSTTY_KEY_ENCODER_OPT_KITTY_FLAGS, &legacy));
+    }
     TRY(ghostty_key_event_set_action(vt->key_event, (GhosttyKeyAction)action));
     TRY(ghostty_key_event_set_key(vt->key_event, windows_key(vk)));
     TRY(ghostty_key_event_set_mods(vt->key_event, (GhosttyMods)mods));

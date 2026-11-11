@@ -45,34 +45,15 @@ internal partial class Program
     private readonly Dictionary<int, NativeKeyTarget[]> _ghosttyKeysDown = new();
     private int _ghosttyCharsToSkip;
     private char _ghosttyHighSurrogate;
-    private sealed record NativeKeyText(int Vk, int Chars, string Text, uint Unshifted, bool AltGr, string Unicode);
+    private bool _printScreenDownSeen;
     private NativeKeyText? _ghosttyKeyText;
 
-    // TranslateMessage mutates Windows' dead-key state. Capture the text before it
-    // runs, without consuming the composition, then use it during WM_KEYDOWN.
-    private static NativeKeyText ReadNativeKeyText(int vk)
+    // Capture before TranslateMessage changes the Windows dead-key state.
+    private static NativeKeyText ReadNativeKeyText(int vk, nint keyData = 0)
     {
         byte[] state = new byte[256]; GetKeyboardState(state);
-        char[] translated = new char[16];
-        uint scan = MapVirtualKeyW((uint)vk, 0); nint layout = GetKeyboardLayout(0);
-        int chars = ToUnicodeEx((uint)vk, scan, state, translated, translated.Length, 4, layout);
-        string unicode = chars > 0 ? new string(translated, 0, Math.Min(chars, translated.Length)) : "";
-        bool altGr = (state[VK_CONTROL] & 0x80) != 0 && (state[0xA5] & 0x80) != 0;
-        if (!altGr)
-        {
-            state[VK_CONTROL] = state[0xA2] = state[0xA3] = 0;
-            state[VK_MENU] = state[0xA4] = state[0xA5] = 0;
-        }
-        int length = ToUnicodeEx((uint)vk, scan, state, translated, translated.Length, 4, layout);
-        string text = length > 0 && translated[0] >= ' ' && translated[0] != '\x7f'
-            ? new string(translated, 0, Math.Min(length, translated.Length)) : "";
-        state[VK_CONTROL] = state[0xA2] = state[0xA3] = 0;
-        state[VK_MENU] = state[0xA4] = state[0xA5] = 0;
-        state[VK_SHIFT] = state[0xA0] = state[0xA1] = state[0x14] = 0;
-        int baseLength = ToUnicodeEx((uint)vk, scan, state, translated, translated.Length, 4, layout);
-        uint unshifted = baseLength > 0 && Rune.TryGetRuneAt(new string(translated, 0, Math.Min(baseLength, translated.Length)), 0, out var rune)
-            && !Rune.IsControl(rune) ? (uint)rune.Value : 0;
-        return new(vk, chars, text, unshifted, altGr && text.Length != 0, unicode);
+        return NativeKeyText.Translate(vk, state, MapVirtualKeyW((uint)vk, 0), GetKeyboardLayout(0))
+            with { Key = NativeKeyText.ResolveKey(vk, keyData) };
     }
 
     private static string Win32KeyTextSequence(int vk, bool down, bool ctrl, bool shift, bool alt, string unicode)
@@ -120,6 +101,8 @@ internal partial class Program
 
     private bool TryGhosttyKeyDown(int vk, bool ctrl, bool alt, bool shift)
     {
+        var keyText = _ghosttyKeyText is { } captured && captured.Vk == vk ? captured : ReadNativeKeyText(vk);
+        vk = keyText.Key;
         var surface = ActiveSurface();
         _ghosttyKeysDown.TryGetValue(vk, out var held);
         if (held is null && (surface is null || !HasOwnerInput(surface.S))) return false;
@@ -134,7 +117,6 @@ internal partial class Program
         }
         else targets = [surface!];
         if (held is null && surface!.ReadOnly && !BroadcastActive) { ShowToast("pane is read-only"); return true; }
-        var keyText = _ghosttyKeyText is { } captured && captured.Vk == vk ? captured : ReadNativeKeyText(vk);
         _ghosttyKeyText = null;
         if (keyText.Chars < 0) return true; // Windows owns the pending dead-key composition
         string text = keyText.Text;
@@ -145,7 +127,7 @@ internal partial class Program
         uint mods = (shift ? 1u : 0) | (ctrl ? 2u : 0) | (alt ? 4u : 0)
             | (KeyDown(0x5B) || KeyDown(0x5C) ? 8u : 0)
             | ((GetKeyState(0x14) & 1) != 0 ? 16u : 0) | ((GetKeyState(0x90) & 1) != 0 ? 32u : 0);
-        uint action = _ghosttyKeysDown.ContainsKey(vk) ? 2u : 1u, consumed = 0;
+        uint action = _ghosttyKeysDown.ContainsKey(vk) ? 2u : 1u, consumed = keyText.Consumed;
         var sent = new List<NativeKeyTarget>();
         foreach (var pane in targets)
         {

@@ -335,6 +335,7 @@ internal partial class Program
 
             case WM_KEYDOWN:
             case WM_SYSKEYDOWN:
+                if ((int)wParam == 0x2c) _printScreenDownSeen = true;
                 // Menu bar (MenuBar.cs): a lone Alt tap focuses it, so Alt going down arms it and any
                 // other key disarms it; Alt+letter with the context bit set is a mnemonic outside the
                 // terminal (MenuBarMnemonic) — read here, off lParam, so a posted key counts as much as
@@ -381,9 +382,24 @@ internal partial class Program
 
             case WM_KEYUP:
             case WM_SYSKEYUP:
+                // Print Screen commonly arrives as key-up only on Windows.
+                // Route its missing press through normal shortcut/focus handling.
+                if ((int)wParam == 0x2c)
+                {
+                    if (!_printScreenDownSeen) OnKeyDown(0x2c);
+                    _printScreenDownSeen = false;
+                }
                 // win32-input-mode: emit the paired key-UP (Alt releases arrive as WM_SYSKEYUP).
                 Win32KeyUp((int)wParam);
-                GhosttyKeyUp((int)wParam);
+                GhosttyKeyUp(NativeKeyText.ResolveKey((int)wParam, lParam));
+                // Windows can omit the first Shift-up when both sides are held.
+                // Once neither is down, retire both identities so the omitted
+                // release cannot leave a key stuck (or turn its next press into repeat).
+                if ((int)wParam == VK_SHIFT && !KeyDown(VK_SHIFT))
+                {
+                    GhosttyKeyUp(0xA0);
+                    GhosttyKeyUp(0xA1);
+                }
                 if (msg == WM_SYSKEYUP && (int)wParam == VK_MENU && _altArmed)
                 {
                     // A lone Alt tap: the bar takes the keyboard focus (or gives it back), and the tap

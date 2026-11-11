@@ -39,6 +39,8 @@ if (!GhosttyVt.TryLoad(args[0], out string? error)) throw new InvalidOperationEx
 
 Environment.SetEnvironmentVariable("AGWINTERM_GHOSTTY_COUNTERS", "1");
 Check(GhosttyDiagnostics.Enabled, "native lifecycle diagnostics enabled before terminal allocation");
+KeyboardChecks.Run(Check);
+KittyProtocolChecks.Run(Check);
 var initialCounts = GhosttyDiagnostics.Snapshot();
 var initialNative = GhosttyDiagnostics.NativeAllocationSnapshot();
 Check(initialNative is not null, "native allocation diagnostics export is available");

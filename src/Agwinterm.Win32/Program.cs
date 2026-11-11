@@ -814,7 +814,7 @@ internal partial class Program : ISessionHost, IWindowHost
             _registry.TryGetValue(msg.hwnd, out var inputWindow);
             if (inputWindow is not null && msg.message is WM_KEYDOWN or WM_SYSKEYDOWN
                 && inputWindow.ActiveSurface() is { } inputSurface && HasOwnerInput(inputSurface.S))
-                inputWindow._ghosttyKeyText = ReadNativeKeyText((int)msg.wParam);
+                inputWindow._ghosttyKeyText = ReadNativeKeyText((int)msg.wParam, msg.lParam);
             try
             {
                 TranslateMessage(ref msg);

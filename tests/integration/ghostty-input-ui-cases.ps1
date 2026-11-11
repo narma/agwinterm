@@ -14,7 +14,8 @@ public static class GhosttyInputFixture {
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr LoadKeyboardLayoutW(string name,uint flags);
     [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);
     [DllImport("user32.dll")] static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
-    public static void Key(byte key,bool up) { keybd_event(key,0,(up?2u:0u)|(key==0xA5?1u:0u),UIntPtr.Zero); }
+    [DllImport("user32.dll")] static extern uint MapVirtualKeyW(uint key,uint kind);
+    public static void Key(byte key,bool up) { keybd_event(key,(byte)MapVirtualKeyW(key,0),(up?2u:0u)|(key==0xA5||key==0xA3?1u:0u),UIntPtr.Zero); }
     public static void Tap(byte key) { Key(key,false); System.Threading.Thread.Sleep(30); Key(key,true); }
 }
 '@
@@ -111,11 +112,45 @@ try {
     InputCheck 'Ghostty real shifted key arrives once' 'A' {
         try{[GhosttyInputFixture]::Key(0xA0,$false);[GhosttyInputFixture]::Tap(0x41)}finally{[GhosttyInputFixture]::Key(0xA0,$true)}
     }
+    $null=Rpc 'session.write' @{text=($esc+'[=3u')} $inputSession
+    InputCheck 'Kitty flags 3 Shift punctuation reaches child as text with release event' (':'+$esc+'[59;2:3u') {
+        try{[GhosttyInputFixture]::Key(0xA0,$false);[GhosttyInputFixture]::Tap(0xBA)}finally{[GhosttyInputFixture]::Key(0xA0,$true)}
+    }
+    InputCheck 'Kitty flags 3 uppercase reaches child as text with release event' ('A'+$esc+'[97;2:3u') {
+        try{[GhosttyInputFixture]::Key(0xA0,$false);[GhosttyInputFixture]::Tap(0x41)}finally{[GhosttyInputFixture]::Key(0xA0,$true)}
+    }
+    $null=Rpc 'session.write' @{text=($esc+'[=11u')} $inputSession
+    InputCheck 'Kitty report-all distinguishes right Shift' ($esc+'[57447;2u'+$esc+'[57447;1:3u') { [GhosttyInputFixture]::Tap(0xA1) }
+    InputCheck 'Kitty report-all distinguishes right Control' ($esc+'[57448;5u'+$esc+'[57448;1:3u') { [GhosttyInputFixture]::Tap(0xA3) }
+    InputCheck 'Kitty retires both Shift keys when Windows coalesces their release' ($esc+'[57441;2u'+$esc+'[57447;2u'+$esc+'[57441;1:3u'+$esc+'[57447;1:3u') {
+        try {
+            [GhosttyInputFixture]::Key(0xA0,$false);[GhosttyInputFixture]::Key(0xA1,$false)
+            [GhosttyInputFixture]::Key(0xA1,$true)
+        } finally { [GhosttyInputFixture]::Key(0xA0,$true) }
+    }
+    InputCheck 'Kitty right Shift after a two-Shift chord is a fresh press' ($esc+'[57447;2u'+$esc+'[57447;1:3u') { [GhosttyInputFixture]::Tap(0xA1) }
+    InputCheck 'Kitty report-all Enter has paired press and release' ($esc+'[13u'+$esc+'[13;1:3u') { [GhosttyInputFixture]::Tap(0x0D) }
+    InputCheck 'Kitty Print Screen key-up-only message produces one press and release' ($esc+'[57361u'+$esc+'[57361;1:3u') {
+        [void][GhosttyInputFixture]::SendMessageW($hwnd,0x101,[IntPtr]0x2c,[IntPtr]0xC1370001L)
+    }
+    $null=Rpc 'session.write' @{text=($esc+'[=4u')} $inputSession
+    InputCheck 'Kitty alternate-only mode preserves legacy Ctrl+A' ([string][char]1) {
+        try{[GhosttyInputFixture]::Key(0xA2,$false);[GhosttyInputFixture]::Tap(0x41)}finally{[GhosttyInputFixture]::Key(0xA2,$true)}
+    }
+    $null=Rpc 'session.write' @{text=($esc+'[=0u')} $inputSession
     InputLayout '00000419'
     InputCheck 'Ghostty real Russian layout reaches child' 'ф' { [GhosttyInputFixture]::Tap(0x41) }
     InputLayout '00000407'
     InputCheck 'Ghostty real AltGr emits layout text without Ctrl-Alt prefix' '@' {
         try{[GhosttyInputFixture]::Key(0xA5,$false);[GhosttyInputFixture]::Tap(0x51)}finally{[GhosttyInputFixture]::Key(0xA5,$true)}
+    }
+    try {
+        [GhosttyInputFixture]::Key(0xA5,$false)
+        $null=Rpc 'session.write' @{text=($esc+'[=11u')} $inputSession
+        InputCheck 'Kitty report-all AltGr preserves the logical character' ($esc+'[64u'+$esc+'[64;1:3u') { [GhosttyInputFixture]::Tap(0x51) }
+    } finally {
+        $null=Rpc 'session.write' @{text=($esc+'[=0u')} $inputSession
+        [GhosttyInputFixture]::Key(0xA5,$true)
     }
     InputLayout '00020409'
     InputCheck 'Ghostty dead-key composition reaches child once' 'é' {
