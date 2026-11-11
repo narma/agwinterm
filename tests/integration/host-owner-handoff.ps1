@@ -47,6 +47,7 @@ catch { $_ | Out-String | Add-Content $ctx.log; exit 1 }
     return
 }
 . "$PSScriptRoot/../ui/lib.ps1"
+. "$PSScriptRoot/host-probe.ps1"
 $directory=Split-Path ([IO.Path]::GetFullPath($Exe))
 $pipe='agwinterm-handoff-'+[guid]::NewGuid().ToString('N')
 $s=$null
@@ -61,9 +62,6 @@ try {
     @('session-host = server','update-check = false','fresh-env = false') | Set-Content (Join-Path $profile 'agwinterm.conf')
     $s=[pscustomobject]@{Proc=$null;Exe=$Exe;Ctl=$Ctl;Pipe=$pipe;AppId='agwinterm';AppDir=$profile;Hwnd=[IntPtr]::Zero;Width=1000;Height=700}
     $env:AGWINTERM_PTYLOG=Join-Path $profile 'handoff.log'
-    foreach($name in 'Google.Protobuf.dll','Agwinterm.Core.dll','Agwinterm.Pty.dll'){
-        $null=[Reflection.Assembly]::LoadFrom((Join-Path $directory $name))
-    }
     if(-not(Start-SandboxProcess $s @('--pipe',$pipe,'--app-id','agwinterm','--no-restore'))){throw 'Handoff UI did not start'}
     $initial=@((Get-CtlResult $s @('tree')).workspaces.sessions.id)
     if(-not $initial.Count){throw 'Initial hosted pane missing'}
@@ -87,11 +85,8 @@ try {
         if(Test-Path $env:AGWINTERM_PTYLOG){Get-Content $env:AGWINTERM_PTYLOG -Tail 50 | Out-Host}
         throw 'Windows did not hand the new console to the running test window'
     }
-    $owner=[Agwinterm.Pty.PtyHostClient]::Connect($pipe+'-owner-v1',3000)
-    try {
-        $hosted=@($owner.List() | ForEach-Object Id)
-        if($initial[0] -notin $hosted -or $handed -in $hosted){throw 'Handoff did not retain its direct local owner'}
-    } finally {$owner.Dispose()}
+    $hosted=@(Invoke-TestHostProbe $Exe ($pipe+'-owner-v1') list | ForEach-Object Id)
+    if($initial[0] -notin $hosted -or $handed -in $hosted){throw 'Handoff did not retain its direct local owner'}
     $typed='HANDOFF_INPUT_'+[guid]::NewGuid().ToString('N').Substring(0,8)
     $null=Get-CtlResult $s @('session','type',("echo $typed"+[char]13),'--target',$handed)
     for($i=0;$i -lt 100;$i++){
@@ -104,9 +99,6 @@ try {
 } finally {
     if($child){try{if(-not $child.HasExited){$child.Kill();$null=$child.WaitForExit(5000)}}finally{$child.Dispose()}}
     if($s){Stop-Sandbox $s}
-    if($s -and [Agwinterm.Pty.PtyHostClient]::IsRunning($pipe+'-owner-v1')){
-        $cleanup=[Agwinterm.Pty.PtyHostClient]::Connect($pipe+'-owner-v1',2000)
-        try{$cleanup.Shutdown()}finally{$cleanup.Dispose()}
-    }
+    if($s){Invoke-TestHostProbe $Exe ($pipe+'-owner-v1') shutdown-if-running}
     & "$PSScriptRoot/../../tools/defterm-restore-conhost.ps1"
 }

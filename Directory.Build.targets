@@ -1,7 +1,8 @@
 <Project>
   <!-- Apply to the complete .NET 11 project graph, including project references. -->
   <PropertyGroup Condition="'$(AgwintermFrameworkMajor)' == '11'">
-    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">true</PublishReadyToRun>
+    <!-- RID-less test harness publications must remain portable IL. Shipped builds specify win-x64. -->
+    <PublishReadyToRun Condition="'$(PublishReadyToRun)' == '' and '$(RuntimeIdentifier)' != ''">true</PublishReadyToRun>
     <UseRuntimeAsync Condition="'$(UseRuntimeAsync)' == ''">true</UseRuntimeAsync>
     <Features Condition="'$(UseRuntimeAsync)' == 'true'">$(Features);runtime-async=on</Features>
     <Features Condition="'$(UseRuntimeAsync)' == 'false'">$(Features);runtime-async=off</Features>

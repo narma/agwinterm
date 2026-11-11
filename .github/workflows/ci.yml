@@ -224,6 +224,8 @@ jobs:
           . ./tests/ui/lib.ps1
           $exe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
           if (-not $exe) { throw 'Built app not found' }
+          dotnet publish tests/Agwinterm.GhosttyServerHarness -c Release --no-self-contained -o (Join-Path (Split-Path $exe) 'ghostty-server-tests')
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           foreach ($case in @('buffer-reflow-ghostty', 'buffer-reflow-ghostty-host', 'ghostty-remote-host-adoption')) {
             ./tests/integration/restore-roundtrip.ps1 -Exe $exe -Strict -Only $case
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
