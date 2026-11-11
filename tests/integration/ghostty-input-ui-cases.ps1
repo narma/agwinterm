@@ -133,6 +133,14 @@ try {
     InputCheck 'Kitty Print Screen key-up-only message produces one press and release' ($esc+'[57361u'+$esc+'[57361;1:3u') {
         [void][GhosttyInputFixture]::SendMessageW($hwnd,0x101,[IntPtr]0x2c,[IntPtr]0xC1370001L)
     }
+    InputCheck 'Kitty Print Screen press is released on focus loss' ($esc+'[57361u'+$esc+'[57361;1:3u') {
+        [void][GhosttyInputFixture]::SendMessageW($hwnd,0x100,[IntPtr]0x2c,[IntPtr]0x01370001L)
+        [void][GhosttyInputFixture]::SendMessageW($hwnd,8,[IntPtr]::Zero,[IntPtr]::Zero)
+    }
+    InputCheck 'Kitty Print Screen key-up-only works after focus returns' ($esc+'[57361u'+$esc+'[57361;1:3u') {
+        [void][GhosttyInputFixture]::SendMessageW($hwnd,7,[IntPtr]::Zero,[IntPtr]::Zero)
+        [void][GhosttyInputFixture]::SendMessageW($hwnd,0x101,[IntPtr]0x2c,[IntPtr]0xC1370001L)
+    }
     $null=Rpc 'session.write' @{text=($esc+'[=4u')} $inputSession
     InputCheck 'Kitty alternate-only mode preserves legacy Ctrl+A' ([string][char]1) {
         try{[GhosttyInputFixture]::Key(0xA2,$false);[GhosttyInputFixture]::Tap(0x41)}finally{[GhosttyInputFixture]::Key(0xA2,$true)}

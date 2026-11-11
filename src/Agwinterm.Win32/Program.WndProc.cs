@@ -196,6 +196,7 @@ internal partial class Program
             case WM_KILLFOCUS:
                 _imeComposing = false;
                 _imePosition = null;
+                _printScreenDownSeen = false;
                 foreach (int key in _ghosttyKeysDown.Keys.ToArray()) GhosttyKeyUp(key);
                 _ghosttyCharsToSkip = 0; _ghosttyHighSurrogate = '\0';
                 if (_isQuickWindow) ReleaseQuickKeys();
