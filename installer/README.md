@@ -94,7 +94,7 @@ For the one-time migration from 0.20.13–0.20.19 or a version that hosts sessio
 
 After migration, the updater checkpoints the windows, closes the GUI and replaces its files. The host runs from `host/Agwinterm.Host.exe` with its own runtime and native libraries. Hosted shells keep running and the GUI reconnects when reopened. In-process shells end when their window closes.
 
-The updater uses the installed GUI's .NET version. For .NET 11 it publishes with ReadyToRun and `runtime-async=on` for the GUI and optional CLI. It verifies replacements and stores backups under `artifacts/gui-update/`. Use `-IncludeCli` for CLI changes and the full installer for host, hook or registration changes.
+The local GUI-only updater always publishes .NET 11 with ReadyToRun and `runtime-async=on` for the GUI and optional CLI, even when the installed GUI uses .NET 10. This personal development workflow is separate from the in-app release updater, which preserves explicitly selected .NET 10 builds from v0.30.5 onward. It verifies replacements and stores backups under `artifacts/gui-update/`. Use `-IncludeCli` for CLI changes and the full installer for host, hook or registration changes.
 
 ## Silent install / uninstall
 
