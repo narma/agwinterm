@@ -133,9 +133,16 @@ $null=Rpc 'config.set' @{key='cursor-blink';value='false'}
 $readBefore=NavPixels 'follow-output-reading-before'
 foreach($batch in 1..3) {
     $null=Rpc 'session.write' @{text="`r`nNEW-OUTPUT-$batch`r`n"} $wheelPane
-    Start-Sleep -Milliseconds 100
 }
-$readAfter=NavPixels 'follow-output-reading-after'
+# Hosted writes are queued. Unchanged pixels prove nothing until the owner has
+# consumed the last batch; fail closed if that acknowledgement never arrives.
+$followOutputReceived=NavWait {
+    try { return ([string](Rpc 'session.text' @{} $wheelPane)).Contains('NEW-OUTPUT-3') }
+    catch { return $false }
+}
+Check 'terminal owner received the final output batch before comparing scroll position' $followOutputReceived
+if(-not $followOutputReceived){throw 'Final follow-output marker did not reach the terminal buffer'}
+$readAfter=NavStablePixels 'follow-output-reading-after' $followRegion
 Check 'default output following keeps scrolled text stationary' ((PixelDifference $readBefore $readAfter @followRegion)-eq 0)
 # Each wheel message advances one configured step, regardless of delta magnitude.
 foreach($step in 1..20) {
