@@ -210,7 +210,7 @@ public sealed class HudOwnedJob {
             if($NoTarget){$request.Remove('target')}
             if($Window-eq ''){$request.Remove('window')}
             $writer.WriteLine(($request|ConvertTo-Json -Compress -Depth 8))
-            $read=$reader.ReadLineAsync();if(-not $read.Wait(15000)){throw 'HUD RPC deadline exceeded'}
+            $read=$reader.ReadLineAsync();if(-not $read.Wait(15000)){throw "HUD RPC deadline exceeded: $verb (window=$Window, target=$target)"}
             $answer=$read.Result|ConvertFrom-Json
             if($AllowError){return $answer}
             if(-not $answer.ok){throw "$verb : $($answer.error)"};return $answer.result

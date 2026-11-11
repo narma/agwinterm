@@ -7,4 +7,5 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/Agwinterm.Core/Agwinterm.Core.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/Agwinterm.Win32/NativeKeyText.cs" Link="NativeKeyText.cs" /></ItemGroup>
 </Project>

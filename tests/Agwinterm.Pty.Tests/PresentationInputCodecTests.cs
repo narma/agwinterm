@@ -5,6 +5,37 @@ namespace Agwinterm.Pty.Tests;
 
 public class PresentationInputCodecTests
 {
+    [Theory]
+    [InlineData(1)] [InlineData(2)] [InlineData(0)]
+    public async Task ShiftPunctuationPreservesTextAndConsumedModifiers(uint action)
+    {
+        var expected = new TerminalInput.Key(0xBA, action, 1, ":", ';', 1, ':', 0x10, 0x27);
+        using var stream = new MemoryStream(PresentationInputCodec.Encode(expected, "owner", 2, 1));
+        Assert.Equal(expected, (await PresentationInputCodec.ReadAsync(stream, "owner", 2, 0, default)).Input);
+    }
+    [Theory]
+    [InlineData(0, 1, ":")] [InlineData(0, 2, ":")] [InlineData(0, 0, "")]
+    [InlineData(3, 1, ":")] [InlineData(3, 2, ":")] [InlineData(3, 0, "\u001b[59;2:3u")]
+    public async Task ShiftPunctuationSurvivesHostEncodingAndWslFraming(int flags, uint action, string expected)
+    {
+        using var core = new Agwinterm.Core.GhosttyTerminalCore(20, 5);
+        core.Feed(System.Text.Encoding.ASCII.GetBytes($"\u001b[={flags}u"));
+        var key = new TerminalInput.Key(0xBA, action, 1, ":", ';', 1, ':', 0x10, 0x27);
+        using var wire = new MemoryStream(PresentationInputCodec.Encode(key, "owner", 2, 1));
+        var decoded = await PresentationInputCodec.ReadAsync(wire, "owner", 2, 0, default);
+        byte[] encoded = OwnerInputQueue.Encode(core, decoded.Input);
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(expected), encoded);
+        using var pipe = new MemoryStream();
+        using var frames = new WslPtyConnection.InputFrames(pipe);
+        frames.Write(encoded);
+        byte[] framed = pipe.ToArray();
+        if (encoded.Length == 0) Assert.Empty(framed);
+        else
+        {
+            Assert.Equal(encoded.Length, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(framed));
+            Assert.Equal(encoded, framed[4..]);
+        }
+    }
     [Fact]
     public async Task DisplayMutationIsDistinctFromRawChildInput()
     {
