@@ -354,7 +354,7 @@ internal partial class Program
 
     private void Render()
     {
-        UpdateWebPresentation();
+        if (!_restoring) UpdateWebPresentation();
         if (_rt is null || _brush is null) return;
         _textBlinkVisible = false;
         long tStart = Stopwatch.GetTimestamp();
@@ -582,7 +582,15 @@ internal partial class Program
                     presentedSequence=checked((long)frame.Identity.Sequence);
                     if(session is ServerSession remote) _presentationCredits.Add((remote,frame.Identity.Sequence));
                 }
-                else view.Screen.CopyCellsTo(_cellSnap);
+                else
+                {
+                    // Before the first owner frame (notably while WSL starts),
+                    // these are local placeholder/error cells, not resolved RGB.
+                    // Resolve their defaults through the pane theme instead of
+                    // painting Cell.Empty's black backing over the themed window.
+                    resolvedColors = false;
+                    view.Screen.CopyCellsTo(_cellSnap);
+                }
             }
             else if (nativePaint is not null)
             {
@@ -887,6 +895,15 @@ internal partial class Program
         var brush = _brush!;
         rt.BeginDraw();
         rt.Clear(C4(_theme.DefaultBackground));
+
+        // Restoration is synchronous and the saved tree is only partially built.
+        // Its progress paint must not query hosted terminal surfaces or web views.
+        if (_restoring)
+        {
+            if (!_isQuickWindow) DrawTitleBar(rt, brush);
+            DrawToast(rt, brush);
+            return;
+        }
 
         // Dashboard grid overlay replaces the terminal content while it's up (agterm #202); the sidebar
         // and title bar still render below.

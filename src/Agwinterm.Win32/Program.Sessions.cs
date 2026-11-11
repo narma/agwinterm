@@ -162,7 +162,11 @@ internal partial class Program
             try
             {
                 session = _sessionBackend.Create(paneId, cols, rows);
-                adopted = _restoring && session is ServerSession ss && ss.TryAdopt();
+                if (_restoring && session is ServerSession ss && (_restoreHostedIds is null || _restoreHostedIds.Contains(paneId)))
+                {
+                    using var adoptionTiming = _startupJournal?.Measure("pane.adopt", paneId);
+                    adopted = ss.TryAdopt();
+                }
             }
             catch (Exception ex)
             {
@@ -197,8 +201,11 @@ internal partial class Program
         // used to repaint the (unchanged!) foreground at the full frame cap, starving typing on slow
         // machines. The emulator still consumes everything; switching to the pane shows current
         // content, and the sidebar title catches up on the next paint (cursor blink at the latest).
+        int firstOutputLogged = 0;
         session.OutputReceived += () =>
         {
+            if (Interlocked.Exchange(ref firstOutputLogged, 1) == 0)
+                _startupJournal?.Mark("pane.first-output", pane.Id);
             long gen = session.Emulator.ScrollGeneration;
             if (gen != pane.LastScrollGen) { pane.LastScrollGen = gen; pane.ScrollOffset = 0; }
             // Synchronized output (DECSET ?2026): while the app is mid-frame, defer painting so a

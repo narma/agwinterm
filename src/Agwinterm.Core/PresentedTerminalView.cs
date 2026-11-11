@@ -53,7 +53,8 @@ public sealed class PresentedTerminalView : ITerminalCore, IDisposable
             {
                 if(col == _screen.Cols) { row++; col=0; }
                 if(row >= _screen.Rows) break;
-                _screen[row,col++]=Cell.Empty with { Rune=rune.Value,Foreground=new(255,100,100) };
+                var errorColor = new Color(255,100,100);
+                _screen[row,col++]=Cell.Empty with { Rune=rune.Value,Foreground=errorColor,FgSpec=ColorSpec.FromRgb(errorColor) };
             }
             if(row >= _screen.Rows) break;
         }

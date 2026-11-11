@@ -650,12 +650,13 @@ internal partial class Program
 
     private void DrawToast(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush)
     {
-        if (_toastText is null) return;
+        string? text = _startupProgress ?? _toastText;
+        if (text is null) return;
         int cw = ClientW(), ch = ClientH();
         // Wrapped inside the content area: a reload's toast carries every note of the keys it applied
         // (a refused hotkey, a backend switch), and a single unbounded line ran off both edges.
         float maxW = Math.Max(120f, (cw - _sidebarW) - 32f);
-        string displayText = _setOpen ? _toastText + "\nCtrl+C to copy" : _toastText;
+        string displayText = _setOpen && _startupProgress is null ? text + "\nCtrl+C to copy" : text;
         using var layout = _dwrite.CreateTextLayout(displayText, _uiFont, Math.Max(1f, maxW - 32f), Math.Max(1f, ch - 48f));
         layout.WordWrapping = WordWrapping.Wrap;
         float tw = Math.Min(maxW, layout.Metrics.Width + 32f), th = Math.Max(34f, layout.Metrics.Height + 16f);
@@ -1918,6 +1919,7 @@ internal partial class Program
     /// <summary>Rebuild the tree from state.json via the normal Create* paths. Returns false to fall back to a default.</summary>
     private bool TryRestoreState()
     {
+        using var restoreTiming = _startupJournal?.Measure("window.restore", Id);
         AppState? st;
         try
         {
@@ -1937,8 +1939,16 @@ internal partial class Program
             if (ShellCompletion.ValidToken(pane.PromptToken)) _restoredPromptTokens.TryAdd(pane.Id, pane.PromptToken!);
 
         _restoring = true;
+        int restoreTotal = st.Workspaces.Sum(w => w.Sessions?.Count ?? 0), restoreIndex = 0;
+        long lastProgressPaint = 0;
         try
         {
+            if (_sessionBackend is ServerSessionBackend backend)
+            {
+                using var inventoryTiming = _startupJournal?.Measure("host.restore-inventory", Id);
+                try { _restoreHostedIds = backend.GetExistingSessionIds(); }
+                catch { _restoreHostedIds = null; } // Unknown: retain the ordinary per-pane adoption path.
+            }
             // A hand-edited or pre-P2 file may carry a width the chrome cannot draw (0 was what a
             // hidden sidebar used to save); that falls back to the default rather than to a 3-DIP tree.
             _sidebarWShown = Agwinterm.Pty.SidebarWidths.InRange((long)st.SidebarWidth) ? st.SidebarWidth : SidebarWFull;
@@ -1957,6 +1967,17 @@ internal partial class Program
                 ws.DefaultDir = string.IsNullOrWhiteSpace(w.DefaultDir) ? null : w.DefaultDir;
                 foreach (var s in w.Sessions ?? new List<SessionState>())
                 {
+                    using var sessionTiming = _startupJournal?.Measure("session.restore", s.Id);
+                    _startupProgress = $"Restoring sessions… {++restoreIndex}/{restoreTotal}";
+                    // UpdateWindow can wait for presentation. Painting every pane
+                    // turns a fast restore into N display-frame waits; keep progress
+                    // visible without paying that cost for each small session.
+                    if (restoreIndex == 1 || Stopwatch.GetElapsedTime(lastProgressPaint).TotalMilliseconds >= 100)
+                    {
+                        InvalidateRect(_hwnd, IntPtr.Zero, false);
+                        UpdateWindow(_hwnd);
+                        lastProgressPaint = Stopwatch.GetTimestamp();
+                    }
                     // Back-compat: a pre-splits session has no Panes — synthesize one from its Cwd/FontSize.
                     var pl = (s.Panes is { Count: > 0 })
                         ? s.Panes
@@ -2172,7 +2193,7 @@ internal partial class Program
                 lock (_workspaces) ws.Expanded = w.Expanded; // CreateSession forces Expanded=true; restore the saved state
             }
         }
-        finally { _restoring = false; _restoredPromptTokens.Clear(); }
+        finally { _restoring = false; _restoredPromptTokens.Clear(); _startupProgress = null; _restoreHostedIds = null; }
 
         // Restore sidebar mode + workspace focus (Wave D1). Focus that no longer resolves is dropped.
         _sidebarMode = string.Equals(st.SidebarMode, "flagged", StringComparison.OrdinalIgnoreCase) ? SidebarMode.Flagged : SidebarMode.Tree;
