@@ -44,7 +44,15 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
             if(!_visible) return null;
             if(_scrollOffset != scrollOffset || _cellWidth != cellWidth || _cellHeight != cellHeight)
             { _scrollOffset=scrollOffset; _cellWidth=cellWidth; _cellHeight=cellHeight; _viewportRevision++; }
-            return _frames.Capture(scrollOffset,cellWidth,cellHeight,_viewportRevision);
+            var frame = _frames.Capture(scrollOffset,cellWidth,cellHeight,_viewportRevision);
+            if (frame is not null && frame.Identity.ViewportRevision != _viewportRevision)
+            {
+                // A synchronized-output hold can return the previous viewport.
+                // Do not acknowledge it over a newer user scroll request.
+                frame.Dispose(); return null;
+            }
+            if (frame is not null) _scrollOffset = frame.State.ScrollOffset;
+            return frame;
         }
     }
     public TerminalInputAcceptance Submit(TerminalInput input)

@@ -550,6 +550,11 @@ internal partial class Program
             em.CellPixelWidth = Math.Max(1, (int)cw); em.CellPixelHeight = Math.Max(1, (int)ch);  // image cell geometry
             hist = em.HistoryCount;
             bool isAlt = em.IsAltScreen;
+            if (selPane is not null && selPane.LastScrollGen != em.ScrollGeneration)
+            {
+                selPane.LastScrollGen = em.ScrollGeneration;
+                if (_config.AlwaysFollowOutput) selPane.ScrollOffset = scrollOffset = 0;
+            }
             off = isAlt ? 0 : Math.Clamp(scrollOffset, 0, hist);
             nativePaint = em as GhosttyTerminalCore;
             // Explicit text/history reads have separate storage. A live Ghostty
@@ -570,6 +575,9 @@ internal partial class Program
                 if(frame is not null)
                 {
                     var state=frame.State;
+                    if (selPane is not null && selPane.ScrollOffset == scrollOffset &&
+                        (session is not ServerSession owner || frame.Identity.ViewportRevision == owner.PresentationViewportRevision))
+                        selPane.ScrollOffset = state.ScrollOffset;
                     cols=state.Columns; rows=state.Rows; hist=state.HistoryRows; off=state.ScrollOffset;
                     cursorCol=state.CursorColumn; cursorRow=state.CursorRow;
                     cursorVisible=state.CursorVisible; cursorShape=state.CursorShape;
@@ -621,6 +629,8 @@ internal partial class Program
             using var frame = localPresentation.Capture(off,Math.Max(1,(int)cw),Math.Max(1,(int)ch));
             if (frame is null) return;
             var state = frame.State;
+            if (selPane is not null && selPane.ScrollOffset == scrollOffset)
+                selPane.ScrollOffset = state.ScrollOffset;
             cols = state.Columns; rows = state.Rows; hist = state.HistoryRows; off = state.ScrollOffset;
             cursorCol = state.CursorColumn; cursorRow = state.CursorRow;
             cursorVisible = state.CursorVisible; cursorShape = state.CursorShape;

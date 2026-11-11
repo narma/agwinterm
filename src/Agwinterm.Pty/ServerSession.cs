@@ -722,6 +722,7 @@ public sealed partial class ServerSession : ISession
     }
     private TerminalInputAcceptance SendViewportLocked()
         => SubmitInput(new TerminalInput.Viewport(++_viewportRevision,Cols,Rows,_viewportCellWidth,_viewportCellHeight,_viewportScroll,_viewportVisible));
+    public ulong PresentationViewportRevision { get { lock (_sync) return _viewportRevision; } }
     internal TerminalFrame.Lease? CapturePresentation(int scrollOffset,int cellWidth,int cellHeight)
     {
         if(scrollOffset < 0 || cellWidth is < 1 or > 65535 || cellHeight is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(scrollOffset));
@@ -731,7 +732,10 @@ public sealed partial class ServerSession : ISession
             bool changed=_viewportScroll != scrollOffset || _viewportCellWidth != cellWidth || _viewportCellHeight != cellHeight || !_viewportVisible;
             _viewportScroll=scrollOffset; _viewportCellWidth=cellWidth; _viewportCellHeight=cellHeight; _viewportVisible=true;
             if(_started && (changed || _viewportRevision == 0)) SendViewportLocked();
-            return ((PresentedTerminalView)Emulator).AcquireFrame();
+            var frame = ((PresentedTerminalView)Emulator).AcquireFrame();
+            if (frame is not null && frame.Identity.ViewportRevision == _viewportRevision)
+                _viewportScroll = frame.State.ScrollOffset;
+            return frame;
         }
     }
     internal TerminalInputAcceptance ExecutePresentation(TerminalCommand command)

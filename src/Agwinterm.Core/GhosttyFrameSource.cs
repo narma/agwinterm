@@ -16,6 +16,9 @@ public sealed class GhosttyFrameSource : IDisposable
     private System.Buffers.ArrayPool<Cell>? _pool = System.Buffers.ArrayPool<Cell>.Create(TerminalFrame.MaximumCells,2);
     private ulong _sequence;
     private bool _disposed;
+    private GhosttyAnchor? _viewportAnchor;
+    private int _requestedOffset, _resolvedOffset;
+    private ulong _anchorRevision;
     private static long _controlImageGeneration;
     private Dictionary<KittyImage,GhosttyImage> _controlImages = new(ReferenceEqualityComparer.Instance);
 
@@ -40,7 +43,24 @@ public sealed class GhosttyFrameSource : IDisposable
                 // Do not pair current metadata with an older synchronized-output viewport.
                 if (_core.SynchronizedOutput) return _cache.Acquire();
                 _core.CellPixelWidth = cellWidth; _core.CellPixelHeight = cellHeight;
-                scrollOffset = Math.Clamp(scrollOffset, 0, _core.HistoryCount);
+                int requested = scrollOffset;
+                // Owner captures repeat the request; local callers acknowledge the
+                // resolved offset. Neither should move the content anchor.
+                bool moved = requested != _resolvedOffset &&
+                    (viewportRevision != _anchorRevision || requested != _requestedOffset);
+                if (_core.IsAltScreen || requested == 0 || moved)
+                {
+                    _viewportAnchor?.Dispose(); _viewportAnchor = null;
+                }
+                scrollOffset = _core.IsAltScreen ? 0 : Math.Clamp(requested, 0, _core.HistoryCount);
+                if (_viewportAnchor is { } anchor)
+                    scrollOffset = anchor.TryLocate(out int row, out _)
+                        ? Math.Clamp(_core.HistoryCount - row, 0, _core.HistoryCount)
+                        : _core.HistoryCount;
+                if (scrollOffset > 0 && _viewportAnchor is null)
+                    _viewportAnchor = _core.TrackPoint(_core.HistoryCount - scrollOffset, 0);
+                _requestedOffset = requested; _resolvedOffset = scrollOffset;
+                _anchorRevision = viewportRevision;
                 uint modes = (_core.MouseClick ? 1u : 0) | (_core.MouseDrag ? 2u : 0) |
                     (_core.MouseMotion ? 4u : 0) | (_core.MouseSgr ? 8u : 0) |
                     (_core.MouseSgrPixels ? 16u : 0) | (_core.BracketedPaste ? 32u : 0) |
@@ -76,7 +96,7 @@ public sealed class GhosttyFrameSource : IDisposable
 
     public void Dispose()
     {
-        lock (_captureLock) { _disposed = true; _cache.Dispose(); _scratch = []; _pool = null; _controlImages.Clear(); }
+        lock (_captureLock) { _viewportAnchor?.Dispose(); _viewportAnchor = null; _disposed = true; _cache.Dispose(); _scratch = []; _pool = null; _controlImages.Clear(); }
     }
     public TerminalFrame.Lease? AcquireCached() => _cache.Acquire();
 

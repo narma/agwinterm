@@ -566,7 +566,7 @@ public static class AgentSkill
         - `agwintermctl config get <key>` · `config set <key> <value>` — read/change a setting (persists to agwinterm.conf, applies live)
           Keys: font-family, font-size, cursor-style, cursor-blink, cursor-blink-ms, theme, scrollback-lines,
           inactive-pane-dim (0-100, dims non-active split panes), window-opacity (30-100), sidebar-tint (-100..100),
-          scroll-speed (1-10), new-session-dir, right-click-paste, copy-on-select, desktop-notifications, shell-integration,
+          scroll-speed (1-10), follow-output (bottom default / always), new-session-dir, right-click-paste, copy-on-select, desktop-notifications, shell-integration,
           restore-commands, blocked-sound, omp-theme. Changing the theme retints the WHOLE window (sidebar/title/status), not just the terminal.
 
         ## Config / restore

@@ -159,6 +159,7 @@ public sealed class TerminalConfig
 
     /// <summary>Scrollback wheel speed: lines scrolled per wheel notch, 1–10. Default 3.</summary>
     public int ScrollSpeed { get; set; } = 3;
+    public bool AlwaysFollowOutput { get; set; }
 
     /// <summary>oh-my-posh theme (a theme name or a full .omp.json path) applied to new pwsh sessions,
     /// overriding the profile's theme. Empty = use whatever the profile sets. Set via the in-app picker.</summary>
@@ -361,6 +362,9 @@ public sealed class TerminalConfig
         # Scrollback wheel speed: lines per wheel notch (1-10).
         scroll-speed = 3
 
+        # Follow output only at the bottom, or always jump to the end.
+        follow-output = bottom
+
         # oh-my-posh theme for new pwsh sessions (a theme name or a full .omp.json path); empty = use
         # the profile's theme. Pick live from the action palette -> "oh-my-posh Theme..." (--persist saves here).
         omp-theme =
@@ -494,6 +498,9 @@ public sealed class TerminalConfig
                 case "sidebar-tint": if (int.TryParse(val, out var st)) cfg.SidebarTint = System.Math.Clamp(st, -100, 100); break;
                 case "sidebar-font-size": if (int.TryParse(val, out var sfs)) cfg.SidebarFontSize = System.Math.Clamp(sfs, 9, 20); break;
                 case "new-session-dir": cfg.NewSessionDir = val; break;
+                case "follow-output":
+                    if (val is "bottom" or "always") cfg.AlwaysFollowOutput = val == "always";
+                    break;
                 case "scroll-speed": if (int.TryParse(val, out var ss)) cfg.ScrollSpeed = System.Math.Clamp(ss, 1, 10); break;
                 case "omp-theme": cfg.OmpTheme = val; break;
                 case "omp-integration":   // legacy alias: false = profile/no-injection (an explicit prompt-engine line later wins)
