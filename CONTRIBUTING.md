@@ -21,7 +21,7 @@ Weigh what a feature adds against the code it brings with it.
 
 ## Development setup
 
-Building needs Windows x64 and the **.NET 10 SDK** (the exact version is pinned in [`global.json`](global.json)). Prepare the [pinned Ghostty adapter](native/ghostty-vt/README.md) before launching a development build.
+Building needs Windows x64 and the **.NET 11 SDK** (the exact version is pinned in [`global.json`](global.json)). Prepare the [pinned Ghostty adapter](native/ghostty-vt/README.md) before launching a development build.
 
 ```powershell
 dotnet build Agwinterm.slnx -c Release
@@ -45,7 +45,7 @@ cargo build --release --manifest-path native/Cargo.toml
 
 Build and the unit tests must be green before you send a PR. `Agwinterm.Core` treats warnings as errors and every project has nullable reference types on, so a new warning fails the build rather than accumulating.
 
-**One Release output root is fresh.** The solution builds with Platform=x64, so the app lands in `src\Agwinterm.Win32\bin\x64\Release\net10.0-windows\win-x64\`. A sibling `bin\Release\...` tree may exist from older configurations and is never refreshed; do not run or test from it.
+**One Release output root is fresh.** The solution builds with Platform=x64, so the app lands in `src\Agwinterm.Win32\bin\x64\Release\net11.0-windows\win-x64\`. A sibling `bin\Release\...` tree may exist from older configurations and is never refreshed; do not run or test from it.
 
 ### The interactive suites
 
@@ -100,7 +100,7 @@ AI-assisted development is welcome. The expectations for those PRs are specific.
 
 - Review your own code before submitting it, whether you or a tool wrote it.
 - Follow the project's conventions. Read the codebase first, with or without AI help. The ones that catch people out:
-  - **Module boundary.** `Agwinterm.Core` is host-free and targets plain `net10.0`: no Win32, no Direct2D, no `System.Windows`, no console. That is what lets its tests run with no window. The emulator, config and keymap parsing, the menu model and the host-actions seam (`IHostActions`) live there. `Agwinterm.Pty` owns sessions, the control server and the agent skill; `Agwinterm.Win32` is the shell, and its `Program` class is split by concern across `Program.*.cs`. When a feature splits, push the host-free half down into `Agwinterm.Core` and keep the Win32 side a thin adapter for side effects.
+  - **Module boundary.** `Agwinterm.Core` is host-free and targets plain `net11.0`: no Win32, no Direct2D, no `System.Windows`, no console. That is what lets its tests run with no window. The emulator, config and keymap parsing, the menu model and the host-actions seam (`IHostActions`) live there. `Agwinterm.Pty` owns sessions, the control server and the agent skill; `Agwinterm.Win32` is the shell, and its `Program` class is split by concern across `Program.*.cs`. When a feature splits, push the host-free half down into `Agwinterm.Core` and keep the Win32 side a thin adapter for side effects.
   - **Threads.** The window has one UI thread. A control verb arrives on a pipe thread and reaches window state only through `PostVerb`, which marshals the work onto the UI thread; session output arrives on reader threads and requests a repaint rather than drawing. Touching `_config`, panes, the tree or Direct2D from another thread is a bug even when it appears to work.
   - **Tests.** xUnit in `tests/Agwinterm.Core.Tests` (by concern: `NavigationTests` covers the keymap, `MenuModelTests` the menus, and so on) and `tests/Agwinterm.Pty.Tests`. Add focused coverage to the file that already owns the behaviour; create a new one only when that gives clearer ownership. Behaviour that needs a window goes into an interactive suite, see above.
   - **Documentation.** A change to the control API updates `docs/control-api.md` and the agent skill in `src/Agwinterm.Pty/AgentSkill.cs`, and `tests/conformance/control-api.json` when the verb is covered there. A change to the keymap format updates `Keymap.StarterText` (the header written to a new `keymap.conf`) and `docs/user-guide.md`. There is no CHANGELOG to edit; release notes are written at release time.

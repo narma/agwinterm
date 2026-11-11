@@ -122,10 +122,15 @@ The six batches were not randomized or interleaved; only the three new variants
 were measured in this follow-up. Cold-start, first paint, production Rust/session
 host behavior and steady-state async performance remain outside this protocol.
 
-## Release policy
+## Release policy at the time of measurement
 
 Installer, portable and standalone CLI publications explicitly enable ReadyToRun.
 The default release stays on .NET 10. The additional .NET 11 RC3 release enables
 runtime-async=on and ReadyToRun, with a separate agwinterm-net11- asset prefix.
 The .NET 11 upload waits for the primary release job to avoid release-creation races.
+
+Starting with [v0.30.5](releases/v0.30.5.md), stable .NET 11 is the default,
+with runtime async and ReadyToRun enabled. Explicit `agwinterm-net10-` downloads
+remain supported. The measurements above describe RC3 and have not been rerun
+against the final runtime.
 

@@ -153,8 +153,8 @@ or timeout; the guest VM remains available until you stop it. After a run you ca
 open a normal viewer with `wsb connect --id <id>` to inspect that guest.
 
 The default paths match the solution's build outputs: the app under
-`src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/` and the CLI under
-`src/Agwinterm.Ctl/bin/Release/net10.0-windows/`. No manual staging into
+`src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/` and the CLI under
+`src/Agwinterm.Ctl/bin/Release/net11.0-windows/`. No manual staging into
 `artifacts/local/` is needed. Pass both `-Exe` and `-CtlExe` for a packaged build
 or other output directories; the runner does not search old artifact directories.
 `-PowerShellHome` and `-DotnetHome` override the host dependency locations.
