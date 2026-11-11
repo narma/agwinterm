@@ -15,9 +15,9 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $project = Join-Path $repo 'tests/Agwinterm.WslLiveHarness/Agwinterm.WslLiveHarness.csproj'
 & dotnet build $project --verbosity quiet
 if ($LASTEXITCODE -ne 0) { throw 'Windows live bridge harness build failed' }
-Copy-Item -LiteralPath $native -Destination (Join-Path $repo 'tests/Agwinterm.WslLiveHarness/bin/Debug/net10.0-windows/agwinterm-hook-linux-x64')
+Copy-Item -LiteralPath $native -Destination (Join-Path $repo 'tests/Agwinterm.WslLiveHarness/bin/Debug/net11.0-windows/agwinterm-hook-linux-x64')
 . (Join-Path $repo 'tests/ui/lib.ps1')
 $hostExe = Resolve-Binary '' 'Agwinterm.Win32.exe' 'Agwinterm.Win32'
 if (!$hostExe) { throw 'Built Windows session host not found' }
-& dotnet (Join-Path $repo 'tests/Agwinterm.WslLiveHarness/bin/Debug/net10.0-windows/Agwinterm.WslLiveHarness.dll') $Distro "$BuildDirectory/zmx/zig-out/bin/zmx" $hostExe (Join-Path $PSScriptRoot 'zmx/terminal-workload.py')
+& dotnet (Join-Path $repo 'tests/Agwinterm.WslLiveHarness/bin/Debug/net11.0-windows/Agwinterm.WslLiveHarness.dll') $Distro "$BuildDirectory/zmx/zig-out/bin/zmx" $hostExe (Join-Path $PSScriptRoot 'zmx/terminal-workload.py')
 if ($LASTEXITCODE -ne 0) { throw 'Windows live bridge fixture failed' }

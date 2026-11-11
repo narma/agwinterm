@@ -8,8 +8,8 @@ $PSNativeCommandUseErrorActionPreference=$false
 $OutputEncoding=[Text.UTF8Encoding]::new($false)
 if ($OriginSocket -notlike '/tmp/aw-stage2-peer-*/control.sock' -and $OriginSocket -notlike '/tmp/aw-stage4-peer-*/control.sock') { throw 'Only an isolated origin fixture socket is accepted' }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe'
-$ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$exe=Join-Path $repo 'src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe'
+$ctl=Join-Path $repo 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $id='agwinterm-remote-test-'+[guid]::NewGuid().ToString('N')
 $state=Join-Path $env:LOCALAPPDATA $id
 $ui=$null
@@ -513,7 +513,7 @@ public static class RemoteAskProbe {
     if (-not ($after.Sessions | Where-Object { $_.Session.Id -eq $candidate.Session.Id })) { throw 'Absent-origin Recent mutated real origin' }
     Write-Host 'PASS absent-origin Recent stays unavailable and preserves original work'
     if ($TerminalFixture) {
-        & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net10.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture $exe
+        & dotnet (Join-Path $repo 'tests/Agwinterm.RemoteTerminalHarness/bin/Release/net11.0-windows/Agwinterm.RemoteTerminalHarness.dll') $Distro $LinuxUser $Destination $AgentSocket $OriginSocket $Bridge $TerminalFixture $exe
         if ($LASTEXITCODE -ne 0) { throw 'Remote terminal continuity harness failed' }
     }
 } finally {

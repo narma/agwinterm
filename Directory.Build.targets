@@ -1,6 +1,6 @@
 <Project>
-  <!-- Opt in for the complete project graph, including project references. -->
-  <PropertyGroup Condition="'$(AgwintermNet11)' == 'true'">
+  <!-- Apply to the complete .NET 11 project graph, including project references. -->
+  <PropertyGroup Condition="'$(AgwintermFrameworkMajor)' == '11'">
     <PublishReadyToRun Condition="'$(PublishReadyToRun)' == ''">true</PublishReadyToRun>
     <UseRuntimeAsync Condition="'$(UseRuntimeAsync)' == ''">true</UseRuntimeAsync>
     <Features Condition="'$(UseRuntimeAsync)' == 'true'">$(Features);runtime-async=on</Features>

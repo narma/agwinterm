@@ -1,6 +1,6 @@
 # agwinterm installers
 
-Download published builds from [narma/agwinterm releases](https://github.com/narma/agwinterm/releases). Standard assets use .NET 10. The separate `agwinterm-net11-` assets use .NET 11. Personal local installs use .NET 11 with ReadyToRun and `runtime-async=on` for the GUI, host and CLI.
+Download published builds from [narma/agwinterm releases](https://github.com/narma/agwinterm/releases). Standard assets use .NET 11. The separate `agwinterm-net10-` assets are the supported .NET 10 option. Starting with v0.30.5, .NET 10 builds keep .NET 10 on updates; all older builds move to .NET 11. The `agwinterm-net11-` aliases keep updates working for older .NET 11 builds. Personal local installs use .NET 11 with ReadyToRun and `runtime-async=on` for the GUI, host and CLI.
 
 Builds **per-user** Windows installers — end users need **no** .NET runtime installed:
 
@@ -30,8 +30,13 @@ installer\build.ps1        # full installer
 installer\build-portable.ps1
 ```
 
+The default SDK is stable .NET 11. To build the supported .NET 10 edition, set
+`$env:AgwintermNet11 = 'false'` before running either packaging script. Release CI
+publishes those files with an explicit `agwinterm-net10-` prefix. Leave the variable
+unset for normal .NET 11 builds. Local GUI updates always select .NET 11.
+
 Prereqs:
-- .NET SDK with the `net10.0-windows` target (the repo pins .NET 10).
+- .NET SDK with the `net11.0-windows` target (the repo pins the stable .NET 11 SDK).
 - Rust and the Windows linker for the Windows integration helper.
 - The static Linux hooks at `artifacts/wsl-hook/agwinterm-hook-linux-x64` and `agwinterm-hook-linux-arm64`. PR and release CI build and test them on native Linux runners. Local builds can run `tools/build-wsl-hook.ps1` using Rust in WSL with the `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` targets installed; packaging builds missing artifacts automatically. The installer ships both Linux binaries and `agwinterm-hook.exe`.
 - [Inno Setup 6](https://jrsoftware.org/isinfo.php) — `ISCC.exe` on PATH, the default install location,

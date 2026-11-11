@@ -114,7 +114,7 @@ Pick-Query $complexQuery;Pick-Key 0x0d
 Check 'over-complex edited query disables choice but stays pending' ((Pick-Count)-eq 0 -and (Pick-Result).result-eq 'pending')
 Pick-Query 'a';Check 'valid query recovers the pending picker' ((Pick-Count)-eq 100)
 Pick-Key 0x0d;Check 'recovered query can choose original item' ((Pick-Result).result-eq 'picked' -and (Pick-Result).index-eq 0)
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $opened='Alpha'|& $ctl pick --no-block --pipe $pipe|ConvertFrom-Json
 Check 'real CLI stdin no-block returns id payload' ($LASTEXITCODE-eq 0 -and $opened.id)
 $reply=& $ctl pick result $opened.id --pipe $pipe|ConvertFrom-Json

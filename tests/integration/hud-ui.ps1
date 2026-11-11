@@ -1,5 +1,5 @@
 # Dedicated P13 fixture: private app-data, no clipboard/registry writes, exact owned job teardown.
-param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net10.0-windows/win-x64/Agwinterm.Win32.exe",
+param([string]$Exe="$PSScriptRoot/../../src/Agwinterm.Win32/bin/x64/Release/net11.0-windows/win-x64/Agwinterm.Win32.exe",
       [string]$TokenOwner=$env:AGWINTERM_TEST_OWNER,[switch]$Strict,
       [ValidateSet('managed','rust','ghostty')][string]$EmulatorCore='ghostty',
       [ValidateSet('in-process','server')][string]$LatencyHost='in-process',
@@ -254,7 +254,7 @@ public sealed class HudOwnedJob {
     }
     elseif($Suite-eq 'Command') {
         $commandArtifact=$artifact;$commandPipe=$pipe
-        $commandCtl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+        $commandCtl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
         function CommandRpc([string]$verb,$params,[string]$target,[switch]$AllowError){
             Rpc $verb $params $target -AllowError:$AllowError
         }
@@ -280,7 +280,7 @@ public sealed class HudOwnedJob {
     elseif($Suite-eq 'Ghostty') { . "$PSScriptRoot/ghostty-ui-cases.ps1" }
     elseif($Suite-eq 'Navigation') { . "$PSScriptRoot/navigation-ui-cases.ps1" }
     elseif($Suite-eq 'Quick') { . "$PSScriptRoot/quick-ui-cases.ps1" } else {
-    $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+    $ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
     $null=& $ctl session hud --spinner 'CLI HUD' --detail 'private acceptance' --size-percent 35 --target $session --pipe $pipe --json
     Check 'CLI default open accepts spinner before message and numeric width' ($LASTEXITCODE-eq 0 -and (Node).hud.message-eq 'CLI HUD' -and (Node).hud.sizePercent-eq 35)
     foreach($selector in 'target','window'){

@@ -270,7 +270,7 @@ Check 'flagged mode refuses workspace navigation' (-not (Rpc 'workspace.go' @{to
 $null=Rpc 'sidebar' @{op='mode:tree'}
 Check 'explicit target refuses without moving' (-not (Rpc 'workspace.go' @{to='next'} $first -AllowError).ok -and (CurrentWs)-eq $second)
 Check 'quick window refuses library navigation' (-not (Rpc 'workspace.go' @{to='next'} -NoTarget -Window quick -AllowError).ok)
-$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net10.0-windows/agwintermctl.exe'
+$ctl=Join-Path $root 'src/Agwinterm.Ctl/bin/Release/net11.0-windows/agwintermctl.exe'
 $cli=& $ctl workspace go --to next --pipe $pipe --window active
 Check 'CLI --to routes to workspace go' ($LASTEXITCODE-eq 0 -and ([string]$cli).Trim()-eq $first)
 $cli=& $ctl workspace go prev --pipe $pipe --window active

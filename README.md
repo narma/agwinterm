@@ -62,7 +62,7 @@ Download the self-contained Windows x64 build from [this fork's releases](https:
 - **`agwinterm-setup-<version>.exe`** — per-user installer (Start-menu shortcut and uninstaller).
 - **`agwinterm-portable-<version>-win-x64.exe`** — a single self-contained exe, no installation; settings still live under `%LOCALAPPDATA%\agwinterm`. The CLI and WSL helpers for Linux x64/ARM64 are embedded and extracted on first use to `%LOCALAPPDATA%\agwinterm\portable-tools`.
 
-Standard assets use .NET 10. The separate `agwinterm-net11-` assets use .NET 11. The updater checks this fork and selects assets for the running build.
+Standard assets use .NET 11. The separate `agwinterm-net10-` assets are the supported .NET 10 option. Starting with v0.30.5, .NET 10 builds keep .NET 10 on updates; all older builds move to .NET 11. The `agwinterm-net11-` aliases keep updates working for older .NET 11 builds. The updater checks this fork and selects assets for the running build.
 
 Binaries are currently **unsigned**, so SmartScreen warns on first run → *More info → Run anyway*. Release artifacts carry **Sigstore build-provenance attestations**:
 

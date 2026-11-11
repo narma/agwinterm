@@ -7,8 +7,8 @@
 #
 # Usage:  pwsh tools/profile-memory.ps1 [-Exe <path>] [-Ctl <path>] [-Cycles 30]
 param(
-    [string]$Exe = "$PSScriptRoot\..\src\Agwinterm.Win32\bin\Debug\net10.0-windows\win-x64\Agwinterm.Win32.exe",
-    [string]$Ctl = "$PSScriptRoot\..\src\Agwinterm.Ctl\bin\Debug\net10.0-windows\agwintermctl.exe",
+    [string]$Exe = "$PSScriptRoot\..\src\Agwinterm.Win32\bin\Debug\net11.0-windows\win-x64\Agwinterm.Win32.exe",
+    [string]$Ctl = "$PSScriptRoot\..\src\Agwinterm.Ctl\bin\Debug\net11.0-windows\agwintermctl.exe",
     [int]$Cycles = 30
 )
 $ErrorActionPreference = 'Stop'
