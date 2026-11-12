@@ -37,7 +37,7 @@ jobs:
             artifacts/ghostty-build/search-tests/bin
             artifacts/ghostty-build/provenance.json
             artifacts/ghostty-build/licenses
-          key: ghostty-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json', 'native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**', '.github/workflows/ci.yml') }}
+          key: ghostty-native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json', 'native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**') }}
       - name: Cache pinned build toolchain
         if: steps.ghostty-native.outputs.cache-hit != 'true'
         uses: actions/cache@v5
@@ -92,6 +92,9 @@ jobs:
 
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
+
+  macos-remote:
+    uses: ./.github/workflows/macos-remote.yml
 
   ghostty-runtime:
     uses: ./.github/workflows/ghostty-runtime.yml
@@ -464,7 +467,7 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable, net10-publish, ghostty-contract, wsl-hook, ghostty-runtime]
+    needs: [windows-tests, bridge-fixtures, portable, net10-publish, ghostty-contract, wsl-hook, ghostty-runtime, macos-remote]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites

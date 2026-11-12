@@ -21,6 +21,9 @@ jobs:
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
 
+  macos-remote:
+    uses: ./.github/workflows/macos-remote.yml
+
   ghostty-runtime:
     uses: ./.github/workflows/ghostty-runtime.yml
 
@@ -103,7 +106,7 @@ jobs:
   publish-release:
     # A single writer publishes only after all four packages have succeeded.
     # Manual build-only runs exercise the same package jobs without creating a release.
-    needs: packages
+    needs: [packages, macos-remote]
     runs-on: ubuntu-latest
     permissions:
       contents: write
