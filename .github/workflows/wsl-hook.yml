@@ -29,7 +29,7 @@ jobs:
           sudo apt-get install -y zsh fish tcsh
           rustup target add ${{ matrix.target }}
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: native -> target
           key: ${{ matrix.target }}
@@ -50,7 +50,7 @@ jobs:
         env:
           AGWINTERM_TEST_POSIX_PATHS: '1'
         run: python3 tests/integration/wsl-scripts.py
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: wsl-hook-${{ matrix.arch }}
           path: artifacts/wsl-hook/agwinterm-hook-linux-${{ matrix.arch }}

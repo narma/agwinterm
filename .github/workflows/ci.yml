@@ -32,7 +32,7 @@ jobs:
       # Tests run below even on an exact hit; only native compilation is skipped.
       - name: Cache native Ghostty bundle
         id: ghostty-native
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             artifacts/ghostty-build/bin
@@ -42,7 +42,7 @@ jobs:
           key: ghostty-native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json', 'native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**') }}
       - name: Cache pinned build toolchain
         if: steps.ghostty-native.outputs.cache-hit != 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: artifacts/toolchains
           key: ghostty-zig-windows-${{ hashFiles('native/ghostty-vt/pin.json') }}
@@ -54,7 +54,7 @@ jobs:
         run: ./native/ghostty-vt/build.ps1 -PrepareOnly
       - name: Cache Ghostty packages and compiler outputs
         if: steps.ghostty-native.outputs.cache-hit != 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             artifacts/ghostty-source/.zig-cache
@@ -64,7 +64,7 @@ jobs:
           restore-keys: |
             ghostty-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json') }}-
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
@@ -85,7 +85,7 @@ jobs:
         shell: pwsh
         run: dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin
       - name: Upload build provenance
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ghostty-windows-provenance
           path: |
@@ -116,7 +116,7 @@ jobs:
           check-latest: false
           skip-lts-prepass: true
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
@@ -125,7 +125,7 @@ jobs:
       - name: Publish portable tool
         shell: pwsh
         run: ./installer/publish-portable-tool.ps1 -Tool ${{ matrix.tool }} -Destination artifacts/portable-tools
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: portable-tool-${{ matrix.tool }}
           path: artifacts/portable-tools/${{ matrix.tool == 'host' && 'Agwinterm.Host.exe' || 'agwintermctl.exe' }}
@@ -144,26 +144,26 @@ jobs:
           check-latest: false
           skip-lts-prepass: true
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
           restore-keys: |
             nuget-${{ runner.os }}-${{ runner.arch }}-
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: wsl-hook-*
           merge-multiple: true
           path: artifacts/wsl-hook
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: native -> target
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: portable-tool-*
           merge-multiple: true
@@ -198,7 +198,7 @@ jobs:
             cache: ui
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
@@ -210,7 +210,7 @@ jobs:
           check-latest: false
           skip-lts-prepass: true
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
@@ -456,7 +456,7 @@ jobs:
 
       - name: Retain native UI acceptance outcomes
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: native-ui-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           # Numeric summaries only; raw logs, screenshots and state stay local.
@@ -472,14 +472,14 @@ jobs:
 
       - name: Setup Go for Ralphex bridge fixtures
         id: go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.26.x'
           cache: false
 
       - name: Cache pinned Ralphex
         id: ralphex
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ runner.temp }}/ralphex-bin
           key: ralphex-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-v1.6.1
@@ -525,7 +525,7 @@ jobs:
       AgwintermNet11: 'false'
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native

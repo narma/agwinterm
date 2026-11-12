@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - name: Test remote page document lifecycle (host-free)
         run: node tests/integration/zmx/page-document-lifecycle-tests.mjs
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: native -> target
       - name: Test shared identity and build remote bridge
