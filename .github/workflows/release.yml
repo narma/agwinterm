@@ -39,7 +39,7 @@ jobs:
     env:
       AgwintermNet11: ${{ matrix.runtime == 'net11' && 'true' || 'false' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v7
         with:
           pattern: wsl-hook-*
@@ -115,7 +115,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v7
         with:
           pattern: release-*
@@ -292,7 +292,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
       - name: Pack and push to Chocolatey
         shell: pwsh
         env:

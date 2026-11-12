@@ -13,7 +13,7 @@ jobs:
     # avoid ARM capacity cancellations and cover the other macOS architecture.
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
       - name: Test remote page document lifecycle (host-free)
         run: node tests/integration/zmx/page-document-lifecycle-tests.mjs
       - uses: Swatinem/rust-cache@v2
