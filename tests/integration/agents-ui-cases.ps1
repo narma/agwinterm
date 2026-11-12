@@ -230,6 +230,26 @@ if ($SessionHost -eq 'server') {
     $null=Rpc 'session.status' @{status='blocked'} $liveHook
     Check 'hook-only bound agent is blocked before GUI restart' (AgentWait {($a=FindAgent 'Surviving hook') -and $a.Current.Name -like '*, Blocked,*'})
     AgentContext (FindAgent 'Surviving hook'); AgentMenuChoice 'Pin agent'
+    $completionHooks=@{}
+    foreach($label in @('Unread hook','Read hook')) {
+        $id=[string](Rpc 'session.new' @{name=$label;profile='Agent-lifetime';'no-select'=$true})
+        $completionHooks[$label]=$id
+        WaitAgentShell $id
+        $null=Rpc 'session.type' @{text="Write-Output ('live-'+'completion'); Start-Sleep -Seconds 120`r"} $id
+        if(-not (AgentWait {([string](Rpc 'session.text' @{} $id)).Contains('live-completion')})){throw 'Completion fixture did not start'}
+        $null=Rpc 'session.bind' @{agent='claude --resume fixture'} $id
+        $null=Rpc 'session.status' @{status='completed'} $id
+        if(-not (AgentWait {$null-ne (FindAgent $label)})){throw 'Completion row missing'}
+        AgentContext (FindAgent $label); AgentMenuChoice 'Pin agent'
+        if($label-eq 'Unread hook') {
+            $null=Rpc 'session.status' @{status='idle'} $id
+            Check 'unread hook Done survives idle before restart' (AgentWait {($a=FindAgent $label) -and $a.Current.Name -like '*, Done,*'})
+        } else {
+            InvokeElement (FindAgent $label)
+            Check 'read hook completion is acknowledged before restart' (AgentWait {($a=FindAgent $label) -and $a.Current.Name -like '*, Idle,*'})
+            $null=Rpc 'session.select' @{} $session
+        }
+    }
     $null=Rpc 'app.close-for-update'
     $null=$job.WaitExit(15000)
     # Keep the first owned job alive: its host and shell must survive this GUI-only restart.
@@ -241,6 +261,8 @@ if ($SessionHost -eq 'server') {
         $proc=[Diagnostics.Process]::GetProcessById($job.Pid)
         if(-not (AgentWait {$proc.Refresh();$script:hwnd=$proc.MainWindowHandle;$hwnd-ne [IntPtr]::Zero})){throw 'Adopted GUI missing'}
         Check 'adopted hook-only agent retains Blocked without a new hook' (AgentWait {($a=FindAgent 'Surviving hook') -and $a.Current.Name -like '*, Blocked,*'})
+        Check 'adopted unread hook preserves Done after latest idle' (AgentWait {($a=FindAgent 'Unread hook') -and $a.Current.Name -like '*, Done,*'})
+        Check 'adopted read hook does not resurrect Done' (AgentWait {($a=FindAgent 'Read hook') -and $a.Current.Name -like '*, Idle,*'})
         $null=Rpc 'session.type' @{text=[string][char]3;'allow-control'=$true} $liveHook
         Check 'adopted hook agent disappears on subsequent shell return' (AgentWait {$null-eq (FindAgent 'Surviving hook')})
     } finally { $survivingHostJob.Finish() }

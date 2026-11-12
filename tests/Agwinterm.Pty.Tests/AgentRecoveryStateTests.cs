@@ -7,6 +7,48 @@ public class AgentRecoveryStateTests
 {
     private static ShellCompletion Fresh() => new(Guid.NewGuid().ToString("N"), "");
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void AttentionRoundTripPreservesReadStateAndLatestProducerStatus(bool seen, bool idleAfterDone)
+    {
+        var activity = new AgentActivity();
+        activity.Observe(AgentStatus.Active, false);
+        activity.Observe(AgentStatus.Completed, false);
+        if (idleAfterDone) activity.Observe(AgentStatus.Idle, false);
+        activity.Display(seen);
+        Assert.True(activity.Restore(activity.Capture()! with { ChangedAt = 123456 }));
+        var pane = new PaneState { AgentAttention = activity.Capture() };
+        string json = System.Text.Json.JsonSerializer.Serialize(pane, RestoreState.Json);
+        var saved = System.Text.Json.JsonSerializer.Deserialize<PaneState>(json)!;
+        var restored = new AgentActivity();
+        Assert.True(restored.Restore(saved.AgentAttention));
+        // The restored session's StatusChanged callback must not change read state either.
+        restored.Observe(saved.AgentAttention!.RawStatus, false);
+        Assert.Equal(seen ? AgentStatus.Idle : AgentStatus.Completed, restored.Display(false));
+        Assert.Equal(activity.ChangedAt, restored.ChangedAt);
+        Assert.Equal(activity.Capture(), restored.Capture());
+        restored.Observe(AgentStatus.Active, false);
+        Assert.Equal(AgentStatus.Active, restored.Display(false));
+    }
+
+    [Fact]
+    public void AbsentOrInvalidAttentionCannotCreateAnAgent()
+    {
+        var activity = new AgentActivity();
+        Assert.Null(activity.Capture());
+        Assert.False(activity.Restore(null));
+        Assert.False(activity.Restore(new((AgentStatus)99, AgentStatus.Idle, false, 1)));
+        Assert.False(activity.Restore(new(AgentStatus.Idle, (AgentStatus)99, false, 1)));
+        Assert.False(activity.Restore(new(AgentStatus.Idle, AgentStatus.Idle, false, -1)));
+        Assert.False(activity.Reported);
+        activity.Observe(AgentStatus.Completed, false);
+        activity.Reset();
+        Assert.Null(activity.Capture());
+    }
+
     [Fact]
     public void OnlyAnAdoptedMatchingUnfinishedBindingRestoresPresence()
     {

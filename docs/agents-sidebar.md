@@ -9,6 +9,9 @@ the shell removes its agent rows, including pinned, idle and completed rows.
 A GUI-only restart restores hook-agent presence and its saved status only when the
 same hosted shell is adopted, its binding token matches, and no later shell prompt
 has invalidated the binding. A fresh shell or unverified saved command is not enough.
+The latest producer status and viewer attention are stored separately: unread Done
+survives a subsequent idle report and GUI restart; a completion already viewed stays
+read. Its original change time is retained instead of resetting its age on restart.
 
 * **Working**: the agent is busy.
 * **Blocked**: it needs an answer, permission, authentication, or has reported an
@@ -79,6 +82,7 @@ invalid input, reset/prompt lifecycle, bounded records and unread completion.
 rejects old/wrong-shell completions without disturbing the next agent.
 The `Agents` UI suite has 46 checks covering navigation, attention, nested records,
 pin/unpin, sorting, persistence, collapse, split titles and shell-return cleanup
-through the normal Hyper-V runner, plus three server-only checks that keep the host
-alive across GUI restart and verify hook status and subsequent exit cleanup. Run it with
+through the normal Hyper-V runner, plus seven server-only checks that keep the host
+alive across GUI restart and verify hook status, read/unread completion and subsequent
+exit cleanup. Run it with
 both in-process sessions and `-TestParameters @{SessionHost='server';SingleOwner=$true}`.

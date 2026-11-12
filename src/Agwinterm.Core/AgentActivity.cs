@@ -1,5 +1,7 @@
 namespace Agwinterm.Core;
 
+public sealed record AgentAttention(AgentStatus Status, AgentStatus RawStatus, bool Seen, long ChangedAt);
+
 /// <summary>Viewer-local attention state, separate from a producer's status and its lifetime.</summary>
 public sealed class AgentActivity
 {
@@ -8,6 +10,18 @@ public sealed class AgentActivity
     public bool Reported { get; private set; }
     private AgentStatus _raw;
     private bool _seen;
+    public AgentAttention? Capture() => Reported ? new(Status, _raw, _seen, ChangedAt) : null;
+    public bool Restore(AgentAttention? saved)
+    {
+        if (saved is null || !Enum.IsDefined(saved.Status) || !Enum.IsDefined(saved.RawStatus)
+            || saved.ChangedAt < 0) return false;
+        Status = saved.Status;
+        _raw = saved.RawStatus;
+        _seen = saved.Seen;
+        ChangedAt = saved.ChangedAt;
+        Reported = true;
+        return true;
+    }
     public void Reset()
     {
         Reported = false;
