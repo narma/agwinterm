@@ -61,7 +61,7 @@ public sealed class PtyHostServer : IDisposable
     /// Filled by the feed, taken by the raw-output handler of the same chunk, both on the pump thread.
     /// The theme is the one the UI put in the pane's environment (<see cref="ThemeColors"/>); without it
     /// the emulator answers no color query it would have to make up.</summary>
-    private sealed class QueryReplies : IHostActions
+    internal sealed class QueryReplies : IHostActions
     {
         private List<string> _pending = new();
         public Action<string>? ResponseSink;
@@ -99,7 +99,11 @@ public sealed class PtyHostServer : IDisposable
         public void ClipboardWrite(string text) => EffectSink?.Invoke(new() { Kind=3,Text=text });
         public void Bell() => EffectSink?.Invoke(new() { Kind=4 });
         public void CommandFinished(string token, long sequence)
-        { if(Completion?.Accept(token,sequence,persist:true) == true) EffectSink?.Invoke(new() { Kind=5,Text=token,CompletionSequence=sequence }); }
+        {
+            if (Completion?.Accept(token, sequence, persist: true) != true) return;
+            ProgramStatusCommandFinished();
+            EffectSink?.Invoke(new() { Kind=5,Text=token,CompletionSequence=sequence });
+        }
         public void Unhandled(string kind, string detail) { }
     }
 

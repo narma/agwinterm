@@ -39,14 +39,15 @@ internal partial class Program
             if (!pane.AgentActivity.Reported && pane.S.StatusSignal?.Snapshot.Version > pane.LastProgramStatusVersion)
                 pane.AgentActivity.Observe(pane.S.Status, viewed);
             var records = pane.ProgramStatuses.Records.ToList();
-            if (records.Count == 0 && (pane.AgentActivity.Reported || pane.AgentResume is not null ||
-                _agentPins.Contains(pane.Id + "/")))
-                result.Add(new(ses, pane, "", ses.SidebarName, ses.Ws.Name,
+            string paneName = string.IsNullOrWhiteSpace(ses.CustomName)
+                ? AutomaticSessionName(pane, allowStale: true) : ses.CustomName.Trim();
+            if (records.Count == 0 && pane.AgentActivity.Reported)
+                result.Add(new(ses, pane, "", paneName, ses.Ws.Name,
                     pane.AgentActivity.Display(viewed), pane.AgentActivity.ChangedAt, _agentPins.Contains(pane.Id + "/")));
             foreach (var record in records)
             {
                 if (!pane.ProgramActivities.TryGetValue(record.Id, out var activity)) continue;
-                string name = record.Title.Length > 0 ? record.Title : record.Id.Length > 0 ? record.Id : ses.SidebarName;
+                string name = record.Title.Length > 0 ? record.Title : record.Id.Length > 0 ? record.Id : paneName;
                 string app = record.App;
                 string parent = record.Id;
                 while (app.Length == 0 && parent.Length > 0)

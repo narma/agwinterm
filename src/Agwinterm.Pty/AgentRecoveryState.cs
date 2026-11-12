@@ -15,6 +15,12 @@ public sealed class AgentRecoveryState
     public int Sequence;
     private int _restartReservation;
 
+    /// <summary>A saved command is presence evidence only when the exact hosted shell
+    /// survived and has not reached another prompt since the binding was accepted.</summary>
+    public bool HasSurvivingBinding(bool adopted) => adopted && !string.IsNullOrWhiteSpace(Command)
+        && ShellCompletion.ValidToken(Token) && Token == Completion.Token
+        && Generation >= 0 && Completion.Checkpoint <= Generation;
+
     /// <summary>Reserve before the replacement can start. An old pending lookup cannot land
     /// in the new workload; a request from the replacement supersedes this reservation.</summary>
     public int BeginRestart(ShellCompletion completion)

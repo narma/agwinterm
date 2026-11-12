@@ -61,6 +61,18 @@ if(-not (AgentWait {$null-ne (Node $worker)})){throw 'Worker session was not pub
 WaitAgentShell $worker
 $null=Rpc 'session.select' @{} $session
 Check 'ordinary untouched shells absent from agents' (@(AgentElements).Count-eq 0)
+$titleProbe=[string](Rpc 'session.new' @{'no-select'=$true})
+WaitAgentShell $titleProbe
+$titleSplit=[string](Rpc 'session.split' @{op='on'} $titleProbe)
+WaitAgentShell $titleSplit
+$null=Rpc 'session.write' @{text=([string][char]27+']2;Left agent'+[char]7)} $titleProbe
+$null=Rpc 'session.write' @{text=([string][char]27+']2;Right agent'+[char]7)} $titleSplit
+ReportAgent $titleProbe 'state=idle'
+ReportAgent $titleSplit 'state=idle'
+Check 'split agents use their own terminal titles' (AgentWait {($null-ne (FindAgent 'Left agent')) -and ($null-ne (FindAgent 'Right agent'))})
+$null=Rpc 'session.split' @{op='off'} $titleProbe
+Check 'hidden split retains its own agent title' (AgentWait {($null-ne (FindAgent 'Left agent')) -and ($null-ne (FindAgent 'Right agent'))})
+$null=Rpc 'session.close' @{} $titleProbe
 ReportAgent $worker 'state=working:app=codex:title=V29ya2Vy'
 Check 'OSC-only worker appears as Working' (AgentWait {($a=FindAgent 'Worker') -and $a.Current.Name -like '*, Working,*'})
 ReportAgent $worker 'state=blocked:kind=permission:app=codex:title=V29ya2Vy'
@@ -146,7 +158,7 @@ Start-Sleep -Milliseconds 200
 Check 'activation Enter is not sent to the shell' (([string](Rpc 'session.text' @{} $worker))-eq $beforeOpen)
 $null=Shot 'agents-keyboard-scroll'
 
-$clearProbe=[string](Rpc 'session.new' @{name='OSC cleared';'no-select'=$true})
+$clearProbe=[string](Rpc 'session.new' @{name='OSC cleared';profile='Agent-lifetime';'no-select'=$true})
 if(-not (AgentWait {$null-ne (Node $clearProbe)})){throw 'Clear-probe session was not published'}
 WaitAgentShell $clearProbe
 ReportAgent $clearProbe 'state=blocked'
@@ -171,6 +183,24 @@ Check 'hidden-sidebar visit acknowledges completion' (AgentWait {($a=FindAgent '
 
 # Restore the preferences in a new process, not just their serialized keys.
 AgentContext (FindAgent 'OSC cleared'); AgentMenuChoice 'Pin agent'
+# A pinned completed/idle agent must disappear when its command returns to the shell.
+# This is the user's regression: the shell survives, the agent does not.
+$null=Rpc 'session.type' @{text="Write-Output 'agent-exited'`r"} $clearProbe
+Check 'shell completion removes pinned idle agent' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
+$null=Rpc 'session.status' @{status='completed'} $clearProbe
+Check 'legacy report can identify the next agent' (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+$null=Rpc 'session.type' @{text="Write-Output 'hook-exited'`r"} $clearProbe
+Check 'shell completion removes legacy hook agent' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
+foreach($state in @('idle','done','error','blocked','working')) {
+    ReportAgent $clearProbe "state=$state"
+    Check "new $state producer appears" (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+    $null=Rpc 'session.write' @{text=([string][char]27+']133;A'+[char]7)} $clearProbe
+    Check "prompt removes $state producer despite pin" (AgentWait {$null-eq (FindAgent 'OSC cleared')})
+}
+$null=Rpc 'session.status' @{status='active'} $clearProbe
+ReportAgent $clearProbe 'state=idle'
+ReportAgent $clearProbe 'state=clear'
+Check 'OSC clear does not resurrect earlier hook report or pin' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
 InvokeNamed 'Sort agents'; AgentMenuChoice 'Grouped by workspace'
 InvokeNamed 'Collapse agents'
 if(-not (AgentWait {
@@ -184,9 +214,56 @@ $proc=[Diagnostics.Process]::GetProcessById($job.Pid)
 if(-not (AgentWait {$proc.Refresh();$script:hwnd=$proc.MainWindowHandle;$hwnd-ne [IntPtr]::Zero})){throw 'Restored window missing'}
 Check 'restored panel remains collapsed' (@(AgentElements).Count-eq 0)
 InvokeNamed 'Expand agents'
-Check 'restored root pin identifies agent without a new status report' (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+Check 'restored pin does not resurrect an exited agent' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
 # Expanding saves a new snapshot built from loaded preferences.
 Check 'restored preferences survive a subsequent save' (AgentWait {
     $saved=ReadAgentState
     -not $saved.AgentsCollapsed -and $saved.AgentSort-eq 'grouped' -and $saved.AgentPins -contains ($clearProbe+'/')
 } 400)
+
+if ($SessionHost -eq 'server') {
+    $liveHook=[string](Rpc 'session.new' @{name='Surviving hook';profile='Agent-lifetime';'no-select'=$true})
+    WaitAgentShell $liveHook
+    $null=Rpc 'session.type' @{text="Write-Output ('live-'+'bound'); Start-Sleep -Seconds 120`r"} $liveHook
+    if(-not (AgentWait {([string](Rpc 'session.text' @{} $liveHook)).Contains('live-bound')})){throw 'Live hook fixture did not start'}
+    $null=Rpc 'session.bind' @{agent='claude --resume fixture'} $liveHook
+    $null=Rpc 'session.status' @{status='blocked'} $liveHook
+    Check 'hook-only bound agent is blocked before GUI restart' (AgentWait {($a=FindAgent 'Surviving hook') -and $a.Current.Name -like '*, Blocked,*'})
+    AgentContext (FindAgent 'Surviving hook'); AgentMenuChoice 'Pin agent'
+    $completionHooks=@{}
+    foreach($label in @('Unread hook','Read hook')) {
+        $id=[string](Rpc 'session.new' @{name=$label;profile='Agent-lifetime';'no-select'=$true})
+        $completionHooks[$label]=$id
+        WaitAgentShell $id
+        $null=Rpc 'session.type' @{text="Write-Output ('live-'+'completion'); Start-Sleep -Seconds 120`r"} $id
+        if(-not (AgentWait {([string](Rpc 'session.text' @{} $id)).Contains('live-completion')})){throw 'Completion fixture did not start'}
+        $null=Rpc 'session.bind' @{agent='claude --resume fixture'} $id
+        $null=Rpc 'session.status' @{status='completed'} $id
+        if(-not (AgentWait {$null-ne (FindAgent $label)})){throw 'Completion row missing'}
+        AgentContext (FindAgent $label); AgentMenuChoice 'Pin agent'
+        if($label-eq 'Unread hook') {
+            $null=Rpc 'session.status' @{status='idle'} $id
+            Check 'unread hook Done survives idle before restart' (AgentWait {($a=FindAgent $label) -and $a.Current.Name -like '*, Done,*'})
+        } else {
+            InvokeElement (FindAgent $label)
+            Check 'read hook completion is acknowledged before restart' (AgentWait {($a=FindAgent $label) -and $a.Current.Name -like '*, Idle,*'})
+            $null=Rpc 'session.select' @{} $session
+        }
+    }
+    $null=Rpc 'app.close-for-update'
+    $null=$job.WaitExit(15000)
+    # Keep the first owned job alive: its host and shell must survive this GUI-only restart.
+    $survivingHostJob=$job
+    $job=[HudOwnedJob]::new()
+    try {
+        $job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe",$root)
+        if(-not (AgentWait {try{$null-ne (Node $liveHook)}catch{$false}})){throw 'Adopted hook session missing'}
+        $proc=[Diagnostics.Process]::GetProcessById($job.Pid)
+        if(-not (AgentWait {$proc.Refresh();$script:hwnd=$proc.MainWindowHandle;$hwnd-ne [IntPtr]::Zero})){throw 'Adopted GUI missing'}
+        Check 'adopted hook-only agent retains Blocked without a new hook' (AgentWait {($a=FindAgent 'Surviving hook') -and $a.Current.Name -like '*, Blocked,*'})
+        Check 'adopted unread hook preserves Done after latest idle' (AgentWait {($a=FindAgent 'Unread hook') -and $a.Current.Name -like '*, Done,*'})
+        Check 'adopted read hook does not resurrect Done' (AgentWait {($a=FindAgent 'Read hook') -and $a.Current.Name -like '*, Idle,*'})
+        $null=Rpc 'session.type' @{text=[string][char]3;'allow-control'=$true} $liveHook
+        Check 'adopted hook agent disappears on subsequent shell return' (AgentWait {$null-eq (FindAgent 'Surviving hook')})
+    } finally { $survivingHostJob.Finish() }
+}

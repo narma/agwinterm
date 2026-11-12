@@ -7,8 +7,8 @@ namespace Agwinterm.Pty;
 /// that lack native hooks (unlike Claude Code, which uses <see cref="AgentHooks"/>). Appends a guarded,
 /// sentinel-delimited block to the END of the CurrentUser powershell.exe profile that — only inside an
 /// agwinterm session ($env:AGWINTERM) — watches for commands whose name matches $env:AGWINTERM_AGENT_RE
-/// (a regex; a sensible default is seeded). When such a command is submitted it pushes status "active";
-/// when it finishes (detected at the next prompt) it pushes "completed". Idempotent.
+/// (a regex; a sensible default is seeded). When such a command is submitted it emits OSC 7501 "working";
+/// when it finishes (detected at the next prompt) it clears the producer. Idempotent.
 /// </summary>
 public static class GenericAgentInstaller
 {
@@ -21,30 +21,27 @@ public static class GenericAgentInstaller
         """
         if ($env:AGWINTERM -eq '1' -and -not $global:__agwAgent) {
           $global:__agwAgent = $true
-          if (-not $env:AGWINTERM_AGENT_RE) { $env:AGWINTERM_AGENT_RE = 'claude|codex|devin|aider|gemini|cursor|copilot|goose|opencode|amp|pi' }
+          if (-not $env:AGWINTERM_AGENT_RE) { $env:AGWINTERM_AGENT_RE = 'aider|gemini|cursor|copilot|goose|opencode|amp|pi' }
           function global:__agwStatus([string]$s) {
-            if (-not $env:AGWINTERM_SESSION_ID) { return }
-            $pipe = if ($env:AGWINTERM_PIPE) { $env:AGWINTERM_PIPE } else { 'agwinterm' }
-            try {
-              $c = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipe, [System.IO.Pipes.PipeDirection]::InOut)
-              $c.Connect(300)
-              $w = New-Object System.IO.StreamWriter($c); $w.AutoFlush = $true
-              $w.WriteLine('{"cmd":"session.status","target":"' + $env:AGWINTERM_SESSION_ID + '","args":{"status":"' + $s + '"}}')
-              $c.Dispose()
-            } catch { }
+            [Console]::Write("$([char]27)]7501;state=$s$([char]7)")
+          }
+          function global:__agwGenericAgent([string]$line) {
+            # These agents have dedicated hooks. Exclude them even from a legacy/custom regex:
+            # a generic OSC root would mask their permission and turn-completion reports.
+            return $line -and $line -notmatch '^\s*(claude|codex|devin)\b' -and $line -match ('^\s*(' + $env:AGWINTERM_AGENT_RE + ')\b')
           }
           if (Get-Module -ListAvailable PSReadLine) {
             Set-PSReadLineKeyHandler -Key Enter -ScriptBlock {
               $line = $null; $cur = $null
               [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cur)
-              if ($line -and $line -match ('^\s*(' + $env:AGWINTERM_AGENT_RE + ')\b')) { __agwStatus 'active' }
+              if (__agwGenericAgent $line) { __agwStatus 'working' }
               [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
             }
             $global:__agwAgentPrompt = $function:prompt
             function global:prompt {
               $h = Get-History -Count 1
-              if ($h -and $h.CommandLine -match ('^\s*(' + $env:AGWINTERM_AGENT_RE + ')\b') -and $h.Id -ne $global:__agwLastH) {
-                $global:__agwLastH = $h.Id; __agwStatus 'completed'
+              if ($h -and (__agwGenericAgent $h.CommandLine) -and $h.Id -ne $global:__agwLastH) {
+                $global:__agwLastH = $h.Id; __agwStatus 'clear'
               }
               if ($global:__agwAgentPrompt) { & $global:__agwAgentPrompt } else { "PS $((Get-Location).Path)> " }
             }

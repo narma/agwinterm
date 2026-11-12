@@ -41,8 +41,11 @@ public sealed class ProgramStatusRecords
     public IReadOnlyCollection<ProgramStatus> Records => _records.Values;
     public void FinishCommand()
     {
-        foreach (string id in _records.Values.Where(r => r.State is "working" or "blocked").Select(r => r.Id).ToArray())
-        { _records.Remove(id); _updated.Remove(id); _unseenCompletions.Remove(id); }
+        // A shell prompt ends the producer's lifetime, not just its current turn.
+        // Retaining idle/done here resurrects exited agents on host reattachment.
+        _records.Clear();
+        _updated.Clear();
+        _unseenCompletions.Clear();
     }
     public void Apply(ProgramStatus report, bool retainCompletion = false)
     {

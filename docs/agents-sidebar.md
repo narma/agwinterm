@@ -4,6 +4,14 @@ The lower part of the sidebar lists agents across all workspaces in the current
 window, including background sessions and hidden split panes. A session appears
 after reporting status through the existing hooks/control API, binding an agent,
 or sending OSC 7501. Untouched shells are not listed.
+Pins and saved resume commands alone do not identify a running agent. Returning to
+the shell removes its agent rows, including pinned, idle and completed rows.
+A GUI-only restart restores hook-agent presence and its saved status only when the
+same hosted shell is adopted, its binding token matches, and no later shell prompt
+has invalidated the binding. A fresh shell or unverified saved command is not enough.
+The latest producer status and viewer attention are stored separately: unread Done
+survives a subsequent idle report and GUI restart; a completion already viewed stays
+read. Its original change time is retained instead of resetting its age on restart.
 
 * **Working**: the agent is busy.
 * **Blocked**: it needs an answer, permission, authentication, or has reported an
@@ -51,17 +59,30 @@ text with invisible formatting controls removed. Error reports use Blocked atten
 
 Active OSC records drive the panel; clear withdraws them. The existing session status
 indicator and API receive the most urgent OSC state too. A shell's primary OSC 133
-prompt or process exit removes transient working/blocked records, retaining done/error
-records. Full terminal reset clears all records. The Windows session host retains
+prompt, authenticated OSC 777 shell completion, or process exit removes all records
+and legacy hook attention. Full terminal reset clears all records. The Windows session host retains
 records while detached and replays them when a window reconnects.
 Completions followed by idle while detached replay an unread Done transition before
 the latest fields. The host retains that transition until the client confirms receipt;
 a failed attachment does not consume it. Typing or pasting does not dismiss a producer's Blocked request.
 
+OSC 7501 titles name agent rows; OSC 0/2 titles name terminals. Without an agent
+title, rows use their own pane's automatic title (or the user's explicit session
+name), never the title of a different focused split. Hooks remain a fallback for
+programs without native OSC status. The generic PowerShell bridge emits OSC 7501
+working/clear for process launch/exit, rather than reporting exit as a completed turn.
+Claude, Codex and Devin are excluded from the generic bridge, including when an old
+custom command regex includes them, so its OSC root cannot mask dedicated hook updates.
+
 ## Checks
 
 `ProgramStatusTests` exercises actual native parsing, byte boundaries, queries,
 invalid input, reset/prompt lifecycle, bounded records and unread completion.
-The `Agents` UI suite exercises navigation, attention, nested records, pin/unpin,
-sorting, persistence and collapse through the normal Hyper-V runner. Run it with
+`AgentLifetimeTests` verifies authenticated shell completion on a detached host and
+rejects old/wrong-shell completions without disturbing the next agent.
+The `Agents` UI suite has 46 checks covering navigation, attention, nested records,
+pin/unpin, sorting, persistence, collapse, split titles and shell-return cleanup
+through the normal Hyper-V runner, plus seven server-only checks that keep the host
+alive across GUI restart and verify hook status, read/unread completion and subsequent
+exit cleanup. Run it with
 both in-process sessions and `-TestParameters @{SessionHost='server';SingleOwner=$true}`.

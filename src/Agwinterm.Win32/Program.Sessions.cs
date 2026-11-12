@@ -216,12 +216,14 @@ internal partial class Program
         {
             bool fromProgram = Volatile.Read(ref pane.ProgramStatusThread) == Environment.CurrentManagedThreadId;
             var now = session.Status;
+            long version = session.StatusSignal?.Snapshot.Version ?? 0;
             if (now == AgentStatus.Blocked && lastStatus != AgentStatus.Blocked && explicitSoundStatus != now)
                 Post(() => RouteStatusSound(pane, null, blockedDefault: true));
             explicitSoundStatus = null;
             lastStatus = now;
             Post(() => {
-                if (!fromProgram) pane.AgentActivity.Observe(now, AgentIsViewed(pane));
+                if (!fromProgram && version > pane.LastProgramStatusVersion)
+                    pane.AgentActivity.Observe(now, AgentIsViewed(pane));
                 if (OwningSes(pane) is { } owner) PublishOriginPresentation(owner, "status");
             });
             RequestRedraw();
@@ -472,6 +474,7 @@ internal partial class Program
         public void CommandFinished(string token, long sequence)
         {
             if (!_pane.Completion.Accept(token, sequence, persist: _s is not ServerSession)) return;
+            ProgramStatusCommandFinished();
             // Invalidate a SessionStart lookup still in flight BEFORE queuing the clear. A
             // newer agent may bind before this UI action runs, in which case its binding wins.
             int? seq = sequence > Volatile.Read(ref _pane.BindCompletionBaseline) && _pane.AgentResumeToken == token
@@ -493,6 +496,8 @@ internal partial class Program
         public void ProgramStatusChanged(ProgramStatus report) => _app.Post(() =>
         {
             _pane.ProgramStatuses.Apply(report);
+            // OSC owns this producer once it reports; clear must not reveal stale hook attention.
+            _pane.AgentActivity.Reset();
             var retained = _pane.ProgramStatuses.Records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
             foreach (string id in _pane.ProgramActivities.Keys.Where(id => !retained.Contains(id)).ToArray())
                 _pane.ProgramActivities.Remove(id);
@@ -508,13 +513,10 @@ internal partial class Program
         });
         public void ProgramStatusCommandFinished() => _app.Post(() =>
         {
-            bool hadRecords = _pane.ProgramStatuses.Records.Count > 0;
             _pane.ProgramStatuses.FinishCommand();
-            var live = _pane.ProgramStatuses.Records.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
-            foreach (string id in _pane.ProgramActivities.Keys.Where(id => !live.Contains(id)).ToArray())
-                _pane.ProgramActivities.Remove(id);
-            if (hadRecords) SetProgramStatus(_pane.ProgramStatuses.Records.OrderBy(r => AgentActivity.Priority(r.Status))
-                .FirstOrDefault()?.Status ?? AgentStatus.Idle);
+            _pane.ProgramActivities.Clear();
+            _pane.AgentActivity.Reset();
+            SetProgramStatus(AgentStatus.Idle);
             _app.RequestRedraw();
         });
         private void SetProgramStatus(AgentStatus status)

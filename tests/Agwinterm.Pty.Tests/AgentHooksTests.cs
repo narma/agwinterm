@@ -183,7 +183,11 @@ public class AgentHooksTests
         Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", AgentHooks.WrapperScript);
         Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", AgentHooks.CodexNotifyScript);
         Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", AgentHooks.CodexHookScript);
-        Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", GenericAgentInstaller.Block);
+        // The generic bridge writes to its own terminal, so focus cannot redirect it.
+        Assert.Contains("]7501;state=$s", GenericAgentInstaller.Block);
+        Assert.Contains("__agwStatus 'working'", GenericAgentInstaller.Block);
+        Assert.Contains("__agwStatus 'clear'", GenericAgentInstaller.Block);
+        Assert.DoesNotContain("session.status", GenericAgentInstaller.Block);
     }
 
     [Fact]
@@ -225,7 +229,7 @@ public class AgentHooksTests
     }
 
     [Fact]
-    public void GenericAgentRegex_CoversPiAndDevinWithWordBoundarySafety()
+    public void GenericAgentRegex_CoversPiButLeavesHookAgentsToTheirHooks()
     {
         // agterm #208: Pi agent status. The bridge matches '^\s*(RE)\b', so 'pi' must be in the
         // default set — and the \b anchor means 'pip install' must NOT light the status.
@@ -233,7 +237,8 @@ public class AgentHooksTests
         string re = System.Text.RegularExpressions.Regex.Match(GenericAgentInstaller.Block,
             @"AGWINTERM_AGENT_RE = '([^']+)'").Groups[1].Value;
         Assert.Matches(@"^\s*(" + re + @")\b", "pi do something");
-        Assert.Matches(@"^\s*(" + re + @")\b", "devin");
+        foreach (string agent in new[] { "claude", "codex", "devin" })
+            Assert.DoesNotMatch(@"^\s*(" + re + @")\b", agent);
         Assert.DoesNotMatch(@"^\s*(" + re + @")\b", "pip install requests");
     }
 

@@ -1216,6 +1216,7 @@ internal partial class Program
     private static void BindAgent(Pane pane, string? command, long baseline)
     {
         pane.AgentResume = command;
+        if (command is not null) pane.AgentActivity.Observe(pane.S.Status, false);
         pane.AgentResumeToken = pane.Completion.Token;
         pane.AgentResumeGeneration = baseline;
         Volatile.Write(ref pane.BindCompletionBaseline, baseline);
