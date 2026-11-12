@@ -99,9 +99,38 @@ jobs:
   ghostty-runtime:
     uses: ./.github/workflows/ghostty-runtime.yml
 
+  portable-tools:
+    name: portable tool (${{ matrix.tool }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [host, cli]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
+      - name: Publish portable tool
+        shell: pwsh
+        run: ./installer/publish-portable-tool.ps1 -Tool ${{ matrix.tool }} -Destination artifacts/portable-tools
+      - uses: actions/upload-artifact@v6
+        with:
+          name: portable-tool-${{ matrix.tool }}
+          path: artifacts/portable-tools/${{ matrix.tool == 'host' && 'Agwinterm.Host.exe' || 'agwintermctl.exe' }}
+          compression-level: 0
+          if-no-files-found: error
+
   portable:
     name: portable WSL payload
-    needs: [wsl-hook, ghostty-runtime]
+    needs: [wsl-hook, ghostty-runtime, portable-tools]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -128,9 +157,14 @@ jobs:
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: portable-tool-*
+          merge-multiple: true
+          path: artifacts/portable-tools
       - name: Publish portable with both Linux architectures
         shell: pwsh
-        run: ./installer/build-portable.ps1
+        run: ./installer/build-portable.ps1 -PrebuiltToolsDirectory artifacts/portable-tools
       - name: Verify the standalone portable payload
         shell: pwsh
         run: ./tests/integration/portable-tools.ps1
@@ -467,7 +501,7 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable, net10-publish, ghostty-contract, wsl-hook, ghostty-runtime, macos-remote]
+    needs: [windows-tests, bridge-fixtures, portable, portable-tools, net10-publish, ghostty-contract, wsl-hook, ghostty-runtime, macos-remote]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites

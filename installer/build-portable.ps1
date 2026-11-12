@@ -2,6 +2,7 @@
 # Output: installer\Output\agwinterm-portable-<ver>-win-x64.exe
 # Themes, icon, CLI and WSL helpers are embedded. Tools are extracted lazily to a
 # content-addressed directory under %LOCALAPPDATA%\agwinterm\portable-tools.
+param([string]$PrebuiltToolsDirectory)
 $ErrorActionPreference = "Stop"
 $here   = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $root   = Split-Path -Parent $here
@@ -31,11 +32,15 @@ $nativePayload = Join-Path $stage 'native-payload'
 if ($LASTEXITCODE -ne 0) { throw 'portable native payload publish failed' }
 Copy-Item (Join-Path $nativePayload 'conpty.dll') $tools
 Copy-Item (Join-Path $nativePayload 'x64/OpenConsole.exe') $tools
-& (Join-Path $here 'publish-host.ps1') -Destination $tools -Version $ver
-& $dotnet publish (Join-Path $root 'src/Agwinterm.Ctl/Agwinterm.Ctl.csproj') `
-  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true `
-  -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=$ver -o $tools
-if ($LASTEXITCODE -ne 0) { throw 'portable CLI publish failed' }
+if ($PrebuiltToolsDirectory) {
+    # CI supplies artifacts built from this same checkout, never a cross-commit cache.
+    foreach ($name in @('Agwinterm.Host.exe', 'agwintermctl.exe')) {
+        Copy-Item -LiteralPath (Join-Path $PrebuiltToolsDirectory $name) -Destination $tools -ErrorAction Stop
+    }
+} else {
+    & (Join-Path $here 'publish-portable-tool.ps1') -Tool host -Destination $tools
+    & (Join-Path $here 'publish-portable-tool.ps1') -Tool cli -Destination $tools
+}
 & cargo build --locked --release --manifest-path (Join-Path $root 'native/Cargo.toml') -p agwinterm-hook
 if ($LASTEXITCODE -ne 0) { throw 'portable Windows hook build failed' }
 & (Join-Path $root 'tools/stage-wsl-hooks.ps1') -Destination $tools
