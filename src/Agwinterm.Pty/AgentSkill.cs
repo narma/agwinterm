@@ -71,6 +71,7 @@ public static class AgentSkill
         resumes your exact session after a restart or reboot, in any shell;
         and installs a generic PowerShell-profile bridge that marks any command matching `$env:AGWINTERM_AGENT_RE`
         working on launch and clears it on exit via OSC 7501.
+        Claude, Codex and Devin use their dedicated hooks and are excluded from this generic bridge.
 
         ## Manage sessions & workspaces
         Automatic names follow the focused pane's OSC program title, then its cwd basename.

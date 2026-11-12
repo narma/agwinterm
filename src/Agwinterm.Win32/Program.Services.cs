@@ -1834,7 +1834,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, CommandToken = p.CapturedCommandToken, CommandGeneration = p.CapturedCommandGeneration, AgentResume = p.AgentResume, PromptToken = p.Completion.Token, AgentResumeToken = p.AgentResumeToken, AgentResumeGeneration = p.AgentResumeGeneration, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, CommandToken = p.CapturedCommandToken, CommandGeneration = p.CapturedCommandGeneration, AgentResume = p.AgentResume, PromptToken = p.Completion.Token, AgentResumeToken = p.AgentResumeToken, AgentResumeGeneration = p.AgentResumeGeneration, AgentStatus = p.AgentActivity.Reported ? p.S.Status : null, RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -2034,6 +2034,14 @@ internal partial class Program
                             ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
                             ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
                             ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;
+                            var restoredPane = ses.Panes[i];
+                            if (restoredPane.AgentRecovery.HasSurvivingBinding(restoredPane.S is ServerSession { Adopted: true }))
+                            {
+                                var status = pl[i].AgentStatus is { } savedStatus && Enum.IsDefined(savedStatus)
+                                    ? savedStatus : AgentStatus.Idle;
+                                restoredPane.S.SetStatus(status);
+                                restoredPane.AgentActivity.Observe(status, false);
+                            }
                             ses.Panes[i].RestoreCommand = string.IsNullOrWhiteSpace(pl[i].RestoreCommand) ? null : pl[i].RestoreCommand;
                             // The captured slot comes back too, so it is readable (tree's capturedCommands) before it
                             // is replayed and survives the save at the end of this restore — before P3 that save

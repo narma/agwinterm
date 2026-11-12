@@ -220,3 +220,28 @@ Check 'restored preferences survive a subsequent save' (AgentWait {
     $saved=ReadAgentState
     -not $saved.AgentsCollapsed -and $saved.AgentSort-eq 'grouped' -and $saved.AgentPins -contains ($clearProbe+'/')
 } 400)
+
+if ($SessionHost -eq 'server') {
+    $liveHook=[string](Rpc 'session.new' @{name='Surviving hook';profile='Agent-lifetime';'no-select'=$true})
+    WaitAgentShell $liveHook
+    $null=Rpc 'session.type' @{text="Write-Output ('live-'+'bound'); Start-Sleep -Seconds 120`r"} $liveHook
+    if(-not (AgentWait {([string](Rpc 'session.text' @{} $liveHook)).Contains('live-bound')})){throw 'Live hook fixture did not start'}
+    $null=Rpc 'session.bind' @{agent='claude --resume fixture'} $liveHook
+    $null=Rpc 'session.status' @{status='blocked'} $liveHook
+    Check 'hook-only bound agent is blocked before GUI restart' (AgentWait {($a=FindAgent 'Surviving hook') -and $a.Current.Name -like '*, Blocked,*'})
+    AgentContext (FindAgent 'Surviving hook'); AgentMenuChoice 'Pin agent'
+    $null=Rpc 'app.close-for-update'
+    $null=$job.WaitExit(15000)
+    # Keep the first owned job alive: its host and shell must survive this GUI-only restart.
+    $survivingHostJob=$job
+    $job=[HudOwnedJob]::new()
+    try {
+        $job.Start([IO.Path]::GetFullPath($Exe),"--app-id $appId --pipe $pipe",$root)
+        if(-not (AgentWait {try{$null-ne (Node $liveHook)}catch{$false}})){throw 'Adopted hook session missing'}
+        $proc=[Diagnostics.Process]::GetProcessById($job.Pid)
+        if(-not (AgentWait {$proc.Refresh();$script:hwnd=$proc.MainWindowHandle;$hwnd-ne [IntPtr]::Zero})){throw 'Adopted GUI missing'}
+        Check 'adopted hook-only agent retains Blocked without a new hook' (AgentWait {($a=FindAgent 'Surviving hook') -and $a.Current.Name -like '*, Blocked,*'})
+        $null=Rpc 'session.type' @{text=[string][char]3;'allow-control'=$true} $liveHook
+        Check 'adopted hook agent disappears on subsequent shell return' (AgentWait {$null-eq (FindAgent 'Surviving hook')})
+    } finally { $survivingHostJob.Finish() }
+}

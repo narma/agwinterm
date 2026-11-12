@@ -229,7 +229,7 @@ public class AgentHooksTests
     }
 
     [Fact]
-    public void GenericAgentRegex_CoversPiAndDevinWithWordBoundarySafety()
+    public void GenericAgentRegex_CoversPiButLeavesHookAgentsToTheirHooks()
     {
         // agterm #208: Pi agent status. The bridge matches '^\s*(RE)\b', so 'pi' must be in the
         // default set — and the \b anchor means 'pip install' must NOT light the status.
@@ -237,7 +237,8 @@ public class AgentHooksTests
         string re = System.Text.RegularExpressions.Regex.Match(GenericAgentInstaller.Block,
             @"AGWINTERM_AGENT_RE = '([^']+)'").Groups[1].Value;
         Assert.Matches(@"^\s*(" + re + @")\b", "pi do something");
-        Assert.Matches(@"^\s*(" + re + @")\b", "devin");
+        foreach (string agent in new[] { "claude", "codex", "devin" })
+            Assert.DoesNotMatch(@"^\s*(" + re + @")\b", agent);
         Assert.DoesNotMatch(@"^\s*(" + re + @")\b", "pip install requests");
     }
 

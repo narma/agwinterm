@@ -7,6 +7,37 @@ public class AgentRecoveryStateTests
 {
     private static ShellCompletion Fresh() => new(Guid.NewGuid().ToString("N"), "");
 
+    [Fact]
+    public void OnlyAnAdoptedMatchingUnfinishedBindingRestoresPresence()
+    {
+        var completion = Fresh();
+        var state = new AgentRecoveryState { Command = "claude --resume live", Completion = completion,
+            Token = completion.Token, Generation = 1 };
+        Assert.True(completion.Accept(completion.Token, 1, false));
+        Assert.True(state.HasSurvivingBinding(true));
+        Assert.False(state.HasSurvivingBinding(false));
+        state.Token = Fresh().Token;
+        Assert.False(state.HasSurvivingBinding(true));
+        state.Token = null;
+        Assert.False(state.HasSurvivingBinding(true));
+        state.Token = completion.Token;
+        state.Command = null;
+        Assert.False(state.HasSurvivingBinding(true));
+        state.Command = "claude --resume exited";
+        Assert.True(completion.Accept(completion.Token, 2, false));
+        Assert.False(state.HasSurvivingBinding(true));
+    }
+
+    [Fact]
+    public void SavedHookStatusRoundTripsWithoutChangingLegacyPaneShape()
+    {
+        var pane = new PaneState();
+        Assert.DoesNotContain("AgentStatus", System.Text.Json.JsonSerializer.Serialize(pane, RestoreState.Json));
+        pane.AgentStatus = AgentStatus.Blocked;
+        string json = System.Text.Json.JsonSerializer.Serialize(pane, RestoreState.Json);
+        Assert.Equal(AgentStatus.Blocked, System.Text.Json.JsonSerializer.Deserialize<PaneState>(json)!.AgentStatus);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("claude --resume replacement")]

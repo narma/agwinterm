@@ -6,6 +6,9 @@ after reporting status through the existing hooks/control API, binding an agent,
 or sending OSC 7501. Untouched shells are not listed.
 Pins and saved resume commands alone do not identify a running agent. Returning to
 the shell removes its agent rows, including pinned, idle and completed rows.
+A GUI-only restart restores hook-agent presence and its saved status only when the
+same hosted shell is adopted, its binding token matches, and no later shell prompt
+has invalidated the binding. A fresh shell or unverified saved command is not enough.
 
 * **Working**: the agent is busy.
 * **Blocked**: it needs an answer, permission, authentication, or has reported an
@@ -65,6 +68,8 @@ title, rows use their own pane's automatic title (or the user's explicit session
 name), never the title of a different focused split. Hooks remain a fallback for
 programs without native OSC status. The generic PowerShell bridge emits OSC 7501
 working/clear for process launch/exit, rather than reporting exit as a completed turn.
+Claude, Codex and Devin are excluded from the generic bridge, including when an old
+custom command regex includes them, so its OSC root cannot mask dedicated hook updates.
 
 ## Checks
 
@@ -74,5 +79,6 @@ invalid input, reset/prompt lifecycle, bounded records and unread completion.
 rejects old/wrong-shell completions without disturbing the next agent.
 The `Agents` UI suite has 46 checks covering navigation, attention, nested records,
 pin/unpin, sorting, persistence, collapse, split titles and shell-return cleanup
-through the normal Hyper-V runner. Run it with
+through the normal Hyper-V runner, plus three server-only checks that keep the host
+alive across GUI restart and verify hook status and subsequent exit cleanup. Run it with
 both in-process sessions and `-TestParameters @{SessionHost='server';SingleOwner=$true}`.
