@@ -42,7 +42,7 @@
     <PackageReference Include="System.Drawing.Common" Version="10.0.9" />
     <!-- Microsoft's ConPTY (conpty.dll + x64\OpenConsole.exe beside the exe): unlike the inbox conhost it
          forwards an app's color, device-attribute and cursor queries to agwinterm (#339). -->
-    <PackageReference Include="Microsoft.Windows.Console.ConPTY" Version="1.24.260710001" />
+    <PackageReference Include="Microsoft.Windows.Console.ConPTY" Version="1.24.260710001" GeneratePathProperty="true" />
     <ProjectReference Include="../Agwinterm.Host/Agwinterm.Host.csproj" Condition="'$(SeparateHostPayload)' != 'true'" />
     <ProjectReference Include="../Agwinterm.Core/Agwinterm.Core.csproj" />
     <ProjectReference Include="../Agwinterm.Pty/Agwinterm.Pty.csproj" />

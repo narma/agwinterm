@@ -25,13 +25,8 @@ New-Item -ItemType Directory -Force $stage, $outDir | Out-Null
 $tools = Join-Path $stage 'tools'
 New-Item -ItemType Directory -Path $tools | Out-Null
 & (Join-Path $root 'native/ghostty-vt/stage.ps1') -Destination $tools
-# Resolve the application's pinned ConPTY package using MSBuild, not a separately
-# hard-coded NuGet version. Its host must remain beside the extracted DLL.
-$nativePayload = Join-Path $stage 'native-payload'
-& $dotnet publish (Join-Path $root 'src/Agwinterm.Win32/Agwinterm.Win32.csproj') -c Release -r win-x64 --self-contained false -o $nativePayload
-if ($LASTEXITCODE -ne 0) { throw 'portable native payload publish failed' }
-Copy-Item (Join-Path $nativePayload 'conpty.dll') $tools
-Copy-Item (Join-Path $nativePayload 'x64/OpenConsole.exe') $tools
+# Resolve the application's pinned native payload without a redundant GUI publish.
+& (Join-Path $here 'stage-conpty.ps1') -Destination $tools
 if ($PrebuiltToolsDirectory) {
     # CI supplies artifacts built from this same checkout, never a cross-commit cache.
     foreach ($name in @('Agwinterm.Host.exe', 'agwintermctl.exe')) {
