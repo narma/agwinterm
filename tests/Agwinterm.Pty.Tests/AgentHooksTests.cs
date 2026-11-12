@@ -183,7 +183,11 @@ public class AgentHooksTests
         Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", AgentHooks.WrapperScript);
         Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", AgentHooks.CodexNotifyScript);
         Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", AgentHooks.CodexHookScript);
-        Assert.Contains("\"target\":\"' + $env:AGWINTERM_SESSION_ID + '\"", GenericAgentInstaller.Block);
+        // The generic bridge writes to its own terminal, so focus cannot redirect it.
+        Assert.Contains("]7501;state=$s", GenericAgentInstaller.Block);
+        Assert.Contains("__agwStatus 'working'", GenericAgentInstaller.Block);
+        Assert.Contains("__agwStatus 'clear'", GenericAgentInstaller.Block);
+        Assert.DoesNotContain("session.status", GenericAgentInstaller.Block);
     }
 
     [Fact]

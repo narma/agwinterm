@@ -153,6 +153,23 @@ public sealed class HudOwnedJob {
     New-Item -ItemType Directory $appDir|Out-Null
     # Every pane uses a harmless cmd /d shell: never the user's PowerShell profile or agent hooks.
     @{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact})}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
+    if ($Suite -eq 'Agents') {
+        # A profile-free shell with only the authenticated completion protocol:
+        # no OSC 133, so the lifecycle checks cover the WSL-style OSC 777 path.
+        $promptScript = @'
+$global:agentPromptSequence = 0
+function global:prompt {
+    $global:agentPromptSequence++
+    [Console]::Write("$([char]27)]777;agwinterm;command-finished;$env:AGWINTERM_PROMPT_TOKEN;$global:agentPromptSequence$([char]7)")
+    'Agent test> '
+}
+'@
+        $encodedPrompt = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($promptScript))
+        @{default='HUD-test';profiles=@(
+            @{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact},
+            @{name='Agent-lifetime';command='powershell.exe';args=@('-NoProfile','-NoExit','-EncodedCommand',$encodedPrompt);cwd=$artifact}
+        )}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
+    }
     @("session-host = $SessionHost",'claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
     if ($Suite -eq 'TerminalLatency') {
         $echoChild = Join-Path (Split-Path ([IO.Path]::GetFullPath($Exe))) 'echo-fixture/Agwinterm.EchoFixture.exe'

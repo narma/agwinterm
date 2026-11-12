@@ -61,6 +61,18 @@ if(-not (AgentWait {$null-ne (Node $worker)})){throw 'Worker session was not pub
 WaitAgentShell $worker
 $null=Rpc 'session.select' @{} $session
 Check 'ordinary untouched shells absent from agents' (@(AgentElements).Count-eq 0)
+$titleProbe=[string](Rpc 'session.new' @{'no-select'=$true})
+WaitAgentShell $titleProbe
+$titleSplit=[string](Rpc 'session.split' @{op='on'} $titleProbe)
+WaitAgentShell $titleSplit
+$null=Rpc 'session.write' @{text=([string][char]27+']2;Left agent'+[char]7)} $titleProbe
+$null=Rpc 'session.write' @{text=([string][char]27+']2;Right agent'+[char]7)} $titleSplit
+ReportAgent $titleProbe 'state=idle'
+ReportAgent $titleSplit 'state=idle'
+Check 'split agents use their own terminal titles' (AgentWait {($null-ne (FindAgent 'Left agent')) -and ($null-ne (FindAgent 'Right agent'))})
+$null=Rpc 'session.split' @{op='off'} $titleProbe
+Check 'hidden split retains its own agent title' (AgentWait {($null-ne (FindAgent 'Left agent')) -and ($null-ne (FindAgent 'Right agent'))})
+$null=Rpc 'session.close' @{} $titleProbe
 ReportAgent $worker 'state=working:app=codex:title=V29ya2Vy'
 Check 'OSC-only worker appears as Working' (AgentWait {($a=FindAgent 'Worker') -and $a.Current.Name -like '*, Working,*'})
 ReportAgent $worker 'state=blocked:kind=permission:app=codex:title=V29ya2Vy'
@@ -146,7 +158,7 @@ Start-Sleep -Milliseconds 200
 Check 'activation Enter is not sent to the shell' (([string](Rpc 'session.text' @{} $worker))-eq $beforeOpen)
 $null=Shot 'agents-keyboard-scroll'
 
-$clearProbe=[string](Rpc 'session.new' @{name='OSC cleared';'no-select'=$true})
+$clearProbe=[string](Rpc 'session.new' @{name='OSC cleared';profile='Agent-lifetime';'no-select'=$true})
 if(-not (AgentWait {$null-ne (Node $clearProbe)})){throw 'Clear-probe session was not published'}
 WaitAgentShell $clearProbe
 ReportAgent $clearProbe 'state=blocked'
@@ -171,6 +183,24 @@ Check 'hidden-sidebar visit acknowledges completion' (AgentWait {($a=FindAgent '
 
 # Restore the preferences in a new process, not just their serialized keys.
 AgentContext (FindAgent 'OSC cleared'); AgentMenuChoice 'Pin agent'
+# A pinned completed/idle agent must disappear when its command returns to the shell.
+# This is the user's regression: the shell survives, the agent does not.
+$null=Rpc 'session.type' @{text="Write-Output 'agent-exited'`r"} $clearProbe
+Check 'shell completion removes pinned idle agent' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
+$null=Rpc 'session.status' @{status='completed'} $clearProbe
+Check 'legacy report can identify the next agent' (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+$null=Rpc 'session.type' @{text="Write-Output 'hook-exited'`r"} $clearProbe
+Check 'shell completion removes legacy hook agent' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
+foreach($state in @('idle','done','error','blocked','working')) {
+    ReportAgent $clearProbe "state=$state"
+    Check "new $state producer appears" (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+    $null=Rpc 'session.write' @{text=([string][char]27+']133;A'+[char]7)} $clearProbe
+    Check "prompt removes $state producer despite pin" (AgentWait {$null-eq (FindAgent 'OSC cleared')})
+}
+$null=Rpc 'session.status' @{status='active'} $clearProbe
+ReportAgent $clearProbe 'state=idle'
+ReportAgent $clearProbe 'state=clear'
+Check 'OSC clear does not resurrect earlier hook report or pin' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
 InvokeNamed 'Sort agents'; AgentMenuChoice 'Grouped by workspace'
 InvokeNamed 'Collapse agents'
 if(-not (AgentWait {
@@ -184,7 +214,7 @@ $proc=[Diagnostics.Process]::GetProcessById($job.Pid)
 if(-not (AgentWait {$proc.Refresh();$script:hwnd=$proc.MainWindowHandle;$hwnd-ne [IntPtr]::Zero})){throw 'Restored window missing'}
 Check 'restored panel remains collapsed' (@(AgentElements).Count-eq 0)
 InvokeNamed 'Expand agents'
-Check 'restored root pin identifies agent without a new status report' (AgentWait {$null-ne (FindAgent 'OSC cleared')})
+Check 'restored pin does not resurrect an exited agent' (AgentWait {$null-eq (FindAgent 'OSC cleared')})
 # Expanding saves a new snapshot built from loaded preferences.
 Check 'restored preferences survive a subsequent save' (AgentWait {
     $saved=ReadAgentState

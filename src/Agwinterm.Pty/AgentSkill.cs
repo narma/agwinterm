@@ -44,29 +44,38 @@ public static class AgentSkill
         - `AGWINTERM_WINDOW_ID` — your window id.
         - `AGWINTERM_PIPE` — the control pipe name (full path `\\.\pipe\<name>`).
 
-        ## Report your status (do this — it is the point)
-        Let the user see your state at a glance:
+        ## Status and agent lifetime
+        Prefer the agent's native OSC 7501 reports or installed hooks. Do not send duplicate
+        manual statuses when either integration already reports them. OSC 7501 is emitted by
+        the interactive program to its terminal, not printed into a captured tool result.
+        `done` means a turn finished; `idle` means a live agent is waiting. Neither means exit.
+        On exit, producers send `state=clear`; returning to the shell also removes the agent.
+        Pins and saved resume commands do not prove that an agent is running.
+        For agents without native reports or hooks, report through the control API:
         - `agwintermctl session status active`     — working
         - `agwintermctl session status blocked`    — you need the user
         - `agwintermctl session status completed`  — finished
-        - `agwintermctl session status idle`       — clear it
+        - `agwintermctl session status idle`       — live, waiting for work
 
         Flags (any status): `--sound [name]` plays a cue (default alert, a system-sound name
         `beep|asterisk|exclamation|hand|question`, a Windows sound-event alias, or a `.wav` path);
         `--blink` pulses the sidebar dot + title-bar bell until cleared; `--auto-reset` clears the
-        status back to idle the moment the user selects the session. Example, when you need attention:
+        completed status back to idle when the user selects the session. Blocked survives viewing.
+        Example, when you need attention:
         `agwintermctl session status blocked --sound --blink`.
         (A default blocked cue can also be set once via `blocked-sound =` in the config.)
 
-        Better: run `agwintermctl install hooks` once. It wires Claude Code, Codex and Devin hooks so your
+        For agents without native status, run `agwintermctl install hooks` once. It wires Claude Code, Codex and Devin hooks so your
         status updates automatically (active while working, blocked on permission prompts, completed on stop);
         trust the Codex hooks once with /hooks. It also adds a SessionStart hook to Claude, Codex and Devin so the pane
         resumes your exact session after a restart or reboot, in any shell;
         and installs a generic PowerShell-profile bridge that marks any command matching `$env:AGWINTERM_AGENT_RE`
-        active/completed.
+        working on launch and clears it on exit via OSC 7501.
 
         ## Manage sessions & workspaces
         Automatic names follow the focused pane's OSC program title, then its cwd basename.
+        OSC 0/2 names the terminal; OSC 7501 `title` names an agent row and does not rename
+        the session. Agent rows use their own pane's title, even when another split is focused.
         `tree` reports `customName` (null for automatic labels) and `paneCwds` (pane ID to directory).
         Directory paths may repeat; use pane IDs as targets. Do not rename or clear names unless
         the user asks: explicit names pin the label and stop it from following the program title.

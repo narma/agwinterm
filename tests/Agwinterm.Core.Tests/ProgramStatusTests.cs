@@ -77,13 +77,31 @@ public sealed class ProgramStatusTests
     }
 
     [Fact]
-    public void PromptEndsTransientRecordsWithoutErasingFinishedDescendants()
+    public void PromptEndsAllProducerRecordsAndDetachedCompletions()
     {
         var records = new ProgramStatusRecords();
-        records.Apply(Report("working")); records.Apply(Report("done", "child"));
+        records.Apply(Report("working")); records.Apply(Report("done", "child"), retainCompletion: true);
         records.Apply(Report("error", "error")); records.Apply(Report("blocked", "wait"));
+        records.Apply(Report("idle", "idle"));
         records.FinishCommand();
-        Assert.Equal(new[] { "child", "error" }, records.Records.Select(r => r.Id));
+        Assert.Empty(records.Records);
+        Assert.Empty(records.Replay());
+        Assert.Equal(0, records.CompletionToken("child"));
+        records.Apply(Report("idle", "next"));
+        Assert.Equal("next", Assert.Single(records.Replay()).Report.Id);
+    }
+
+    [Fact]
+    public void ExitedAgentLosesAttentionAndNextAgentStartsFresh()
+    {
+        var activity = new AgentActivity();
+        activity.Observe(AgentStatus.Completed, false);
+        activity.Reset();
+        Assert.False(activity.Reported);
+        Assert.Equal(AgentStatus.Idle, activity.Display(false));
+        activity.Observe(AgentStatus.Idle, false);
+        Assert.True(activity.Reported);
+        Assert.Equal(AgentStatus.Idle, activity.Display(false));
     }
 
     [Fact]

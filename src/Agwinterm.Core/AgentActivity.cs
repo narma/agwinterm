@@ -8,6 +8,12 @@ public sealed class AgentActivity
     public bool Reported { get; private set; }
     private AgentStatus _raw;
     private bool _seen;
+    public void Reset()
+    {
+        Reported = false;
+        Status = _raw = AgentStatus.Idle;
+        _seen = false;
+    }
     public void Observe(AgentStatus status, bool viewed)
     {
         bool changed = !Reported || status != _raw;
