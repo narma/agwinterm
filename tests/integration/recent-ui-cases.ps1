@@ -2,6 +2,15 @@
 function RecentList(){Rpc 'recent.list' @{} -NoTarget -Window ''}
 function RecentOpen([string]$id,[string]$window='active'){Rpc 'recent.open' @{id=$id} -NoTarget -Window $window}
 function RecentWait([scriptblock]$condition){for($i=0;$i-lt 50;$i++){try{if(& $condition){return $true}}catch{};Start-Sleep -Milliseconds 100};return $false}
+function RecentWorkspace([string]$name){
+    $id=[string](Rpc 'workspace.new' @{name=$name} -NoTarget)
+    # workspace.new acknowledges before the UI mutation completes. Wait for the
+    # workspace to exist before session.new or workspace.delete resolves its ID.
+    if(-not (RecentWait {@((Rpc 'tree').workspaces|Where-Object id -eq $id).Count-eq 1})){
+        throw "Recent fixture workspace did not appear: $name ($id)"
+    }
+    return $id
+}
 $null=Rpc 'recent.clear' @{} -NoTarget -Window ''
 $null=Rpc 'session.rename' @{name='C5 split'} $session
 $null=Rpc 'session.context' @{context='C5 context'} $session
@@ -29,7 +38,7 @@ Check 'successful reopen consumes only its entry' (@((RecentList).entries).Count
 $profiles=@{default='HUD-test';profiles=@(@{name='HUD-test';command='cmd.exe';args=@('/d');cwd=$artifact},@{name='C5-extra';command='cmd.exe';args=@('/d');cwd=$artifact})}
 $profiles|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
 $null=Rpc 'profiles.reload' @{} -NoTarget
-$ws=[string](Rpc 'workspace.new' @{name='C5 workspace'} -NoTarget)
+$ws=RecentWorkspace 'C5 workspace'
 $a=[string](Rpc 'session.new' @{workspace=$ws;profile='HUD-test';name='good'})
 $b=[string](Rpc 'session.new' @{workspace=$ws;profile='C5-extra';name='retry'})
 $null=Rpc 'workspace.delete' @{} $ws
@@ -45,7 +54,7 @@ $null=Rpc 'profiles.reload' @{} -NoTarget
 $retry=RecentOpen $group.id
 Check 'retry restores only the failed member' ($retry.outcome-eq 'completed' -and $retry.members.Count-eq 1 -and $retry.members[0].sessionId-eq $b -and @((Rpc 'tree').workspaces.sessions|Where-Object id -eq $a).Count-eq 1)
 # Empty workspaces are history too.
-$empty=[string](Rpc 'workspace.new' @{name='C5 empty'} -NoTarget)
+$empty=RecentWorkspace 'C5 empty'
 $null=Rpc 'workspace.delete' @{} $empty
 $emptyEntry=@((RecentList).entries|Where-Object name -eq 'C5 empty')[0]
 $opened=RecentOpen $emptyEntry.id
