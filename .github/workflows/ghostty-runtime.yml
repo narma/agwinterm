@@ -1,0 +1,27 @@
+name: Ghostty runtime package
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Cache Ghostty release package
+        uses: actions/cache@v6.1.0
+        with:
+          path: artifacts/ghostty-release-native
+          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
+      # stage.ps1 verifies source and payload hashes even on a cache hit.
+      - name: Prepare verified Ghostty runtime
+        shell: pwsh
+        run: ./native/ghostty-vt/stage.ps1 -Destination artifacts/ghostty-release-native
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
+          if-no-files-found: error

@@ -1,89 +1,150 @@
 name: Release
 
-# Tag a commit (e.g. `git tag v0.2.0 && git push origin v0.2.0`) to build the
-# installer and publish a GitHub Release with agwinterm-setup-<ver>.exe attached.
 on:
   push:
     tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
+      publish_release:
+        description: 'Publish the built assets (leave disabled to benchmark the full release build)'
+        type: boolean
+        default: false
       publish_packages:
         description: 'Submit to winget + Chocolatey regardless of the checkpoint rule'
         type: boolean
         default: false
 
 permissions:
-  contents: write
-  id-token: write        # for build-provenance attestation (free, keyless via Sigstore)
-  attestations: write
+  contents: read
 
 jobs:
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
 
-  installer:
-    needs: wsl-hook
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
+  macos-remote:
+    uses: ./.github/workflows/macos-remote.yml
 
-      - uses: actions/download-artifact@v7
+  ghostty-runtime:
+    uses: ./.github/workflows/ghostty-runtime.yml
+
+  packages:
+    name: ${{ matrix.runtime }} ${{ matrix.package }}
+    needs: [wsl-hook, ghostty-runtime]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [net11, net10]
+        package: [installer, portable]
+    env:
+      AgwintermNet11: ${{ matrix.runtime == 'net11' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: wsl-hook-*
           merge-multiple: true
           path: artifacts/wsl-hook
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ghostty-windows-runtime
+          path: artifacts/ghostty-release-native
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           global-json-file: global.json
-
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-
-      - name: Cache Ghostty release package
-        uses: actions/cache@v5
+          check-latest: false
+          skip-lts-prepass: true
+      - name: Cache NuGet packages
+        uses: actions/cache@v6.1.0
         with:
-          path: artifacts/ghostty-release-native
-          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
-      - name: Publish installer
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2.9.3
+        with:
+          workspaces: native -> target
+      - name: Install Inno Setup
+        if: matrix.package == 'installer'
+        run: choco install innosetup -y --no-progress
+      - name: Build installer
+        if: matrix.package == 'installer'
         shell: pwsh
         run: ./installer/build.ps1
-
-      - name: Build portable exe
-        shell: pwsh
-        run: ./installer/build-portable.ps1
-
-
-      - name: Preserve update paths for older .NET 11 builds
+      - name: Build portable and verify its payload
+        if: matrix.package == 'portable'
         shell: pwsh
         run: |
-          Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $_.DirectoryName ($_.Name -replace '^agwinterm-', 'agwinterm-net11-'))
+          ./installer/build-portable.ps1
+          ./tests/integration/portable-tools.ps1
+      - name: Name compatibility assets and reuse the standalone CLI
+        shell: pwsh
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          if ($env:RUNTIME -eq 'net10') {
+            Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
+              Rename-Item -LiteralPath $_.FullName -NewName ($_.Name -replace '^agwinterm-', 'agwinterm-net10-')
+            }
+          } else {
+            Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
+              Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $_.DirectoryName ($_.Name -replace '^agwinterm-', 'agwinterm-net11-'))
+            }
+            if ($env:PACKAGE -eq 'portable') {
+              # Already self-contained, single-file, ReadyToRun and versioned by build-portable.ps1.
+              Copy-Item installer/stage-portable/tools/agwintermctl.exe installer/Output/agwintermctl.exe
+            }
           }
-      # Ship a standalone control CLI for scripts and automation.
-      - name: Publish standalone agwintermctl
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-${{ matrix.runtime }}-${{ matrix.package }}
+          path: installer/Output/*.exe
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    # A single writer publishes only after all four packages have succeeded.
+    # Manual build-only runs exercise the same package jobs without creating a release.
+    needs: [packages, macos-remote]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: installer/Output
+      - name: Verify the complete release asset set
         shell: pwsh
         run: |
-          $v = '${{ github.ref_name }}'
-          $v = if ($v -match '^v\d') { $v.TrimStart('v') } else { '0.0.0' }
-          dotnet publish src/Agwinterm.Ctl/Agwinterm.Ctl.csproj -c Release -r win-x64 `
-            --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:EnableCompressionInSingleFile=true -p:Version=$v `
-            -o ctl-publish
-          Copy-Item ctl-publish/agwintermctl.exe installer/Output/agwintermctl.exe
-
-      # Free, certless supply-chain signing: a Sigstore-backed attestation binding each artifact to
-      # this commit + workflow. Verify with:  gh attestation verify <file> --repo narma/agwinterm
-      # (Doesn't remove SmartScreen — that needs Authenticode, e.g. a SignPath Foundation OSS cert.)
+          $iss = Get-Content installer/agwinterm.iss -Raw
+          if ($iss -notmatch '#define\s+AppVersion\s+"([^"]+)"') { throw 'Missing release version' }
+          $version = $Matches[1]
+          $expected = @('agwintermctl.exe')
+          foreach ($prefix in @('agwinterm', 'agwinterm-net11', 'agwinterm-net10')) {
+            $expected += "$prefix-setup-$version.exe", "$prefix-portable-$version-win-x64.exe"
+          }
+          $actual = @(Get-ChildItem installer/Output -File | Select-Object -ExpandProperty Name)
+          if (Compare-Object $expected $actual) { throw 'Release asset set differs from the updater contract' }
+          foreach ($suffix in @("setup-$version.exe", "portable-$version-win-x64.exe")) {
+            if ((Get-FileHash "installer/Output/agwinterm-$suffix").Hash -ne
+                (Get-FileHash "installer/Output/agwinterm-net11-$suffix").Hash) {
+              throw "NET 11 compatibility alias differs: $suffix"
+            }
+          }
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        if: github.event_name == 'push' || inputs.publish_release
+        uses: actions/attest-build-provenance@v4.2.2
         with:
-          subject-path: |
-            installer/Output/agwinterm-setup-*.exe
-            installer/Output/agwinterm-portable-*.exe
-            installer/Output/agwintermctl.exe
-            installer/Output/agwinterm-net11-*.exe
-
+          subject-path: installer/Output/*.exe
+          create-storage-record: false
       - name: Read curated release notes
         id: notes
         shell: pwsh
@@ -96,9 +157,9 @@ jobs:
             $title = (Get-Content -LiteralPath $path -TotalCount 1).TrimStart('#', ' ')
             "title=$title" >> $env:GITHUB_OUTPUT
           }
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v3
+      - name: Stage complete GitHub Release
+        if: github.event_name == 'push' || inputs.publish_release
+        uses: softprops/action-gh-release@v3.0.4
         with:
           draft: true
           name: ${{ steps.notes.outputs.title || github.ref_name }}
@@ -107,9 +168,17 @@ jobs:
             installer/Output/agwinterm-portable-*.exe
             installer/Output/agwintermctl.exe
             installer/Output/agwinterm-net11-*.exe
+            installer/Output/agwinterm-net10-*.exe
           body_path: ${{ steps.notes.outputs.path }}
           generate_release_notes: true
-          fail_on_unmatched_files: true    # every one is a hard build product now — a missing one is a broken release
+          fail_on_unmatched_files: true
+      - name: Publish complete release
+        if: github.event_name == 'push' || inputs.publish_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest
 
   # ---- checkpoint releases ----------------------------------------------------------------------
   # winget and Chocolatey are HUMAN-MODERATED. Every submission costs a reviewer a slot in a queue,
@@ -131,6 +200,7 @@ jobs:
   # a minor bump (0.18.0) is NOT a checkpoint, so it reaches the package managers only at 0.18.9
   # unless it is pushed by hand.
   gate:
+    if: github.event_name == 'push' || inputs.publish_release
     needs: publish-release
     runs-on: ubuntu-latest
     outputs:
@@ -174,7 +244,7 @@ jobs:
   # scope (used to fork winget-pkgs and open the PR); skips with a warning if unset.
   # The scoop bucket needs no equivalent: its Excavator updates itself on a schedule.
   winget:
-    needs: [installer, gate]
+    needs: [publish-release, gate]
     if: needs.gate.outputs.publish == 'true'
     runs-on: windows-latest
     # Best-effort: a brand-new package can't be updated until its first version clears winget-pkgs
@@ -214,7 +284,7 @@ jobs:
   # skips with a warning if unset. Rewrites version + download URL + checksum in-place from the
   # release asset so the committed template can stay pinned at the last released version.
   chocolatey:
-    needs: [installer, gate]
+    needs: [publish-release, gate]
     if: needs.gate.outputs.publish == 'true'
     runs-on: windows-latest
     # Best-effort: Chocolatey rejects new versions of a package whose first version is still in
@@ -223,7 +293,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
       - name: Pack and push to Chocolatey
         shell: pwsh
         env:
@@ -233,56 +303,3 @@ jobs:
           # Shared with choco-push.yml (the repush-a-moderated-version path) so the two can't drift.
           $version = '${{ github.ref_name }}'.TrimStart('v')
           ./packaging/chocolatey/publish.ps1 -Version $version -ApiKey $env:CHOCO_API_KEY -Repository '${{ github.repository }}'
-
-  net10-installer:
-    # Publish additional assets after the main job creates the release.
-    needs: [wsl-hook, installer]
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
-        with:
-          pattern: wsl-hook-*
-          merge-multiple: true
-          path: artifacts/wsl-hook
-      - uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: global.json
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-      - name: Cache Ghostty release package
-        uses: actions/cache/restore@v5
-        with:
-          path: artifacts/ghostty-release-native
-          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
-      - name: Build supported .NET 10 assets
-        shell: pwsh
-        env:
-          AgwintermNet11: 'false'
-        run: |
-          ./installer/build.ps1
-          ./installer/build-portable.ps1
-          # Explicit compatibility assets are selected only by .NET 10 builds from v0.30.5 onward.
-          Get-ChildItem installer/Output/agwinterm-*.exe | ForEach-Object {
-            Rename-Item -LiteralPath $_.FullName -NewName ($_.Name -replace '^agwinterm-', 'agwinterm-net10-')
-          }
-      - uses: actions/attest-build-provenance@v3
-        with:
-          subject-path: installer/Output/agwinterm-net10-*.exe
-      - uses: softprops/action-gh-release@v3
-        with:
-          draft: true
-          files: installer/Output/agwinterm-net10-*.exe
-          fail_on_unmatched_files: true
-
-  publish-release:
-    # Do not advertise an update until BOTH runtime editions are downloadable.
-    needs: [installer, net10-installer]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish complete release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
-          GH_REPO: ${{ github.repository }}
-        run: gh release edit "$RELEASE_TAG" --draft=false --latest

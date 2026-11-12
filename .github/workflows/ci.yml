@@ -22,25 +22,27 @@ jobs:
     env:
       ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/artifacts/ghostty-zig-global
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           global-json-file: global.json
+          check-latest: false
+          skip-lts-prepass: true
       # No restore prefix: a compiled bundle is usable only for these exact inputs.
       # Tests run below even on an exact hit; only native compilation is skipped.
       - name: Cache native Ghostty bundle
         id: ghostty-native
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             artifacts/ghostty-build/bin
             artifacts/ghostty-build/search-tests/bin
             artifacts/ghostty-build/provenance.json
             artifacts/ghostty-build/licenses
-          key: ghostty-native-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json', 'native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**', '.github/workflows/ci.yml') }}
+          key: ghostty-native-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json', 'native/ghostty-vt/*.zig', 'native/ghostty-vt/*.c', 'native/ghostty-vt/*.h', 'native/ghostty-vt/*.ps1', 'native/ghostty-vt/patches/**') }}
       - name: Cache pinned build toolchain
         if: steps.ghostty-native.outputs.cache-hit != 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: artifacts/toolchains
           key: ghostty-zig-windows-${{ hashFiles('native/ghostty-vt/pin.json') }}
@@ -52,7 +54,7 @@ jobs:
         run: ./native/ghostty-vt/build.ps1 -PrepareOnly
       - name: Cache Ghostty packages and compiler outputs
         if: steps.ghostty-native.outputs.cache-hit != 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             artifacts/ghostty-source/.zig-cache
@@ -62,7 +64,7 @@ jobs:
           restore-keys: |
             ghostty-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/pin.json') }}-
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
@@ -83,7 +85,7 @@ jobs:
         shell: pwsh
         run: dotnet run --project tests/Agwinterm.GhosttyHarness -c Release -- artifacts/ghostty-build/bin
       - name: Upload build provenance
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ghostty-windows-provenance
           path: |
@@ -93,54 +95,89 @@ jobs:
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
 
-  portable:
-    name: portable WSL payload
-    needs: wsl-hook
+  macos-remote:
+    uses: ./.github/workflows/macos-remote.yml
+
+  ghostty-runtime:
+    uses: ./.github/workflows/ghostty-runtime.yml
+
+  portable-tools:
+    name: portable tool (${{ matrix.tool }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [host, cli]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           global-json-file: global.json
+          check-latest: false
+          skip-lts-prepass: true
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
           restore-keys: |
             nuget-${{ runner.os }}-${{ runner.arch }}-
-      - uses: actions/download-artifact@v7
+      - name: Publish portable tool
+        shell: pwsh
+        run: ./installer/publish-portable-tool.ps1 -Tool ${{ matrix.tool }} -Destination artifacts/portable-tools
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: portable-tool-${{ matrix.tool }}
+          path: artifacts/portable-tools/${{ matrix.tool == 'host' && 'Agwinterm.Host.exe' || 'agwintermctl.exe' }}
+          compression-level: 0
+          if-no-files-found: error
+
+  portable:
+    name: portable WSL payload
+    needs: [wsl-hook, ghostty-runtime, portable-tools]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.1.0
+        with:
+          global-json-file: global.json
+          check-latest: false
+          skip-lts-prepass: true
+      - name: Cache NuGet packages
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: wsl-hook-*
           merge-multiple: true
           path: artifacts/wsl-hook
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: native -> target
-      - name: Cache Ghostty release package
-        # Exact release package: includes notices and checks its own input/file hashes.
-        # This cache is independent of the Debug search executable used by the contract job.
-        uses: actions/cache@v5
-        with:
-          path: artifacts/ghostty-release-native
-          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
-      - name: Publish portable with both Linux architectures
-        shell: pwsh
-        run: ./installer/build-portable.ps1
-      - name: Verify the standalone portable payload
-        shell: pwsh
-        run: ./tests/integration/portable-tools.ps1
-      - name: Share the verified Ghostty runtime with Windows tests
-        uses: actions/upload-artifact@v6
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
-          if-no-files-found: error
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: portable-tool-*
+          merge-multiple: true
+          path: artifacts/portable-tools
+      - name: Publish portable with both Linux architectures
+        shell: pwsh
+        run: ./installer/build-portable.ps1 -PrebuiltToolsDirectory artifacts/portable-tools
+      - name: Verify the standalone portable payload
+        shell: pwsh
+        run: ./tests/integration/portable-tools.ps1
 
   windows-tests:
     name: windows (${{ matrix.suite }})
-    needs: portable
+    needs: ghostty-runtime
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -153,23 +190,27 @@ jobs:
             cache: control
           - suite: host
             cache: control
+          - suite: restore
+            cache: control
           - suite: ui
             cache: ui
           - suite: workspace
             cache: ui
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6.1.0
         with:
           global-json-file: global.json
+          check-latest: false
+          skip-lts-prepass: true
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('global.json', '**/*.csproj', '**/NuGet.Config', '**/nuget.config', '**/Directory.*.props', '**/Directory.*.targets') }}
@@ -217,7 +258,7 @@ jobs:
 
 
       - name: Restored Ghostty history and remote transport adoption
-        if: matrix.suite == 'host'
+        if: matrix.suite == 'restore'
         shell: pwsh
         timeout-minutes: 10
         run: |
@@ -415,7 +456,7 @@ jobs:
 
       - name: Retain native UI acceptance outcomes
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: native-ui-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           # Numeric summaries only; raw logs, screenshots and state stay local.
@@ -427,18 +468,18 @@ jobs:
     name: Ralphex bridge fixtures
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Setup Go for Ralphex bridge fixtures
         id: go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.26.x'
           cache: false
 
       - name: Cache pinned Ralphex
         id: ralphex
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ runner.temp }}/ralphex-bin
           key: ralphex-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-v1.6.1
@@ -468,7 +509,7 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable, net10-publish]
+    needs: [windows-tests, bridge-fixtures, portable, portable-tools, net10-publish, ghostty-contract, wsl-hook, ghostty-runtime, macos-remote]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites
@@ -478,19 +519,21 @@ jobs:
 
   net10-publish:
     name: .NET 10 compatibility publish
-    needs: portable
+    needs: ghostty-runtime
     runs-on: windows-latest
     env:
       AgwintermNet11: 'false'
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6.1.0
         with:
           global-json-file: global.json
+          check-latest: false
+          skip-lts-prepass: true
           dotnet-version: '10.0.x'
       - name: Test updater and publish supported .NET 10 app, host and CLI
         shell: pwsh
