@@ -93,9 +93,12 @@ jobs:
   wsl-hook:
     uses: ./.github/workflows/wsl-hook.yml
 
+  ghostty-runtime:
+    uses: ./.github/workflows/ghostty-runtime.yml
+
   portable:
     name: portable WSL payload
-    needs: wsl-hook
+    needs: [wsl-hook, ghostty-runtime]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -118,29 +121,20 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: native -> target
-      - name: Cache Ghostty release package
-        # Exact release package: includes notices and checks its own input/file hashes.
-        # This cache is independent of the Debug search executable used by the contract job.
-        uses: actions/cache@v5
+      - uses: actions/download-artifact@v7
         with:
+          name: ghostty-windows-runtime
           path: artifacts/ghostty-release-native
-          key: ghostty-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/ghostty-vt/**') }}
       - name: Publish portable with both Linux architectures
         shell: pwsh
         run: ./installer/build-portable.ps1
       - name: Verify the standalone portable payload
         shell: pwsh
         run: ./tests/integration/portable-tools.ps1
-      - name: Share the verified Ghostty runtime with Windows tests
-        uses: actions/upload-artifact@v6
-        with:
-          name: ghostty-windows-runtime
-          path: artifacts/ghostty-release-native
-          if-no-files-found: error
 
   windows-tests:
     name: windows (${{ matrix.suite }})
-    needs: portable
+    needs: ghostty-runtime
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -152,6 +146,8 @@ jobs:
           - suite: control
             cache: control
           - suite: host
+            cache: control
+          - suite: restore
             cache: control
           - suite: ui
             cache: ui
@@ -217,7 +213,7 @@ jobs:
 
 
       - name: Restored Ghostty history and remote transport adoption
-        if: matrix.suite == 'host'
+        if: matrix.suite == 'restore'
         shell: pwsh
         timeout-minutes: 10
         run: |
@@ -468,7 +464,7 @@ jobs:
   build-test:
     name: build + test (windows)
     if: ${{ always() }}
-    needs: [windows-tests, bridge-fixtures, portable, net10-publish]
+    needs: [windows-tests, bridge-fixtures, portable, net10-publish, ghostty-contract, wsl-hook, ghostty-runtime]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI suites
@@ -478,7 +474,7 @@ jobs:
 
   net10-publish:
     name: .NET 10 compatibility publish
-    needs: portable
+    needs: ghostty-runtime
     runs-on: windows-latest
     env:
       AgwintermNet11: 'false'
