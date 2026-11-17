@@ -180,6 +180,36 @@ try {
     SelectionMouse 0x200 0 7
     SelectionMouse 0x202 0 7 0
     CheckSelection 'Word drag retracts to the pressed word' 'beta'
+    SelectionMouse 0x203 0 7
+    SelectionMouse 0x200 0 7
+    SelectionMouse 0x202 0 7 0
+    CheckSelection 'Motion within the pressed cell leaves the word selected' 'beta'
+    SelectionMouse 0x201 0 1
+    SelectionMouse 0x200 0 1
+    SelectionMouse 0x202 0 1 0
+    CheckSelection 'Clicking another word clears the selection even with motion within the cell' ''
+    SelectionMouse 0x203 0 7
+    SelectionMouse 0x202 0 7 0
+    CheckSelection 'Double-click leaves a word selected before a fresh drag' 'beta'
+    SelectionMouse 0x201 1 2
+    CheckSelection 'A fresh press in the same pane clears the selected word' ''
+    SelectionMouse 0x200 1 5
+    SelectionMouse 0x202 1 5 0
+    CheckSelection 'A fresh drag in the same pane selects only the new range' '2345'
+    $null=Rpc 'session.write' @{text=($esc+'[?1002h'+$esc+'[?1006h')} $selectionSession
+    try {
+        Start-Sleep -Milliseconds 350
+        SelectionMouse 0x203 0 7
+        SelectionMouse 0x202 0 7 0
+        CheckSelection 'A word remains selectable with mouse reporting enabled' 'beta'
+        SelectionMouse 0x201 1 2
+        SelectionMouse 0x200 1 5
+        SelectionMouse 0x202 1 5 0
+        CheckSelection 'A drag forwarded to the application clears the terminal highlight' ''
+    } finally {
+        $null=Rpc 'session.write' @{text=($esc+'[?1002l'+$esc+'[?1006l')} $selectionSession
+        Start-Sleep -Milliseconds 350
+    }
     # A third press immediately after the double-click selects a logical line.
     SelectionMouse 0x203 1 3
     SelectionMouse 0x202 1 3 0

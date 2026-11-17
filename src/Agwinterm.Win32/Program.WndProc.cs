@@ -418,6 +418,14 @@ internal partial class Program
 
             case WM_CAPTURECHANGED:
                 if (_sidebarResizing) FinishSidebarResize();
+                if (_selecting)
+                {
+                    _selecting = false;
+                    _selPane?.EndSelectionGesture();
+                    _selPane = null;
+                    _lastWordClick = null;
+                    StopSelAutoscroll();
+                }
                 break;
 
             case WM_SETCURSOR:
@@ -494,6 +502,8 @@ internal partial class Program
             case WM_LBUTTONDOWN:
                 DismissHoverTip();
                 {
+                    var wordClick = _lastWordClick;
+                    _lastWordClick = null;
                     int mx = DipX(lParam), my = DipY(lParam);   // device px -> DIP layout
                     if (_chromeFocus) ExitChromeFocus(announce: false);   // a click leaves the F6 sidebar zone
                     if (_helpOpen)
@@ -561,21 +571,30 @@ internal partial class Program
                     // Ctrl+click on a hovered link opens it (never starts a selection or reaches the app).
                     if (KeyDown(VK_CONTROL) && UpdateLinkHover(mx, my) && _linkUrl is { } lurl) { OpenLink(lurl); return IntPtr.Zero; }
                     bool shiftDn = KeyDown(VK_SHIFT);
-                    var em0 = _session?.Emulator;
-                    if (em0 is not null && em0.MouseReporting && !shiftDn) { SendMousePx(0, lParam, true); SetCapture(hwnd); return IntPtr.Zero; }
+                    if (!shiftDn && ActiveSurface() is { S.Emulator.MouseReporting: true } mousePane)
+                    {
+                        if (mousePane.HasSel)
+                        {
+                            mousePane.ClearSel();
+                            RequestRedraw();
+                        }
+                        SendMousePx(0, lParam, true);
+                        SetCapture(hwnd);
+                        return IntPtr.Zero;
+                    }
                     // Text selection (app not grabbing the mouse, or Shift held to override).
                     if (PaneAt(mx, my) is { } h0)
                     {
                         var (line, col) = CellAtPx(h0.pane, h0.ox, h0.oy, h0.cw, h0.ch, mx, my);
-                        if (Environment.TickCount - _lastClickMs < 400 && _clickCount >= 2)  // triple-click -> line
-                        { h0.pane.BlockSel = false; SelectLine(h0.pane, line); _clickCount = 3; _selMoved = true; }
+                        if (wordClick is { } click && click.Pane == h0.pane && click.Line == line &&
+                            click.Column == col && Environment.TickCount64 - click.Time < 400)
+                        { h0.pane.BlockSel = false; SelectLine(h0.pane, line); _selMoved = true; }
                         else
                         {
                             // A rejected extension must not change shape or start a drag/copy cycle.
                             if (!BeginSelect(h0.pane, line, col, shiftDn, KeyDown(VK_MENU))) return IntPtr.Zero;
-                            _clickCount = 1;
                         }
-                        _lastClickMs = Environment.TickCount;
+                        _selPointerCell = (line, col);
                         _selPane = h0.pane; _selAutoDir = 0; _selMouseX = mx;
                         _selecting = true; SetCapture(hwnd); RequestRedraw();
                     }
@@ -615,7 +634,7 @@ internal partial class Program
                 {
                     _selecting = false; ReleaseCapture(); StopSelAutoscroll();
                     var sp = _selPane; _selPane = null;
-                    if (!_selMoved) { ActiveSurface()?.ClearSel(); RequestRedraw(); } // plain click clears
+                    if (!_selMoved) { sp?.ClearSel(); RequestRedraw(); } // plain click clears
                     else if (sp is not null) FinalizeSelection(sp);                   // copy-on-select
                     sp?.EndSelectionGesture();
                     return IntPtr.Zero;
@@ -625,6 +644,7 @@ internal partial class Program
 
             case WM_LBUTTONDBLCLK:
                 {
+                    _lastWordClick = null;
                     int mx = DipX(lParam), my = DipY(lParam);   // device px -> DIP layout
                     if (TryBeginSidebarResize(mx, my)) return IntPtr.Zero;
                     if (_dashboardOpen) { DashboardClick(mx, my, doubleClick: true); return IntPtr.Zero; }
@@ -637,7 +657,9 @@ internal partial class Program
                     {
                         var (line, col) = CellAtPx(h0.pane, h0.ox, h0.oy, h0.cw, h0.ch, mx, my);
                         SelectWord(h0.pane, line, col);
-                        _clickCount = 2; _lastClickMs = Environment.TickCount; _selMoved = true; _selecting = true;
+                        _lastWordClick = (h0.pane, line, col, Environment.TickCount64);
+                        _selPointerCell = (line, col);
+                        _selMoved = true; _selecting = true;
                         _selPane=h0.pane; _selMouseX=mx; _selAutoDir=0;
                         SetCapture(hwnd);
                         RequestRedraw();
@@ -709,12 +731,16 @@ internal partial class Program
                         if (_selPane is { } sp && PaneBox(sp) is { } bx)
                         {
                             float top = bx.oy, bottom = bx.oy + bx.rows * bx.ch;
-                            _selAutoDir = mmy < top ? -1 : (mmy >= bottom ? 1 : 0);
+                            int autoDir = mmy < top ? -1 : (mmy >= bottom ? 1 : 0);
                             // Track focus at the vertically-clamped point so horizontal moves register out of bounds.
                             int cy = (int)Math.Clamp(mmy, top, bottom - 1);
                             var (line, col) = CellAtPx(sp, bx.ox, bx.oy, bx.cw, bx.ch, mmx, cy);
                             UpdateSelect(sp, line, col);
-                            if (_selAutoDir != 0) SetTimer(hwnd, (IntPtr)SelAutoTimer, 50, IntPtr.Zero);
+                            if (autoDir != 0)
+                            {
+                                _selAutoDir = autoDir;
+                                SetTimer(hwnd, (IntPtr)SelAutoTimer, 50, IntPtr.Zero);
+                            }
                             else StopSelAutoscroll();
                             RequestRedraw();
                         }

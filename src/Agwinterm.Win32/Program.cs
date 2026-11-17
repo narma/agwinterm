@@ -234,7 +234,8 @@ internal partial class Program : ISessionHost, IWindowHost
     // Terminal text selection drag + multi-click (word/line) tracking.
     private bool _selecting;       // left-drag selecting text in the content region
     private bool _selMoved;        // moved past a cell during the drag (distinguishes click from select)
-    private int _lastClickMs, _clickCount;
+    private (Pane Pane, int Line, int Column, long Time)? _lastWordClick;
+    private (int Line, int Column) _selPointerCell;
     private Pane? _selPane;        // pane the current selection drag belongs to (locked at press)
     private int _selAutoDir;       // drag-autoscroll: -1 mouse above pane, +1 below, 0 in-bounds
     private int _selMouseX;        // last drag X (client px) for column tracking during autoscroll
