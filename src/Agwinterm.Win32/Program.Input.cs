@@ -850,7 +850,7 @@ internal partial class Program
                 string? fallback=null;
                 try { fallback=TerminalSelectionText.Read(remote,p.SelAncLine,p.SelAncCol,p.SelFocLine,p.SelFocCol,p.BlockSel,100000); }
                 catch(NotSupportedException) { } catch(InvalidDataException) { }
-                p.SelOwner=new(presentation,frame.Identity,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
+                p.SelOwner=new(presentation,frame,new(Guid.NewGuid().ToString("N"),p.SelAncLine,p.SelAncCol,
                     p.SelFocLine,p.SelFocCol,p.BlockSel,all,frame.State.AlternateScreen,unit,_config.WordDelimiters,
                     gesture ? p.SelGestureId : null,p.SelGestureBehavior,p.SelGestureRow,p.SelGestureColumn),
                     unit is null && (!gesture || p.SelGestureBehavior == 0) ? fallback : null,()=>RequestRedraw());
@@ -919,7 +919,7 @@ internal partial class Program
         if(p.SelOwner is { } owner && em is PresentedTerminalView remote)
         {
             using var frame=remote.AcquireFrame();
-            var located=frame is null ? null : owner.Locate(frame.Identity.TerminalGeneration);
+            var located=frame is null ? null : owner.Locate(frame);
             p.SelContentVisible=located is { Valid:true };
             if(located is { Valid:true })
             {
@@ -1260,6 +1260,9 @@ internal partial class Program
 
     private void UpdateSelect(Pane p, int line, int col)
     {
+        if (_selPointerCell == (line, col)) return;
+        _selPointerCell = (line, col);
+        _lastWordClick = null;
         lock (p.S.SyncRoot)
         {
             // Reconcile before adding a focus in today's coordinates. Preserve cached hidden
