@@ -1261,7 +1261,6 @@ internal partial class Program
     private void UpdateSelect(Pane p, int line, int col)
     {
         if (_selPointerCell == (line, col)) return;
-        _selPointerCell = (line, col);
         _lastWordClick = null;
         lock (p.S.SyncRoot)
         {
@@ -1269,6 +1268,7 @@ internal partial class Program
             // rows until they return; only an invalidated selection starts a new drag segment.
             bool reconciled = ReconcileSel(p);
             if (p.HasSel && reconciled && !CanExtendSelection(p)) return;
+            _selPointerCell = (line, col);
             if (!reconciled || (!p.SelContentVisible && !p.S.Emulator.SynchronizedOutput))
             {
                 p.SelAncLine = line; p.SelAncCol = col;
