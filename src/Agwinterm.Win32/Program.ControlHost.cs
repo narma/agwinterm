@@ -1177,7 +1177,7 @@ internal partial class Program
                 if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
                 string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
                     AgentResume.ResumeFlags(agent, command));
-                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && ReferenceEquals(pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline); SaveState(); } });
+                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && ReferenceEquals(pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline, new(agent, sessionId)); SaveState(); } });
                 EmitEvent("bind", pane.Id, "bound: " + relaunch);
                 return true;
             }
@@ -1207,7 +1207,7 @@ internal partial class Program
                         Post(() =>
                         {
                             if (Volatile.Read(ref pane.BindSeq) != seq || !ReferenceEquals(pane.Completion, completion) || completion.Checkpoint != baseline) return;   // a later bind, workload or shell completion won
-                            BindAgent(pane, relaunch, baseline);
+                            BindAgent(pane, relaunch, baseline, new(agent, sessionId));
                             SaveState();
                         });
                         outcome = "bound: " + relaunch;
@@ -1220,13 +1220,15 @@ internal partial class Program
         return true;
     }
 
-    private static void BindAgent(Pane pane, string? command, long baseline)
+    private void BindAgent(Pane pane, string? command, long baseline, AgentConversation? conversation = null)
     {
         pane.AgentResume = command;
+        pane.AgentRecovery.Conversation = conversation ?? AgentResume.FromSavedCommand(command);
         if (command is not null) pane.AgentActivity.Observe(pane.S.Status, false);
         pane.AgentResumeToken = pane.Completion.Token;
         pane.AgentResumeGeneration = baseline;
         Volatile.Write(ref pane.BindCompletionBaseline, baseline);
+        RequestRedraw();
     }
 
     // Pin (or clear, command = null) a restore command on a specific pane (agterm #271). Persisted so

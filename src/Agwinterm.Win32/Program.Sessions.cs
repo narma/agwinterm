@@ -518,7 +518,11 @@ internal partial class Program
                 if (clearedCapture) _pane.CapturedCommand = null;
                 bool clearedAgent = seq is not null && Volatile.Read(ref _pane.BindSeq) == seq && _pane.AgentResume is not null
                     && _pane.AgentResumeToken == token && sequence > _pane.AgentResumeGeneration;
-                if (clearedAgent) _pane.AgentResume = null;
+                if (clearedAgent)
+                {
+                    _pane.AgentResume = null;
+                    _pane.AgentRecovery.Conversation = null;
+                }
                 if (!clearedAgent && !clearedCapture) return;
                 _app.SaveState();
                 if (clearedAgent) _app.EmitEvent("bind", _pane.Id, "cleared: shell command finished");
@@ -1463,7 +1467,7 @@ internal partial class Program
             string cmd = id is null
                 ? "claude --dangerously-skip-permissions"
                 : $"claude --resume {id} --dangerously-skip-permissions";
-            Post(() => { BindAgent(pane, cmd, pane.Completion.Checkpoint); SaveState(); });   // future restarts stay YOLO
+            Post(() => { BindAgent(pane, cmd, pane.Completion.Checkpoint, id is null ? null : new("claude", id)); SaveState(); });   // future restarts stay YOLO
             await QuitClaudeAndRelaunch(pane, cmd);
         });
         return "restarting Claude in YOLO mode";
@@ -1529,7 +1533,7 @@ internal partial class Program
             if (!strong.ContainsKey(p)) claimed.Add(id);
             // Store the full resume command; the restore path types it verbatim and the claude wrapper (or the
             // real CLI) honors --resume, so the exact conversation comes back on every relaunch.
-            BindAgent(p, "claude --resume " + id, p.Completion.Checkpoint);
+            BindAgent(p, "claude --resume " + id, p.Completion.Checkpoint, new("claude", id));
             adopted++;
         }
         if (adopted > 0) { SaveState(); RequestRedraw(); }

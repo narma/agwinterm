@@ -82,6 +82,7 @@ internal partial class Program
 
             case WM_MOUSELEAVE:
                 _mouseTracking = false;
+                if (_copyHover is not null) { _copyHover = null; RequestRedraw(); }
                 DismissHoverTip();
                 if (_hotBtn is not null) { _hotBtn = null; SetTimer(hwnd, (IntPtr)HoverTimer, 15, IntPtr.Zero); RequestRedraw(); }
                 return IntPtr.Zero;
@@ -430,6 +431,7 @@ internal partial class Program
                 break;
 
             case WM_CAPTURECHANGED:
+                _copyPressed = null;
                 if (_sidebarResizing) FinishSidebarResize();
                 if (_selecting)
                 {
@@ -567,6 +569,11 @@ internal partial class Program
                             return IntPtr.Zero;
                         }
                         // List row: begin click-vs-drag (act on release). Skip while renaming.
+                        if (CopyIdAt(mx, my) is { } copyRow)
+                        {
+                            _copyPressed = copyRow; SetCapture(hwnd);
+                            return IntPtr.Zero;
+                        }
                         if (AgentClick(mx, my)) return IntPtr.Zero;
                         if (_editHwnd == IntPtr.Zero)
                         {
@@ -621,6 +628,13 @@ internal partial class Program
                     ReleaseCapture();
                     return IntPtr.Zero;
                 }
+                if (_copyPressed is { } copyPressed)
+                {
+                    _copyPressed = null;
+                    ReleaseCapture();
+                    if (SameCopyRow(CopyIdAt(DipX(lParam), DipY(lParam)), copyPressed)) InvokeCopyId(copyPressed);
+                    return IntPtr.Zero;
+                }
                 if (_setOpen) { SettingsMouseUp(); return IntPtr.Zero; }
                 if (_pressBtn is not null)
                 {
@@ -663,6 +677,7 @@ internal partial class Program
                     if (_dashboardOpen) { DashboardClick(mx, my, doubleClick: true); return IntPtr.Zero; }
                     if (mx < (int)_sidebarW && my >= (int)TitleBarH && my < ClientH() - (int)FooterH)
                     {
+                        if (CopyIdAt(mx, my) is not null) return IntPtr.Zero;
                         var item = RowAt(my);
                         if (item is not null) { StartRename(item); return IntPtr.Zero; }
                     }

@@ -1463,6 +1463,12 @@ internal partial class Program : ISessionHost, IWindowHost
             case VK_UP: _focusRow = list[Math.Max(idx - 1, 0)]; AnnounceFocusRow(); RequestRedraw(); return true;
             case VK_HOME: _focusRow = list[0]; AnnounceFocusRow(); RequestRedraw(); return true;
             case VK_END: _focusRow = list[^1]; AnnounceFocusRow(); RequestRedraw(); return true;
+            case 0x79 when KeyDown(VK_SHIFT): // Shift+F10 opens the focused row's context menu
+            case 0x5D: // Apps key
+                var row = _sidebarRows.FirstOrDefault(r => ReferenceEquals(r.item, list[idx]));
+                var anchor = ScreenRect(ToDevice(12), ToDevice(row.y1 > row.y0 ? row.y1 : TitleBarH), 0, 0);
+                ShowContextMenuWindow(list[idx], (int)anchor.Left, (int)anchor.Top);
+                return true;
             case 0x71 /* F2 */: StartRename(list[idx]); return true;
             case VK_RETURN:
             case VK_SPACE:

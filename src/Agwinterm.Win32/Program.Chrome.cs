@@ -51,6 +51,7 @@ internal partial class Program
     {
         _sidebarRows.Clear();
         _sidebarNames.Clear();
+        _copyIdHits.Clear();
         _footerButtons.Clear();
         _agentsTop = float.MaxValue;
         _agentRows.Clear();
@@ -200,6 +201,8 @@ internal partial class Program
         {
             float nameRight = _sidebarW - 22f;
             if (badgeText is not null) nameRight = MathF.Min(nameRight, badgeX - 5f);
+            nameRight = DrawRowCopyIcon(rt, brush, s, _chromeFocus && !_agentsKeyboardFocus && ReferenceEquals(_focusRow, s),
+                nameX, nameRight, y, rowH);
             float nameAvail = MathF.Max(0f, nameRight - nameX);
             // Clip + ellipsis-trim so a long name (or an enlarged sidebar font) never spills over the dot.
             string name = _sidebarMode == SidebarMode.Flagged && _flaggedLayout == "flat" ? s.SidebarName + " : " + s.Ws.Name : s.SidebarName; // one nonblocking snapshot for drawing, accessibility and context placement
@@ -440,8 +443,96 @@ internal partial class Program
 
     // ---- Context menus ----
 
-    /// <summary>Sidebar right-click menu at screen point (sx, sy): a themed popup window (Menu.cs)
-    /// that — like a native menu — can extend beyond the main window's bounds.</summary>
+    private object? _copyHover;
+    private object? _copyPressed;
+    private readonly List<SidebarNameHit> _copyIdHits = new();
+
+    private object? CopyIdAt(int x, int y) => _copyIdHits.FirstOrDefault(hit =>
+        x >= hit.X && x < hit.X + hit.Width && y >= hit.Y && y < hit.Y + hit.Height)?.Owner;
+
+    private static bool SameCopyRow(object? a, object? b) => ReferenceEquals(a, b) ||
+        (a is AgentRow first && b is AgentRow second && first.Pane == second.Pane && first.RecordId == second.RecordId);
+
+    private float DrawRowCopyIcon(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, object row, bool focused,
+        float left, float right, float y, float height)
+    {
+        const float width = 26f;
+        if (_dragging || right - left < 32f || (!focused && !SameCopyRow(row, _copyHover))) return right;
+        string? label = row is AgentRow a ? CopyIdLabel(a.Session, a.Pane) : CopyIdLabel((Ses)row);
+        if (label is null) return right;
+        var hit = new SidebarNameHit(row, label, right - width, y, width, height);
+        _copyIdHits.Add(hit);
+        _sidebarNames.Add(hit);
+        rt.DrawText("\uE8C8", _iconFont, new Rect(hit.X, y, width, height), brush);
+        return hit.X;
+    }
+
+    private static bool ReportsCodex(Pane pane) =>
+        pane.ProgramStatuses.Records.Any(r => string.Equals(r.App, "codex", StringComparison.OrdinalIgnoreCase));
+
+    private string? CopyIdLabel(Ses session, Pane? onlyPane = null) => _config.SidebarCopyId switch
+    {
+        "conversation" when onlyPane is not null && onlyPane.AgentRecovery.Conversation is not null => "Copy pane's agent conversation ID",
+        "conversation" when onlyPane is null && session.AllPanes.Any(p => p.AgentRecovery.Conversation is not null) => "Copy agent conversation ID",
+        "conversation" when (onlyPane is null ? session.AllPanes.Any(ReportsCodex) : ReportsCodex(onlyPane)) => "How to find the Codex conversation ID",
+        "pane" when session.Panes.Count > 0 => "Copy pane ID",
+        "session" => "Copy Agwinterm session ID",
+        _ => null
+    };
+
+    private PalItem? CopyIdAction(Ses session, Pane? onlyPane = null)
+    {
+        if (CopyIdLabel(session, onlyPane) is not { } label) return null;
+        void Copy(string id)
+        {
+            if (ClipboardSet(id)) ShowToast("ID copied");
+        }
+        if (_config.SidebarCopyId == "session")
+            return new PalItem { Label = label, Run = () => Copy(session.Id) };
+
+        bool conversation = _config.SidebarCopyId == "conversation";
+        var choices = new List<PalItem>();
+        int index = 0;
+        foreach (var pane in session.AllPanes)
+        {
+            string position = session.Axis == SplitAxes.Horizontal
+                ? (index == 0 ? "Top" : "Bottom") : (index == 0 ? "Left" : "Right");
+            if (session.Panes.Count > 2) position = $"#{index + 1}";
+            index++;
+            if (onlyPane is not null && onlyPane != pane) continue;
+            var binding = pane.AgentRecovery.Conversation;
+            if (conversation && binding is null) continue;
+            string id = conversation ? binding!.Id : pane.Id;
+            choices.Add(new PalItem
+            {
+                Label = conversation ? $"{position} pane · {binding!.Agent}" : $"{position} pane",
+                Hint = id[..Math.Min(8, id.Length)],
+                Run = () =>
+                {
+                    if (session.AllPanes.Contains(pane) && (!conversation || pane.AgentRecovery.Conversation == binding))
+                        Copy(id);
+                    else ShowToast("ID is no longer available");
+                }
+            });
+        }
+        if (choices.Count == 0 && conversation)
+            return new PalItem { Label = label, Run = () => ShowToast("Run /status in Codex and copy the Session ID.") };
+        if (choices.Count == 1) return new PalItem { Label = label, Run = choices[0].Run };
+        return choices.Count == 0 ? null : new PalItem { Label = label, Submenu = () => choices };
+    }
+
+    private void InvokeCopyId(object row)
+    {
+        var item = row is AgentRow a ? CopyIdAction(a.Session, a.Pane) : CopyIdAction((Ses)row);
+        if (item?.Submenu is { } submenu)
+        {
+            var hit = _copyIdHits.First(h => SameCopyRow(h.Owner, row));
+            var anchor = ScreenRect(ToDevice(hit.X), ToDevice(hit.Y), ToDevice(hit.Width), ToDevice(hit.Height));
+            ShowMenuWindow(submenu(), (int)anchor.Left, (int)(anchor.Top + anchor.Height), (int)anchor.Top);
+        }
+        else item?.Run?.Invoke();
+    }
+
     private void ShowContextMenuWindow(object item, int sx, int sy) => ShowMenuWindow(BuildContextItems(item), sx, sy);
 
     /// <summary>The context-menu items for a sidebar row (mirrors agterm's session/workspace menus).</summary>
@@ -477,6 +568,7 @@ internal partial class Program
             A("Open Directory…", "", () => { var d = PickFolder(); if (d is not null) CreateSession(Guid.NewGuid().ToString(), null, d, ses.Ws, true); });
             A("Duplicate Session", "", () => DuplicateSession(ses));   // same cwd + profile (#234)
             A("Rename", "", () => StartRename(ses));
+            if (CopyIdAction(ses) is { } copy) list.Add(copy);
             A(ses.Flagged ? "Unflag Session" : "Flag Session", "", () => FlagOp(ses, "toggle"));
             List<Workspace> targets;
             lock (_workspaces) targets = _workspaces.Where(w => !ReferenceEquals(w, ses.Ws)).ToList();
@@ -1486,6 +1578,8 @@ internal partial class Program
     /// <summary>Update the hovered chrome button from a client-area move; arms the fade timer on change.</summary>
     private void UpdateChromeHover(int mx, int my)
     {
+        object? row = mx >= 0 && mx < _sidebarW ? (object?)(AgentAt(mx, my) as AgentRow) ?? RowAt(my) as Ses : null;
+        if (!SameCopyRow(row, _copyHover)) { _copyHover = row; RequestRedraw(); }
         string? hit = null;
         if (my < (int)TitleBarH) hit = ChromeHit(_titleButtons, mx);
         else if (mx < (int)_sidebarW && my >= ClientH() - (int)FooterH) hit = ChromeHit(_footerButtons, mx);
