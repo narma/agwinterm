@@ -315,8 +315,7 @@ internal partial class Program
         {
             WslIntegration.ExportEnvironment(env);
             var argv = WslIntegration.CommandArgs(commandProfile, command, cwd, interactive);
-            pane.Start = session.StartAsync(commandProfile.Command, new SessionCommand(commandProfile.Command, argv).QuotedArgs,
-                verbatimCommandLine: true, extraEnv: env, freshEnv: _config.FreshEnv);
+            pane.Start = StartWslProfileAsync(session, commandProfile, argv, env);
         }
         else if (!string.IsNullOrWhiteSpace(command) && interactive)
             // Run the command in a fresh shell that STAYS OPEN afterwards (custom-command "new" mode):
@@ -327,7 +326,7 @@ internal partial class Program
             // propagates. Verbatim so it becomes exactly `cmd.exe /c <command>` (no extra quoting,
             // which cmd's /c quote-stripping rules would otherwise mangle).
             pane.Start = session.StartAsync("cmd.exe", new[] { "/c", command! }, verbatimCommandLine: true, extraEnv: env, cwd: cwd, freshEnv: _config.FreshEnv);
-        else LaunchShell(session, profileName, env, cwd, deElevate);   // launch the chosen shell profile (default = Windows PowerShell)
+        else pane.Start = LaunchShell(session, profileName, env, cwd, deElevate);
         return pane;
     }
 
@@ -389,7 +388,7 @@ internal partial class Program
     /// <summary>Launch a session's shell from its profile. PowerShell profiles (powershell.exe / pwsh) with
     /// no custom args get the OSC-7 cwd wrap + omp injection (today's default behavior); everything else
     /// (cmd, Git Bash, WSL, custom) launches its raw command + args. AGWINTERM_* env is passed regardless.</summary>
-    private void LaunchShell(ISession session, string? profileName, Dictionary<string, string> env, string? cwd, bool deElevate = false)
+    private Task LaunchShell(ISession session, string? profileName, Dictionary<string, string> env, string? cwd, bool deElevate = false)
     {
         var prof = ResolveProfile(profileName);
         string cmd = prof?.Command is { Length: > 0 } c ? c : "powershell.exe";
@@ -431,15 +430,47 @@ internal partial class Program
             WslIntegration.ExportEnvironment(env);
             pargs = WslIntegration.LaunchArgs(pargs, pcwd, prof?.Env);
             pcwd = null; // Linux cwd belongs to wsl --cd, never CreateProcessW.
+            if (prof is not null && !deElevate && cmd == prof.Command)
+                return StartWslProfileAsync(session, prof, pargs, env);
         }
         bool isPwsh = exe is "powershell.exe" or "pwsh.exe" or "pwsh";
         if (isPwsh && (pargs is null || pargs.Length == 0))
-            _ = session.StartAsync(cmd, ShellArgs(), extraEnv: env, cwd: pcwd, deElevate: deElevate, freshEnv: _config.FreshEnv);        // wrap + omp (cwd-in-title)
+            return session.StartAsync(cmd, ShellArgs(), extraEnv: env, cwd: pcwd, deElevate: deElevate, freshEnv: _config.FreshEnv);
         else
         {
             var argv = pargs ?? Array.Empty<string>();
             var commandLine = new SessionCommand(cmd, argv).QuotedArgs;
-            _ = session.StartAsync(cmd, commandLine, verbatimCommandLine: true, extraEnv: env, cwd: pcwd, deElevate: deElevate, freshEnv: _config.FreshEnv);
+            return session.StartAsync(cmd, commandLine, verbatimCommandLine: true, extraEnv: env, cwd: pcwd, deElevate: deElevate, freshEnv: _config.FreshEnv);
+        }
+    }
+
+    private async Task StartWslProfileAsync(ISession session, ShellProfile profile, string[] args, Dictionary<string, string> env)
+    {
+        await CheckWslIntegrationAsync(profile).ConfigureAwait(false);
+        await session.StartAsync(profile.Command, new SessionCommand(profile.Command, args).QuotedArgs,
+            verbatimCommandLine: true, extraEnv: env, freshEnv: _config.FreshEnv).ConfigureAwait(false);
+    }
+
+    private static readonly Dictionary<string, Task> WslIntegrationChecks = new();
+    private Task CheckWslIntegrationAsync(ShellProfile profile)
+    {
+        string key = JsonSerializer.Serialize(new { profile.Command, args = WslIntegration.Selectors(profile.Args), profile.Env });
+        lock (WslIntegrationChecks)
+        {
+            if (WslIntegrationChecks.TryGetValue(key, out var existing)) return existing;
+            return WslIntegrationChecks[key] = Task.Run(() =>
+            {
+                try
+                {
+                    string notice = WslIntegration.RefreshInstalled(profile, _termProgramVersion + "/" + typeof(WslIntegration).Module.ModuleVersionId);
+                    if (notice.Length > 0) Post(() => ShowToast(notice, 7000));
+                }
+                catch (Exception ex)
+                {
+                    lock (WslIntegrationChecks) WslIntegrationChecks.Remove(key);
+                    Post(() => ShowToast("WSL integration update: " + ex.Message, 7000));
+                }
+            });
         }
     }
 

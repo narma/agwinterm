@@ -251,6 +251,8 @@ public sealed class TerminalSession : ISession
         IReadOnlyDictionary<string, string>? extraEnv, string? cwd, bool deElevate,
         bool freshEnv, CancellationToken ct, bool paintFailure)
     {
+        // A pane can close while its first WSL integration check is still running.
+        lock (_sync) { if (_disposed) return; }
         Dictionary<string, string>? env = null;
         if (extraEnv is not null || freshEnv)
         {
