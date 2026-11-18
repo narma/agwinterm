@@ -40,10 +40,6 @@ The existing opening policy applies: HTTP(S) and file links are supported.
   session under the pane id. Already had Claude running before installing this? Run
   `agwintermctl claude adopt` (or palette → *Make Claude Sessions Resumable*) once to bind your
   existing conversations to their panes.
-- **Update Claude Code** (palette → *Update Claude Code*, or `agwintermctl claude update`): agwinterm
-  notices when a new Claude Code ships (npm registry; `claude-update-check = false` to opt out), then,
-  on your command, runs `claude update` in an overlay terminal and **restarts every running Claude
-  session**, each resuming its own conversation (YOLO panes stay YOLO).
 - **agwinterm self-update** (palette → *Update agwinterm*, or `agwintermctl app update`): notices new
   releases on GitHub (`update-check = false` to opt out), then, on your command, downloads the right
   artifact for your install (installer or portable exe), **verifies its SHA-256** against the release

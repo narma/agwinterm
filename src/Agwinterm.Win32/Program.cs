@@ -122,9 +122,6 @@ internal partial class Program : ISessionHost, IWindowHost
     private string _lastOverlayExit = "no overlay"; // "exit N" once an overlay's program has exited (`overlay result`, one per window)
     private readonly object _overlayExitLock = new(); // orders an exit's write of _lastOverlayExit against an open's reset (see WatchOverlayExit)
     private static ControlServer? _control;
-    // Update Claude Code workflow: one run at a time + the newest version the background check saw.
-    private volatile bool _claudeUpdating;
-    private volatile string? _claudeLatest;   // non-null = a newer Claude Code has shipped
     // Where sessions live (pty-host seam, #105): chosen once at startup from `session-host`.
     // Every session is created through this — never via `new TerminalSession` directly.
     private static ISessionBackend _sessionBackend = InProcessSessionBackend.Instance;
@@ -1712,15 +1709,13 @@ internal partial class Program : ISessionHost, IWindowHost
                 Agwinterm.Pty.GenericAgentInstaller.RefreshIfInstalled();
                 Agwinterm.Pty.ShellIntegrationInstaller.RefreshIfInstalled();
             });
-            // Update awareness (Claude Code + agwinterm itself): startup + every 12h, quiet on
-            // failure/offline. Knobs are re-read every cycle so `config set ...-check` applies
-            // without a restart. Also sweep leftovers of a previously applied self-update.
+            // Check for agwinterm updates at startup and every 12h, quiet on failure/offline.
+            // Re-read the setting every cycle and clean up leftovers from an applied self-update.
             _ = Task.Run(async () =>
             {
                 CleanupUpdateLeftovers();
                 while (true)
                 {
-                    if (_config.ClaudeUpdateCheck) await CheckClaudeUpdateOnce();
                     if (_config.UpdateCheck) await CheckAppUpdateOnce();
                     await Task.Delay(TimeSpan.FromHours(12));
                 }

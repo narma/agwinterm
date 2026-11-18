@@ -76,15 +76,6 @@ public class TerminalConfigTests
     }
 
     [Fact]
-    public void ClaudeUpdateCheck_ParsesAndIsDocumented()
-    {
-        Assert.True(TerminalConfig.Parse("").ClaudeUpdateCheck);   // default: awareness on, update stays manual
-        Assert.False(TerminalConfig.Parse("claude-update-check = false").ClaudeUpdateCheck);
-        Assert.True(TerminalConfig.Parse("claude-update-check = on").ClaudeUpdateCheck);
-        Assert.Contains("claude-update-check", TerminalConfig.DefaultText);
-    }
-
-    [Fact]
     public void SessionHost_ParsesValidValuesRejectsUnknown()
     {
         Assert.Equal("in-process", TerminalConfig.Parse("").SessionHost);   // default: today's model
@@ -145,10 +136,6 @@ public class TerminalConfigTests
         Assert.True(TerminalConfig.Parse("").UpdateCheck);         // default: awareness on, applying stays manual
         Assert.False(TerminalConfig.Parse("update-check = false").UpdateCheck);
         Assert.Contains("update-check", TerminalConfig.DefaultText);
-        // The two knobs are independent.
-        var c = TerminalConfig.Parse("update-check = false\nclaude-update-check = true\n");
-        Assert.False(c.UpdateCheck);
-        Assert.True(c.ClaudeUpdateCheck);
     }
 
     [Fact]

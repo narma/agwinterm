@@ -662,8 +662,6 @@ public sealed partial class ControlServer : IDisposable
                     return Ok(host.AdoptClaude());
                 case "claude.yolo":
                     return Ok(host.RestartClaudeYolo(target));
-                case "claude.update":
-                    return Ok(host.UpdateClaude());
                 case "app.close-for-update":
                     host.CloseForUpdate();
                     return Ok("closing");
