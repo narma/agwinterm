@@ -191,6 +191,8 @@ public sealed class TerminalConfig
     /// Stored raw so an unknown future value degrades to the default rather than failing the whole parse.</summary>
     public string? ToolbarMode { get; set; }
 
+    public string SidebarCopyId { get; set; } = "conversation";
+
     /// <summary>Draw the unread-count pill on sidebar rows (the count still tracks when off). On by default.</summary>
     public bool NotificationBadges { get; set; } = true;
 
@@ -383,6 +385,8 @@ public sealed class TerminalConfig
 
         # Notifications: show the red unread-count pill on sidebar rows; show the title-bar attention bell.
         notification-badges = true
+        # ID copied from a sidebar session row: conversation, pane, session, off
+        sidebar-copy-id = conversation
         # Unread-badge colors (#RRGGBB): ok, normal, attention.
         notification-color-ok = #3DC759
         notification-color-normal = #F2B833
@@ -505,6 +509,9 @@ public sealed class TerminalConfig
                 case "confirm-close-session": cfg.ConfirmCloseSession = ParseBool(val, cfg.ConfirmCloseSession); break;
                 case "compact-toolbar": cfg.CompactToolbar = ParseBool(val, cfg.CompactToolbar); break;
                 case "toolbar-mode": { var m = val.Trim().ToLowerInvariant(); if (m is "normal" or "compact" or "hidden") cfg.ToolbarMode = m; break; }
+                case "sidebar-copy-id":
+                    if (val.ToLowerInvariant() is "conversation" or "pane" or "session" or "off") cfg.SidebarCopyId = val.ToLowerInvariant();
+                    break;
                 case "notification-badges": cfg.NotificationBadges = ParseBool(val, cfg.NotificationBadges); break;
                 case "notification-color-ok": if (val.Length > 0) cfg.NotificationColorOk = val; break;
                 case "notification-color-normal": if (val.Length > 0) cfg.NotificationColorNormal = val; break;

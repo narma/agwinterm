@@ -10,6 +10,10 @@ using System.Runtime.InteropServices;
 public static class PasteClipboardFixture {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr owner);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr window, ref POINT point);
+    public struct POINT { public int X, Y; }
     [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     [DllImport("user32.dll")] static extern bool OpenClipboard(IntPtr owner);
     [DllImport("user32.dll")] static extern bool CloseClipboard();
@@ -155,4 +159,59 @@ try {
     Check 'ordinary text still arrives in one bracketed paste packet' (PasteWait {(PasteBytes)-ceq $expected}) (PasteBytes)
 } finally {
     $null=Rpc 'session.close' @{} $sink -AllowError
+}
+
+# Exercise the row of a background session, including a pane-specific choice.
+Add-Type -Path "$PSHOME/UIAutomationTypes.dll"
+Add-Type -Path "$PSHOME/UIAutomationClient.dll"
+$uiaRoot=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+$rowName='Sidebar copy probe'
+$copyRowCondition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$rowName)
+function ClickCopySlot {
+    $row=$uiaRoot.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$copyRowCondition)
+    $bounds=$row.Current.BoundingRectangle
+    $scale=[PasteClipboardFixture]::GetDpiForWindow($hwnd)/96.0
+    $pt=[PasteClipboardFixture+POINT]::new()
+    $pt.X=[int]($bounds.Right-33*$scale)
+    $pt.Y=[int]($bounds.Top+$bounds.Height/2)
+    [void][PasteClipboardFixture]::SetCursorPos($pt.X,$pt.Y)
+    [void][PasteClipboardFixture]::ScreenToClient($hwnd,[ref]$pt)
+    $point=[IntPtr](($pt.Y -shl 16) -bor $pt.X)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x200,[IntPtr]0,$point)
+    Start-Sleep -Milliseconds 180
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x201,[IntPtr]1,$point)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x202,[IntPtr]0,$point)
+}
+$mockAgent=Join-Path $artifact 'codex.exe'
+Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32/ping.exe') -Destination $mockAgent
+$probe=[string](Rpc 'session.new' @{name=$rowName;'no-select'=$true;'command-mode'='direct';command=('cmd /d /k ""'+$mockAgent+'" -t 127.0.0.1"')})
+try {
+    if(-not (PasteWait {Get-Process codex -ErrorAction SilentlyContinue | Where-Object Path -eq $mockAgent})){throw 'Fixture agent did not start'}
+    $agentProcess=Get-Process codex | Where-Object Path -eq $mockAgent | Select-Object -First 1
+    $conversation='thread-sidebar-62'
+    $null=Rpc 'session.bind' @{agent='codex';resume=$conversation;pid=$agentProcess.Id} $probe
+    # The process lookup and binding are asynchronous. Re-select the baseline before each attempt.
+    Check 'default row action copies the reported conversation ID from a background session' (PasteWait {
+        $null=Rpc 'session.select' @{} $session
+        ClickCopySlot
+        (Get-Clipboard)-ceq $conversation -and (Node $session).active
+    })
+    Write-Host "Bind result: $((Rpc 'events' @{kinds=@('bind')} -NoTarget).events | ConvertTo-Json -Depth 4 -Compress)"
+    $null=Rpc 'session.select' @{} $session
+    $null=Rpc 'config.set' @{key='sidebar-copy-id';value='session'}
+    ClickCopySlot
+    Write-Host "Session mode: clipboard=$(Get-Clipboard) expected=$probe active=$((Node $session).active)"
+    Check 'session mode copies the row session without switching' ((Get-Clipboard)-ceq $probe -and (Node $session).active)
+    $splitId=[string](Rpc 'session.split' @{op='on'} $probe)
+    $null=Rpc 'session.select' @{} $session
+    $null=Rpc 'config.set' @{key='sidebar-copy-id';value='pane'}
+    ClickCopySlot
+    foreach($vk in 0x23,0x0D){[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]$vk,[IntPtr]1)}
+    Check 'split picker copies the second pane ID and keeps the active session' (PasteWait {(Get-Clipboard)-ceq $splitId -and (Node $session).active})
+    $null=Rpc 'config.set' @{key='sidebar-copy-id';value='off'}
+    ClickCopySlot
+    Check 'off restores ordinary row clicks and leaves the clipboard alone' (PasteWait {(Node $probe).active -and (Get-Clipboard)-ceq $splitId})
+} finally {
+    $null=Rpc 'session.close' @{} $probe -AllowError
+    $null=Rpc 'config.set' @{key='sidebar-copy-id';value='conversation'}
 }

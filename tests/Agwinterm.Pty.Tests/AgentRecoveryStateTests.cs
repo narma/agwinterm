@@ -5,6 +5,19 @@ namespace Agwinterm.Pty.Tests;
 
 public class AgentRecoveryStateTests
 {
+    [Fact]
+    public void ConversationIdSurvivesRestoreUntilShellCompletes()
+    {
+        var saved = new PaneState { Conversation = new("codex", "thread-one"), AgentResume = "codex resume thread-one",
+            AgentResumeToken = Fresh().Token, AgentResumeGeneration = 1 };
+        string json = System.Text.Json.JsonSerializer.Serialize(saved, RestoreState.Json);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<PaneState>(json)!;
+        RestoreState.ReconcileCompletion(restored, _ => 1);
+        Assert.Equal(saved.Conversation, restored.Conversation);
+        RestoreState.ReconcileCompletion(restored, _ => 2);
+        Assert.Null(restored.Conversation);
+    }
+
     private static ShellCompletion Fresh() => new(Guid.NewGuid().ToString("N"), "");
 
     [Theory]

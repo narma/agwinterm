@@ -151,6 +151,7 @@ internal partial class Program
         Tog(1, "compact-toolbar", "Compact toolbar");
         Sld(1, "window-opacity", "Window opacity", 30, 100);
         Sld(1, "sidebar-tint", "Sidebar tint", -100, 100);
+        Drop(1, "sidebar-copy-id", "Copy ID from sidebar", new[] { "Agent conversation ID", "Pane ID", "Agwinterm session ID", "Off" }, new[] { "conversation", "pane", "session", "off" });
         Sld(1, "sidebar-font-size", "Sidebar font size", 9, 20);
         Sld(1, "quick-terminal-size", "Quick terminal size (%)", 40, 90);
         Sec(1, "Panes");
