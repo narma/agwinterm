@@ -55,6 +55,30 @@ public class ConPtyConnectionTests
 
     internal static readonly string BundledDir = Path.Combine(AppContext.BaseDirectory, "conpty");
 
+    [Theory]
+    [InlineData(0xA0u, 0x2Au)]
+    [InlineData(0xA1u, 0x36u)]
+    public void PowerShellReadKeySkipsShiftButReadsShiftedText(uint virtualKey, uint scanCode)
+    {
+        using var conn = ConPtyConnection.Spawn(ConPtyApi.RequireBundled(BundledDir),
+            "powershell.exe -NoProfile -Command \"[Console]::WriteLine('ready-for-key'); " +
+            "$key = [Console]::ReadKey($true); [Console]::WriteLine(('key-result={0}:{1}:{2}:done' -f [int]$key.Key, [int]$key.KeyChar, $key.Modifiers))\"",
+            Environment.CurrentDirectory, environment: null, 80, 24, deElevate: false);
+        using var core = new Agwinterm.Core.GhosttyTerminalCore(80, 24);
+        core.Feed("\x1b[?9001h"u8);
+        var shift = new TerminalInput.Key(virtualKey, 1, 1, "", 0, 0, 0, 0x10, scanCode);
+        var shiftedTwo = new TerminalInput.Key(0x32, 1, 1, "@", '2', 1, '@', 0x10, 0x03);
+        string output = ReadAsTerminal(conn, ":done", ("ready-for-key", () =>
+        {
+            conn.WriterStream.Write(OwnerInputQueue.Encode(core, shift));
+            conn.WriterStream.Write(OwnerInputQueue.Encode(core, shift with { Action = 0, WindowsControlState = 0 }));
+            conn.WriterStream.Write(OwnerInputQueue.Encode(core, shift));
+            conn.WriterStream.Write(OwnerInputQueue.Encode(core, shiftedTwo));
+            conn.WriterStream.Flush();
+        }));
+        Assert.Contains("key-result=50:64:Shift", output);
+    }
+
     [Fact]
     public void GhosttyCannotSilentlyFallBackToInbox()
     {
@@ -132,7 +156,7 @@ public class ConPtyConnectionTests
     /// <summary>Read a connection's output until <paramref name="marker"/> or exit, answering each DA1
     /// the way agwinterm does (OpenConsole asks at startup and waits for the reply). Queries are counted
     /// in the accumulated output, so one split across two reads is still answered.</summary>
-    private static string ReadAsTerminal(ConPtyConnection conn, string marker)
+    private static string ReadAsTerminal(ConPtyConnection conn, string marker, (string Marker, Action Send)? input = null)
     {
         var output = new StringBuilder();
         var reader = Task.Run(() =>
@@ -150,6 +174,11 @@ public class ConPtyConnectionTests
                 for (; answered < asked; answered++)
                     conn.WriterStream.Write(Encoding.ASCII.GetBytes("\x1b[?62;4;22c"));
                 conn.WriterStream.Flush();
+                if (input is { } pending && Snapshot().Contains(pending.Marker))
+                {
+                    input = null;
+                    pending.Send();
+                }
             }
         });
         for (int i = 0; i < 750 && !Snapshot().Contains(marker); i++) Thread.Sleep(20);
