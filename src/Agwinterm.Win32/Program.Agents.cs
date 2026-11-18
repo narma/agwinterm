@@ -147,19 +147,21 @@ internal partial class Program
                 if (a.Status == AgentStatus.Idle) rt.DrawEllipse(dot, brush, 1.2f); else rt.FillEllipse(dot, brush);
                 float x = 27 + indent;
                 brush.Color = SbActiveText;
-                rt.DrawText(a.Name, _sidebarFont, new Rect(x, y, MathF.Max(0, _sidebarW - x - 40), rowH), brush, DrawTextOptions.Clip);
+                bool focused = _chromeFocus && _agentsKeyboardFocus && _agentKeyboardKey == a.Key;
+                float right = DrawRowCopyIcon(rt, brush, a, focused, x, _sidebarW - 40, y, rowH);
+                rt.DrawText(a.Name, _sidebarFont, new Rect(x, y, MathF.Max(0, right - x), rowH), brush, DrawTextOptions.Clip);
                 float suffixX = x + MeasureText(a.Name, _sidebarFont) + 6;
-                if (_sidebarW - suffixX - 40 > 24)
+                if (right - suffixX > 24)
                 {
                     brush.Color = SbDimText;
-                    rt.DrawText("· " + a.Session.Ws.Name, _sidebarCtx, new Rect(suffixX, y, _sidebarW - suffixX - 40, rowH), brush, DrawTextOptions.Clip);
+                    rt.DrawText("· " + a.Session.Ws.Name, _sidebarCtx, new Rect(suffixX, y, right - suffixX, rowH), brush, DrawTextOptions.Clip);
                 }
                 brush.Color = SbDimText;
                 long minutes = Math.Max(0, (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - a.ChangedAt) / 60);
                 string age = minutes < 1 ? "<1m" : minutes < 60 ? $"{minutes}m" : minutes < 1440 ? $"{minutes / 60}h" : $"{minutes / 1440}d";
                 rt.DrawText(age, _sidebarSmall, new Rect(_sidebarW - 38, y, 34, rowH), brush, DrawTextOptions.Clip);
                 _agentRows.Add((y, y + rowH, a));
-                if (_chromeFocus && _agentsKeyboardFocus && _agentKeyboardKey == a.Key)
+                if (focused)
                 {
                     brush.Color = ChromeAccent;
                     rt.DrawRectangle(new Rect(7, y + 2, _sidebarW - 14, rowH - 4), brush, 1.5f);
@@ -224,6 +226,7 @@ internal partial class Program
                     if (!_foldedAgents.Remove(a.Pane.Id)) _foldedAgents.Add(a.Pane.Id);
                     RequestRedraw();
                 });
+            if (CopyIdAction(a.Session, a.Pane) is { } copy) items.Add(copy);
         }
         Add((_agentSort == "priority" ? "✓ " : "") + "Priority", () => SetAgentSort("priority"));
         Add((_agentSort == "grouped" ? "✓ " : "") + "Grouped by workspace", () => SetAgentSort("grouped"));
@@ -251,6 +254,13 @@ internal partial class Program
             SaveState(); return AgentsKey(0);
         }
         else if (vk == 0x53) { ChromeAction("agents-sort"); return true; }
+        else if (vk == 0x5D || (vk == 0x79 && KeyDown(VK_SHIFT)))
+        {
+            var row = _agentRows.FirstOrDefault(r => r.Row.Key == rows[index].Key);
+            var anchor = ScreenRect(ToDevice(12), ToDevice(row.Row is null ? _agentsTop : row.Bottom), 0, 0);
+            ShowContextMenuWindow(rows[index], (int)anchor.Left, (int)anchor.Top);
+            return true;
+        }
         _agentKeyboardKey = rows[index].Key;
         int slot = 0; string? group = null;
         foreach (var row in rows)

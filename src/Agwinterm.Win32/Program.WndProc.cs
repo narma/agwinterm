@@ -619,7 +619,7 @@ internal partial class Program
                 {
                     _copyPressed = null;
                     ReleaseCapture();
-                    if (ReferenceEquals(CopyIdAt(DipX(lParam), DipY(lParam)), copyPressed)) InvokeCopyId(copyPressed);
+                    if (SameCopyRow(CopyIdAt(DipX(lParam), DipY(lParam)), copyPressed)) InvokeCopyId(copyPressed);
                     return IntPtr.Zero;
                 }
                 if (_setOpen) { SettingsMouseUp(); return IntPtr.Zero; }

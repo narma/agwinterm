@@ -27,6 +27,14 @@ terminal created with `session new --no-select` appears independently when it re
 status. This does not discover private, in-process workers that expose neither a
 terminal nor an OSC record.
 
+Hover over an agent row to copy its ID while keeping your current terminal active.
+The button follows **Settings → Appearance → Copy ID from sidebar**. In conversation
+mode it copies the bound conversation ID, including the thread ID for Codex.
+It appears once the pane has a known conversation. In pane and session modes it
+copies the agent's pane or its containing session directly. OSC worker rows refer
+to the pane that reported them. The same action is available in the row menu
+with right-click or **Shift+F10**.
+
 The header's sort menu offers **Priority** (Blocked, Done, Working, Idle; newer
 changes first) and **Grouped by workspace**. Right-click a row to **Pin agent** or
 **Unpin agent**, or collapse/expand its OSC workers. Pins form the first section and

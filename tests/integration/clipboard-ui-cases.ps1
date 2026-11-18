@@ -167,12 +167,18 @@ Add-Type -Path "$PSHOME/UIAutomationClient.dll"
 $uiaRoot=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
 $rowName='Sidebar copy probe'
 $copyRowCondition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$rowName)
-function ClickCopySlot {
-    $row=$uiaRoot.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$copyRowCondition)
+function ClickCopySlot([switch]$Agent) {
+    $scope=[System.Windows.Automation.TreeScope]::Descendants
+    $row=if($Agent){
+        $uiaRoot.FindAll($scope,[System.Windows.Automation.Condition]::TrueCondition) |
+            Where-Object { $_.Current.Name -like "Agent $rowName,*" } | Select-Object -First 1
+    }else{$uiaRoot.FindFirst($scope,$copyRowCondition)}
+    if($null -eq $row){throw "Missing sidebar row (agent=$Agent)"}
     $bounds=$row.Current.BoundingRectangle
     $scale=[PasteClipboardFixture]::GetDpiForWindow($hwnd)/96.0
     $pt=[PasteClipboardFixture+POINT]::new()
-    $pt.X=[int]($bounds.Right-33*$scale)
+    $inset=if($Agent){47}else{33}
+    $pt.X=[int]($bounds.Right-$inset*$scale)
     $pt.Y=[int]($bounds.Top+$bounds.Height/2)
     [void][PasteClipboardFixture]::SetCursorPos($pt.X,$pt.Y)
     [void][PasteClipboardFixture]::ScreenToClient($hwnd,[ref]$pt)
@@ -204,7 +210,13 @@ try {
     Check 'session mode copies the row session without switching' ((Get-Clipboard)-ceq $probe -and (Node $session).active)
     $splitId=[string](Rpc 'session.split' @{op='on'} $probe)
     $null=Rpc 'session.select' @{} $session
+    $null=Rpc 'config.set' @{key='sidebar-copy-id';value='conversation'}
+    Set-Clipboard -Value 'before-agent-copy'
+    ClickCopySlot -Agent
+    Check 'Agents row copies the Codex conversation ID without selecting its session' ((Get-Clipboard)-ceq $conversation -and (Node $session).active)
     $null=Rpc 'config.set' @{key='sidebar-copy-id';value='pane'}
+    ClickCopySlot -Agent
+    Check 'Agents row copies its own pane ID without a split picker' ((Get-Clipboard)-ceq $probe -and (Node $session).active)
     ClickCopySlot
     foreach($vk in 0x23,0x0D){[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]$vk,[IntPtr]1)}
     Check 'split picker copies the second pane ID and keeps the active session' (PasteWait {(Get-Clipboard)-ceq $splitId -and (Node $session).active})
