@@ -80,9 +80,7 @@ public static class AgentSkill
         `tree` reports `customName` (null for automatic labels) and `paneCwds` (pane ID to directory).
         Directory paths may repeat; use pane IDs as targets. Do not rename or clear names unless
         the user asks: explicit names pin the label and stop it from following the program title.
-        On the first substantive request, inspect `tree --json` and set a one-line purpose with
-        `session context` (at most 200 characters, in the user's language). Update only when the
-        purpose changes; preserve user-provided or externally changed context. Omit secrets.
+        Set or clear `session context` only at the user's request. Omit secrets.
         Nested agents must not change their parent's labels. To unpin a name at the user's request,
         use `agwintermctl session rename --clear [--target ID]`.
         In WSL the CLI uses Windows interop. If the sandbox blocks it (e.g. UtilBindVsockAnyPort),
@@ -152,7 +150,7 @@ public static class AgentSkill
         - `agwintermctl session context <text> [--target ID]` — ONE LINE of "what is this pane for", shown dimmed after the
           name in the title bar and the sidebar row and on the palette's second line, where the name has to stay short.
           It survives a restart (and `session reopen`), and `tree --json` reads it back as `context` on the session node
-          (absent when none) — so set it when you start a task and any agent can see what each pane is doing. The value
+          (absent when none). The value
           is one line: a newline, tab or other control character is REFUSED (a control byte in the title bar is a
           rendering accident, not a context), blank is refused, and more than 200 characters is refused — the ceiling is
           the display budget of the row, not a storage limit. `--clear` removes it (text beside `--clear` is refused);

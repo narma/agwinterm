@@ -31,14 +31,12 @@ Profile environment overrides are applied inside Linux, including `HOME`, which 
 
 ### Agent titles and context
 
-The Claude/Codex SessionStart hook returns a short instruction through `additionalContext`:
-on the first substantive request, inspect `tree` and set a one-line purpose with `session context`.
-The bundled skill carries the same guidance. Agents do not rename or clear names unless asked;
-automatic titles and pinned names are described in [the control API](control-api.md#session-context-and-session-rename).
-Already running agents receive the instruction on their next SessionStart (for example, resume).
+Agwinterm displays the program's OSC title automatically and falls back to the working directory.
+The bundled skill and the Claude/Codex SessionStart guidance tell agents to set or clear a custom
+name or persistent context only at the user's request. See [the control API](control-api.md#session-context-and-session-rename).
+Running agents receive the updated hook guidance on their next SessionStart (for example, resume).
 
-Approve installed Codex hooks in `/hooks`. Automatic titles do not require hooks; setting context
-requires the agent to follow the instruction and have access to the CLI.
+Approve installed Codex hooks in `/hooks`. Automatic titles work independently of the hooks.
 In WSL, a Codex sandbox may block Windows interop (`UtilBindVsockAnyPort`). The guidance
 asks the agent to retry through normal tool approval when available, respecting any denial.
 
