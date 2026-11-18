@@ -194,6 +194,12 @@ $probe=[string](Rpc 'session.new' @{name=$rowName;'no-select'=$true;'command-mod
 try {
     if(-not (PasteWait {Get-Process codex -ErrorAction SilentlyContinue | Where-Object Path -eq $mockAgent})){throw 'Fixture agent did not start'}
     $agentProcess=Get-Process codex | Where-Object Path -eq $mockAgent | Select-Object -First 1
+    $null=Rpc 'session.write' @{text=([string][char]27+']7501;state=idle:app=codex'+[char]7)} $probe
+    Set-Clipboard -Value 'before-unknown-id'
+    ClickCopySlot -Agent
+    Check 'unbound OSC Codex row handles the click without changing focus or clipboard' ((Get-Clipboard)-ceq 'before-unknown-id' -and (Node $session).active)
+    ClickCopySlot
+    Check 'unbound Codex session row handles the click without changing focus or clipboard' ((Get-Clipboard)-ceq 'before-unknown-id' -and (Node $session).active)
     $conversation='thread-sidebar-62'
     $null=Rpc 'session.bind' @{agent='codex';resume=$conversation;pid=$agentProcess.Id} $probe
     # The process lookup and binding are asynchronous. Re-select the baseline before each attempt.

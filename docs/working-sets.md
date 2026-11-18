@@ -2,7 +2,8 @@
 
 Hover over a session row and click the copy icon to copy its agent conversation ID
 while keeping the current session active. The action appears once Agwinterm knows
-the conversation ID. If several panes qualify, choose one from the menu. From the
+the conversation ID. A Codex row with only an OSC status report shows a hint
+to run `/status` when clicked. If several panes have IDs, choose one from the menu. From the
 keyboard, press F6, focus the session row and open its menu with Shift+F10.
 
 Under **Settings → Appearance → Copy ID from sidebar**, choose **Agent conversation

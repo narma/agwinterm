@@ -467,10 +467,14 @@ internal partial class Program
         return hit.X;
     }
 
+    private static bool ReportsCodex(Pane pane) =>
+        pane.ProgramStatuses.Records.Any(r => string.Equals(r.App, "codex", StringComparison.OrdinalIgnoreCase));
+
     private string? CopyIdLabel(Ses session, Pane? onlyPane = null) => _config.SidebarCopyId switch
     {
         "conversation" when onlyPane is not null && onlyPane.AgentRecovery.Conversation is not null => "Copy pane's agent conversation ID",
         "conversation" when onlyPane is null && session.AllPanes.Any(p => p.AgentRecovery.Conversation is not null) => "Copy agent conversation ID",
+        "conversation" when (onlyPane is null ? session.AllPanes.Any(ReportsCodex) : ReportsCodex(onlyPane)) => "How to find the Codex conversation ID",
         "pane" when session.Panes.Count > 0 => "Copy pane ID",
         "session" => "Copy Agwinterm session ID",
         _ => null
@@ -511,6 +515,8 @@ internal partial class Program
                 }
             });
         }
+        if (choices.Count == 0 && conversation)
+            return new PalItem { Label = label, Run = () => ShowToast("Run /status in Codex and copy the Session ID.") };
         if (choices.Count == 1) return new PalItem { Label = label, Run = choices[0].Run };
         return choices.Count == 0 ? null : new PalItem { Label = label, Submenu = () => choices };
     }

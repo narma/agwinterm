@@ -30,7 +30,8 @@ terminal nor an OSC record.
 Hover over an agent row to copy its ID while keeping your current terminal active.
 The button follows **Settings → Appearance → Copy ID from sidebar**. In conversation
 mode it copies the bound conversation ID, including the thread ID for Codex.
-It appears once the pane has a known conversation. In pane and session modes it
+If Codex reports its status before its conversation ID is known, clicking the
+icon explains how to find the ID with `/status`. In pane and session modes it
 copies the agent's pane or its containing session directly. OSC worker rows refer
 to the pane that reported them. The same action is available in the row menu
 with right-click or **Shift+F10**.
