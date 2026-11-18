@@ -25,7 +25,7 @@ public sealed class TerminalSession : ISession
         lock(_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed,this);
-            return _presentation ??= new(this);
+            return _presentation ??= new(this, waitForConnection: _connection is null && !InputClosed);
         }
     }
     public int Cols { get; private set; }
@@ -381,7 +381,7 @@ public sealed class TerminalSession : ISession
     public void Attach(SafeFileHandle conOut, SafeFileHandle conIn, SafeFileHandle signal, IntPtr clientProcess, int pid)
     {
         var conn = new AttachedPty(conOut, conIn, signal, clientProcess, pid);
-        _connection = conn;
+        PublishConnection(conn);
         var pump = StartPump(conn.ReaderStream);
         _ = Task.Run(async () =>
         {
@@ -400,7 +400,11 @@ public sealed class TerminalSession : ISession
     public bool HasExited { get; private set; }
     private volatile bool _inputClosed;
     public bool InputClosed => _inputClosed;
-    internal void MarkInputClosed() => _inputClosed = true;
+    internal void MarkInputClosed()
+    {
+        _inputClosed = true;
+        lock (_sync) _presentation?.FinishStartup(false);
+    }
     /// <summary>Raised (on a background thread) when the child process exits, with its exit code.</summary>
     public event Action<int>? Exited;
 
@@ -576,7 +580,12 @@ public sealed class TerminalSession : ISession
     {
         lock (_sync)
         {
-            if (!_disposed) { _connection = connection; return; }
+            if (!_disposed)
+            {
+                _connection = connection;
+                _presentation?.FinishStartup(true);
+                return;
+            }
         }
         // A slow spawn may finish after its pane was closed. It never gains
         // ownership of an already-destroyed core or leaves a child running.

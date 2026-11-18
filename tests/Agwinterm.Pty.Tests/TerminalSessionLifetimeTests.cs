@@ -20,13 +20,37 @@ public class TerminalSessionLifetimeTests
     public class ConnectionProxy : DispatchProxy
     {
         public int Kills, Disposals;
+        public readonly MemoryStream Input = new();
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
             if (method!.Name == nameof(IPtyConnection.Kill)) Kills++;
+            else if (method.Name == "get_WriterStream") return Input;
             else if (method.Name == nameof(IDisposable.Dispose)) Disposals++;
             else throw new InvalidOperationException("Unexpected connection call: " + method.Name);
             return null;
         }
+    }
+
+    [Fact]
+    public async Task LocalOwnerDeliversEarlyTypingInOrderAfterConnection()
+    {
+        using var session = new TerminalSession(20, 5);
+        var presentation = session.EnablePresentation();
+        Assert.Equal(TerminalInputAcceptance.Accepted, presentation.Submit(new TerminalInput.Text("early ")));
+
+        // Keep the PTY unavailable, as during the first WSL profile check.
+        Assert.False(SpinWait.SpinUntil(() => session.InputClosed, TimeSpan.FromMilliseconds(250)));
+        var connection = DispatchProxy.Create<IPtyConnection, ConnectionProxy>();
+        var publish = typeof(TerminalSession).GetMethod("PublishConnection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        publish.Invoke(session, [connection]);
+        Assert.Equal(TerminalInputAcceptance.Accepted, presentation.Submit(new TerminalInput.Text("late")));
+
+        // The output injection is ordered after both writes on the same queue.
+        var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.OutputReceived += () => drained.TrySetResult();
+        presentation.Execute(new TerminalCommand.InjectOutput("done"u8.ToArray()));
+        await drained.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("early late"u8.ToArray(), ((ConnectionProxy)(object)connection).Input.ToArray());
     }
 
     [Fact]
