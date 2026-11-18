@@ -185,7 +185,15 @@ public static class WslIntegration
             "cli" => remove ? CliInstaller.Uninstall() : CliInstaller.Install(),
             _ => throw new ArgumentException("Unknown integration")
         };
-        string payload = JsonSerializer.Serialize(new { version = 1, kind, action = remove ? "remove" : "install",
+        return RunInstaller(profile, kind, remove ? "remove" : "install");
+    }
+
+    public static string RefreshInstalled(ShellProfile profile, string release) =>
+        RunInstaller(profile, "installed", "refresh", release);
+
+    private static string RunInstaller(ShellProfile profile, string kind, string action, string? release = null)
+    {
+        string payload = JsonSerializer.Serialize(new { version = 1, kind, action, release, portableRoot = PortableTools.CacheRoot,
             windowsCli = Path.Combine(CliInstaller.CliDir(), "agwintermctl.exe"), skill = AgentSkill.SkillMarkdown,
             shell = Resource("shell.sh"), windowsBridge = Path.Combine(CliInstaller.CliDir(), "agwinterm-hook.exe") });
         return RunBundled(profile, ["--install"], payload);

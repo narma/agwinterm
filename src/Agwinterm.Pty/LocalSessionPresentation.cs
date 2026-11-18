@@ -21,12 +21,12 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
     private volatile bool _disposed;
     public bool IsRemote => false;
 
-    internal LocalSessionPresentation(TerminalSession session)
+    internal LocalSessionPresentation(TerminalSession session, bool waitForConnection)
     {
         _session=session;
         _queries=new(session,_incarnation,1);
         _core=session.Emulator as GhosttyTerminalCore ?? throw new ArgumentException("Ghostty owner required.",nameof(session));
-        _input=new(session);
+        _input=new(session, waitForConnection);
         _actions=new(_input,session,_core.Host);
         _core.Host=_actions;
         _frames=new(_core,session.SyncRoot,_incarnation,1,_captureGate);
@@ -57,6 +57,8 @@ public sealed class LocalSessionPresentation : ISessionPresentation, IDisposable
     }
     public TerminalInputAcceptance Submit(TerminalInput input)
         => _disposed ? TerminalInputAcceptance.Closed : _input.Submit(input);
+
+    internal void FinishStartup(bool connected) => _input.FinishStartup(connected);
 
     internal void Resize(int columns,int rows)
     {

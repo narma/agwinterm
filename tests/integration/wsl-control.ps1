@@ -42,6 +42,11 @@ try {
     New-Item -ItemType Directory -Path $state | Out-Null
     & wsl @selectors --exec mkdir -p $linuxHome
     if ($LASTEXITCODE -ne 0) { throw 'Could not create disposable Linux HOME' }
+    # Model a previous installation with an unchanged (empty fixture) skill in this HOME.
+    $skillPath = "$linuxHome/.codex/skills/agwinterm/SKILL.md"
+    $manifest = @{ files = @{ $skillPath = [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData([byte[]]@())) }; checked = @{} }
+    ($manifest | ConvertTo-Json -Depth 4 -Compress) | & wsl @selectors --exec sh -c 'mkdir -p "$1/.codex/skills/agwinterm" "$1/.local/share/agwinterm" && touch "$2" && cat > "$1/.local/share/agwinterm/integration-state-v1.json"' seed $linuxHome $skillPath
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot seed previous integration in disposable HOME' }
     $profileEnv = @{ HOME = $linuxHome; ZDOTDIR = $linuxHome; CLAUDE_CONFIG_DIR = "$linuxHome/.claude"; CODEX_HOME = "$linuxHome/.codex"; XDG_CONFIG_HOME = "$linuxHome/.config" }
     if ($NoPython) {
         & wsl @selectors --exec sh -c 'mkdir -p "$1/tools"; for tool in wslpath uname id mktemp cp chmod rm rmdir mkdir sh bash sleep env; do ln -s "$(command -v "$tool")" "$1/tools/$tool"; done' setup $linuxHome
@@ -66,6 +71,8 @@ try {
     Start-Sleep -Seconds 1
     $initial = Ctl @('session', 'text', '--target', $session)
     Check (($initial -replace '\s', '').Contains("TEST_HOME=$linuxHome")) 'Linux HOME is isolated before any installer runs'
+    & wsl @selectors --exec sh -c 'grep -q "name: agwinterm" "$2" && test ! -e "$1/.claude/skills/agwinterm/SKILL.md" && test ! -e "$1/.local/bin/agwintermctl"' check $linuxHome $skillPath
+    Check ($LASTEXITCODE -eq 0) 'Opening the WSL profile refreshed only the previously installed skill'
     if ($NoPython) {
         $null = Ctl @('session', 'type', ('if command -v python3; then printf "PYTHON_%s\n" PRESENT; else printf "PYTHON_%s\n" ABSENT; fi' + [char]13), '--target', $session)
         Start-Sleep -Seconds 1
@@ -174,7 +181,7 @@ try {
     Check (-not ($saved -join '').Contains('wsl-test-conversation')) 'Returning to the Linux shell clears the exited agent binding on disk (#368)'
     $tree = Ctl @('tree')
     $copiedSession = $tree.workspaces.sessions | Where-Object id -eq $copy
-    Check ($copiedSession.status -eq 'completed') 'Linux Stop hook updates pane status'
+    Check ($copiedSession.status -eq 'idle') 'Returning to the shell clears the completed agent status'
     $matchRaw = (& wsl @selectors --exec cat "$linuxHome/c1-match.json") -join "`n"
     $matchCode = (& wsl @selectors --exec cat "$linuxHome/c1-match.code") -join ''
     $matchReply = $matchRaw | ConvertFrom-Json

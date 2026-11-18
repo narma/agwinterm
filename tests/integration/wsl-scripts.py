@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[2] / 'src/Agwinterm.Pty/Wsl'
@@ -30,7 +31,7 @@ class WslScripts(unittest.TestCase):
         self.helper.chmod(0o700)
         self.environment = patch.dict(os.environ, {'HOME': str(self.home), 'CODEX_HOME': str(self.home / '.codex'),
             'XDG_CONFIG_HOME': str(self.home / '.config'), 'ZDOTDIR': str(self.home), 'AGWINTERM_ENABLED': '1',
-            'CLAUDE_CONFIG_DIR': str(self.home / '.claude')})
+            'CLAUDE_CONFIG_DIR': str(self.home / '.claude'), 'WSL_DISTRO_NAME': 'Ubuntu-Work'})
         self.environment.start()
         self.addCleanup(self.environment.stop)
         if os.environ.get('AGWINTERM_TEST_POSIX_PATHS') == '1':
@@ -43,12 +44,90 @@ class WslScripts(unittest.TestCase):
             shim.chmod(0o700)
             os.environ['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
 
-    def install(self, kind, action='install'):
+    def install(self, kind, action='install', **fields):
         def windows(path):
             return subprocess.check_output(['wslpath','-w',str(path)],text=True).rstrip('\n')
         payload = dict(version=1, kind=kind, action=action, windowsCli=windows(self.cli), windowsBridge=windows(self.bridge),
                        skill='test skill',shell=(SCRIPTS/'shell.sh').read_text())
+        payload.update(fields)
         return subprocess.check_output([str(self.helper),'--install'],input=json.dumps(payload),text=True)
+
+    def test_first_open_refresh_updates_only_unchanged_installed_files(self):
+        def refresh(version, **fields):
+            return self.install('installed', 'refresh', release=version, **fields)
+
+        self.assertEqual('', refresh('1'))
+        data = self.home / '.local/share/agwinterm'
+        self.assertFalse(data.exists())
+        self.install('hooks')
+        self.install('skill')
+        self.install('cli', 'remove')
+        codex = self.home / '.codex/skills/agwinterm/SKILL.md'
+        claude = self.home / '.claude/skills/agwinterm/SKILL.md'
+        codex.write_text('personal skill')
+        hooks = self.home / '.codex/hooks.json'
+        hooks.write_text('{"hooks":{}}')
+        rc = self.home / '.bashrc'
+        rc.write_text('# personal shell setup')
+        report = refresh('2', skill='updated skill', shell='updated shell')
+        self.assertEqual('Ubuntu-Work updated shell integration, Claude skill', report.splitlines()[0])
+        self.assertIn(str(codex), report)
+        self.assertIn('updated skill', claude.read_text())
+        self.assertEqual('updated shell', (data/'shell.sh').read_text())
+        self.assertFalse((self.home/'.local/bin/agwintermctl').exists())
+        self.assertEqual('personal skill', codex.read_text())
+        self.assertEqual('{"hooks":{}}', hooks.read_text())
+        self.assertEqual('# personal shell setup', rc.read_text())
+        manifest = data/'integration-state-v1.json'
+        stamp = manifest.stat().st_mtime_ns
+        self.assertEqual('', refresh('2', skill='should not run'))
+        self.assertEqual(stamp, manifest.stat().st_mtime_ns)
+        claude.unlink()
+        refresh('3')
+        self.assertFalse(claude.exists())
+        self.assertEqual('personal skill', codex.read_text())
+
+    def test_legacy_portable_refresh_repoints_exact_wrapper_and_bridge(self):
+        root = self.home/'portable tools'
+        old = root/('a'*64)
+        old.mkdir(parents=True)
+        cli, bridge = self.cli, self.bridge
+        self.cli, self.bridge = old/cli.name, old/bridge.name
+        shutil.copy(cli, self.cli)
+        shutil.copy(bridge, self.bridge)
+        self.install('hooks')
+        data = self.home/'.local/share/agwinterm'
+        (data/'integration-state-v1.json').unlink()
+        self.cli, self.bridge = cli, bridge
+        arch = {'x86_64':'x64', 'aarch64':'arm64', 'arm64':'arm64'}[platform.machine()]
+        (old/f'agwinterm-hook-linux-{arch}').write_bytes(b'previous helper')
+        (data/'agwinterm-hook').write_bytes(b'previous helper')
+        windows_root = subprocess.check_output(['wslpath', '-w', str(root)], text=True).strip()
+        report = self.install('installed', 'refresh', release='new', portableRoot=windows_root)
+        self.assertEqual('Ubuntu-Work updated hook helper, CLI wrapper, Windows bridge path\n', report)
+        self.assertEqual('', self.install('installed', 'refresh', release='next', portableRoot=windows_root))
+        self.assertEqual(self.helper.read_bytes(), (data/'agwinterm-hook').read_bytes())
+        self.assertEqual(str(bridge)+'\n', (data/'agwinterm-hook.windows-bridge').read_text())
+        self.assertIn(shlex.quote(str(cli)), (self.home/'.local/bin/agwintermctl').read_text())
+
+    def test_parallel_first_open_preserves_symlink_and_checks_each_config_root(self):
+        self.install('skill')
+        codex = self.home / '.codex/skills/agwinterm/SKILL.md'
+        personal = self.home/'personal.md'
+        codex.rename(personal)
+        codex.symlink_to(personal)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            reports = list(pool.map(lambda _: self.install('installed', 'refresh', release='2', skill='v2'), range(3)))
+        self.assertCountEqual(reports, ['Ubuntu-Work updated Claude skill\n', '', ''])
+        self.assertTrue(codex.is_symlink())
+        self.assertIn('test skill', personal.read_text())
+        self.assertIn('v2', (self.home/'.claude/skills/agwinterm/SKILL.md').read_text())
+        with patch.dict(os.environ, {'CODEX_HOME': str(self.home/'second-codex')}):
+            other = self.home/'second-codex/skills/agwinterm/SKILL.md'
+            other.parent.mkdir(parents=True)
+            other.write_text('my skill')
+            self.assertIn(str(other), self.install('installed', 'refresh', release='2', skill='v2'))
+            self.assertEqual('my skill', other.read_text())
 
     def test_native_upgrade_preserves_user_hooks_and_refuses_missing_bridge(self):
         self.install('hooks')

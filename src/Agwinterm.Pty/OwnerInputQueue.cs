@@ -21,15 +21,19 @@ internal sealed class OwnerInputQueue : IDisposable
     private readonly object _gate = new();
     private readonly object _writerGate = new();
     private readonly TerminalSession _session;
+    private readonly TaskCompletionSource<bool>? _startup;
     private int _bytes;
     private int _responseBytes;
     private bool _closed;
     public Task Completion { get; }
-    public OwnerInputQueue(TerminalSession session)
+    public OwnerInputQueue(TerminalSession session, bool waitForConnection = false)
     {
         _session = session;
+        if (waitForConnection) _startup = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Completion = Task.Factory.StartNew(Run,CancellationToken.None,TaskCreationOptions.LongRunning,TaskScheduler.Default);
     }
+
+    internal void FinishStartup(bool connected) => _startup?.TrySetResult(connected);
 
     public TerminalInputAcceptance Submit(TerminalInput input) => SubmitCore(input,false);
     // A 1-MiB clipboard read grows when Ghostty base64-encodes it. Reserve a
@@ -144,7 +148,9 @@ internal sealed class OwnerInputQueue : IDisposable
                     } while(count < 32 && _batch.WrittenCount < 4096 && _queue.Reader.TryPeek(out var next) &&
                         next.Input is not TerminalInput.Command && _queue.Reader.TryRead(out item));
                 }
-                if (_batch.WrittenCount != 0) _session.WriteOwner(_batch.WrittenSpan);
+                // Only the writer waits. The UI can enqueue while the PTY is starting.
+                if (_batch.WrittenCount != 0 && (_startup is null || _startup.Task.GetAwaiter().GetResult()))
+                    _session.WriteOwner(_batch.WrittenSpan);
                 if (_batch.Capacity > 65536) _batch=new(256);
             }
     }
@@ -181,5 +187,5 @@ internal sealed class OwnerInputQueue : IDisposable
         return Encoding.UTF8.GetBytes(result.ToString());
         void Append(int unit) => result.Append($"\x1b[{key.VirtualKey};{key.ScanCode};{unit};{(key.Action == 0 ? 0 : 1)};{key.WindowsControlState};1_");
     }
-    public void Dispose() { lock (_gate) { _closed = true; _queue.Writer.TryComplete(); } }
+    public void Dispose() { lock (_gate) { _closed = true; FinishStartup(false); _queue.Writer.TryComplete(); } }
 }
