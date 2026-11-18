@@ -53,7 +53,9 @@ try {
     if ($stages -notcontains 'message-loop.ready') { throw 'Startup did not complete' }
     if ($SessionHost -eq 'server') {
         if (@($records | Where-Object stage -eq 'host.restore-inventory.end').Count -ne 1) { throw 'Restore did not take exactly one host inventory' }
-        $expectedAdoptions = if ($ColdRestore) { 0 } else { 4 }
+        # The focused pane checks its own attachment immediately. The inventory
+        # subsequently skips all missing background panes on a cold host.
+        $expectedAdoptions = if ($ColdRestore) { 1 } else { 4 }
         if (@($records | Where-Object stage -eq 'pane.adopt.begin').Count -ne $expectedAdoptions) { throw 'Unexpected synchronous adoption attempts' }
     }
     $null = Reply @('session','type',"echo STARTUP_RESTORE_OK`r",'--target',$before[0])

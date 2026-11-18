@@ -166,6 +166,7 @@ internal partial class Program
                 {
                     using var adoptionTiming = _startupJournal?.Measure("pane.adopt", paneId);
                     adopted = ss.TryAdopt();
+                    if (!adopted) _startupJournal?.Mark("pane.adopt.missing", paneId);
                 }
             }
             catch (Exception ex)
@@ -444,21 +445,21 @@ internal partial class Program
         }
     }
 
-    private async Task StartWslProfileAsync(ISession session, ShellProfile profile, string[] args, Dictionary<string, string> env)
+    private Task StartWslProfileAsync(ISession session, ShellProfile profile, string[] args, Dictionary<string, string> env)
     {
-        await CheckWslIntegrationAsync(profile).ConfigureAwait(false);
-        await session.StartAsync(profile.Command, new SessionCommand(profile.Command, args).QuotedArgs,
-            verbatimCommandLine: true, extraEnv: env, freshEnv: _config.FreshEnv).ConfigureAwait(false);
+        ScheduleWslIntegrationCheck(profile);
+        return session.StartAsync(profile.Command, new SessionCommand(profile.Command, args).QuotedArgs,
+            verbatimCommandLine: true, extraEnv: env, freshEnv: _config.FreshEnv);
     }
 
-    private static readonly Dictionary<string, Task> WslIntegrationChecks = new();
-    private Task CheckWslIntegrationAsync(ShellProfile profile)
+    private static readonly HashSet<string> WslIntegrationChecks = new();
+    private void ScheduleWslIntegrationCheck(ShellProfile profile)
     {
         string key = JsonSerializer.Serialize(new { profile.Command, args = WslIntegration.Selectors(profile.Args), profile.Env });
         lock (WslIntegrationChecks)
         {
-            if (WslIntegrationChecks.TryGetValue(key, out var existing)) return existing;
-            return WslIntegrationChecks[key] = Task.Run(() =>
+            if (!WslIntegrationChecks.Add(key)) return;
+            _ = Task.Run(() =>
             {
                 try
                 {
@@ -2343,13 +2344,14 @@ internal partial class Program
     /// WM_DESTROY answered ok with the action stranded.</summary>
     private void PostVerb(Action a)
     {
+        void RunVerb() { ContinueRestore(finish: true); a(); }
         if (WebCommandGuard.Value is not null)
         {
             // Bridge callers need the guarded mutation's result, not merely a queued ack.
-            InvokeOnUiQueued(() => { a(); return true; });
+            InvokeOnUiQueued(() => { RunVerb(); return true; });
             return;
         }
-        if (!Post(a)) throw new InvalidOperationException(NothingApplied());
+        if (!Post(RunVerb)) throw new InvalidOperationException(NothingApplied());
     }
     /// <summary>Why a post was withdrawn, as far as this side can tell: the window is closing
     /// (<see cref="_uiGone"/> cancelled), or a live window's message queue refused the wake-up — the

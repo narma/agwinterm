@@ -34,7 +34,7 @@ public sealed class StartupJournal : IDisposable
             try
             {
                 if (_writer.BaseStream.Position >= 1024 * 1024) return;
-                _writer.WriteLine(JsonSerializer.Serialize(new { utc = DateTimeOffset.UtcNow, pid = Environment.ProcessId,
+                _writer.WriteLine(JsonSerializer.Serialize(new { utc = DateTimeOffset.UtcNow, ticks = Stopwatch.GetTimestamp(), pid = Environment.ProcessId,
                     elapsedMs = Stopwatch.GetElapsedTime(_started).TotalMilliseconds,
                     stage = stage[..Math.Min(stage.Length, 128)], id = id?[..Math.Min(id.Length, 128)], durationMs }));
                 _records++;

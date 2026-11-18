@@ -1404,7 +1404,8 @@ internal partial class Program
     private static string LegacyStatePath => Path.Combine(AppDir, "state.json");
     private static string BackgroundsDir => Path.Combine(AppDir, "backgrounds"); // copied per-session watermark images
     // Per-window tree snapshot. Multi-window (F1b): each window persists to windows/<id>.json.
-    private string StatePath => Path.Combine(AppDir, "windows", Id + ".json");
+    private static string WindowStatePath(string id) => Path.Combine(AppDir, "windows", id + ".json");
+    private string StatePath => WindowStatePath(Id);
     private static string CompletionPath(string token) => Path.Combine(AppDir, "agent-completions", token);
     private readonly Dictionary<string, string> _restoredPromptTokens = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1488,12 +1489,12 @@ internal partial class Program
     }
 
     /// <summary>Create a Program instance for a library entry and boot its window (UI thread). Seeds if no tree file exists.</summary>
-    private static Program CreateWindowInstance(WinMeta m, bool minimized = false)
+    private static Program CreateWindowInstance(WinMeta m, bool minimized = false, Task<AppState?>? snapshot = null)
     {
         var win = new Program { Id = m.Id, WinName = m.Name, _startMinimized = minimized };
         if (m.W > 0 && m.H > 0) { win._geoX = m.X; win._geoY = m.Y; win._geoW = m.W; win._geoH = m.H; win._geoMax = m.Max; win._geoValid = true; }
         lock (_windowIndex) { _byId[m.Id] = win; if (!_windowIndex.Any(x => x.Id == m.Id)) _windowIndex.Add(m); m.IsOpen = true; }
-        win.Boot(_hInstance);
+        win.Boot(_hInstance, snapshot);
         return win;
     }
 
@@ -1728,7 +1729,7 @@ internal partial class Program
     /// holds its history, finish the export before close disposes that owner.</summary>
     private bool SaveState(bool captureCommands = false, bool sync = false)
     {
-        if (_closeSavePending && !captureCommands) return false;
+        if (_restoring || (_closeSavePending && !captureCommands)) return false;
         foreach (var session in AllSessions()) ObserveLayout(session);
         string? json = BuildStateSnapshot(out _, captureCommands);
         if (json is null) return false;
@@ -1766,6 +1767,8 @@ internal partial class Program
         why = null;
         if (_isQuickWindow) { why = "quick terminal is not restored"; return null; }
         if (_restoring) { why = "the window is still restoring its saved state"; return null; }
+        if (_restoreDone?.Task is { IsCompletedSuccessfully: true } restored && !restored.Result)
+        { why = "the window could not finish restoring its saved state"; return null; }
         try
         {
             // Snapshot rows under the workspaces lock, then read each cwd (which locks the
@@ -1917,39 +1920,56 @@ internal partial class Program
         catch { }
     }
 
-    /// <summary>Rebuild the tree from state.json via the normal Create* paths. Returns false to fall back to a default.</summary>
-    private bool TryRestoreState()
+    private static Task<AppState?>? BeginRestoreSnapshot(string windowId)
     {
-        using var restoreTiming = _startupJournal?.Measure("window.restore", Id);
+        var backend = _sessionBackend;
+        return _argNoRestore ? null : Task.Run(() => ReadRestoreSnapshot(windowId, backend));
+    }
+
+    private static AppState? ReadRestoreSnapshot(string windowId, ISessionBackend sessionBackend)
+    {
         AppState? st;
+        string path = WindowStatePath(windowId);
         try
         {
-            string path = StatePath;
-            if (!File.Exists(path)) return false;
+            if (!File.Exists(path)) return default;
             if (!RestoreState.TryDeserialize(File.ReadAllText(path), out st)) throw new FormatException();
         }
         catch
         {
-            try { File.Move(StatePath, StatePath + ".bad", overwrite: true); } catch { } // keep the corrupt file for inspection
-            return false;
+            try { File.Move(path, path + ".bad", overwrite: true); } catch { }
+            return default;
         }
-        if (st?.Workspaces is null || !st.Workspaces.Any(w => w.Sessions is { Count: > 0 })) return false;
+        if (st?.Workspaces is null || !st.Workspaces.Any(w => w.Sessions is { Count: > 0 })) return default;
+        if (sessionBackend is ServerSessionBackend backend)
+        {
+            try { backend.ConnectForRestore(); }
+            catch { } // CreatePane handles connection failures through its normal fallback.
+        }
+        return st;
+    }
 
+    private bool TryRestoreState(AppState? st)
+    {
+        if (st is null) return false;
+        _restoreDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _restoreSteps = RestoreSessions(st).GetEnumerator();
+        ContinueRestore();
+        return true;
+    }
+
+    private IEnumerable<bool> RestoreSessions(AppState st)
+    {
+        using var restoreTiming = _startupJournal?.Measure("window.restore", Id);
         _restoredPromptTokens.Clear();
         foreach (var pane in st.Workspaces.SelectMany(w => w.Sessions ?? new()).SelectMany(s => s.Panes ?? new()))
             if (ShellCompletion.ValidToken(pane.PromptToken)) _restoredPromptTokens.TryAdd(pane.Id, pane.PromptToken!);
 
         _restoring = true;
         int restoreTotal = st.Workspaces.Sum(w => w.Sessions?.Count ?? 0), restoreIndex = 0;
-        long lastProgressPaint = 0;
+
         try
         {
-            if (_sessionBackend is ServerSessionBackend backend)
-            {
-                using var inventoryTiming = _startupJournal?.Measure("host.restore-inventory", Id);
-                try { _restoreHostedIds = backend.GetExistingSessionIds(); }
-                catch { _restoreHostedIds = null; } // Unknown: retain the ordinary per-pane adoption path.
-            }
             // A hand-edited or pre-P2 file may carry a width the chrome cannot draw (0 was what a
             // hidden sidebar used to save); that falls back to the default rather than to a 3-DIP tree.
             _sidebarWShown = Agwinterm.Pty.SidebarWidths.InRange((long)st.SidebarWidth) ? st.SidebarWidth : SidebarWFull;
@@ -1959,251 +1979,46 @@ internal partial class Program
             _agentSort = st.AgentSort == "grouped" ? "grouped" : "priority";
             _agentsCollapsed = st.AgentsCollapsed == true;
             _sidebarW = st.SidebarVisible ? _sidebarWShown : 0;
-            foreach (var w in st.Workspaces)
+            var rows = st.Workspaces.Select(w =>
             {
-                // Recreate every saved workspace, including empty ones (agterm keeps empty workspaces).
-                // StableWorkspaceId folds any duplicate id already restored this pass onto a fresh one.
                 var ws = CreateWorkspace(StableWorkspaceId(w.Id), w.Name);
-                var hiddenRestores = new List<Ses>();
                 ws.DefaultDir = string.IsNullOrWhiteSpace(w.DefaultDir) ? null : w.DefaultDir;
-                foreach (var s in w.Sessions ?? new List<SessionState>())
+                ws.Expanded = w.Expanded;
+                return (Saved: w, Workspace: ws);
+            }).ToList();
+            var sessions = rows.SelectMany(row => (row.Saved.Sessions ?? new List<SessionState>())
+                .Select((saved, index) => (row.Workspace, row.Saved.Expanded, Saved: saved, Index: index))).ToList();
+            // Keep the original first-claim order for malformed checkpoints with duplicate identities.
+            var ids = new HashSet<string>();
+            bool unique = sessions.All(row => ids.Add(row.Saved.Id));
+            ids.Clear();
+            foreach (var row in sessions)
+            {
+                var panes = row.Saved.Panes;
+                string first = panes is { Count: > 0 } && !string.IsNullOrEmpty(panes[0].Id) ? panes[0].Id : row.Saved.Id;
+                if (!ids.Add(first) || panes is { Count: > 1 } && !string.IsNullOrEmpty(panes[1].Id) && !ids.Add(panes[1].Id))
+                    unique = false;
+            }
+
+            var order = sessions.OrderByDescending(row => unique && row.Saved.Id == st.ActiveId);
+            foreach (var (ws, expanded, s, index) in order)
+            {
+                _startupProgress = $"Restoring sessions… {++restoreIndex}/{restoreTotal}";
+                using (_startupJournal?.Measure("session.restore", s.Id))
+                    RestoreSession(ws, s, index, expanded, s.Id == st.ActiveId);
+                if (restoreIndex == 1 && restoreTotal > 1 && _sessionBackend is ServerSessionBackend backend)
+                    _restoreInventory = Task.Factory.StartNew(() =>
+                    {
+                        using var timing = _startupJournal?.Measure("host.restore-inventory", Id);
+                        try { return backend.GetExistingSessionIds(); }
+                        catch { return null; } // Unknown inventory: attempt each saved attachment.
+                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                if (unique) yield return true;
+                if (_restoreInventory is { } inventory)
                 {
-                    using var sessionTiming = _startupJournal?.Measure("session.restore", s.Id);
-                    _startupProgress = $"Restoring sessions… {++restoreIndex}/{restoreTotal}";
-                    // UpdateWindow can wait for presentation. Painting every pane
-                    // turns a fast restore into N display-frame waits; keep progress
-                    // visible without paying that cost for each small session.
-                    if (restoreIndex == 1 || Stopwatch.GetElapsedTime(lastProgressPaint).TotalMilliseconds >= 100)
-                    {
-                        InvalidateRect(_hwnd, IntPtr.Zero, false);
-                        UpdateWindow(_hwnd);
-                        lastProgressPaint = Stopwatch.GetTimestamp();
-                    }
-                    // Back-compat: a pre-splits session has no Panes — synthesize one from its Cwd/FontSize.
-                    var pl = (s.Panes is { Count: > 0 })
-                        ? s.Panes
-                        : new List<PaneState> { new() { Id = s.Id, Cwd = s.Cwd, FontSize = s.FontSize, Ratio = 1f } };
-                    // Two panes per session (P4): the model is primary + split and the axis is per session.
-                    // A hand-edited or foreign file with more restores the first two; the rest are dropped
-                    // and said so — the loop below being written for N was never a feature.
-                    if (pl.Count > 2)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"restore: session {s.Id} lists {pl.Count} panes; the first two were restored and {pl.Count - 2} dropped (two panes per session)");
-                        pl = pl.Take(2).ToList();
-                    }
-                    var first = pl[0];
-                    // Durable ids (P4): pane 0 is created under its SAVED id, not the session id. After a
-                    // `session swap` the pane carrying the session id sits in slot 1, and re-minting pane 0 as
-                    // the session id would duplicate it and rename the other shell; StablePaneId folds only
-                    // an empty id, the file's session id (which follows StableSessionId) and a live duplicate.
-                    string sid = StableSessionId(s.Id);
-                    var ses = CreateSession(
-                        sid,
-                        string.IsNullOrWhiteSpace(s.Name) ? null : s.Name,
-                        string.IsNullOrWhiteSpace(first.Cwd) ? null : first.Cwd,
-                        ws, makeActive: s.Id == st.ActiveId,
-                        fontSize: PaneFontSize.Restore(first.FontSize, (float)_config.FontSize, first.FontZoomed).Size,
-                        profileName: string.IsNullOrWhiteSpace(s.Profile) ? null : s.Profile,
-                        paneId: StablePaneId(first.Id, s.Id, sid, first: true), liveBinding: first.LiveBinding);
-                    if (s.SplitHidden == true) hiddenRestores.Add(ses);
-                    // The axis BEFORE the second pane exists (P4). Every pty is spawned at the full content
-                    // grid (CreatePane → GridSizeFor) and then RegridSession below sizes each one from
-                    // PaneLayout, which reads ses.Axis: a horizontal session must get its rows halved, not
-                    // its columns, the first time its grids are set — the grid a restored pane is given is
-                    // the axis's grid (#209's surface: an ADOPTED split pane's box always differs from the
-                    // full grid on either axis, so its Resize is sent as before; a single pane is unchanged).
-                    // Only a split session carries an axis: a single-pane file's key is ignored and, since
-                    // StoreAxis writes none for one pane, never written back.
-                    if (pl.Count > 1) ses.Axis = RestoreState.LoadAxis(s.Axis);
-                    for (int i = 1; i < pl.Count; i++)
-                        AppendPane(ses,
-                            StablePaneId(pl[i].Id, s.Id, sid, first: false),   // verbatim: after a swap this is the pane that carries the session id
-                            string.IsNullOrWhiteSpace(pl[i].Cwd) ? null : pl[i].Cwd,
-                            PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Size, liveBinding: pl[i].LiveBinding);
-                    lock (_workspaces)
-                    {
-                        for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
-                        {
-                            // The host records completion even with no UI attached. Reconcile its
-                            // durable checkpoint before either adopting or replaying a binding.
-                            PruneCompletedRecovery(pl[i]);
-                            ApplyPaneAppearance(ses.Panes[i], PaneAppearance.Restore(pl[i].Appearance));
-                            ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
-                            ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
-                            ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;
-                            ses.Panes[i].AgentRecovery.Conversation = RestoreState.LoadConversation(pl[i]);
-                            ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
-                            ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
-                            ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;
-                            var restoredPane = ses.Panes[i];
-                            if (restoredPane.AgentRecovery.HasSurvivingBinding(restoredPane.S is ServerSession { Adopted: true }))
-                            {
-                                var status = pl[i].AgentStatus is { } savedStatus && Enum.IsDefined(savedStatus)
-                                    ? savedStatus : AgentStatus.Idle;
-                                if (restoredPane.AgentActivity.Restore(pl[i].AgentAttention))
-                                    status = pl[i].AgentAttention!.RawStatus;
-                                else
-                                    restoredPane.AgentActivity.Observe(status, false);
-                                restoredPane.S.SetStatus(status);
-                            }
-                            ses.Panes[i].RestoreCommand = string.IsNullOrWhiteSpace(pl[i].RestoreCommand) ? null : pl[i].RestoreCommand;
-                            // The captured slot comes back too, so it is readable (tree's capturedCommands) before it
-                            // is replayed and survives the save at the end of this restore — before P3 that save
-                            // wrote "" over it (P3). Validated at replay (denylist), not here: it is a command line.
-                            ses.Panes[i].CapturedCommand = string.IsNullOrWhiteSpace(pl[i].Command) ? null : pl[i].Command;
-                            ses.Panes[i].CapturedCommandToken = pl[i].CommandToken;
-                            ses.Panes[i].CapturedCommandGeneration = pl[i].CommandGeneration;
-                        }
-                        ses.Active = Math.Clamp(s.Active, 0, ses.Panes.Count - 1);
-                    }
-                    // Buffer-content restore: seed each pane's scrollback (dimmed) above the fresh shell.
-                    // ADOPTED panes skip it — they reconnected to the live session, whose real (and
-                    // fresher) scrollback came with the attach; seeding would duplicate it.
-                    if (_config.RestoreBuffer)
-                        lock (_workspaces)
-                            for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
-                            {
-                                var pane = ses.Panes[i];
-                                if (SuppressesRestoreReplay(pane)) continue;
-                                if(pane.S is ServerSession { UsesPresentation:true } owner)
-                                {
-                                    byte[]? saved=null;
-                                    if(pl[i].BufferBlob is { Length:>0 } encoded)
-                                        try { var bytes=Convert.FromBase64String(encoded); if(BufferPersist.TryParse(bytes,out _)) saved=bytes; }
-                                        catch(FormatException) { }
-                                    if(saved is null && pl[i].Buffer is { Count:>0 } plain)
-                                    {
-                                        // Convert old plain state without parsing its text as terminal commands.
-                                        saved=BufferPersist.FromPlainText(plain,owner.Cols);
-                                    }
-                                    if(saved is not null) owner.ImportBufferAsync(saved).GetAwaiter().GetResult();
-                                    continue;
-                                }
-                                // Prefer the full-fidelity attributed blob; fall back to plain text.
-                                if (pl[i].BufferBlob is { Length: > 0 } b64
-                                    && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))
-                                {
-                                    lock (pane.S.SyncRoot)
-                                    {
-                                        if (pane.S.Emulator is GhosttyTerminalCore)
-                                            pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
-                                        BufferPersist.Restore(pane.S.Emulator, pbuf);
-                                        if (pane.S.Emulator is not GhosttyTerminalCore)
-                                            pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
-                                    }
-                                }
-                                else if (pl[i].Buffer is { Count: > 0 } b)
-                                {
-                                    var seed = new List<string>(b) { "──── restored ────" };
-                                    lock (pane.S.SyncRoot) pane.S.Emulator.SeedScrollback(seed);
-                                }
-                            }
-                    ses.Flagged = s.Flagged;
-                    ses.CustomName = string.IsNullOrWhiteSpace(s.CustomName) ? null : s.CustomName;
-                    ses.Context = RestoreState.LoadContext(s.Context); // validated, not trusted: an out-of-rules value is dropped, not shown
-                    if (!string.IsNullOrEmpty(s.BgFile)) // restore the watermark if its copied file still exists
-                    {
-                        string bg = Path.Combine(BackgroundsDir, s.BgFile!);
-                        if (File.Exists(bg)) { ses.BgPath = bg; ses.BgOpacity = s.BgOpacity; ses.BgMode = string.IsNullOrWhiteSpace(s.BgMode) ? "fit" : s.BgMode; }
-                    }
-                    if (ReferenceEquals(_active, ses)) _session = ses.S;
-                    RegridSession(ses);
-
-                    // First-class agent resume (always on, independent of restore-commands): re-launch each
-                    // pane's bound resumable agent once the shell is ready. The agent's launcher wrapper
-                    // (see ClaudeIntegration) re-binds to the same stable pane id and resumes its own session.
-                    for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
-                    {
-                        string agent = pl[i].AgentResume ?? "";
-                        if (agent.Length == 0) continue;
-                        var apane = ses.Panes[i];
-                        // An ADOPTED pane's agent is STILL RUNNING — typing `claude --resume ...`
-                        // into it would land in the live agent's prompt. The binding stays for
-                        // future (non-adopted) restarts; nothing to relaunch now.
-                        if (SuppressesRestoreReplay(apane)) continue;
-                        int replaySeq = Volatile.Read(ref apane.BindSeq);
-                        _ = Task.Run(async () =>
-                        {
-                            // Readiness is a prompt, not elapsed startup time. A slow profile must
-                            // finish before its resumed command owns the next completion report.
-                            // Uninstrumented shells retain their legacy replay after a bounded wait;
-                            // reserving generation one also protects a later first prompt in that case.
-                            await apane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
-                            Post(() =>
-                            {
-                                if (OwningSes(apane) is null || Volatile.Read(ref apane.BindSeq) != replaySeq
-                                    || apane.AgentResume != agent) return;
-                                // The agent replay supersedes the old process capture. Keeping
-                                // its dead shell's token would make it a fallback after this agent exits.
-                                apane.CapturedCommand = null;
-                                BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint), apane.AgentRecovery.Conversation);
-                                SaveState();
-                                try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
-                            });
-                        });
-                    }
-
-                    // Pinned restore command (agterm #271): always re-run on restart, independent of the
-                    // restore-commands toggle — an explicit per-pane opt-in that overrides auto-capture.
-                    for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
-                    {
-                        string pin = pl[i].RestoreCommand ?? "";
-                        if (pin.Length == 0 || !string.IsNullOrWhiteSpace(pl[i].AgentResume)) continue;
-                        if (SuppressesRestoreReplay(ses.Panes[i])) continue;   // still running — don't double-launch
-                        var rpane = ses.Panes[i];
-                        _ = Task.Run(async () =>
-                        {
-                            await Task.Delay(2500);
-                            try { rpane.S.Write(System.Text.Encoding.UTF8.GetBytes(pin + "\r")); } catch { }
-                        });
-                    }
-
-                    // Opt-in: re-run each pane's captured foreground command once the shell is ready.
-                    if (_config.RestoreCommands)
-                    {
-                        var deny = LoadDenylist();
-                        for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
-                        {
-                            if (!string.IsNullOrWhiteSpace(pl[i].AgentResume)) continue; // agent panes handled above
-                            if (!string.IsNullOrWhiteSpace(pl[i].RestoreCommand)) continue; // pinned command handled above
-                            if (SuppressesRestoreReplay(ses.Panes[i])) continue;   // the captured command is still running
-                            string cmd = pl[i].Command ?? "";
-                            if (cmd.Length == 0) continue;
-                            string lead = StripExe(cmd.TrimStart('"').Split(' ', 2)[0]);
-                            if (deny.Contains(lead)) continue;
-                            var pane = ses.Panes[i];
-                            // Windows captures need PowerShell's call operator for quoted exe paths.
-                            // Linux captures are already shell commands; a leading & is invalid in Bash.
-                            string run = WslIntegration.IsWsl(ResolveProfile(ses.ProfileName)?.Command) ? cmd : "& " + cmd;
-                            int replaySeq = Volatile.Read(ref pane.BindSeq);
-                            string? captureToken = pane.CapturedCommandToken;
-                            long captureGeneration = pane.CapturedCommandGeneration;
-                            _ = Task.Run(async () =>
-                            {
-                                await pane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
-                                Post(() =>
-                                {
-                                    if (OwningSes(pane) is null || Volatile.Read(ref pane.BindSeq) != replaySeq
-                                        || pane.CapturedCommand != cmd || pane.CapturedCommandToken != captureToken
-                                        || pane.CapturedCommandGeneration != captureGeneration) return;
-                                    pane.CapturedCommandToken = pane.Completion.Token;
-                                    pane.CapturedCommandGeneration = Math.Max(1, pane.Completion.Checkpoint);
-                                    SaveState();
-                                    try { pane.S.Write(System.Text.Encoding.UTF8.GetBytes(run + "\r")); } catch { }
-                                });
-                            });
-                        }
-                    }
+                    _restoreHostedIds = inventory.GetAwaiter().GetResult();
+                    _restoreInventory = null;
                 }
-                // Restore hidden layout after every pane has received its buffer and replay state.
-                // As in agterm, application restore starts on the primary pane.
-                foreach (var hidden in hiddenRestores)
-                    if (hidden.Panes.Count == 2)
-                    {
-                        hidden.Active = 0;
-                        CollapseToSinglePane(hidden);
-                    }
-                lock (_workspaces) ws.Expanded = w.Expanded; // CreateSession forces Expanded=true; restore the saved state
             }
         }
         finally { _restoring = false; _restoredPromptTokens.Clear(); _startupProgress = null; _restoreHostedIds = null; }
@@ -2216,10 +2031,242 @@ internal partial class Program
         if (st.Mru is { Count: > 0 }) { _mru.Clear(); _mru.AddRange(st.Mru); } // EnsureMru prunes dead ids on first walk
 
         if (_active is null) { var f = AllSessions().FirstOrDefault(); if (f is not null) SetActive(f); }
-        if (AllSessions().Count == 0) return false; // nothing usable came back -> default
+
         SaveState();
         RequestRedraw();
-        return true;
+    }
+
+    private void RestoreSession(Workspace ws, SessionState s, int index, bool expanded, bool makeActive)
+    {
+        // Back-compat: a pre-splits session has no Panes — synthesize one from its Cwd/FontSize.
+        var pl = (s.Panes is { Count: > 0 })
+            ? s.Panes
+            : new List<PaneState> { new() { Id = s.Id, Cwd = s.Cwd, FontSize = s.FontSize, Ratio = 1f } };
+        // Two panes per session (P4): the model is primary + split and the axis is per session.
+        // A hand-edited or foreign file with more restores the first two; the rest are dropped
+        // and said so — the loop below being written for N was never a feature.
+        if (pl.Count > 2)
+        {
+            System.Diagnostics.Debug.WriteLine($"restore: session {s.Id} lists {pl.Count} panes; the first two were restored and {pl.Count - 2} dropped (two panes per session)");
+            pl = pl.Take(2).ToList();
+        }
+        var first = pl[0];
+        // Durable ids (P4): pane 0 is created under its SAVED id, not the session id. After a
+        // `session swap` the pane carrying the session id sits in slot 1, and re-minting pane 0 as
+        // the session id would duplicate it and rename the other shell; StablePaneId folds only
+        // an empty id, the file's session id (which follows StableSessionId) and a live duplicate.
+        string sid = StableSessionId(s.Id);
+        var ses = CreateSession(
+            sid,
+            string.IsNullOrWhiteSpace(s.Name) ? $"session {index + 1}" : s.Name,
+            string.IsNullOrWhiteSpace(first.Cwd) ? null : first.Cwd,
+            ws, makeActive: makeActive,
+            fontSize: PaneFontSize.Restore(first.FontSize, (float)_config.FontSize, first.FontZoomed).Size,
+            profileName: string.IsNullOrWhiteSpace(s.Profile) ? null : s.Profile,
+            paneId: StablePaneId(first.Id, s.Id, sid, first: true), liveBinding: first.LiveBinding);
+        // The focused row may already occupy the slot after this row.
+        lock (_workspaces)
+        {
+            if (index < ws.Sessions.Count - 1 && ReferenceEquals(ws.Sessions[^1], ses))
+            {
+                ws.Sessions.Remove(ses);
+                ws.Sessions.Insert(index, ses);
+            }
+            ws.Expanded = expanded;
+        }
+        // The axis BEFORE the second pane exists (P4). Every pty is spawned at the full content
+        // grid (CreatePane → GridSizeFor) and then RegridSession below sizes each one from
+        // PaneLayout, which reads ses.Axis: a horizontal session must get its rows halved, not
+        // its columns, the first time its grids are set — the grid a restored pane is given is
+        // the axis's grid (#209's surface: an ADOPTED split pane's box always differs from the
+        // full grid on either axis, so its Resize is sent as before; a single pane is unchanged).
+        // Only a split session carries an axis: a single-pane file's key is ignored and, since
+        // StoreAxis writes none for one pane, never written back.
+        if (pl.Count > 1) ses.Axis = RestoreState.LoadAxis(s.Axis);
+        for (int i = 1; i < pl.Count; i++)
+            AppendPane(ses,
+                StablePaneId(pl[i].Id, s.Id, sid, first: false),   // verbatim: after a swap this is the pane that carries the session id
+                string.IsNullOrWhiteSpace(pl[i].Cwd) ? null : pl[i].Cwd,
+                PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Size, liveBinding: pl[i].LiveBinding);
+        lock (_workspaces)
+        {
+            for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
+            {
+                // The host records completion even with no UI attached. Reconcile its
+                // durable checkpoint before either adopting or replaying a binding.
+                PruneCompletedRecovery(pl[i]);
+                ApplyPaneAppearance(ses.Panes[i], PaneAppearance.Restore(pl[i].Appearance));
+                ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
+                ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
+                ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;
+                ses.Panes[i].AgentRecovery.Conversation = RestoreState.LoadConversation(pl[i]);
+                ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
+                ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
+                ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;
+                var restoredPane = ses.Panes[i];
+                if (restoredPane.AgentRecovery.HasSurvivingBinding(restoredPane.S is ServerSession { Adopted: true }))
+                {
+                    var status = pl[i].AgentStatus is { } savedStatus && Enum.IsDefined(savedStatus)
+                        ? savedStatus : AgentStatus.Idle;
+                    if (restoredPane.AgentActivity.Restore(pl[i].AgentAttention))
+                        status = pl[i].AgentAttention!.RawStatus;
+                    else
+                        restoredPane.AgentActivity.Observe(status, false);
+                    restoredPane.S.SetStatus(status);
+                }
+                ses.Panes[i].RestoreCommand = string.IsNullOrWhiteSpace(pl[i].RestoreCommand) ? null : pl[i].RestoreCommand;
+                // The captured slot comes back too, so it is readable (tree's capturedCommands) before it
+                // is replayed and survives the save at the end of this restore — before P3 that save
+                // wrote "" over it (P3). Validated at replay (denylist), not here: it is a command line.
+                ses.Panes[i].CapturedCommand = string.IsNullOrWhiteSpace(pl[i].Command) ? null : pl[i].Command;
+                ses.Panes[i].CapturedCommandToken = pl[i].CommandToken;
+                ses.Panes[i].CapturedCommandGeneration = pl[i].CommandGeneration;
+            }
+            ses.Active = Math.Clamp(s.Active, 0, ses.Panes.Count - 1);
+        }
+        // Buffer-content restore: seed each pane's scrollback (dimmed) above the fresh shell.
+        // ADOPTED panes skip it — they reconnected to the live session, whose real (and
+        // fresher) scrollback came with the attach; seeding would duplicate it.
+        if (_config.RestoreBuffer)
+            lock (_workspaces)
+                for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
+                {
+                    var pane = ses.Panes[i];
+                    if (SuppressesRestoreReplay(pane)) continue;
+                    if(pane.S is ServerSession { UsesPresentation:true } owner)
+                    {
+                        byte[]? saved=null;
+                        if(pl[i].BufferBlob is { Length:>0 } encoded)
+                            try { var bytes=Convert.FromBase64String(encoded); if(BufferPersist.TryParse(bytes,out _)) saved=bytes; }
+                            catch(FormatException) { }
+                        if(saved is null && pl[i].Buffer is { Count:>0 } plain)
+                        {
+                            // Convert old plain state without parsing its text as terminal commands.
+                            saved=BufferPersist.FromPlainText(plain,owner.Cols);
+                        }
+                        if(saved is not null) owner.ImportBufferAsync(saved).GetAwaiter().GetResult();
+                        continue;
+                    }
+                    // Prefer the full-fidelity attributed blob; fall back to plain text.
+                    if (pl[i].BufferBlob is { Length: > 0 } b64
+                        && BufferPersist.TryParse(Convert.FromBase64String(b64), out var pbuf))
+                    {
+                        lock (pane.S.SyncRoot)
+                        {
+                            if (pane.S.Emulator is GhosttyTerminalCore)
+                                pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
+                            BufferPersist.Restore(pane.S.Emulator, pbuf);
+                            if (pane.S.Emulator is not GhosttyTerminalCore)
+                                pane.S.Emulator.SeedScrollback(new[] { "──── restored ────" });
+                        }
+                    }
+                    else if (pl[i].Buffer is { Count: > 0 } b)
+                    {
+                        var seed = new List<string>(b) { "──── restored ────" };
+                        lock (pane.S.SyncRoot) pane.S.Emulator.SeedScrollback(seed);
+                    }
+                }
+        ses.Flagged = s.Flagged;
+        ses.CustomName = string.IsNullOrWhiteSpace(s.CustomName) ? null : s.CustomName;
+        ses.Context = RestoreState.LoadContext(s.Context); // validated, not trusted: an out-of-rules value is dropped, not shown
+        if (!string.IsNullOrEmpty(s.BgFile)) // restore the watermark if its copied file still exists
+        {
+            string bg = Path.Combine(BackgroundsDir, s.BgFile!);
+            if (File.Exists(bg)) { ses.BgPath = bg; ses.BgOpacity = s.BgOpacity; ses.BgMode = string.IsNullOrWhiteSpace(s.BgMode) ? "fit" : s.BgMode; }
+        }
+        if (ReferenceEquals(_active, ses)) _session = ses.S;
+        RegridSession(ses);
+
+        // First-class agent resume (always on, independent of restore-commands): re-launch each
+        // pane's bound resumable agent once the shell is ready. The agent's launcher wrapper
+        // (see ClaudeIntegration) re-binds to the same stable pane id and resumes its own session.
+        for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
+        {
+            string agent = pl[i].AgentResume ?? "";
+            if (agent.Length == 0) continue;
+            var apane = ses.Panes[i];
+            // An ADOPTED pane's agent is STILL RUNNING — typing `claude --resume ...`
+            // into it would land in the live agent's prompt. The binding stays for
+            // future (non-adopted) restarts; nothing to relaunch now.
+            if (SuppressesRestoreReplay(apane)) continue;
+            int replaySeq = Volatile.Read(ref apane.BindSeq);
+            _ = Task.Run(async () =>
+            {
+                // Readiness is a prompt, not elapsed startup time. A slow profile must
+                // finish before its resumed command owns the next completion report.
+                // Uninstrumented shells retain their legacy replay after a bounded wait;
+                // reserving generation one also protects a later first prompt in that case.
+                await apane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
+                Post(() =>
+                {
+                    if (OwningSes(apane) is null || Volatile.Read(ref apane.BindSeq) != replaySeq
+                        || apane.AgentResume != agent) return;
+                    // The agent replay supersedes the old process capture. Keeping
+                    // its dead shell's token would make it a fallback after this agent exits.
+                    apane.CapturedCommand = null;
+                    BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint), apane.AgentRecovery.Conversation);
+                    SaveState();
+                    try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
+                });
+            });
+        }
+
+        // Pinned restore command (agterm #271): always re-run on restart, independent of the
+        // restore-commands toggle — an explicit per-pane opt-in that overrides auto-capture.
+        for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
+        {
+            string pin = pl[i].RestoreCommand ?? "";
+            if (pin.Length == 0 || !string.IsNullOrWhiteSpace(pl[i].AgentResume)) continue;
+            if (SuppressesRestoreReplay(ses.Panes[i])) continue;   // still running — don't double-launch
+            var rpane = ses.Panes[i];
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2500);
+                try { rpane.S.Write(System.Text.Encoding.UTF8.GetBytes(pin + "\r")); } catch { }
+            });
+        }
+
+        // Opt-in: re-run each pane's captured foreground command once the shell is ready.
+        if (_config.RestoreCommands)
+        {
+            var deny = LoadDenylist();
+            for (int i = 0; i < pl.Count && i < ses.Panes.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(pl[i].AgentResume)) continue; // agent panes handled above
+                if (!string.IsNullOrWhiteSpace(pl[i].RestoreCommand)) continue; // pinned command handled above
+                if (SuppressesRestoreReplay(ses.Panes[i])) continue;   // the captured command is still running
+                string cmd = pl[i].Command ?? "";
+                if (cmd.Length == 0) continue;
+                string lead = StripExe(cmd.TrimStart('"').Split(' ', 2)[0]);
+                if (deny.Contains(lead)) continue;
+                var pane = ses.Panes[i];
+                // Windows captures need PowerShell's call operator for quoted exe paths.
+                // Linux captures are already shell commands; a leading & is invalid in Bash.
+                string run = WslIntegration.IsWsl(ResolveProfile(ses.ProfileName)?.Command) ? cmd : "& " + cmd;
+                int replaySeq = Volatile.Read(ref pane.BindSeq);
+                string? captureToken = pane.CapturedCommandToken;
+                long captureGeneration = pane.CapturedCommandGeneration;
+                _ = Task.Run(async () =>
+                {
+                    await pane.Completion.WaitForInitialPromptAsync(TimeSpan.FromSeconds(30));
+                    Post(() =>
+                    {
+                        if (OwningSes(pane) is null || Volatile.Read(ref pane.BindSeq) != replaySeq
+                            || pane.CapturedCommand != cmd || pane.CapturedCommandToken != captureToken
+                            || pane.CapturedCommandGeneration != captureGeneration) return;
+                        pane.CapturedCommandToken = pane.Completion.Token;
+                        pane.CapturedCommandGeneration = Math.Max(1, pane.Completion.Checkpoint);
+                        SaveState();
+                        try { pane.S.Write(System.Text.Encoding.UTF8.GetBytes(run + "\r")); } catch { }
+                    });
+                });
+            }
+        }
+        if (s.SplitHidden == true && ses.Panes.Count == 2)
+        {
+            ses.Active = 0;
+            CollapseToSinglePane(ses);
+        }
     }
 
     private static string ConfigPath => Path.Combine(AppDir, "agwinterm.conf");

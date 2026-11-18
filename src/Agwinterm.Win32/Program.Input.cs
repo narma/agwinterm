@@ -116,6 +116,7 @@ internal partial class Program
     /// <summary>Dispatch a keymap action id (or "command:&lt;Label&gt;") to the matching behavior.</summary>
     private void RunAction(string action)
     {
+        ContinueRestore(finish: true);
         if (_active?.PageParentId is not null && action is "split_pane" or "duplicate_session" or "toggle_scratch")
         { ShowToast("This action is not available on a page companion"); return; }
         if (_isQuickWindow && !QuickActionAllowed(action)) { ShowToast("This action needs a library window"); return; }
@@ -1742,10 +1743,17 @@ internal partial class Program
     /// <summary>Returns true if the key was consumed.</summary>
     private bool OnKeyDown(int vk)
     {
+        if (!_firstKeyLogged)
+        {
+            _firstKeyLogged = true;
+            _startupJournal?.Mark("window.first-key", Id);
+        }
         if (vk == VK_RETURN) TerminalLatencyTrace.EnterReceived();
         bool ctrl = KeyDown(VK_CONTROL), shift = KeyDown(VK_SHIFT), alt = KeyDown(VK_MENU) || _altContext;
         if (_ghosttyKeyText is { AltGr: true } layoutText && layoutText.Vk == vk)
             ctrl = alt = false; // layout text must not activate Ctrl+Alt application shortcuts
+        if (_restoreSteps is not null && (ctrl && vk == VK_TAB || vk == 0x75 || BroadcastActive))
+            ContinueRestore(finish: true);
 
         // While a popup menu is up — the sidebar's context menu or a menu-bar dropdown — it owns the
         // keyboard (↑↓ Home End Enter Space Esc, ←→ between bar menus or out of a flyout, Alt+letter;
