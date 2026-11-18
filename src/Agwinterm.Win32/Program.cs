@@ -1316,7 +1316,7 @@ internal partial class Program : ISessionHost, IWindowHost
                 if (session is not null)
                 {
                     if (_sidebarW <= 0) ToggleSidebar();
-                    _chromeFocus = true; _focusRow = session; RequestRedraw();
+                    _chromeFocus = true; _agentsKeyboardFocus = false; _focusRow = session; _workspaceRevealId = session.Id; RequestRedraw();
                 }
                 break;
         }
@@ -1412,7 +1412,8 @@ internal partial class Program : ISessionHost, IWindowHost
         _agentsKeyboardFocus = false;
         if (_sidebarW <= 0) ToggleSidebar();   // reveal the sidebar so the focus ring is visible
         _chromeFocus = true;
-        _focusRow = _active ?? AllSessions().FirstOrDefault();
+        var visible = VisibleSessions();
+        _focusRow = _active is not null && visible.Contains(_active) ? _active : visible.FirstOrDefault();
         _uia.Announce("Sidebar");
         AnnounceFocusRow();
         RequestRedraw();
@@ -1429,6 +1430,7 @@ internal partial class Program : ISessionHost, IWindowHost
     private void AnnounceFocusRow()
     {
         if (_focusRow is null) return;
+        _workspaceRevealId = _focusRow.Id;
         ShowToast(_focusRow.Name);   // a visible hint alongside the spoken one
         RaiseUiaFocusForRow();       // move UIA focus to this element (Narrator announces it)
         bool current = ReferenceEquals(_focusRow, _active);
@@ -1450,10 +1452,11 @@ internal partial class Program : ISessionHost, IWindowHost
                 _agentKeyboardKey ??= AgentList().FirstOrDefault()?.Key;
                 _uia.Announce("Agents. Arrow keys to navigate, Enter to open, P to pin, S to sort.");
             }
+            else _workspaceRevealId = _focusRow?.Id;
             RequestRedraw(); return true;
         }
         if (_agentsKeyboardFocus) return AgentsKey(vk);
-        var list = AllSessions();
+        var list = VisibleSessions();
         if (list.Count == 0) { ExitChromeFocus(); return true; }
         int idx = _focusRow is not null ? list.IndexOf(_focusRow) : 0;
         if (idx < 0) idx = 0;

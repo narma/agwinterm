@@ -82,7 +82,8 @@ internal partial class Program
     }
 
     private int _workspaceScroll, _workspaceMaxScroll;
-    private bool _revealWorkspaceSelection, _revealAgentSelection;
+    private string? _workspaceRevealId;
+    private bool _revealAgentSelection;
 
     private static int ScrollToRow(int offset, int row, int capacity) =>
         row < 0 || capacity == 0 ? offset : Math.Clamp(offset, row - capacity + 1, row);
@@ -110,16 +111,16 @@ internal partial class Program
         }
         int capacity = Math.Max(0, (int)((bottom - y) / rowH));
         _workspaceMaxScroll = Math.Max(0, rows.Count - capacity);
-        if (_revealWorkspaceSelection && _active is { } active)
+        if (_workspaceRevealId is { } idToReveal)
         {
             for (int i = 0; i < rows.Count; i++)
-                if (rows[i].SessionId == active.Id)
+                if (rows[i].SessionId == idToReveal)
                 {
                     _workspaceScroll = ScrollToRow(_workspaceScroll, i, capacity);
                     break;
                 }
         }
-        _revealWorkspaceSelection = false;
+        _workspaceRevealId = null;
         _workspaceScroll = Math.Clamp(_workspaceScroll, 0, _workspaceMaxScroll);
         if (flagged && rows.Count == 0)
         {
@@ -657,17 +658,33 @@ internal partial class Program
         else if (item is Workspace w) DropWorkspace(w, my);
     }
 
-    /// <summary>The workspace whose region contains <paramref name="my"/> (last header at/above it; first if above all).</summary>
     private Workspace? TargetWorkspaceAt(int my)
     {
-        Workspace? cur = null;
-        foreach (var (y0, _, isWs, it) in _sidebarRows)
+        Workspace? last = null;
+        foreach (var (y0, _, _, item) in _sidebarRows)
         {
-            if (!isWs || it is not Workspace w) continue;
-            if (cur is null) cur = w;   // default to the first workspace
-            if (y0 <= my) cur = w;      // the last header at/above my wins
+            var ws = item switch { Workspace w => w, Ses s => s.Ws, _ => null };
+            if (ws is null) continue;
+            if (y0 > my) return last ?? ws;
+            last = ws;
         }
-        return cur;
+        return last;
+    }
+
+    // The indicator and the insertion both use the same visible neighbor. Its position
+    // in the full list stays meaningful when scrolling or filtering hides earlier rows.
+    private (object? Neighbor, bool After, float Y) DropPosition(object drag, int my, Workspace? target)
+    {
+        (object?, bool, float) position = (null, false, -1);
+        foreach (var (y0, y1, _, item) in _sidebarRows)
+        {
+            if (target is not null && ReferenceEquals(item, target)) position = (null, false, y1);
+            bool candidate = drag is Workspace ? item is Workspace : item is Ses s && s.Ws == target;
+            if (!candidate || ReferenceEquals(item, drag)) continue;
+            if (my < (y0 + y1) / 2f) return (item, false, y0);
+            position = (item, true, y1);
+        }
+        return position;
     }
 
     private void DropSession(Ses drag, int my)
@@ -676,14 +693,12 @@ internal partial class Program
         {
             var target = TargetWorkspaceAt(my);
             if (target is null) return;
-            // Insert index = visible target-ws session rows (excluding the dragged one) above my.
-            int idx = 0;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-                if (!isWs && it is Ses r && ReferenceEquals(r.Ws, target) && !ReferenceEquals(r, drag)
-                    && (y0 + y1) / 2f < my) idx++;
+            var position = DropPosition(drag, my, target);
+            if (position.Y < 0) return;
             drag.Ws.Sessions.Remove(drag);
-            idx = Math.Clamp(idx, 0, target.Sessions.Count);
-            target.Sessions.Insert(idx, drag);
+            int index = position.Neighbor is Ses neighbor
+                ? target.Sessions.IndexOf(neighbor) + (position.After ? 1 : 0) : 0;
+            target.Sessions.Insert(index, drag);
             drag.Ws = target;
             target.Expanded = true;
         }
@@ -694,49 +709,18 @@ internal partial class Program
     {
         lock (_workspaces)
         {
-            int idx = 0;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-                if (isWs && it is Workspace w && !ReferenceEquals(w, drag) && (y0 + y1) / 2f < my) idx++;
+            var position = DropPosition(drag, my, null);
+            if (position.Neighbor is not Workspace neighbor) return;
             _workspaces.Remove(drag);
-            idx = Math.Clamp(idx, 0, _workspaces.Count);
-            _workspaces.Insert(idx, drag);
+            int index = _workspaces.IndexOf(neighbor) + (position.After ? 1 : 0);
+            _workspaces.Insert(index, drag);
         }
         RequestRedraw();
         SaveState();
     }
 
-    /// <summary>Pixel Y of the insertion line for the in-progress drag (-1 if none).</summary>
-    private float DropIndicatorY()
-    {
-        if (_dragItem is Workspace)
-        {
-            float lastY1 = -1;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-                if (isWs && it is Workspace w && !ReferenceEquals(w, _dragItem))
-                {
-                    if (_dragY < (y0 + y1) / 2f) return y0;
-                    lastY1 = y1;
-                }
-            return lastY1;
-        }
-        if (_dragItem is Ses)
-        {
-            var target = TargetWorkspaceAt(_dragY);
-            if (target is null) return -1;
-            float headerBottom = -1, lastRowY1 = -1;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-            {
-                if (isWs && it is Workspace w && ReferenceEquals(w, target)) headerBottom = y1;
-                else if (!isWs && it is Ses r && ReferenceEquals(r.Ws, target) && !ReferenceEquals(r, _dragItem))
-                {
-                    if (_dragY < (y0 + y1) / 2f) return y0;
-                    lastRowY1 = y1;
-                }
-            }
-            return lastRowY1 > 0 ? lastRowY1 : headerBottom;
-        }
-        return -1;
-    }
+    private float DropIndicatorY() => _dragItem is null ? -1 :
+        DropPosition(_dragItem, _dragY, _dragItem is Ses ? TargetWorkspaceAt(_dragY) : null).Y;
 
     private void DrawDropIndicator(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush)
     {

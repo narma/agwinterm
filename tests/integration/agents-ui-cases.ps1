@@ -153,6 +153,26 @@ Check 'wheel over workspace tree scrolls its last session out of view' (AgentWai
 })
 WheelAt $treeRect -120
 Check 'wheel over workspace tree reaches its last session again' (AgentWait {(SessionElement 'Hook worker').Current.BoundingRectangle.Width -gt 0})
+# Immediately above the hook session are its workspace header and the last empty fixtures.
+$treeRect=(SessionElement 'Hook worker').Current.BoundingRectangle
+$x=[int]($treeRect.Left+$treeRect.Width/2)
+$start=[AgentTestWindows]::ClientPoint($hwnd,$x,[int]($treeRect.Top-1.5*$treeRect.Height))
+$end=[AgentTestWindows]::ClientPoint($hwnd,$x,[int]($treeRect.Top-2.75*$treeRect.Height))
+[void][HudOwnedJob]::SendMessageW($hwnd,0x201,[IntPtr]1,$start)
+[void][HudOwnedJob]::SendMessageW($hwnd,0x200,[IntPtr]1,$end)
+[void][HudOwnedJob]::SendMessageW($hwnd,0x202,[IntPtr]0,$end)
+Check 'workspace drag below fold swaps adjacent headers in the full order' (AgentWait {
+    $names=@((Rpc 'tree').workspaces.name)
+    ($names[-4..-1] -join '|') -eq 'Scroll fixture 21|Scroll fixture 23|Scroll fixture 22|Other space'
+})
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x75,[IntPtr]1) # F6
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x24,[IntPtr]1) # Home
+Check 'Home reveals the first session without activating it' (AgentWait {
+    (SessionElement 'Agent worker').Current.BoundingRectangle.Width -gt 0 -and (Node $hook).active
+})
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x23,[IntPtr]1) # End
+Check 'End reveals the last focused session' (AgentWait {(SessionElement 'Hook worker').Current.BoundingRectangle.Width -gt 0})
+[void][HudOwnedJob]::SendMessageW($hwnd,0x100,[IntPtr]0x1b,[IntPtr]1) # Escape
 Check 'selecting auto-reset Blocked does not clear request' (AgentWait {(Node $hook).status-eq 'blocked'})
 $null=Rpc 'session.select' @{} $session
 $null=Rpc 'session.status' @{status='active'} $hook
