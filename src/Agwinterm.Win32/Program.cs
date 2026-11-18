@@ -772,7 +772,7 @@ internal partial class Program : ISessionHost, IWindowHost
                 SaveIndex();
             }
             else if (launch.Directory is not null || launch.Profile is not null)
-                window.CreateSession(Guid.NewGuid().ToString(), null, launch.Directory, window.ActiveWorkspace(), makeActive: true, profileName: launch.Profile);
+                window.CreateLaunchSession(launch.Directory, launch.Profile);
             if (launch.Maximized) ShowWindow(window._hwnd, SW_MAXIMIZE);
             else if (IsIconic(window._hwnd)) ShowWindow(window._hwnd, SW_RESTORE);
             if (launch.Fullscreen && !window._fullscreen) window.ToggleFullscreen();
@@ -1736,13 +1736,17 @@ internal partial class Program : ISessionHost, IWindowHost
         {
             // Restored: an explicit -p/-d still means "and open me this session".
             if (argProfile is not null || argDir is not null)
-            {
-                ContinueRestore(finish: true);
-                CreateSession(Guid.NewGuid().ToString(), null, argDir, ActiveWorkspace(), makeActive: true, profileName: argProfile);
-            }
+                CreateLaunchSession(argDir, argProfile);
             return;
         }
         var ws = CreateWorkspace(Guid.NewGuid().ToString(), null);
         CreateSession(Guid.NewGuid().ToString(), null, argDir, ws, makeActive: true, profileName: argProfile);
+    }
+
+    private void CreateLaunchSession(string? directory, string? profile)
+    {
+        // Apply an explicit launch as a new session, even when forwarded during restore.
+        ContinueRestore(finish: true);
+        CreateSession(Guid.NewGuid().ToString(), null, directory, ActiveWorkspace(), makeActive: true, profileName: profile);
     }
 }

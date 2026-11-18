@@ -1,5 +1,5 @@
 param([Parameter(Mandatory)][string]$Exe, [string]$CtlExe, [ValidateRange(1,128)][int]$SessionCount = 84,
-    [ValidateRange(1,10)][int]$Runs = 3)
+    [ValidateRange(1,10)][int]$Runs = 3, [switch]$ForwardedProfile)
 $ErrorActionPreference = 'Stop'
 if (& "$PSScriptRoot/sandbox-ui-entry.ps1" -Test RestoredFirstKey -Parameters $PSBoundParameters) { exit $LASTEXITCODE }
 . "$PSScriptRoot/../ui/lib.ps1"
@@ -10,6 +10,16 @@ function Reply([string[]]$Arguments) {
     $reply = Send-Ctl $s $Arguments | ConvertFrom-Json
     if (-not $reply.ok) { throw "Control request failed: $($reply.error)" }
     $reply.result
+}
+function Start-RestoredWindow {
+    $s.Proc = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId) -PassThru
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    do {
+        $s.Proc.Refresh()
+        $s.Hwnd = $s.Proc.MainWindowHandle
+        if ($s.Proc.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw 'No restored window' }
+        if (!$s.Hwnd.ToInt64()) { Start-Sleep -Milliseconds 5 }
+    } until ($s.Hwnd.ToInt64())
 }
 try {
     for ($i = 1; $i -lt $SessionCount; $i++) {
@@ -27,6 +37,29 @@ try {
         if ([DateTime]::UtcNow -gt $deadline) { throw "Only $ready of $SessionCount shells produced output" }
         Start-Sleep -Milliseconds 500
     } while ($true)
+    if ($ForwardedProfile) {
+        [void][AgwUi]::PostMessageW($s.Hwnd,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
+        if (!$s.Proc.WaitForExit(60000)) { throw "GUI did not exit cleanly" }
+        # An incompatible command makes the ZMX path observable without a WSL distribution.
+        # If restore misclassifies the forwarded profile as a saved pane, cmd.exe opens instead.
+        $profilesPath = Join-Path $s.AppDir 'profiles.json'
+        $profiles = Get-Content $profilesPath -Raw | ConvertFrom-Json
+        $profiles.profiles += @{name='ForwardedZmx';command='cmd.exe';zmx=@{enabled=$true;executable='/usr/bin/zmx'}}
+        $profiles | ConvertTo-Json -Depth 12 | Set-Content $profilesPath
+        Start-RestoredWindow
+        $duplicate = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId,'--profile','ForwardedZmx') -WindowStyle Hidden -PassThru
+        if (!$duplicate.WaitForExit(30000) -or $duplicate.ExitCode -ne 0) { throw 'Forwarded profile launch was not acknowledged' }
+        $rows = @((Reply @('tree')).workspaces[0].sessions)
+        $newPane = $rows[-1].id
+        if ($newPane -in $savedOrder -or ($rows.id -join ',') -ne (($savedOrder + $newPane) -join ',')) {
+            throw 'Expected one new session after the restored sessions in their saved order'
+        }
+        if ([string](Reply @('session','text','--target',$newPane)) -notmatch 'ZMX requires a WSL profile') {
+            throw 'Forwarded launch bypassed ZMX profile validation'
+        }
+        Write-Host 'Forwarded profile followed the ZMX launch path and preserved all saved sessions.'
+        return
+    }
     # The child stays alive across GUI restarts. Only reading a literal 'a' produces a
     # marker on row 1, together with the echoed key, in one console write.
     $probe = @'
@@ -55,13 +88,7 @@ foreach ($sample in 1..10) {
         [void][AgwUi]::PostMessageW($s.Hwnd,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
         if (-not $s.Proc.WaitForExit(60000)) { throw 'GUI did not exit cleanly' }
         $launch = [Diagnostics.Stopwatch]::GetTimestamp()
-        $s.Proc = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId) -PassThru
-        do {
-            $s.Proc.Refresh()
-            $s.Hwnd = $s.Proc.MainWindowHandle
-            if ($s.Proc.HasExited -or [Diagnostics.Stopwatch]::GetElapsedTime($launch).TotalSeconds -gt 60) { throw 'No restored window' }
-            if (!$s.Hwnd.ToInt64()) { Start-Sleep -Milliseconds 5 }
-        } until ($s.Hwnd.ToInt64())
+        Start-RestoredWindow
         $start = [Diagnostics.Stopwatch]::GetTimestamp()
         if (-not [AgwUi]::PostMessageW($s.Hwnd,0x100,[IntPtr]65,[IntPtr]0x001e0001)) { throw 'Key down failed' }
         [void][AgwUi]::PostMessageW($s.Hwnd,0x101,[IntPtr]65,[IntPtr]0xc01e0001L)
