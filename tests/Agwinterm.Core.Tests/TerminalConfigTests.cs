@@ -15,6 +15,15 @@ public class TerminalConfigTests
         Assert.Equal(new TerminalConfig().FontSize, config.FontSize);
     }
 
+    [Theory]
+    [InlineData("", "conversation")]
+    [InlineData("sidebar-copy-id = pane", "pane")]
+    [InlineData("sidebar-copy-id = session", "session")]
+    [InlineData("sidebar-copy-id = off", "off")]
+    [InlineData("sidebar-copy-id = unknown", "conversation")]
+    public void SidebarCopyIdModes(string text, string expected) =>
+        Assert.Equal(expected, TerminalConfig.Parse(text).SidebarCopyId);
+
     [Fact]
     public void Defaults_WhenEmpty()
     {

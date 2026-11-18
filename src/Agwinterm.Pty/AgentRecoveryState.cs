@@ -2,12 +2,15 @@ using Agwinterm.Core;
 
 namespace Agwinterm.Pty;
 
+public sealed record AgentConversation(string Agent, string Id);
+
 /// <summary>Recovery belongs to a workload, not its replaceable UI attachment. Sharing this
 /// state lets an accepted binding finish after a transport replacement without writing into
 /// a discarded pane. Binding writes run on the UI thread; request ordering uses Interlocked.</summary>
 public sealed class AgentRecoveryState
 {
     public string? Command;
+    public AgentConversation? Conversation;
     public ShellCompletion Completion = new("", "");
     public string? Token;
     public long Generation;
@@ -35,7 +38,9 @@ public sealed class AgentRecoveryState
     public bool FinishRestart(int reservation, string? command)
     {
         if (_restartReservation != reservation || Token == Completion.Token) return false;
-        Command = Completion.Checkpoint > 0 ? null : command;
+        string? replacement = Completion.Checkpoint > 0 ? null : command;
+        if (replacement is null || replacement != Command) Conversation = null;
+        Command = replacement;
         Token = Completion.Token;
         Generation = 0;
         // A pending request owns its baseline. The fallback must not change it.

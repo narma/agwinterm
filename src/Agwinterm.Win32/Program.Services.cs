@@ -1030,7 +1030,7 @@ internal partial class Program
         "scrollback-lines", "inactive-pane-dim", "unfocused-dim", "builtin-glyphs", "ligatures", "window-opacity", "sidebar-tint", "sidebar-font-size", "scroll-speed", "follow-output",
         "new-session-dir", "right-click-paste", "copy-on-select", "copy-on-ctrl-c", "word-delimiters", "desktop-notifications", "shell-integration",
         "restore-commands", "restore-buffer", "blocked-sound", "notification-sound", "omp-theme", "omp-integration", "prompt-engine", "starship-theme",
-        "new-session-dir-mode", "confirm-close-session", "compact-toolbar", "toolbar-mode", "notification-badges",
+        "new-session-dir-mode", "confirm-close-session", "compact-toolbar", "toolbar-mode", "notification-badges", "sidebar-copy-id",
         "notification-color-ok", "notification-color-normal", "notification-color-attention", "workspace-add-button",
         "show-scratch-button", "show-split-button", "show-dashboard-button", "show-quick-button", "show-menu-bar",
         "quick-terminal-size", "quick-terminal-hotkey",
@@ -1108,6 +1108,7 @@ internal partial class Program
         "confirm-close-session" => _config.ConfirmCloseSession ? "true" : "false",
         "compact-toolbar" => _config.CompactToolbar ? "true" : "false",
         "toolbar-mode" => ToolbarModeResolved,
+        "sidebar-copy-id" => _config.SidebarCopyId,
         "notification-badges" => _config.NotificationBadges ? "true" : "false",
         "notification-color-ok" => _config.NotificationColorOk,
         "notification-color-normal" => _config.NotificationColorNormal,
@@ -1833,7 +1834,7 @@ internal partial class Program
                                 }
                             }
                             catch { }
-                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, CommandToken = p.CapturedCommandToken, CommandGeneration = p.CapturedCommandGeneration, AgentResume = p.AgentResume, PromptToken = p.Completion.Token, AgentResumeToken = p.AgentResumeToken, AgentResumeGeneration = p.AgentResumeGeneration, AgentStatus = p.AgentActivity.Reported ? p.S.Status : null, AgentAttention = p.AgentActivity.Capture(), RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
+                        ss.Panes.Add(new PaneState { Id = p.Id, Cwd = cwd, FontSize = p.FontSize, FontZoomed = p.FontZoomed, Ratio = s.StoredRatio(p), Command = cmd, CommandToken = p.CapturedCommandToken, CommandGeneration = p.CapturedCommandGeneration, AgentResume = p.AgentResume, Conversation = p.AgentRecovery.Conversation, PromptToken = p.Completion.Token, AgentResumeToken = p.AgentResumeToken, AgentResumeGeneration = p.AgentResumeGeneration, AgentStatus = p.AgentActivity.Reported ? p.S.Status : null, AgentAttention = p.AgentActivity.Capture(), RestoreCommand = p.RestoreCommand, Appearance = p.Appearance, Buffer = buf, BufferBlob = blob, LiveBinding = p.LiveBinding });
                     }
                     // P4: the axis, written only for a split horizontal session (StoreAxis) — a vertical or
                     // single-pane session writes no key, so its bytes are what 0.17.12 wrote.
@@ -2030,6 +2031,7 @@ internal partial class Program
                             ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
                             ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
                             ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;
+                            ses.Panes[i].AgentRecovery.Conversation = RestoreState.LoadConversation(pl[i]);
                             ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
                             ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
                             ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;
@@ -2134,7 +2136,7 @@ internal partial class Program
                                 // The agent replay supersedes the old process capture. Keeping
                                 // its dead shell's token would make it a fallback after this agent exits.
                                 apane.CapturedCommand = null;
-                                BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint));
+                                BindAgent(apane, agent, Math.Max(1, apane.Completion.Checkpoint), apane.AgentRecovery.Conversation);
                                 SaveState();
                                 try { apane.S.Write(System.Text.Encoding.UTF8.GetBytes(agent + "\r")); } catch { }
                             });

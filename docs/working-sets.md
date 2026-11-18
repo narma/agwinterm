@@ -1,5 +1,15 @@
 # Working sets
 
+Hover over a session row and click the copy icon to copy its agent conversation ID
+while keeping the current session active. The action appears once Agwinterm knows
+the conversation ID. A Codex row with only an OSC status report shows a hint
+to run `/status` when clicked. If several panes have IDs, choose one from the menu. From the
+keyboard, press F6, focus the session row and open its menu with Shift+F10.
+
+Under **Settings → Appearance → Copy ID from sidebar**, choose **Agent conversation
+ID** (default), **Pane ID**, **Agwinterm session ID** or **Off**. The corresponding
+`sidebar-copy-id` values are `conversation`, `pane`, `session` and `off`.
+
 `workspace flag on|off|toggle --target WORKSPACE` affects all members, including hidden
 or collapsed sessions; toggle inverts each member. `workspace new --collapsed` creates
 an empty collapsed workspace. These operations never flag just the visible subset.
