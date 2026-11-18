@@ -185,7 +185,8 @@ internal sealed class OwnerInputQueue : IDisposable
         if (key.WindowsText.Length == 0) Append(key.WindowsUnicode);
         else foreach(char unit in key.WindowsText) Append(unit);
         return Encoding.UTF8.GetBytes(result.ToString());
-        void Append(int unit) => result.Append($"\x1b[{key.VirtualKey};{key.ScanCode};{unit};{(key.Action == 0 ? 0 : 1)};{key.WindowsControlState};1_");
+        void Append(int unit) => result.Append(Win32InputMode.EncodeKey(key.VirtualKey, key.ScanCode, unit,
+            key.Action != 0, key.WindowsControlState));
     }
     public void Dispose() { lock (_gate) { _closed = true; FinishStartup(false); _queue.Writer.TryComplete(); } }
 }

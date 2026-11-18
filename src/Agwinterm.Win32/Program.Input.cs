@@ -1991,8 +1991,8 @@ internal partial class Program
             int n = ToUnicodeEx((uint)vk, sc, ks, buf, buf.Length, 0x4, GetKeyboardLayout(0));
             uc = n >= 1 ? buf[0] : 0;
         }
-        int cs = (shift ? 0x10 : 0) | (ctrl ? 0x8 : 0) | (alt ? 0x2 : 0); // SHIFT|LEFT_CTRL|LEFT_ALT
-        return $"\x1b[{vk};{sc};{uc};{(down ? 1 : 0)};{cs};1_";
+        uint cs = (shift ? 0x10u : 0) | (ctrl ? 0x8u : 0) | (alt ? 0x2u : 0); // SHIFT|LEFT_CTRL|LEFT_ALT
+        return Win32InputMode.EncodeKey((uint)vk, sc, uc, down, cs);
     }
 
     // vks whose win32-input-mode key-DOWN was sent to the terminal — so we emit the matching key-UP
