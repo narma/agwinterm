@@ -906,9 +906,9 @@ internal partial class Program
         rt.BeginDraw();
         rt.Clear(C4(_theme.DefaultBackground));
 
-        // Restoration is synchronous and the saved tree is only partially built.
-        // Its progress paint must not query hosted terminal surfaces or web views.
-        if (_restoring)
+        // Inside a restore step a split can be half constructed. Between steps the
+        // focused surface is complete and must paint and acknowledge owner frames.
+        if (_restoring && _restoreSteps is null)
         {
             if (!_isQuickWindow) DrawTitleBar(rt, brush);
             DrawToast(rt, brush);

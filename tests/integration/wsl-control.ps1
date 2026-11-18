@@ -51,6 +51,10 @@ try {
     if ($NoPython) {
         & wsl @selectors --exec sh -c 'mkdir -p "$1/tools"; for tool in wslpath uname id mktemp cp chmod rm rmdir mkdir sh bash sleep env; do ln -s "$(command -v "$tool")" "$1/tools/$tool"; done' setup $linuxHome
         if ($LASTEXITCODE -ne 0) { throw 'Cannot create Python-free PATH' }
+        # Hold the integration bootstrap until a command has run in the interactive shell.
+        $gate = "#!/bin/sh`n" + 'while [ ! -f "$HOME/input-ready" ]; do /bin/sleep 0.1; done' + "`n" + 'exec /usr/bin/uname "$@"'
+        $gate.Replace("`r", '') | & wsl @selectors --exec sh -c 'tr -d "\r" > "$1/slow-uname" && chmod 700 "$1/slow-uname" && mv -f "$1/slow-uname" "$1/tools/uname"' setup $linuxHome
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot gate integration refresh in disposable HOME' }
         $profileEnv.PATH = "$linuxHome/tools"
     }
     @{ default = 'WSL test'; profiles = @(@{ name = 'WSL test'; command = 'wsl.exe'; args = $selectors + @('--exec', 'bash', '--noprofile', '-i'); cwd = $linuxHome; env = $profileEnv }, @{name='C0 Windows';command='cmd.exe';args=@('/d');cwd=$state}) } |
@@ -66,12 +70,16 @@ try {
     Check ($tree.workspaces[0].sessions[0].name -eq $id) 'Default session label uses launch directory basename'
     Check ($null -eq $tree.workspaces[0].sessions[0].customName) 'Automatic directory label is not a custom name'
     Check ($tree.workspaces[0].sessions[0].paneCwds.$session -eq $linuxHome) 'Tree exposes launch cwd by pane ID'
-    try { $null = Ctl @('session', 'type', ('printf "TEST_HOME=%s\n" "$HOME"' + [char]13), '--target', $session) }
+    try { $null = Ctl @('session', 'type', (': > "$HOME/input-ready"; printf "TEST_HOME=%s\n" "$HOME"' + [char]13), '--target', $session) }
     catch { throw ("Initial shell failed: " + (Ctl @('session', 'text', '--target', $session))) }
-    Start-Sleep -Seconds 1
-    $initial = Ctl @('session', 'text', '--target', $session)
+    $inputDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $initial = Ctl @('session', 'text', '--target', $session)
+        if (($initial -replace '\s', '').Contains("TEST_HOME=$linuxHome")) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $inputDeadline)
     Check (($initial -replace '\s', '').Contains("TEST_HOME=$linuxHome")) 'Linux HOME is isolated before any installer runs'
-    & wsl @selectors --exec sh -c 'grep -q "name: agwinterm" "$2" && test ! -e "$1/.claude/skills/agwinterm/SKILL.md" && test ! -e "$1/.local/bin/agwintermctl"' check $linuxHome $skillPath
+    & wsl @selectors --exec sh -c 'for i in $(seq 1 100); do grep -q "name: agwinterm" "$2" && break; sleep 0.1; done; grep -q "name: agwinterm" "$2" && test ! -e "$1/.claude/skills/agwinterm/SKILL.md" && test ! -e "$1/.local/bin/agwintermctl"' check $linuxHome $skillPath
     Check ($LASTEXITCODE -eq 0) 'Opening the WSL profile refreshed only the previously installed skill'
     if ($NoPython) {
         $null = Ctl @('session', 'type', ('if command -v python3; then printf "PYTHON_%s\n" PRESENT; else printf "PYTHON_%s\n" ABSENT; fi' + [char]13), '--target', $session)

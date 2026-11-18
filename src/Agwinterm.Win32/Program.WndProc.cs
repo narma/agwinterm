@@ -38,6 +38,19 @@ internal partial class Program
 
     private IntPtr WindowProcCore(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == WM_TIMER && (int)wParam == RestoreTimer)
+        {
+            ContinueRestore();
+            return IntPtr.Zero;
+        }
+        if (_restoreSteps is not null)
+        {
+            // Window-wide commands require the complete tree. Per-pane work (including
+            // reconnecting the active WSL transport), input and paints can run between steps.
+            if (msg is WM_CLOSE or WM_DESTROY or WM_COMMAND or WM_APP_SYNC or WM_DROPFILES or WM_CONTEXTMENU or WM_SYSCOMMAND
+                || (msg is WM_LBUTTONDOWN or WM_RBUTTONDOWN) && !InContent(lParam))
+                ContinueRestore(finish: true, caller: $"message-{msg:X}");
+        }
         if (PickerMessage(msg, wParam, lParam)) return IntPtr.Zero;
         if (_isQuickWindow)
         {

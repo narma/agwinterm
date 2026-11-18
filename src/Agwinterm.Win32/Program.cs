@@ -701,6 +701,10 @@ internal partial class Program : ISessionHost, IWindowHost
         _startupJournal.Mark("config.loaded");
         ConPtyApi.Select(_config.Conpty != "inbox");
         _sessionBackend = SessionBackends.Resolve(_config.SessionHost, _argPipe ?? _appId, HostExePath, _config.Conpty, _config.EmulatorCore);
+        LoadOrMigrateIndex();
+        _startupJournal.Mark("window-index.loaded");
+        var opening = _windowIndex.Where(m => m.IsOpen)
+            .Select(m => (Meta: m, Snapshot: BeginRestoreSnapshot(m.Id))).ToArray();
         ResolveEmulatorCore();
         _allThemes = LoadThemes();
         _theme = FindTheme(_config.Theme);
@@ -746,18 +750,10 @@ internal partial class Program : ISessionHost, IWindowHost
         // HWND; Frontmost is what un-scoped control verbs act on.
         _hInstance = hInstance;
         _profileCfg = Agwinterm.Pty.ShellProfiles.Load(AppDir);   // shell profiles (seed profiles.json on first run)
-        LoadOrMigrateIndex();
-        _startupJournal.Mark("window-index.loaded");
-        List<WinMeta> toOpen;
-        lock (_windowIndex)
-        {
-            toOpen = _windowIndex.Where(m => m.IsOpen).ToList();
-            if (toOpen.Count == 0 && _windowIndex.Count > 0) { _windowIndex[0].IsOpen = true; toOpen.Add(_windowIndex[0]); }
-        }
         Program? front = null;
-        foreach (var m in toOpen)
+        foreach (var (m, snapshot) in opening)
         {
-            var w = CreateWindowInstance(m);
+            var w = CreateWindowInstance(m, snapshot: snapshot);
             if (m.Id == _frontmostId) front = w;
             front ??= w;
         }
@@ -796,8 +792,10 @@ internal partial class Program : ISessionHost, IWindowHost
             // handles claim before async creation too, not after publication in the UI tree.
             // Reap unclaimed sessions in the current owner namespace.
             string hostNamespace = (_argPipe ?? _appId)+"-owner-v1";
+            var restores = opening.Select(w => _byId.GetValueOrDefault(w.Meta.Id)?._restoreDone?.Task ?? Task.FromResult(true)).ToArray();
             _ = Task.Run(async () =>
             {
+                if ((await Task.WhenAll(restores)).Contains(false)) return;
                 await Task.Delay(TimeSpan.FromSeconds(30));
                 using var nativeHost = new ServerSessionBackend(hostNamespace, null);
                 nativeHost.ReapUnclaimedStartupSessions();
@@ -838,9 +836,10 @@ internal partial class Program : ISessionHost, IWindowHost
     }
 
     /// <summary>Per-window bootstrap: create the HWND, its render target, and the initial session.</summary>
-    private void Boot(IntPtr hInstance)
+    private void Boot(IntPtr hInstance, Task<AppState?>? snapshot = null)
     {
         using var bootTiming = _startupJournal?.Measure("window.boot", Id);
+        if (!_isQuickWindow) snapshot ??= BeginRestoreSnapshot(Id);
         RecomputeChrome();
         MeasureCell();
 
@@ -929,10 +928,10 @@ internal partial class Program : ISessionHost, IWindowHost
         _startupJournal?.Mark("window.first-paint", Id);
         // Paint the frame before any host connection or saved-session restoration.
         // Do not pump arbitrary messages while the session tree is half constructed.
-        using (_startupJournal?.Measure("window.sessions", Id)) StartSession();
-        _startupProgress = null;
+        using (_startupJournal?.Measure("window.sessions", Id)) StartSession(snapshot);
+        if (_restoreSteps is null) _startupProgress = null;
         InvalidateRect(_hwnd, IntPtr.Zero, false);
-        UpdateWindow(_hwnd);
+        if (_restoreSteps is null) UpdateWindow(_hwnd);
         if (_quickHost is null)
         {
             EnsureQuickHost();
@@ -1694,7 +1693,7 @@ internal partial class Program : ISessionHost, IWindowHost
         _uia.OnInvoke = (kind, index) => Post(() => { if (!_uia.IsClosed) HandleUiaInvoke(kind, index); });
     }
 
-    private void StartSession()
+    private void StartSession(Task<AppState?>? snapshot)
     {
         // One control server for the whole app (one pipe); it resolves --window through the library.
         if (_control is null)
@@ -1733,11 +1732,14 @@ internal partial class Program : ISessionHost, IWindowHost
         _argProfile = null; _argDir = null;
 
         // --no-restore (elevated relaunch): a fresh window with just the requested profile, no tree reopen.
-        if (!_argNoRestore && TryRestoreState())
+        if (snapshot is not null && TryRestoreState(snapshot.GetAwaiter().GetResult()))
         {
             // Restored: an explicit -p/-d still means "and open me this session".
             if (argProfile is not null || argDir is not null)
+            {
+                ContinueRestore(finish: true);
                 CreateSession(Guid.NewGuid().ToString(), null, argDir, ActiveWorkspace(), makeActive: true, profileName: argProfile);
+            }
             return;
         }
         var ws = CreateWorkspace(Guid.NewGuid().ToString(), null);

@@ -25,9 +25,16 @@ internal partial class Program
     // static library state + Frontmost, so they work regardless of which instance the server holds. ----
     public ISessionHost? ResolveWindow(string? selector)
     {
-        if (selector == "quick") return _quickHost;
-        if (string.IsNullOrEmpty(selector) || selector == "active") return Frontmost;
-        return ResolveOpen(selector);
+        var window = selector == "quick" ? _quickHost
+            : string.IsNullOrEmpty(selector) || selector == "active" ? Frontmost : ResolveOpen(selector);
+        if (window?._restoreDone is { Task.IsCompleted: false } pending)
+        {
+            if (GetCurrentThreadId() == GetWindowThreadProcessId(window._hwnd, out _))
+                window.ContinueRestore(finish: true);
+            else
+                pending.Task.WaitAsync(UiQueuedTimeout, window._uiGone.Token).GetAwaiter().GetResult();
+        }
+        return window;
     }
 
     public IReadOnlyList<WindowSnapshot> Windows()

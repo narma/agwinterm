@@ -80,6 +80,9 @@ public sealed class ServerSessionBackend : ISessionBackend, IDisposable
     }
 
     internal PtyHostClient Client => EnsureClient();
+    // Warm only the connection before the window opens. Listing all hosted panes
+    // also takes each pane's lock and belongs after the focused pane has attached.
+    public void ConnectForRestore() => EnsureClient();
     /// <summary>One restore-time inventory, taken before launching missing panes.
     /// Absence in this snapshot avoids queuing a synchronous Attach behind slow
     /// shell creates on the shared control connection. Creation tickets still
@@ -608,7 +611,6 @@ public sealed partial class ServerSession : ISession
             try { _backend.Client.Resize(_id, cols, rows, _creationTicket); } catch { }   // host gone → EOF path reports it
     }
 
-    private readonly object _themeGate = new();
     private long _themeSequence;
     /// <summary>Coalesce live theme changes off the UI thread. Never replay VT or resize a child.</summary>
     public void UpdateTheme()
@@ -631,14 +633,18 @@ public sealed partial class ServerSession : ISession
             ticket = _creationTicket;
             sequence = Interlocked.Increment(ref _themeSequence);
         }
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
-            lock (_themeGate)
+            // Launches and theme updates use the same serialized control pipe. A
+            // restored window may schedule one update per pane in the same UI turn.
+            await _backend.LaunchGate.WaitAsync().ConfigureAwait(false);
+            try
             {
                 if (_disposed || sequence != Volatile.Read(ref _themeSequence)) return;
-                try { _backend.Client.UpdateTheme(_id, colors, palette, cursor, ticket, cursorDefault); }
-                catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or TimeoutException) { }
+                _backend.Client.UpdateTheme(_id, colors, palette, cursor, ticket, cursorDefault);
             }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or TimeoutException) { }
+            finally { _backend.LaunchGate.Release(); }
         });
     }
 

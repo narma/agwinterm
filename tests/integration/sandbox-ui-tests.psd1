@@ -1,5 +1,6 @@
 @{
     StartupDiagnostics = @{ Path='tests/integration/startup-diagnostics.ps1'; Exe=$true; Ctl=$true; Options=@('SessionHost','ColdRestore') }
+    RestoredFirstKey = @{ Path='tests/integration/restored-first-key.ps1'; Exe=$true; Ctl=$true; Options=@('SessionCount','Runs') }
     GuiInstance = @{ Path='tests/integration/gui-instance.ps1'; Exe=$true; Ctl=$true; Options=@() }
     WslCapabilities = @{ Path='tests/integration/wsl-capabilities.ps1'; Wsl=$true; Options=@('Distro','AppDirectory','CtlDirectory','SessionHost') }
     HostOwnerSearchLoad = @{ Path='tests/integration/host-owner-search-load.ps1'; Exe=$true; Options=@() }

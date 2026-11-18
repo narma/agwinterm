@@ -383,7 +383,7 @@ internal partial class Program : IWslLiveHost
             if (saved is null)
             {
                 if (profile is null) throw new InvalidOperationException("The configured WSL profile is unavailable");
-                await CheckWslIntegrationAsync(profile).ConfigureAwait(false);
+                ScheduleWslIntegrationCheck(profile);
                 if (!pane.LiveRecovery.IsCurrent(generation)) return;
                 result = await _liveOperations.CreateAsync(profile, _appId, pane.Id, cwd, environment,
                     binding => LiveUiAsync(() =>
