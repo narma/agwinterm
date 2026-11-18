@@ -960,13 +960,6 @@ internal partial class Program
                     A("Restart Claude in YOLO Mode", "", RestartClaudeYoloActive);
                     _palAll.Add(new PalItem
                     {
-                        Label = "Update Claude Code" + (_claudeLatest is { } cl ? $"  — v{cl} available" : ""),
-                        Secondary = "runs `claude update` in an overlay, then restarts your Claude sessions",
-                        Search = "update claude code upgrade version",
-                        Run = () => ShowToast(UpdateClaudeCode(), 2500),
-                    });
-                    _palAll.Add(new PalItem
-                    {
                         Label = "Update agwinterm" + (_appLatest is { } av ? $"  — v{av} available" : ""),
                         Secondary = AppChannel() switch
                         {

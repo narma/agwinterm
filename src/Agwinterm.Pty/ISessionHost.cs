@@ -624,11 +624,6 @@ public interface ISessionHost
     /// current conversation, and persist that as the pane's relaunch command. Null target = the active pane.</summary>
     string RestartClaudeYolo(string? target);
 
-    /// <summary>The Update Claude Code workflow: run <c>claude update</c> in an overlay terminal over the
-    /// active session, then restart every pane with a live Claude so the new version is picked up
-    /// (each resumes its own conversation). Returns an ack / error string.</summary>
-    string UpdateClaude();
-
     /// <summary>The agwinterm self-update workflow: download + SHA-256-verify the latest release for
     /// this install channel (installer / portable; package-manager installs are refused with a hint),
     /// then exit, swap, relaunch — sessions restore. Returns an ack / error string.</summary>
@@ -758,7 +753,6 @@ public sealed class SingleSessionHost : ISessionHost
     public string Events(long since, int limit) => "{\"cursor\":0,\"events\":[]}";
     public string AdoptClaude() => "unsupported";
     public string RestartClaudeYolo(string? target) => "unsupported";
-    public string UpdateClaude() => "unsupported";
     public string UpdateApp() => "unsupported";
     public void WorkspaceFocus(string op) { }
     public string SessionBackground(string? target, string action, string? path, int opacity, string? mode) => "unsupported";

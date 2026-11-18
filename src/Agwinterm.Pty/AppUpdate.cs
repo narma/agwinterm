@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Agwinterm.Pty;
 
@@ -62,7 +63,7 @@ public static class AppUpdate
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
-            string? ver = root.TryGetProperty("tag_name", out var t) ? ClaudeUpdate.ParseVersion(t.GetString()) : null;
+            string? ver = root.TryGetProperty("tag_name", out var t) ? ParseVersion(t.GetString()) : null;
             if (ver is null || !root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
                 return null;
             var list = new List<ReleaseAsset>();
@@ -186,6 +187,39 @@ public static class AppUpdate
         Start-Process $Exe
         Log 'relaunched'
         """;
+
+    /// <summary>Extract a dotted version from a release tag.</summary>
+    internal static string? ParseVersion(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return null;
+        var m = Regex.Match(output, @"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?");
+        return m.Success ? m.Value : null;
+    }
+
+    /// <summary>Whether <paramref name="candidate"/> is strictly newer than <paramref name="current"/>.
+    /// Numeric per-segment compare ("2.0.10" &gt; "2.0.9"); any unparseable side compares as not-newer,
+    /// so an invalid release version cannot trigger an update.</summary>
+    public static bool IsNewer(string? candidate, string? current)
+    {
+        int[]? a = Segments(candidate), b = Segments(current);
+        if (a is null || b is null) return false;
+        for (int i = 0; i < 3; i++)
+            if (a[i] != b[i]) return a[i] > b[i];
+        return false;
+    }
+
+    private static int[]? Segments(string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return null;
+        int dash = v.IndexOf('-');                      // ignore any prerelease tail
+        if (dash > 0) v = v[..dash];
+        var parts = v.Split('.');
+        if (parts.Length != 3) return null;
+        var seg = new int[3];
+        for (int i = 0; i < 3; i++)
+            if (!int.TryParse(parts[i], out seg[i]) || seg[i] < 0) return null;
+        return seg;
+    }
 
     private static HttpClient NewHttp()
     {

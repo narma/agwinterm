@@ -1035,7 +1035,7 @@ internal partial class Program
         "show-scratch-button", "show-split-button", "show-dashboard-button", "show-quick-button", "show-menu-bar",
         "quick-terminal-size", "quick-terminal-hotkey",
         "attention-button", "status-color-active", "status-color-blocked", "status-color-completed",
-        "paste-protection", "clipboard-write", "clipboard-read", "notification-flash", "claude-update-check", "update-check",
+        "paste-protection", "clipboard-write", "clipboard-read", "notification-flash", "update-check",
         "session-host", "fresh-env", "emulator-core",
     };
 
@@ -1121,7 +1121,6 @@ internal partial class Program
         "quick-terminal-size" => _config.QuickTerminalSize.ToString(),
         "quick-terminal-hotkey" => _config.QuickTerminalHotkey,
         "notification-flash" => _config.NotificationFlash,
-        "claude-update-check" => _config.ClaudeUpdateCheck ? "true" : "false",
         "update-check" => _config.UpdateCheck ? "true" : "false",
         "session-host" => _config.ConfiguredSessionHost,
         "fresh-env" => _config.FreshEnv ? "true" : "false",

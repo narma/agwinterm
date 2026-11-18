@@ -170,7 +170,7 @@ function global:prompt {
             @{name='Agent-lifetime';command='powershell.exe';args=@('-NoProfile','-NoExit','-EncodedCommand',$encodedPrompt);cwd=$artifact}
         )}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $appDir 'profiles.json')
     }
-    @("session-host = $SessionHost",'claude-update-check = false','update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
+    @("session-host = $SessionHost",'update-check = false','fresh-env = false','copy-on-select = false')|Set-Content (Join-Path $appDir 'agwinterm.conf')
     if ($Suite -eq 'TerminalLatency') {
         $echoChild = Join-Path (Split-Path ([IO.Path]::GetFullPath($Exe))) 'echo-fixture/Agwinterm.EchoFixture.exe'
         if (-not (Test-Path $echoChild)) { throw 'Publish the compiled echo fixture in the app echo-fixture directory first.' }

@@ -42,7 +42,7 @@ internal partial class Program
         string cur = AppCurrentVersion();
         var rel = await AppUpdate.FetchLatestAsync();
         if (rel is null) return;                                   // offline stays silent
-        if (!ClaudeUpdate.IsNewer(rel.Version, cur)) { _appLatest = null; return; }
+        if (!AppUpdate.IsNewer(rel.Version, cur)) { _appLatest = null; return; }
         bool fresh = !string.Equals(_appLatest, rel.Version, StringComparison.Ordinal);
         _appLatest = rel.Version;
         if (!fresh) return;
@@ -72,7 +72,7 @@ internal partial class Program
                 string cur = AppCurrentVersion();
                 var rel = await AppUpdate.FetchLatestAsync();
                 if (rel is null) { Toast("agwinterm update check failed (offline or rate-limited) — try again later"); return; }
-                if (!ClaudeUpdate.IsNewer(rel.Version, cur))
+                if (!AppUpdate.IsNewer(rel.Version, cur))
                 { _appLatest = null; Toast($"agwinterm {cur} is already the latest"); return; }
                 var asset = AppUpdate.PickAsset(rel, channel);
                 if (asset is null) { Toast($"release {rel.Version} has no {(channel == UpdateChannel.Installed ? "setup" : "portable")} asset"); return; }

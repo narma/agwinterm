@@ -20,7 +20,7 @@ $env:AGWINTERM_APP_ID=$appId
 $env:AGWINTERM_UPDATE_API=Join-Path $scratch 'release.json'
 $asset=@{name='agwinterm-setup-0.30.1.exe';browser_download_url=$NewSetup;digest='sha256:'+(Get-FileHash $NewSetup).Hash}
 @{tag_name='v0.30.1';assets=@($asset)}|ConvertTo-Json -Depth 4|Set-Content $env:AGWINTERM_UPDATE_API
-@('session-host = server-rust','restore-buffer = true','update-check = false','claude-update-check = false')|Set-Content (Join-Path $data 'agwinterm.conf')
+@('session-host = server-rust','restore-buffer = true','update-check = false')|Set-Content (Join-Path $data 'agwinterm.conf')
 try {
     if(-not (Start-SandboxProcess $s @('--app-id',$appId))){throw 'Old GUI did not start'}
     $tree=Get-CtlResult $s @('tree')

@@ -14,7 +14,7 @@ $appDir=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) $appId
 $null=New-Item -ItemType Directory -Path $appDir
 @($(if($Preview){'session-host = server'}else{'session-host = server-rust'}),
   $(if($Preview){'emulator-core = ghostty'}else{'emulator-core = rust'}),
-  'restore-buffer = true','restore-commands = false','update-check = false','claude-update-check = false','fresh-env = false') | Set-Content (Join-Path $appDir 'agwinterm.conf')
+  'restore-buffer = true','restore-commands = false','update-check = false','fresh-env = false') | Set-Content (Join-Path $appDir 'agwinterm.conf')
 @{default='Upgrade';profiles=@(@{name='Upgrade';command='cmd.exe';args=@('/d');cwd=$appDir})} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $appDir 'profiles.json')
 $ctl=Resolve-Binary '' 'agwintermctl.exe' 'Agwinterm.Ctl'
 $s=[pscustomobject]@{Proc=$null;Exe=$old;Ctl=$ctl;Pipe=$controlPipe;AppId=$appId;AppDir=$appDir;Hwnd=[IntPtr]::Zero;Width=1000;Height=700}

@@ -68,7 +68,7 @@ public static class CtlArguments
         ["session hud update"] = "window target detail spinner spinner-style position size-percent background-color text-color hide-after font-size sticky no-frame markdown pane file",
         ["session hud close"] = "window target",
         ["command run"] = "window target command mode", ["command list"] = "window", ["command leader"] = "window",
-        ["claude adopt"] = "window", ["claude yolo"] = "window target", ["claude update"] = "window",
+        ["claude adopt"] = "window", ["claude yolo"] = "window target",
         ["app update"] = "window", ["theme list"] = "window", ["theme set"] = "window",
         ["keymap reload"] = "window", ["profiles list"] = "window", ["profiles reload"] = "window",
         ["restore clear"] = "window", ["restore capture"] = "window target",

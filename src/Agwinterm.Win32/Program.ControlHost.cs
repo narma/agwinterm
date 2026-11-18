@@ -1275,10 +1275,7 @@ internal partial class Program
     //      before any process is queried — a refusal at this step captures nothing for anyone (the
     //      one refusal that does leave slots behind is step 3's NotSaved, below).
     //   2. PIPE THREAD: the CIM query, with the 15 s timeout the non-quit callers use (a cold CIM
-    //      start can exceed 4 s). RestartAllClaudeSessions is the precedent; AdoptClaudeSessions,
-    //      which blocks the UI thread on it through InvokeOnUi, is the one not to copy — a verb that
-    //      freezes the window for seconds is P2's defect class one layer down. The pipe thread
-    //      belongs to the caller who asked, so it is the right thread to wait on. A query that did
+    //      start can exceed 4 s). Waiting on the pipe thread keeps the window responsive. A query that did
     //      not run is a refusal, never "nothing running" written into every slot.
     //   3. ONE FIFO queued hop (InvokeOnUiQueued, never InvokeOnUi): every CapturedCommand write plus
     //      one SaveState, so the reply describes a state that exists on disk. A hop that cannot be
@@ -1396,8 +1393,6 @@ internal partial class Program
         var p = PaneForTarget(target) ?? ActiveSurface();
         return p is null ? "no pane" : RestartClaudeYolo(p);
     });
-
-    public string UpdateClaude() => InvokeOnUi(() => UpdateClaudeCode());
 
     public void CloseForUpdate() => Post(QuitAllWindowsForUpdate);
     public string UpdateApp() => InvokeOnUi(() => UpdateAgwinterm());

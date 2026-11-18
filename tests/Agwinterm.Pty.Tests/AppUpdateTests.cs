@@ -4,6 +4,29 @@ namespace Agwinterm.Pty.Tests;
 
 public class AppUpdateTests
 {
+    [Theory]
+    [InlineData("v2.1.14", "2.1.14")]
+    [InlineData("agwinterm-1.0.55", "1.0.55")]
+    [InlineData("2.0.0-beta.3\n", "2.0.0-beta.3")]
+    [InlineData("no version here", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void ParseVersion_ExtractsDottedVersion(string? output, string? expected)
+        => Assert.Equal(expected, AppUpdate.ParseVersion(output));
+
+    [Theory]
+    [InlineData("2.0.10", "2.0.9", true)]          // numeric per-segment, not lexicographic
+    [InlineData("2.1.0", "2.0.99", true)]
+    [InlineData("3.0.0", "2.9.9", true)]
+    [InlineData("2.0.9", "2.0.9", false)]          // equal is not newer
+    [InlineData("2.0.8", "2.0.9", false)]          // a downgrade is never "newer"
+    [InlineData("2.0.10-beta.1", "2.0.9", true)]   // prerelease tail ignored for ordering
+    [InlineData("weird", "2.0.9", false)]          // unparseable never nags / never triggers
+    [InlineData("2.0.10", null, false)]
+    [InlineData(null, "2.0.9", false)]
+    public void IsNewer_ComparesNumerically(string? candidate, string? current, bool expected)
+        => Assert.Equal(expected, AppUpdate.IsNewer(candidate, current));
+
     private const string LocalAppData = @"C:\Users\x\AppData\Local";
 
     [Fact]

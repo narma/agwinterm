@@ -75,11 +75,6 @@ public sealed class TerminalConfig
     /// "visual" (a brief window flash) | "both" | "none".</summary>
     public string Bell { get; set; } = "audible";
 
-    /// <summary>Periodically check the npm registry for a newer Claude Code release and surface a
-    /// hint (toast + palette) when one ships. Awareness only — the update itself always stays a
-    /// manual, visible <c>claude update</c> (palette → "Update Claude Code").</summary>
-    public bool ClaudeUpdateCheck { get; set; } = true;
-
     /// <summary>Periodically check GitHub for a newer agwinterm release and surface a hint (toast +
     /// palette) when one ships. Awareness only — applying it stays a manual palette action
     /// ("Update agwinterm"), which downloads, verifies, restarts, and restores sessions.</summary>
@@ -284,11 +279,6 @@ public sealed class TerminalConfig
         # none | once | until-focused
         notification-flash = none
 
-        # Check the npm registry in the background for a newer Claude Code release and show a hint
-        # when one ships. Updating is always manual: palette -> "Update Claude Code" (which runs
-        # `claude update` in an overlay terminal, then restarts your Claude sessions).
-        claude-update-check = true
-
         # Check GitHub in the background for a newer agwinterm release and show a hint when one
         # ships. Applying it is always manual: palette -> "Update agwinterm" (downloads the release,
         # verifies its SHA-256, restarts, and your sessions restore). Installs managed by a package
@@ -474,7 +464,6 @@ public sealed class TerminalConfig
                 case "bell":
                     if (val is "none" or "audible" or "visual" or "both") cfg.Bell = val;
                     break;
-                case "claude-update-check": cfg.ClaudeUpdateCheck = ParseBool(val, cfg.ClaudeUpdateCheck); break;
                 case "update-check": cfg.UpdateCheck = ParseBool(val, cfg.UpdateCheck); break;
                 case "session-host":
                     if (val is "in-process" or "server") cfg.SessionHost = val;
