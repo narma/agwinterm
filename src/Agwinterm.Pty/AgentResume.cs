@@ -31,6 +31,25 @@ public static class AgentResume
 
     public static bool IsKnownAgent(string? agent) => agent is not null && Array.IndexOf(Agents, agent) >= 0;
 
+    // Older profiles saved only Compose's relaunch command. Match the whole command
+    // so a path, an unrelated shell command or a relative selector cannot supply an ID.
+    private static readonly Regex SavedResume = new(
+        """\A(?:Set-Location -LiteralPath '(?:[^'‘’‚‛\p{Cc}]|''|‘‘|’’|‚‚|‛‛)*'; |cd '(?:[^'\p{Cc}]|'\\'')*' && |cd /d "[^"%\p{Cc}]*" && )?(?<run>(?<verb>codex resume|claude --resume|devin --resume) (?<id>[A-Za-z0-9_][A-Za-z0-9_-]{0,127})(?: [A-Za-z0-9_.=-]+)*)\z""",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+
+    public static AgentConversation? FromSavedCommand(string? command)
+    {
+        if (string.IsNullOrEmpty(command)) return null;
+        var match = SavedResume.Match(command);
+        if (!match.Success) return null;
+        string agent = match.Groups["verb"].Value.Split(' ')[0];
+        string id = match.Groups["id"].Value;
+        string run = match.Groups["run"].Value;
+        // Only accept trailing flags our launcher actually emits.
+        return Compose(ShellKind.Other, agent, id, null, ResumeFlags(agent, run)) == run
+            ? new(agent, id) : null;
+    }
+
     /// <summary>The shell a pane runs, from its profile's executable (a path or a bare name).</summary>
     public static ShellKind ClassifyShell(string? exe)
     {

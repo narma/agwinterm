@@ -1216,7 +1216,7 @@ internal partial class Program
     private void BindAgent(Pane pane, string? command, long baseline, AgentConversation? conversation = null)
     {
         pane.AgentResume = command;
-        pane.AgentRecovery.Conversation = conversation;
+        pane.AgentRecovery.Conversation = conversation ?? AgentResume.FromSavedCommand(command);
         if (command is not null) pane.AgentActivity.Observe(pane.S.Status, false);
         pane.AgentResumeToken = pane.Completion.Token;
         pane.AgentResumeGeneration = baseline;

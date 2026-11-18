@@ -11,6 +11,27 @@ namespace Agwinterm.Pty.Tests;
 /// </summary>
 public class AgentResumeTests
 {
+    [Theory]
+    [InlineData(ShellKind.PowerShell, "codex")]
+    [InlineData(ShellKind.Bash, "claude")]
+    [InlineData(ShellKind.Cmd, "devin")]
+    [InlineData(ShellKind.Other, "codex")]
+    public void RestoresConversationFromLegacyBinding(ShellKind shell, string agent)
+    {
+        var flags = ResumeFlags(agent, agent + " --sandbox --dangerously-skip-permissions --no-daemon");
+        var command = Compose(shell, agent, "thread-123", "C:/work/O'Brien’s repo", flags);
+        Assert.Equal(new AgentConversation(agent, "thread-123"), FromSavedCommand(command));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("codex resume --last")]
+    [InlineData("echo codex resume wrong")]
+    [InlineData("claude --resume old && claude --resume newer")]
+    [InlineData("codex resume old --last")]
+    public void AmbiguousLegacyBindingHasNoConversation(string? command) =>
+        Assert.Null(FromSavedCommand(command));
+
     private const int Shell = 100;
     private const string ClaudeExe = @"C:\Users\u\.local\bin\claude.exe";
     private const string CodexJs = @"""C:\Program Files\nodejs\node.exe"" C:\Users\u\AppData\Roaming\npm/node_modules/@openai/codex/bin/codex.js";

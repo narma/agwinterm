@@ -2031,7 +2031,8 @@ internal partial class Program
                             ses.Panes[i].FontZoomed = PaneFontSize.Restore(pl[i].FontSize, (float)_config.FontSize, pl[i].FontZoomed).Zoomed;
                             ses.Panes[i].Ratio = pl[i].Ratio > 0 ? pl[i].Ratio : 1f;
                             ses.Panes[i].AgentResume = string.IsNullOrWhiteSpace(pl[i].AgentResume) ? null : pl[i].AgentResume;
-                            ses.Panes[i].AgentRecovery.Conversation = ses.Panes[i].AgentResume is null ? null : pl[i].Conversation;
+                            ses.Panes[i].AgentRecovery.Conversation = ses.Panes[i].AgentResume is { } savedResume
+                                ? pl[i].Conversation ?? AgentResume.FromSavedCommand(savedResume) : null;
                             ses.Panes[i].AgentResumeToken = pl[i].AgentResumeToken;
                             ses.Panes[i].AgentResumeGeneration = pl[i].AgentResumeGeneration;
                             ses.Panes[i].BindCompletionBaseline = ses.Panes[i].Completion.Checkpoint;

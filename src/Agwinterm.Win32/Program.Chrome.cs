@@ -204,11 +204,12 @@ internal partial class Program
             if (!_dragging && (ReferenceEquals(_copyHover, s) || (_chromeFocus && !_agentsKeyboardFocus && ReferenceEquals(_focusRow, s)))
                 && CopyIdLabel(s) is { } copyLabel && nameRight - nameX >= 32f)
             {
-                nameRight -= 22f;
-                var hit = new SidebarNameHit(s, copyLabel, nameRight, y, 22f, rowH);
+                const float copyWidth = 26f;
+                nameRight -= copyWidth;
+                var hit = new SidebarNameHit(s, copyLabel, nameRight, y, copyWidth, rowH);
                 _copyIdHits.Add(hit);
                 _sidebarNames.Add(hit);
-                rt.DrawText("\uE8C8", _iconSmall, new Rect(nameRight + 3f, y, 19f, rowH), brush);
+                rt.DrawText("\uE8C8", _iconFont, new Rect(nameRight, y, copyWidth, rowH), brush);
             }
             float nameAvail = MathF.Max(0f, nameRight - nameX);
             // Clip + ellipsis-trim so a long name (or an enlarged sidebar font) never spills over the dot.
