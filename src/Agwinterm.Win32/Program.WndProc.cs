@@ -789,9 +789,16 @@ internal partial class Program
                     ScreenToClient(_hwnd, ref pt);
                     int deviceX = pt.x, deviceY = pt.y;
                     pt.x = ToDip(pt.x); pt.y = ToDip(pt.y);   // ...and they are compared against DIP layout
-                    if (pt.x < _sidebarW && pt.y >= _agentsTop && pt.y < ClientH() - FooterH)
+                    if (pt.x >= 0 && pt.x < _sidebarW && pt.y >= TitleBarH && pt.y < ClientH() - FooterH)
                     {
-                        _agentsScroll = Math.Clamp(_agentsScroll + (HiWord(wParam) > 0 ? -3 : 3), 0, _agentsMaxScroll);
+                        int step = HiWord(wParam) > 0 ? -3 : 3;
+                        if (pt.y >= _agentsTop)
+                            _agentsScroll = Math.Clamp(_agentsScroll + step, 0, _agentsMaxScroll);
+                        else
+                        {
+                            if (_editHwnd != IntPtr.Zero) CommitRename();
+                            _workspaceScroll = Math.Clamp(_workspaceScroll + step, 0, _workspaceMaxScroll);
+                        }
                         RequestRedraw(); return IntPtr.Zero;
                     }
                     // Ctrl+wheel: font zoom (Windows-wide convention), on the active surface.

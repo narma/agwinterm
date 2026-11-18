@@ -21,7 +21,7 @@ internal partial class Program
     private int _agentsScroll, _agentsMaxScroll;
     private float _agentsTop = float.MaxValue;
     private bool _agentsKeyboardFocus;
-    private string? _agentKeyboardKey;
+    private string? _agentKeyboardKey, _selectedAgentKey;
     private readonly object _agentSortMarker = new();
     private readonly object _agentHeadingMarker = new();
 
@@ -107,6 +107,7 @@ internal partial class Program
             new Rect(12, y, MathF.Max(0, _sidebarW - 62), rowH), brush, DrawTextOptions.Clip);
         rt.DrawText("≡", _sidebarFont, new Rect(_sidebarW - 32, y, 26, rowH), brush);
         y += rowH;
+        _agentsMaxScroll = 0;
         if (_agentsCollapsed) return;
         if (agents.Count == 0)
         {
@@ -124,7 +125,14 @@ internal partial class Program
             if (group != last) { slots.Add((group, null)); last = group; }
             slots.Add((null, a));
         }
-        int capacity = Math.Max(1, (int)((bottom - y) / rowH));
+        int capacity = Math.Max(0, (int)((bottom - y) / rowH));
+        var selected = agents.FirstOrDefault(a => a.Key == _selectedAgentKey && a.Pane == _active?.ActivePane)
+            ?? agents.FirstOrDefault(a => a.RecordId.Length == 0 && a.Pane == _active?.ActivePane)
+            ?? agents.FirstOrDefault(a => a.Pane == _active?.ActivePane);
+        _selectedAgentKey = selected?.Key;
+        if (_revealAgentSelection && selected is not null)
+            _agentsScroll = ScrollToRow(_agentsScroll, slots.FindIndex(slot => slot.Row == selected), capacity);
+        _revealAgentSelection = false;
         _agentsMaxScroll = Math.Max(0, slots.Count - capacity);
         _agentsScroll = Math.Clamp(_agentsScroll, 0, _agentsMaxScroll);
         foreach (var slot in slots.Skip(_agentsScroll).Take(capacity))
@@ -136,7 +144,7 @@ internal partial class Program
             }
             else
             {
-                if (ReferenceEquals(_active?.ActivePane, a.Pane))
+                if (a == selected)
                 {
                     brush.Color = SbHighlight;
                     rt.FillRoundedRectangle(new RoundedRectangle { Rect = new Rect(6, y + 1, _sidebarW - 12, rowH - 2), RadiusX = 5, RadiusY = 5 }, brush);
@@ -170,12 +178,7 @@ internal partial class Program
             }
             y += rowH;
         }
-        if (_agentsMaxScroll > 0)
-        {
-            brush.Color = ChromeDim;
-            float track = bottom - _agentsTop - rowH, thumb = MathF.Max(12, track * capacity / slots.Count);
-            rt.FillRectangle(new Rect(_sidebarW - 3, _agentsTop + rowH + (track - thumb) * _agentsScroll / _agentsMaxScroll, 2, thumb), brush);
-        }
+        DrawSidebarThumb(rt, brush, _agentsTop + rowH, bottom, capacity, slots.Count, _agentsScroll);
     }
 
     private static string AgentStatusName(AgentStatus status) => status switch
@@ -194,6 +197,11 @@ internal partial class Program
         if (!OwnsSession(a.Session) || !a.Session.AllPanes.Contains(a.Pane)) return;
         if (ReferenceEquals(a.Session.HiddenSplit, a.Pane)) SplitPane(a.Session);
         a.Session.Active = a.Session.Panes.IndexOf(a.Pane);
+        a.Session.Ws.Expanded = true;
+        if (_sidebarMode == SidebarMode.Flagged && !a.Session.Flagged) _sidebarMode = SidebarMode.Tree;
+        _selectedIds.Clear();
+        _selAnchorId = a.Session.Id;
+        _selectedAgentKey = _agentKeyboardKey = a.Key;
         SetActive(a.Session);
         RequestRedraw();
     }

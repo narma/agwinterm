@@ -896,6 +896,8 @@ internal partial class Program
         var previousSession = _active;
         if (_coverKind == 1) ScratchVisibility(_cover, "hidden");
         _active = ses;
+        _workspaceRevealId = ses.Id;
+        _revealAgentSelection = true;
         ClearUnread(ses);   // visiting a session clears its notification badge (agterm's "cleared when seen")
         // Viewing acknowledges completion, but never resolves an outstanding permission/question.
         foreach (var p in ses.Panes)

@@ -74,80 +74,102 @@ internal partial class Program
         float y = TitleBarH + PadY;
         float agentsTop = PrepareAgents(rowsBottom, rowH);
 
-        if (_sidebarMode == SidebarMode.Flagged) { DrawFlaggedList(rt, brush, ref y, rowH, agentsTop); }
-        else { DrawTreeList(rt, brush, ref y, rowH, agentsTop); }
+        DrawWorkspaceList(rt, brush, y, rowH, agentsTop);
         DrawAgents(rt, brush, rowH, rowsBottom);
 
         if (_dragging && _dragItem is not null) DrawDropIndicator(rt, brush);
         DrawSidebarFooter(rt, brush);
     }
 
-    /// <summary>Tree mode: the workspace→session outline (or, when a workspace is focused, only that one + a "show all" banner).</summary>
-    private void DrawTreeList(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, ref float y, float rowH, float rowsBottom)
+    private int _workspaceScroll, _workspaceMaxScroll;
+    private string? _workspaceRevealId;
+    private bool _revealAgentSelection;
+
+    private static int ScrollToRow(int offset, int row, int capacity) =>
+        row < 0 || capacity == 0 ? offset : Math.Clamp(offset, row - capacity + 1, row);
+
+    private void DrawWorkspaceList(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, float y, float rowH, float bottom)
     {
+        bool flagged = _sidebarMode == SidebarMode.Flagged;
         var rows = WorkingRows();
-        var wss = _workspaces.Where(w => rows.Any(r => r.WorkspaceId == w.Id)).ToList();
-        if (_sidebarMode != SidebarMode.Flagged && FocusFilterActive)
+        if (y + rowH <= bottom && (flagged || FocusFilterActive))
         {
-            brush.Color = Mix(SbBg, ChromeAccent, 0.32f);
-            rt.FillRectangle(new Rect(0, y, _sidebarW, rowH), brush);
-            brush.Color = ChromeAccent;
-            rt.DrawText("‹  Focused — show all", _uiSmall, new Rect(12f, y, _sidebarW - 20f, rowH), brush);
-            _sidebarRows.Add((y, y + rowH, false, _showAllMarker)); y += rowH;
-        }
-        foreach (var ws in wss)
-        {
-            if (y + rowH > rowsBottom) break;
-            List<Ses> sessions;
-            bool expanded;
-            lock (_workspaces) { sessions = ws.Sessions.Where(s => _sidebarMode != SidebarMode.Flagged || s.Flagged).ToList(); expanded = ws.Expanded; }
-
-            brush.Color = SbHeaderText;
-            rt.DrawText(expanded ? "▾" : "▸", _format, TextRect(6f, y, 18f, rowH), brush); // chevron (mono, top-aligned)
-            if (!ReferenceEquals(_editing, ws)) // the rename box covers the name while editing
+            if (flagged)
             {
-                // Clip + ellipsis so a long workspace name (or enlarged font) stops before the session count.
-                rt.DrawText(ws.Name, _sidebarFont, new Rect(24f, y, _sidebarW - 56f, rowH), brush, DrawTextOptions.Clip);
-                RecordSidebarName(ws, ws.Name, 24f, y, _sidebarW - 56f, rowH);
+                brush.Color = SbHeaderText;
+                rt.DrawText("FLAGGED", _uiSmall, new Rect(12, y, _sidebarW - 20, rowH), brush);
             }
-            rt.DrawText(sessions.Count.ToString(), _sidebarSmall, new Rect(_sidebarW - 28f, y, 22f, rowH), brush);
-            if (_config.WorkspaceAddButton)   // "+" to add a session in this workspace (#233/#252)
-                rt.DrawText("+", _sidebarFont, new Rect(_sidebarW - 46f, y, 16f, rowH), brush);
-            _sidebarRows.Add((y, y + rowH, true, ws));
+            else
+            {
+                brush.Color = Mix(SbBg, ChromeAccent, 0.32f);
+                rt.FillRectangle(new Rect(0, y, _sidebarW, rowH), brush);
+                brush.Color = ChromeAccent;
+                rt.DrawText("‹  Focused — show all", _uiSmall, new Rect(12, y, _sidebarW - 20, rowH), brush);
+                _sidebarRows.Add((y, y + rowH, false, _showAllMarker));
+            }
             y += rowH;
-
-            if (!expanded) continue;
-            foreach (var s in sessions)
-            {
-                if (y + rowH > rowsBottom) break;
-                DrawSessionRow(rt, brush, s, y, rowH);
-                y += rowH;
-            }
         }
-    }
-
-    /// <summary>Flagged mode: a flat working-set of every flagged session across all workspaces (no headers).</summary>
-    private void DrawFlaggedList(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, ref float y, float rowH, float rowsBottom)
-    {
-        brush.Color = SbHeaderText;
-        rt.DrawText("FLAGGED", _uiSmall, new Rect(12f, y, _sidebarW - 20f, rowH), brush);
-        y += rowH;
-
-        if (_flaggedLayout == "tree") { DrawTreeList(rt, brush, ref y, rowH, rowsBottom); return; }
-        var flagged = VisibleSessions();
-        if (flagged.Count == 0)
+        int capacity = Math.Max(0, (int)((bottom - y) / rowH));
+        _workspaceMaxScroll = Math.Max(0, rows.Count - capacity);
+        if (_workspaceRevealId is { } idToReveal)
+        {
+            for (int i = 0; i < rows.Count; i++)
+                if (rows[i].SessionId == idToReveal)
+                {
+                    _workspaceScroll = ScrollToRow(_workspaceScroll, i, capacity);
+                    break;
+                }
+        }
+        _workspaceRevealId = null;
+        _workspaceScroll = Math.Clamp(_workspaceScroll, 0, _workspaceMaxScroll);
+        if (flagged && rows.Count == 0)
         {
             brush.Color = SbDimText;
-            rt.DrawText("No flagged sessions", _uiSmall, new Rect(16f, y, _sidebarW - 24f, rowH), brush); y += rowH;
-            if (y + rowH <= rowsBottom) rt.DrawText("Ctrl+Shift+F flags the active one", _uiSmall, new Rect(16f, y, _sidebarW - 24f, rowH), brush);
+            if (capacity > 0) rt.DrawText("No flagged sessions", _uiSmall, new Rect(16, y, _sidebarW - 24, rowH), brush);
+            if (capacity > 1) rt.DrawText("Ctrl+Shift+F flags the active one", _uiSmall, new Rect(16, y + rowH, _sidebarW - 24, rowH), brush);
             return;
         }
-        foreach (var s in flagged)
+        var workspaces = _workspaces.ToDictionary(ws => ws.Id);
+        var sessions = AllSessions().ToDictionary(s => s.Id);
+        float top = y;
+        foreach (var row in rows.Skip(_workspaceScroll).Take(capacity))
         {
-            if (y + rowH > rowsBottom) break;
-            DrawSessionRow(rt, brush, s, y, rowH);
+            if (row.SessionId is { } id) DrawSessionRow(rt, brush, sessions[id], y, rowH);
+            else
+            {
+                var ws = workspaces[row.WorkspaceId];
+                int count = flagged ? ws.Sessions.Count(s => s.Flagged) : ws.Sessions.Count;
+                DrawWorkspaceRow(rt, brush, ws, count, y, rowH);
+            }
             y += rowH;
         }
+        DrawSidebarThumb(rt, brush, top, bottom, capacity, rows.Count, _workspaceScroll);
+    }
+
+    private void DrawSidebarThumb(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush,
+        float top, float bottom, int capacity, int count, int offset)
+    {
+        if (capacity <= 0 || count <= capacity) return;
+        float track = bottom - top;
+        float thumb = Math.Min(track, Math.Max(12, track * capacity / count));
+        brush.Color = SbDimText;
+        rt.FillRectangle(new Rect(_sidebarW - 5, top + (track - thumb) * offset / (count - capacity), 3, thumb), brush);
+    }
+
+    private void DrawWorkspaceRow(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush, Workspace ws, int count, float y, float rowH)
+    {
+        brush.Color = SbHeaderText;
+        rt.DrawText(ws.Expanded ? "▾" : "▸", _format, TextRect(6f, y, 18f, rowH), brush); // chevron (mono, top-aligned)
+        if (!ReferenceEquals(_editing, ws)) // the rename box covers the name while editing
+        {
+            // Clip + ellipsis so a long workspace name (or enlarged font) stops before the session count.
+            rt.DrawText(ws.Name, _sidebarFont, new Rect(24f, y, _sidebarW - 56f, rowH), brush, DrawTextOptions.Clip);
+            RecordSidebarName(ws, ws.Name, 24f, y, _sidebarW - 56f, rowH);
+        }
+        rt.DrawText(count.ToString(), _sidebarSmall, new Rect(_sidebarW - 28f, y, 22f, rowH), brush);
+        if (_config.WorkspaceAddButton)   // "+" to add a session in this workspace (#233/#252)
+            rt.DrawText("+", _sidebarFont, new Rect(_sidebarW - 46f, y, 16f, rowH), brush);
+        _sidebarRows.Add((y, y + rowH, true, ws));
     }
 
     /// <summary>Draw one session row (shared by tree + flagged modes): highlight, flag marker, name, unread badge, status indicators.</summary>
@@ -330,8 +352,8 @@ internal partial class Program
     /// <summary>Sidebar session click with modifiers: plain = single-select, Ctrl = toggle one, Shift = range.</summary>
     private void SidebarSelectClick(Ses s, bool ctrl, bool shift)
     {
-        var order = _sidebarRows.Where(r => !r.isWs && r.item is Ses).Select(r => (Ses)r.item).ToList();
-        if (shift && _selAnchorId is not null &&
+        var order = shift ? VisibleSessions() : null;
+        if (order is not null && _selAnchorId is not null &&
             order.FindIndex(x => x.Id == _selAnchorId) is var ai and >= 0 &&
             order.FindIndex(x => x.Id == s.Id) is var ci and >= 0)
         {
@@ -347,6 +369,11 @@ internal partial class Program
             SetActive(_selectedIds.Contains(s.Id) ? s : (SelectedSessions().FirstOrDefault() ?? s));
         }
         else { _selectedIds.Clear(); _selAnchorId = s.Id; SetActive(s); }
+        if (_agentsCollapsed && AgentList().Any(a => a.Pane == _active?.ActivePane))
+        {
+            _agentsCollapsed = false;
+            SaveState();
+        }
         if (_selectedIds.Count <= 1) _selectedIds.Clear();   // a lone item is not a multi-selection
         RequestRedraw();
     }
@@ -631,17 +658,33 @@ internal partial class Program
         else if (item is Workspace w) DropWorkspace(w, my);
     }
 
-    /// <summary>The workspace whose region contains <paramref name="my"/> (last header at/above it; first if above all).</summary>
     private Workspace? TargetWorkspaceAt(int my)
     {
-        Workspace? cur = null;
-        foreach (var (y0, _, isWs, it) in _sidebarRows)
+        Workspace? last = null;
+        foreach (var (y0, _, _, item) in _sidebarRows)
         {
-            if (!isWs || it is not Workspace w) continue;
-            if (cur is null) cur = w;   // default to the first workspace
-            if (y0 <= my) cur = w;      // the last header at/above my wins
+            var ws = item switch { Workspace w => w, Ses s => s.Ws, _ => null };
+            if (ws is null) continue;
+            if (y0 > my) return last ?? ws;
+            last = ws;
         }
-        return cur;
+        return last;
+    }
+
+    // The indicator and the insertion both use the same visible neighbor. Its position
+    // in the full list stays meaningful when scrolling or filtering hides earlier rows.
+    private (object? Neighbor, bool After, float Y) DropPosition(object drag, int my, Workspace? target)
+    {
+        (object?, bool, float) position = (null, false, -1);
+        foreach (var (y0, y1, _, item) in _sidebarRows)
+        {
+            if (target is not null && ReferenceEquals(item, target)) position = (null, false, y1);
+            bool candidate = drag is Workspace ? item is Workspace : item is Ses s && s.Ws == target;
+            if (!candidate || ReferenceEquals(item, drag)) continue;
+            if (my < (y0 + y1) / 2f) return (item, false, y0);
+            position = (item, true, y1);
+        }
+        return position;
     }
 
     private void DropSession(Ses drag, int my)
@@ -650,14 +693,12 @@ internal partial class Program
         {
             var target = TargetWorkspaceAt(my);
             if (target is null) return;
-            // Insert index = visible target-ws session rows (excluding the dragged one) above my.
-            int idx = 0;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-                if (!isWs && it is Ses r && ReferenceEquals(r.Ws, target) && !ReferenceEquals(r, drag)
-                    && (y0 + y1) / 2f < my) idx++;
+            var position = DropPosition(drag, my, target);
+            if (position.Y < 0) return;
             drag.Ws.Sessions.Remove(drag);
-            idx = Math.Clamp(idx, 0, target.Sessions.Count);
-            target.Sessions.Insert(idx, drag);
+            int index = position.Neighbor is Ses neighbor
+                ? target.Sessions.IndexOf(neighbor) + (position.After ? 1 : 0) : 0;
+            target.Sessions.Insert(index, drag);
             drag.Ws = target;
             target.Expanded = true;
         }
@@ -668,49 +709,18 @@ internal partial class Program
     {
         lock (_workspaces)
         {
-            int idx = 0;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-                if (isWs && it is Workspace w && !ReferenceEquals(w, drag) && (y0 + y1) / 2f < my) idx++;
+            var position = DropPosition(drag, my, null);
+            if (position.Neighbor is not Workspace neighbor) return;
             _workspaces.Remove(drag);
-            idx = Math.Clamp(idx, 0, _workspaces.Count);
-            _workspaces.Insert(idx, drag);
+            int index = _workspaces.IndexOf(neighbor) + (position.After ? 1 : 0);
+            _workspaces.Insert(index, drag);
         }
         RequestRedraw();
         SaveState();
     }
 
-    /// <summary>Pixel Y of the insertion line for the in-progress drag (-1 if none).</summary>
-    private float DropIndicatorY()
-    {
-        if (_dragItem is Workspace)
-        {
-            float lastY1 = -1;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-                if (isWs && it is Workspace w && !ReferenceEquals(w, _dragItem))
-                {
-                    if (_dragY < (y0 + y1) / 2f) return y0;
-                    lastY1 = y1;
-                }
-            return lastY1;
-        }
-        if (_dragItem is Ses)
-        {
-            var target = TargetWorkspaceAt(_dragY);
-            if (target is null) return -1;
-            float headerBottom = -1, lastRowY1 = -1;
-            foreach (var (y0, y1, isWs, it) in _sidebarRows)
-            {
-                if (isWs && it is Workspace w && ReferenceEquals(w, target)) headerBottom = y1;
-                else if (!isWs && it is Ses r && ReferenceEquals(r.Ws, target) && !ReferenceEquals(r, _dragItem))
-                {
-                    if (_dragY < (y0 + y1) / 2f) return y0;
-                    lastRowY1 = y1;
-                }
-            }
-            return lastRowY1 > 0 ? lastRowY1 : headerBottom;
-        }
-        return -1;
-    }
+    private float DropIndicatorY() => _dragItem is null ? -1 :
+        DropPosition(_dragItem, _dragY, _dragItem is Ses ? TargetWorkspaceAt(_dragY) : null).Y;
 
     private void DrawDropIndicator(ID2D1HwndRenderTarget rt, ID2D1SolidColorBrush brush)
     {
