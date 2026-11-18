@@ -19,6 +19,24 @@ namespace Agwinterm.Pty.Tests;
 /// </summary>
 public partial class RestoreStateTests
 {
+    [Theory]
+    [InlineData("""{"Agent":"codex"}""", "thread-123")]
+    [InlineData("""{"Agent":"codex","Id":null}""", "thread-123")]
+    [InlineData("""{"Agent":"unknown","Id":"stored"}""", "thread-123")]
+    [InlineData("""{"Agent":"codex","Id":"stored\n"}""", "thread-123")]
+    [InlineData("""{"Agent":"codex","Id":"stored"}""", "stored")]
+    public void RestoresOnlyValidSavedConversationMetadata(string metadata, string expectedId)
+    {
+        string json = $$$"""
+            {"Workspaces":[{"Sessions":[{"Panes":[{"AgentResume":"codex resume thread-123","Conversation":{{{metadata}}}}]}]}]}
+            """;
+        Assert.True(RestoreState.TryDeserialize(json, out var state));
+        var pane = state!.Workspaces[0].Sessions[0].Panes[0];
+        Assert.Equal(new AgentConversation("codex", expectedId), RestoreState.LoadConversation(pane));
+        pane.AgentResume = null;
+        Assert.Null(RestoreState.LoadConversation(pane));
+    }
+
     [Fact]
     public void AgentPreferencesRoundTripIndependentlyOfFlags()
     {

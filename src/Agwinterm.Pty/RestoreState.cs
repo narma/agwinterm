@@ -167,6 +167,13 @@ public static class RestoreState
         catch { state = null; return false; }
     }
 
+    public static AgentConversation? LoadConversation(PaneState pane)
+    {
+        if (string.IsNullOrWhiteSpace(pane.AgentResume)) return null;
+        return pane.Conversation is { } saved && AgentResume.IsKnownAgent(saved.Agent) && AgentResume.IsValidSessionId(saved.Id)
+            ? saved : AgentResume.FromSavedCommand(pane.AgentResume);
+    }
+
     /// <summary>
     /// The context to put on a restored session for a stored <see cref="SessionState.Context"/>: the
     /// normalized value when it passes <see cref="SessionContexts"/>' rules, else null — a value that

@@ -18,8 +18,9 @@ public class AgentResumeTests
     [InlineData(ShellKind.Other, "codex")]
     public void RestoresConversationFromLegacyBinding(ShellKind shell, string agent)
     {
-        var flags = ResumeFlags(agent, agent + " --sandbox --dangerously-skip-permissions --no-daemon");
+        var flags = ResumeFlags(agent, agent + " --sandbox --dangerously-skip-permissions --no-daemon --profile team:dev");
         var command = Compose(shell, agent, "thread-123", "C:/work/O'Brien’s repo", flags);
+        if (agent == "codex") Assert.Contains("--profile team:dev", command);
         Assert.Equal(new AgentConversation(agent, "thread-123"), FromSavedCommand(command));
     }
 

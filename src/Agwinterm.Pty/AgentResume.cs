@@ -23,7 +23,7 @@ public static class AgentResume
 
     public static readonly string[] Agents = { "claude", "codex", "devin" };
 
-    private static readonly Regex SessionIdRe = new("^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant);
+    private static readonly Regex SessionIdRe = new(@"\A[A-Za-z0-9_-]{1,128}\z", RegexOptions.CultureInvariant);
     private static readonly Regex FlagValueRe = new("^[A-Za-z0-9_.:-]{1,64}$", RegexOptions.CultureInvariant);
 
     /// <summary>A session id every CLI accepts and that is safe to type unquoted into any shell.</summary>
@@ -34,7 +34,7 @@ public static class AgentResume
     // Older profiles saved only Compose's relaunch command. Match the whole command
     // so a path, an unrelated shell command or a relative selector cannot supply an ID.
     private static readonly Regex SavedResume = new(
-        """\A(?:Set-Location -LiteralPath '(?:[^'‘’‚‛\p{Cc}]|''|‘‘|’’|‚‚|‛‛)*'; |cd '(?:[^'\p{Cc}]|'\\'')*' && |cd /d "[^"%\p{Cc}]*" && )?(?<run>(?<verb>codex resume|claude --resume|devin --resume) (?<id>[A-Za-z0-9_][A-Za-z0-9_-]{0,127})(?: [A-Za-z0-9_.=-]+)*)\z""",
+        """\A(?:Set-Location -LiteralPath '(?:[^'‘’‚‛\p{Cc}]|''|‘‘|’’|‚‚|‛‛)*'; |cd '(?:[^'\p{Cc}]|'\\'')*' && |cd /d "[^"%\p{Cc}]*" && )?(?<run>(?<verb>codex resume|claude --resume|devin --resume) (?<id>[A-Za-z0-9_][A-Za-z0-9_-]{0,127})(?: [A-Za-z0-9_.=:-]+)*)\z""",
         RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     public static AgentConversation? FromSavedCommand(string? command)
