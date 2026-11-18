@@ -4,6 +4,13 @@ Add-Type -Path "$PSHOME/UIAutomationClient.dll"
 Add-Type -TypeDefinition @'
 using System;using System.Collections.Generic;using System.Runtime.InteropServices;using System.Text;
 public static class AgentTestWindows {
+ struct Point { public int x,y; }
+ [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr hwnd,ref Point point);
+ public static IntPtr ClientPoint(IntPtr hwnd,int x,int y) {
+     var p=new Point{x=x,y=y};
+     if(!ScreenToClient(hwnd,ref p))throw new InvalidOperationException("ScreenToClient failed");
+     return new IntPtr((p.y<<16)|(p.x&65535));
+ }
  delegate bool Visitor(IntPtr h,IntPtr p);
  [DllImport("user32.dll")] static extern bool EnumWindows(Visitor f,IntPtr p);
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);
@@ -116,6 +123,17 @@ $null=Rpc 'session.select' @{} $session
 $null=Rpc 'session.status' @{status='active'} $worker
 $null=Shot 'agents-final'
 
+function SessionElement([string]$name) {
+    $root=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+    $condition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$name)
+    $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$condition)
+}
+function WheelAt($rect,[int]$delta) {
+    $x=[int]($rect.Left+$rect.Width/2); $y=[int]($rect.Top+$rect.Height/2)
+    [void][HudOwnedJob]::SendMessageW($hwnd,0x20a,[IntPtr]($delta -shl 16),[IntPtr](($y -shl 16) -bor ($x -band 65535)))
+}
+# Put the hook workspace below the fold without starting extra shells.
+for($i=0;$i -lt 24;$i++){ $null=Rpc 'workspace.new' @{name="Scroll fixture $i"} }
 # Hook/API-only agents and background workspaces share this list.
 $otherWs=[string](Rpc 'workspace.new' @{name='Other space'})
 $hook=[string](Rpc 'session.new' @{name='Hook worker';workspace=$otherWs;'no-select'=$true})
@@ -123,7 +141,18 @@ if(-not (AgentWait {$null-ne (Node $hook)})){throw 'Hook session was not publish
 WaitAgentShell $hook
 $null=Rpc 'session.status' @{status='blocked';'auto-reset'=$true} $hook
 Check 'hook agent from another workspace appears' (AgentWait {$null-ne (FindAgent 'Hook worker')})
+$null=Rpc 'workspace.collapse' @{} $otherWs
 InvokeElement (FindAgent 'Hook worker')
+Check 'agent activation reveals its session in the collapsed offscreen workspace' (AgentWait {
+    (SessionElement 'Hook worker').Current.BoundingRectangle.Width -gt 0 -and (Node $hook).active
+})
+$treeRect=(SessionElement 'Hook worker').Current.BoundingRectangle
+WheelAt $treeRect 120
+Check 'wheel over workspace tree scrolls its last session out of view' (AgentWait {
+    (SessionElement 'Hook worker').Current.BoundingRectangle.Width -le 0 -and $null -ne (FindAgent 'Hook worker')
+})
+WheelAt $treeRect -120
+Check 'wheel over workspace tree reaches its last session again' (AgentWait {(SessionElement 'Hook worker').Current.BoundingRectangle.Width -gt 0})
 Check 'selecting auto-reset Blocked does not clear request' (AgentWait {(Node $hook).status-eq 'blocked'})
 $null=Rpc 'session.select' @{} $session
 $null=Rpc 'session.status' @{status='active'} $hook
@@ -158,6 +187,28 @@ Start-Sleep -Milliseconds 200
 Check 'activation Enter is not sent to the shell' (([string](Rpc 'session.text' @{} $worker))-eq $beforeOpen)
 $null=Shot 'agents-keyboard-scroll'
 
+# The hook is near the start of the list. Leave it selected and scroll away,
+# then select its upper row again to bring that same agent back into view.
+$null=Rpc 'session.select' @{} $hook
+Check 'selecting the session reveals its agent' (AgentWait {$null -ne (FindAgent 'Hook worker')})
+$agentsRect=(FindAgent 'Hook worker').Current.BoundingRectangle
+for($i=0;$i -lt 12;$i++){ WheelAt $agentsRect -120 }
+Check 'agents wheel reaches the last worker independently' (AgentWait {
+    $null -eq (FindAgent 'Hook worker') -and (SessionElement 'Hook worker').Current.BoundingRectangle.Width -gt 0
+})
+$hookRect=(SessionElement 'Hook worker').Current.BoundingRectangle
+$click=[AgentTestWindows]::ClientPoint($hwnd, [int]($hookRect.Left+$hookRect.Width/2), [int]($hookRect.Top+$hookRect.Height/2))
+[void][HudOwnedJob]::SendMessageW($hwnd,0x201,[IntPtr]1,$click)
+[void][HudOwnedJob]::SendMessageW($hwnd,0x202,[IntPtr]0,$click)
+Check 'reselecting the upper row reveals the scrolled-away agent' (AgentWait {$null -ne (FindAgent 'Hook worker')})
+InvokeNamed 'Collapse agents'
+if(-not (AgentWait {@(AgentElements).Count -eq 0})){throw 'Agents panel did not collapse'}
+$hookRect=(SessionElement 'Hook worker').Current.BoundingRectangle
+$click=[AgentTestWindows]::ClientPoint($hwnd, [int]($hookRect.Left+$hookRect.Width/2), [int]($hookRect.Top+$hookRect.Height/2))
+[void][HudOwnedJob]::SendMessageW($hwnd,0x201,[IntPtr]1,$click)
+[void][HudOwnedJob]::SendMessageW($hwnd,0x202,[IntPtr]0,$click)
+Check 'upper session click expands the agents panel' (AgentWait {$null -ne (FindAgent 'Hook worker')})
+$null=Rpc 'session.select' @{} $session
 $clearProbe=[string](Rpc 'session.new' @{name='OSC cleared';profile='Agent-lifetime';'no-select'=$true})
 if(-not (AgentWait {$null-ne (Node $clearProbe)})){throw 'Clear-probe session was not published'}
 WaitAgentShell $clearProbe
