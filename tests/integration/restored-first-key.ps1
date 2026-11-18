@@ -11,16 +11,6 @@ function Reply([string[]]$Arguments) {
     if (-not $reply.ok) { throw "Control request failed: $($reply.error)" }
     $reply.result
 }
-function Start-RestoredWindow {
-    $s.Proc = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId) -PassThru
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    do {
-        $s.Proc.Refresh()
-        $s.Hwnd = $s.Proc.MainWindowHandle
-        if ($s.Proc.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw 'No restored window' }
-        if (!$s.Hwnd.ToInt64()) { Start-Sleep -Milliseconds 5 }
-    } until ($s.Hwnd.ToInt64())
-}
 try {
     for ($i = 1; $i -lt $SessionCount; $i++) {
         $null = Reply @('session','new','--profile','Command Prompt','--name',"background-$i")
@@ -46,7 +36,16 @@ try {
         $profiles = Get-Content $profilesPath -Raw | ConvertFrom-Json
         $profiles.profiles += @{name='ForwardedZmx';command='cmd.exe';zmx=@{enabled=$true;executable='/usr/bin/zmx'}}
         $profiles | ConvertTo-Json -Depth 12 | Set-Content $profilesPath
-        Start-RestoredWindow
+        # Start the second process once the first owns this library, before its
+        # window is visible. Starting it at first paint can miss the restore.
+        $s.Proc = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId) -PassThru
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        do {
+            $log = Get-ChildItem (Join-Path $s.AppDir 'logs') -Filter "startup-gui-*-$($s.Proc.Id).jsonl"
+            if ($log -and (Select-String -LiteralPath $log.FullName -SimpleMatch '"config.loaded"' -Quiet)) { break }
+            if ($s.Proc.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw 'Library owner did not start' }
+            Start-Sleep -Milliseconds 5
+        } while ($true)
         $duplicate = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId,'--profile','ForwardedZmx') -WindowStyle Hidden -PassThru
         if (!$duplicate.WaitForExit(30000) -or $duplicate.ExitCode -ne 0) { throw 'Forwarded profile launch was not acknowledged' }
         $rows = @((Reply @('tree')).workspaces[0].sessions)
@@ -54,8 +53,13 @@ try {
         if ($newPane -in $savedOrder -or ($rows.id -join ',') -ne (($savedOrder + $newPane) -join ',')) {
             throw 'Expected one new session after the restored sessions in their saved order'
         }
-        if ([string](Reply @('session','text','--target',$newPane)) -notmatch 'ZMX requires a WSL profile') {
+        $live = $rows[-1].liveSessions.$newPane
+        if ($live.provider -ne 'wsl-zmx' -or $live.error -ne 'ZMX requires a WSL profile') {
             throw 'Forwarded launch bypassed ZMX profile validation'
+        }
+        $events = Get-Content $log.FullName | ForEach-Object { $_ | ConvertFrom-Json }
+        if (!($events | Where-Object { $_.stage -eq 'window.restore.drain' -and $_.id -eq 'CreateLaunchSession' })) {
+            throw 'Forwarded profile did not exercise an in-progress restore'
         }
         Write-Host 'Forwarded profile followed the ZMX launch path and preserved all saved sessions.'
         return
@@ -88,7 +92,13 @@ foreach ($sample in 1..10) {
         [void][AgwUi]::PostMessageW($s.Hwnd,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
         if (-not $s.Proc.WaitForExit(60000)) { throw 'GUI did not exit cleanly' }
         $launch = [Diagnostics.Stopwatch]::GetTimestamp()
-        Start-RestoredWindow
+        $s.Proc = Start-Process $Exe -ArgumentList @('--pipe',$s.Pipe,'--app-id',$s.AppId) -PassThru
+        do {
+            $s.Proc.Refresh()
+            $s.Hwnd = $s.Proc.MainWindowHandle
+            if ($s.Proc.HasExited -or [Diagnostics.Stopwatch]::GetElapsedTime($launch).TotalSeconds -gt 60) { throw 'No restored window' }
+            if (!$s.Hwnd.ToInt64()) { Start-Sleep -Milliseconds 5 }
+        } until ($s.Hwnd.ToInt64())
         $start = [Diagnostics.Stopwatch]::GetTimestamp()
         if (-not [AgwUi]::PostMessageW($s.Hwnd,0x100,[IntPtr]65,[IntPtr]0x001e0001)) { throw 'Key down failed' }
         [void][AgwUi]::PostMessageW($s.Hwnd,0x101,[IntPtr]65,[IntPtr]0xc01e0001L)
