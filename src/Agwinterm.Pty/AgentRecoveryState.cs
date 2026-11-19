@@ -1,8 +1,13 @@
 using Agwinterm.Core;
+using System.Text.Json.Serialization;
 
 namespace Agwinterm.Pty;
 
-public sealed record AgentConversation(string Agent, string Id);
+public sealed record AgentConversation(string Agent, string Id)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Directory { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Title { get; init; }
+}
 
 /// <summary>Recovery belongs to a workload, not its replaceable UI attachment. Sharing this
 /// state lets an accepted binding finish after a transport replacement without writing into

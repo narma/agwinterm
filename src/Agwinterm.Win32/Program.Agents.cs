@@ -1,4 +1,5 @@
 using Agwinterm.Core;
+using Agwinterm.Pty;
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.Mathematics;
@@ -14,6 +15,8 @@ internal partial class Program
         public string Key => Pane.Id + "/" + RecordId;
     }
     private readonly HashSet<string> _agentPins = new(StringComparer.Ordinal);
+    private readonly HashSet<AgentRecoveryState> _agentRenames = new();
+    private sealed record AgentRenameEdit(Ses Session, Pane Pane, AgentConversation Conversation, int BindSequence);
     private readonly HashSet<string> _foldedAgents = new(StringComparer.Ordinal);
     private readonly List<(float Top, float Bottom, AgentRow Row)> _agentRows = new();
     private string _agentSort = "priority";
@@ -39,15 +42,20 @@ internal partial class Program
             if (!pane.AgentActivity.Reported && pane.S.StatusSignal?.Snapshot.Version > pane.LastProgramStatusVersion)
                 pane.AgentActivity.Observe(pane.S.Status, viewed);
             var records = pane.ProgramStatuses.Records.ToList();
-            string paneName = string.IsNullOrWhiteSpace(ses.CustomName)
+            string? conversationTitle = pane.AgentRecovery.Conversation?.Title;
+            bool titleFromAnotherPane = conversationTitle is null && pane.AgentRecovery.Conversation is not null
+                && ses.CustomName is not null && ses.AllPanes.Any(other => other != pane
+                    && other.AgentRecovery.Conversation?.Title == ses.CustomName);
+            string paneName = string.IsNullOrWhiteSpace(ses.CustomName) || titleFromAnotherPane
                 ? AutomaticSessionName(pane, allowStale: true) : ses.CustomName.Trim();
             if (records.Count == 0 && pane.AgentActivity.Reported)
-                result.Add(new(ses, pane, "", paneName, ses.Ws.Name,
+                result.Add(new(ses, pane, "", conversationTitle ?? paneName, ses.Ws.Name,
                     pane.AgentActivity.Display(viewed), pane.AgentActivity.ChangedAt, _agentPins.Contains(pane.Id + "/")));
             foreach (var record in records)
             {
                 if (!pane.ProgramActivities.TryGetValue(record.Id, out var activity)) continue;
                 string name = record.Title.Length > 0 ? record.Title : record.Id.Length > 0 ? record.Id : paneName;
+                if (record.Id.Length == 0 && conversationTitle is not null) name = conversationTitle;
                 string app = record.App;
                 string parent = record.Id;
                 while (app.Length == 0 && parent.Length > 0)
@@ -235,10 +243,76 @@ internal partial class Program
                     RequestRedraw();
                 });
             if (CopyIdAction(a.Session, a.Pane) is { } copy) items.Add(copy);
+            if (a.RecordId.Length == 0 && GetAgentRename(a.Session, a.Pane) is { } edit)
+                Add("Rename agent conversation…", () => StartAgentRename(a, edit));
         }
         Add((_agentSort == "priority" ? "✓ " : "") + "Priority", () => SetAgentSort("priority"));
         Add((_agentSort == "grouped" ? "✓ " : "") + "Grouped by workspace", () => SetAgentSort("grouped"));
         return items;
+    }
+
+    private static AgentRenameEdit? GetAgentRename(Ses session, Pane pane) =>
+        !AgtermRemoteBinding.IsRemote(pane.LiveBinding) && pane.AgentRecovery.Conversation is { } conversation
+        && AgentConversationRename.Supports(conversation)
+            ? new(session, pane, conversation, Volatile.Read(ref pane.BindSeq)) : null;
+
+    private void StartAgentRename(AgentRow row, AgentRenameEdit edit)
+    {
+        if (_editHwnd != IntPtr.Zero) CommitRename();
+        var bounds = _agentRows.FirstOrDefault(candidate => SameCopyRow(candidate.Row, row));
+        // A keyboard selection can trigger the menu before its scrolled row is painted.
+        float top = bounds.Row is null ? _agentsTop : bounds.Top;
+        float bottom = bounds.Row is null ? top + 28 : bounds.Bottom;
+        if (_sidebarW <= 0 || top >= ClientH()) return;
+        StartRowRename(edit, row.Name, top - 4, bottom - 4, 31);
+    }
+
+    private bool AgentRenameTargetIsCurrent(AgentRenameEdit edit) =>
+        AllSessions().Contains(edit.Session) && edit.Session.AllPanes.Contains(edit.Pane)
+        && edit.Pane.AgentRecovery.Conversation == edit.Conversation
+        && Volatile.Read(ref edit.Pane.BindSeq) == edit.BindSequence;
+
+    private void RenameAgentConversation(AgentRenameEdit edit, string name)
+    {
+        if (!AgentRenameTargetIsCurrent(edit))
+        {
+            ShowToast("The agent conversation changed");
+            return;
+        }
+        var pane = edit.Pane;
+        var profile = IntegrationProfileOnUi(pane.Id);
+        string? cwd = edit.Conversation.Directory ?? PaneCwd(pane);
+        var recovery = pane.AgentRecovery;
+        if (!_agentRenames.Add(recovery))
+        {
+            ShowToast("The agent conversation title is still saving");
+            return;
+        }
+        ShowToast("Saving agent conversation title…");
+        _ = Task.Run(async () =>
+        {
+            string? error = null;
+            try { await AgentConversationRename.RenameAsync(edit.Conversation, name, profile, cwd); }
+            catch (Exception ex) { error = ex.Message; }
+            Post(() =>
+            {
+                _agentRenames.Remove(recovery);
+                if (error is not null)
+                {
+                    ShowToast("Could not rename agent conversation: " + error);
+                    return;
+                }
+                if (AgentRenameTargetIsCurrent(edit))
+                {
+                    recovery.Conversation = edit.Conversation with { Title = name };
+                    edit.Session.Name = name;
+                    edit.Session.CustomName = name;
+                    SaveState();
+                }
+                ShowToast("Agent conversation renamed");
+                RequestRedraw();
+            });
+        });
     }
     private void SetAgentSort(string sort)
     { _agentSort = sort; _agentsScroll = 0; SaveState(); RequestRedraw(); }
