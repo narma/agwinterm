@@ -227,7 +227,9 @@ $hookRect=(SessionElement 'Hook worker').Current.BoundingRectangle
 $click=[AgentTestWindows]::ClientPoint($hwnd, [int]($hookRect.Left+$hookRect.Width/2), [int]($hookRect.Top+$hookRect.Height/2))
 [void][HudOwnedJob]::SendMessageW($hwnd,0x201,[IntPtr]1,$click)
 [void][HudOwnedJob]::SendMessageW($hwnd,0x202,[IntPtr]0,$click)
-Check 'upper session click expands the agents panel' (AgentWait {$null -ne (FindAgent 'Hook worker')})
+Check 'upper session click leaves the agents panel collapsed' ($null -ne (SessionElement 'Expand agents') -and @(AgentElements).Count -eq 0)
+InvokeNamed 'Expand agents'
+Check 'expanding the agents panel shows the selected agent' (AgentWait {$null -ne (FindAgent 'Hook worker')})
 $null=Rpc 'session.select' @{} $session
 $clearProbe=[string](Rpc 'session.new' @{name='OSC cleared';profile='Agent-lifetime';'no-select'=$true})
 if(-not (AgentWait {$null-ne (Node $clearProbe)})){throw 'Clear-probe session was not published'}

@@ -369,11 +369,6 @@ internal partial class Program
             SetActive(_selectedIds.Contains(s.Id) ? s : (SelectedSessions().FirstOrDefault() ?? s));
         }
         else { _selectedIds.Clear(); _selAnchorId = s.Id; SetActive(s); }
-        if (_agentsCollapsed && AgentList().Any(a => a.Pane == _active?.ActivePane))
-        {
-            _agentsCollapsed = false;
-            SaveState();
-        }
         if (_selectedIds.Count <= 1) _selectedIds.Clear();   // a lone item is not a multi-selection
         RequestRedraw();
     }
