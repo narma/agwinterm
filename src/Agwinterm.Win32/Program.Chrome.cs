@@ -392,16 +392,25 @@ internal partial class Program
         foreach (var (y0, y1, _, it) in _sidebarRows) if (ReferenceEquals(it, item)) { ry0 = y0; ry1 = y1; break; }
         if (ry0 < 0) { RequestRedraw(); return; } // row not currently visible
         string name = item is Ses s ? s.Name : ((Workspace)item).Name;
+        object target = item is Ses session && GetAgentRename(session, session.ActivePane) is { } agent
+            ? agent : item;
+        StartRowRename(target, name, ry0, ry1, isWs ? 23 : 25);
+    }
+
+    private void StartRowRename(object item, string name, float ry0, float ry1, int margin)
+    {
         EnsureEditGdi();
         // Fill the whole row (matches the highlight band); a left text-margin puts the text exactly
         // where the row name is drawn, so nothing shifts when editing starts.
         // The single-line EDIT centres its text ~1px higher and its glyph sits ~1px right of the
         // margin vs DirectWrite; offsets tuned by pixel-measuring the box against an unedited row.
-        int leftMargin = ToDevice(isWs ? 23 : 25), rightMargin = ToDevice(8);
+        int leftMargin = ToDevice(margin), rightMargin = ToDevice(8);
         int ey = ToDevice(ry0 + 4), eh = ToDevice(ry1 - ry0);
         _editHwnd = CreateWindowExW(0, "EDIT", name, WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
             0, ey, ToDevice(_sidebarW), eh, _hwnd, (IntPtr)EDIT_ID, GetModuleHandleW(null), IntPtr.Zero);
         if (_editHwnd == IntPtr.Zero) return;
+        if (item is AgentRenameEdit)
+            SendMessageW(_editHwnd, 0x00C5 /* EM_LIMITTEXT */, (IntPtr)255, IntPtr.Zero);
         SendMessageW(_editHwnd, WM_SETFONT, _editFont, (IntPtr)1);
         SendMessageW(_editHwnd, EM_SETMARGINS, (IntPtr)(EC_LEFTMARGIN | EC_RIGHTMARGIN), (IntPtr)(leftMargin | (rightMargin << 16)));
         SendMessageW(_editHwnd, (uint)EM_SETSEL, IntPtr.Zero, (IntPtr)(-1)); // select all
@@ -437,6 +446,13 @@ internal partial class Program
         var sb = new StringBuilder(256);
         GetWindowTextW(h, sb, 256);
         string name = sb.ToString().Trim();
+        if (item is AgentRenameEdit agent)
+        {
+            DestroyEditWindow(h);
+            RequestRedraw();
+            if (name.Length > 0) RenameAgentConversation(agent, name);
+            return;
+        }
         if (name.Length > 0)
         {
             if (item is Ses s) { s.Name = name; s.CustomName = name; } // CustomName drives the title bar

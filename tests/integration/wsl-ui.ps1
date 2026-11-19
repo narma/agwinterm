@@ -1,6 +1,6 @@
 # Use host WSL, with every test-owned Windows process on a private desktop.
 param(
-    [Parameter(Mandatory)][ValidateSet('WslCapabilities','WslControl','WslBenchmark','WslTuiRendering','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote','WslOriginExport')][string]$Test,
+    [Parameter(Mandatory)][string]$Test,
     [hashtable]$TestParameters = @{},
     [string]$OutputDirectory,
     [ValidateRange(1,7200)][int]$TimeoutSeconds = 1200
@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $definition = (Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1")[$Test]
+if (-not $definition.Wsl) { throw "Unknown WSL UI test: $Test" }
 foreach ($key in $TestParameters.Keys) {
     if ($key -notin $definition.Options) { throw "Unsupported WSL test parameter: $key" }
     if ($TestParameters[$key] -isnot [string] -and $TestParameters[$key] -isnot [bool] -and $TestParameters[$key] -isnot [int]) { throw "Unsupported value for WSL test parameter: $key" }

@@ -1,8 +1,13 @@
 using Agwinterm.Core;
+using System.Text.Json.Serialization;
 
 namespace Agwinterm.Pty;
 
-public sealed record AgentConversation(string Agent, string Id);
+public sealed record AgentConversation(string Agent, string Id)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Directory { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Title { get; init; }
+}
 
 /// <summary>Recovery belongs to a workload, not its replaceable UI attachment. Sharing this
 /// state lets an accepted binding finish after a transport replacement without writing into
@@ -17,6 +22,16 @@ public sealed class AgentRecoveryState
     public long CompletionBaseline;
     public int Sequence;
     private int _restartReservation;
+
+    internal bool IsCurrentConversation(AgentConversation expected, int sequence) =>
+        Volatile.Read(ref Sequence) == sequence && Conversation == expected;
+
+    internal bool TrySetConversationTitle(AgentConversation expected, int sequence, string title)
+    {
+        if (!IsCurrentConversation(expected, sequence)) return false;
+        Conversation = expected with { Title = title };
+        return true;
+    }
 
     /// <summary>A saved command is presence evidence only when the exact hosted shell
     /// survived and has not reached another prompt since the binding was accepted.</summary>

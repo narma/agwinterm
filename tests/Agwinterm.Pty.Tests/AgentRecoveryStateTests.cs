@@ -108,6 +108,24 @@ public class AgentRecoveryStateTests
     }
 
     [Fact]
+    public void TitleSaveSurvivesReattachmentButCannotOverwriteAReboundConversation()
+    {
+        var conversation = new AgentConversation("codex", Guid.NewGuid().ToString());
+        var previousAttachment = new AgentRecoveryState { Conversation = conversation };
+        int sequence = previousAttachment.Sequence;
+        var currentAttachment = previousAttachment; // ReplaceLivePane carries the workload state.
+
+        Assert.True(previousAttachment.TrySetConversationTitle(conversation, sequence, "Saved title"));
+        Assert.Equal("Saved title", currentAttachment.Conversation?.Title);
+
+        // Even a later binding to the same ID must win over a stale request.
+        Interlocked.Increment(ref currentAttachment.Sequence);
+        currentAttachment.Conversation = conversation;
+        Assert.False(previousAttachment.TrySetConversationTitle(conversation, sequence, "Stale title"));
+        Assert.Null(currentAttachment.Conversation.Title);
+    }
+
+    [Fact]
     public void PendingBindingWinsAndCanLandThroughTheOldAttachment()
     {
         var oldAttachment = new AgentRecoveryState { Command = "old" };

@@ -60,8 +60,8 @@ try {
         $path = Join-Path $temporary $definition.Path
         $null = New-Item -ItemType Directory -Path (Split-Path $path) -Force
         @'
-param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$OldSetup,[string]$NewSetup,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly,[string]$Mode,[string]$Runtime,[string]$LanguageSource)
-@{exe=$Exe;ctl=$Ctl;strict=[bool]$Strict;suite=$Suite;dpi=$Dpi;only=$Only;cookbook=[bool]$Cookbook;output=$Output;spec=$Spec;mode=$Mode;runtime=$Runtime;portable=$Portable;languageSource=$LanguageSource} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
+param([string]$Exe,[string]$Ctl,[string]$GateExe,[switch]$Strict,[string]$Suite,[int]$Dpi,[string]$Only,[int]$Cycles,[int]$Runs,[string]$OldSetup,[string]$NewSetup,[string]$Installer,[string]$Portable,[string]$Spec,[string]$Output,[switch]$Cookbook,[switch]$CookbookOnly,[switch]$NavigationOnly,[switch]$ReviewOnly,[string]$Mode,[string]$Runtime,[string]$LanguageSource,[string]$Codex,[string]$Claude)
+@{exe=$Exe;ctl=$Ctl;strict=[bool]$Strict;suite=$Suite;dpi=$Dpi;only=$Only;cookbook=[bool]$Cookbook;output=$Output;spec=$Spec;mode=$Mode;runtime=$Runtime;portable=$Portable;languageSource=$LanguageSource;codex=$Codex;claude=$Claude} | ConvertTo-Json | Set-Content -LiteralPath $env:SANDBOX_DISPATCH_PROBE
 exit 0
 '@ | Set-Content -LiteralPath $path
         $parameters = @{}
@@ -82,6 +82,7 @@ exit 0
         if ($name -eq 'Conformance') { Check 'custom contract uses the guest input path' ($probe.spec -eq (Join-Path $temporary 'inputs/Spec')) }
         if ($name -eq 'WebReleaseAcceptance') { Check 'release acceptance stages package paths and preserves runtime selection' ($probe.mode -eq 'Portable' -and $probe.runtime -eq 'Absent' -and $probe.portable -eq (Join-Path $temporary 'inputs/Portable')) }
         if ($name -eq 'WebImeAcceptance') { Check 'IME package uses the guest input path' ($probe.languageSource -eq (Join-Path $temporary 'inputs/LanguageSource')) }
+        if ($name -eq 'AgentConversationRename') { Check 'agent executables use the guest input paths' ($probe.codex -eq (Join-Path $temporary 'inputs/Codex') -and $probe.claude -eq (Join-Path $temporary 'inputs/Claude')) }
         if ($definition.Outputs) { Check "$name writes reports inside guest artifacts" ($probe.output -eq (Join-Path $temporary "artifacts/$name-Output.json")) }
     }
     @{test='NotAnEntryPoint'; parameters=@{}} | ConvertTo-Json | Set-Content (Join-Path $temporary 'run.json')
@@ -113,7 +114,7 @@ exit 0
     }
     $entry = Join-Path $temporary 'entry'
     $null = New-Item -ItemType Directory -Path $entry
-    Copy-Item "$PSScriptRoot/sandbox-ui-entry.ps1" -Destination $entry
+    Copy-Item "$PSScriptRoot/sandbox-ui-entry.ps1", "$PSScriptRoot/sandbox-ui-tests.psd1" -Destination $entry
     @'
 param([string]$Test,[switch]$Background,[hashtable]$TestParameters,[string]$Exe,[string]$CtlExe)
 if ($env:SANDBOX_PROVISION_FAIL -eq '1') { throw 'simulated provisioning failure' }

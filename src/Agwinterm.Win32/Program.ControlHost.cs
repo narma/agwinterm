@@ -1177,7 +1177,7 @@ internal partial class Program
                 if (command is null) { EmitEvent("bind", pane.Id, "ignored: " + why); return true; }
                 string relaunch = AgentResume.Compose(AgentResume.ShellKind.Bash, agent, sessionId, cwd,
                     AgentResume.ResumeFlags(agent, command));
-                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && ReferenceEquals(pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline, new(agent, sessionId)); SaveState(); } });
+                Post(() => { if (Volatile.Read(ref pane.BindSeq) == seq && ReferenceEquals(pane.Completion, completion) && completion.Checkpoint == baseline) { BindAgent(pane, relaunch, baseline, new(agent, sessionId) { Directory = cwd }); SaveState(); } });
                 EmitEvent("bind", pane.Id, "bound: " + relaunch);
                 return true;
             }
@@ -1207,7 +1207,7 @@ internal partial class Program
                         Post(() =>
                         {
                             if (Volatile.Read(ref pane.BindSeq) != seq || !ReferenceEquals(pane.Completion, completion) || completion.Checkpoint != baseline) return;   // a later bind, workload or shell completion won
-                            BindAgent(pane, relaunch, baseline, new(agent, sessionId));
+                            BindAgent(pane, relaunch, baseline, new(agent, sessionId) { Directory = cwd });
                             SaveState();
                         });
                         outcome = "bound: " + relaunch;
@@ -1223,7 +1223,11 @@ internal partial class Program
     private void BindAgent(Pane pane, string? command, long baseline, AgentConversation? conversation = null)
     {
         pane.AgentResume = command;
-        pane.AgentRecovery.Conversation = conversation ?? AgentResume.FromSavedCommand(command);
+        conversation ??= AgentResume.FromSavedCommand(command);
+        if (conversation is not null && pane.AgentRecovery.Conversation is { } previous
+            && previous.Agent == conversation.Agent && previous.Id == conversation.Id)
+            conversation = conversation with { Title = previous.Title, Directory = conversation.Directory ?? previous.Directory };
+        pane.AgentRecovery.Conversation = conversation;
         if (command is not null) pane.AgentActivity.Observe(pane.S.Status, false);
         pane.AgentResumeToken = pane.Completion.Token;
         pane.AgentResumeGeneration = baseline;

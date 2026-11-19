@@ -3,9 +3,10 @@ param([Parameter(Mandatory)][string]$Test, [System.Collections.IDictionary]$Para
 $ErrorActionPreference = 'Stop'
 $inGuest = $env:AGWINTERM_SANDBOX_UI -eq '1' -and $env:USERNAME -eq 'WDAGUtilityAccount'
 $inCi = $env:GITHUB_ACTIONS -eq 'true' -and $env:CI -eq 'true'
+$wslTest = (Import-PowerShellDataFile "$PSScriptRoot/sandbox-ui-tests.psd1")[$Test].Wsl
 if ($inGuest -or $inCi) { return $false }
 if ($env:AGWINTERM_HYPERV_UI -eq '1' -and (& "$PSScriptRoot/hyperv-ui-context.ps1")) { return $false }
-if ($Test -in @('WslCapabilities','WslControl','WslBenchmark','WslTuiRendering','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote','WslOriginExport') -and $env:AGWINTERM_WSL_UI_DESKTOP) {
+if ($wslTest -and $env:AGWINTERM_WSL_UI_DESKTOP) {
     if (-not ('WslUiDesktop' -as [type])) { Add-Type -Path "$PSScriptRoot/wsl-ui-desktop.cs" }
     if (-not [WslUiDesktop]::IsPrivate($env:AGWINTERM_WSL_UI_DESKTOP)) { throw 'WSL desktop marker does not match a private non-input desktop.' }
     return $false
@@ -28,7 +29,7 @@ foreach ($key in $Parameters.Keys) {
 }
 Write-Host "Routing local $Test UI tests to the background test runner."
 try {
-    if ($Test -in @('WslCapabilities','WslControl','WslBenchmark','WslTuiRendering','WslZmxDependency','WslZmxSurvival','WslZmxIdentity','WslAgtermRemote','WslOriginExport')) {
+    if ($wslTest) {
         & "$PSScriptRoot/wsl-ui.ps1" -Test $Test -TestParameters $options.TestParameters | Out-Host
     } elseif (-not $env:AGWINTERM_UI_BACKEND -or $env:AGWINTERM_UI_BACKEND -eq 'HyperV') {
         $options.Remove('Background')
