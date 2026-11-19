@@ -16,7 +16,7 @@ internal partial class Program
     }
     private readonly HashSet<string> _agentPins = new(StringComparer.Ordinal);
     private readonly HashSet<AgentRecoveryState> _agentRenames = new();
-    private sealed record AgentRenameEdit(Ses Session, Pane Pane, AgentConversation Conversation, int BindSequence);
+    private sealed record AgentRenameEdit(Ses Session, AgentRecoveryState Recovery, AgentConversation Conversation, int BindSequence);
     private readonly HashSet<string> _foldedAgents = new(StringComparer.Ordinal);
     private readonly List<(float Top, float Bottom, AgentRow Row)> _agentRows = new();
     private string _agentSort = "priority";
@@ -254,7 +254,7 @@ internal partial class Program
     private static AgentRenameEdit? GetAgentRename(Ses session, Pane pane) =>
         !AgtermRemoteBinding.IsRemote(pane.LiveBinding) && pane.AgentRecovery.Conversation is { } conversation
         && AgentConversationRename.Supports(conversation)
-            ? new(session, pane, conversation, Volatile.Read(ref pane.BindSeq)) : null;
+            ? new(session, pane.AgentRecovery, conversation, Volatile.Read(ref pane.BindSeq)) : null;
 
     private void StartAgentRename(AgentRow row, AgentRenameEdit edit)
     {
@@ -267,22 +267,21 @@ internal partial class Program
         StartRowRename(edit, row.Name, top - 4, bottom - 4, 31);
     }
 
-    private bool AgentRenameTargetIsCurrent(AgentRenameEdit edit) =>
-        AllSessions().Contains(edit.Session) && edit.Session.AllPanes.Contains(edit.Pane)
-        && edit.Pane.AgentRecovery.Conversation == edit.Conversation
-        && Volatile.Read(ref edit.Pane.BindSeq) == edit.BindSequence;
+    private Pane? FindAgentRenamePane(AgentRenameEdit edit) => AllSessions().Contains(edit.Session)
+        ? edit.Session.AllPanes.FirstOrDefault(pane => ReferenceEquals(pane.AgentRecovery, edit.Recovery))
+        : null;
 
     private void RenameAgentConversation(AgentRenameEdit edit, string name)
     {
-        if (!AgentRenameTargetIsCurrent(edit))
+        if (FindAgentRenamePane(edit) is not { } pane
+            || !edit.Recovery.IsCurrentConversation(edit.Conversation, edit.BindSequence))
         {
             ShowToast("The agent conversation changed");
             return;
         }
-        var pane = edit.Pane;
         var profile = IntegrationProfileOnUi(pane.Id);
         string? cwd = edit.Conversation.Directory ?? PaneCwd(pane);
-        var recovery = pane.AgentRecovery;
+        var recovery = edit.Recovery;
         if (!_agentRenames.Add(recovery))
         {
             ShowToast("The agent conversation title is still saving");
@@ -302,15 +301,16 @@ internal partial class Program
                     ShowToast("Could not rename agent conversation: " + error);
                     return;
                 }
-                if (AgentRenameTargetIsCurrent(edit))
+                if (FindAgentRenamePane(edit) is not null
+                    && recovery.TrySetConversationTitle(edit.Conversation, edit.BindSequence, name))
                 {
-                    recovery.Conversation = edit.Conversation with { Title = name };
                     edit.Session.Name = name;
                     edit.Session.CustomName = name;
                     SaveState();
+                    ShowToast("Agent conversation renamed");
+                    RequestRedraw();
                 }
-                ShowToast("Agent conversation renamed");
-                RequestRedraw();
+                else ShowToast("Agent title saved in history");
             });
         });
     }

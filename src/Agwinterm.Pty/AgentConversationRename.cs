@@ -64,7 +64,7 @@ public static class AgentConversationRename
         }
     }
 
-    private static ProcessStartInfo StartInfo(string agent, string[] args, ShellProfile? profile, string? cwd)
+    internal static ProcessStartInfo StartInfo(string agent, string[] args, ShellProfile? profile, string? cwd)
     {
         bool wsl = WslIntegration.IsWsl(profile?.Command);
         var info = new ProcessStartInfo
@@ -95,14 +95,47 @@ public static class AgentConversationRename
         }
         else
         {
-            string exe = agent + ".exe";
-            info.FileName = (info.Environment.TryGetValue("PATH", out var path) ? path : null)?
-                .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Select(dir => Path.Combine(dir.Trim('"'), exe)).FirstOrDefault(File.Exists) ?? exe;
+            info.Environment.TryGetValue("PATH", out var path);
+            var (executable, script) = ResolveWindowsAgent(agent, path);
+            info.FileName = executable;
+            if (script is not null) info.ArgumentList.Add(script);
             if (cwd is not null && Directory.Exists(cwd)) info.WorkingDirectory = cwd;
         }
         foreach (string arg in args) info.ArgumentList.Add(arg);
         return info;
+    }
+
+    private static (string Executable, string? Script) ResolveWindowsAgent(string agent, string? path)
+    {
+        string[] directories = (path ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(dir => Path.TrimEndingDirectorySeparator(dir.Trim().Trim('"')))
+            .Where(Path.IsPathFullyQualified).ToArray();
+        foreach (string directory in directories)
+        {
+            string exe = Path.Combine(directory, agent + ".exe");
+            if (File.Exists(exe)) return (exe, null);
+            if (!File.Exists(Path.Combine(directory, agent + ".cmd"))) continue;
+
+            // npm puts global shims next to node_modules and local shims in node_modules/.bin.
+            // Launch the official package entry directly so titles never reach a batch interpreter.
+            string modules = Path.GetFileName(directory).Equals(".bin", StringComparison.OrdinalIgnoreCase)
+                ? Path.GetDirectoryName(directory)! : Path.Combine(directory, "node_modules");
+            string package = agent == "codex" ? Path.Combine(modules, "@openai", "codex")
+                : Path.Combine(modules, "@anthropic-ai", "claude-code");
+            if (agent == "claude")
+            {
+                string native = Path.Combine(package, "bin", "claude.exe");
+                if (File.Exists(native)) return (native, null);
+            }
+
+            string script = agent == "codex" ? Path.Combine(package, "bin", "codex.js") : Path.Combine(package, "cli.js");
+            if (!File.Exists(script)) continue;
+            string node = Path.Combine(directory, "node.exe");
+            if (File.Exists(node)) return (node, script);
+            string? onPath = directories.Select(dir => Path.Combine(dir, "node.exe")).FirstOrDefault(File.Exists);
+            if (onPath is not null) return (onPath, script);
+        }
+        return (agent + ".exe", null);
     }
 
     private static async Task RenameCodexAsync(Process process, string id, string name, CancellationToken token)

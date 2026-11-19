@@ -23,6 +23,16 @@ public sealed class AgentRecoveryState
     public int Sequence;
     private int _restartReservation;
 
+    internal bool IsCurrentConversation(AgentConversation expected, int sequence) =>
+        Volatile.Read(ref Sequence) == sequence && Conversation == expected;
+
+    internal bool TrySetConversationTitle(AgentConversation expected, int sequence, string title)
+    {
+        if (!IsCurrentConversation(expected, sequence)) return false;
+        Conversation = expected with { Title = title };
+        return true;
+    }
+
     /// <summary>A saved command is presence evidence only when the exact hosted shell
     /// survived and has not reached another prompt since the binding was accepted.</summary>
     public bool HasSurvivingBinding(bool adopted) => adopted && !string.IsNullOrWhiteSpace(Command)
