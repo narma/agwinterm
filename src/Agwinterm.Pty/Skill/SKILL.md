@@ -26,9 +26,8 @@ Use `agwintermctl` from an Agwinterm pane (`AGWINTERM_ENABLED=1`).
 
 ## Start work in the background
 
-Run `agwintermctl session new --cwd "DIR" --command "npm test" --no-select` with the
-project directory and command. It prints the new session ID and keeps the current pane
-selected. Use that ID with `session text` to read the output.
+For Windows PowerShell, run `agwintermctl session new --cwd "C:\project" --command "npm test" --no-select`.
+For WSL, use the [WSL profile recipe](references/sessions.md). Read output with `session text` targeting the returned ID.
 
 When following an agent, use
 `agwintermctl session wait completed,blocked --scope pane --target ID --wait-timeout 30 --json`.
