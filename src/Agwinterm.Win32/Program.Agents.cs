@@ -298,7 +298,8 @@ internal partial class Program
                 _agentRenames.Remove(recovery);
                 if (error is not null)
                 {
-                    ShowToast("Could not rename agent conversation: " + error);
+                    ShowErrorToast("Could not rename agent conversation", error,
+                        WslIntegration.IsWsl(profile?.Command) ? "WSL" : "GUI");
                     return;
                 }
                 if (FindAgentRenamePane(edit) is not null

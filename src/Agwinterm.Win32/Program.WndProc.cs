@@ -33,7 +33,12 @@ internal partial class Program
             if (msg == 0x0082 /* WM_NCDESTROY */) _registry.Remove(hwnd);
             return r;
         }
-        catch (Exception ex) { Perf($"wndproc ex msg=0x{msg:X}: {ex.GetType().Name} {ex.Message}"); return DefWindowProcW(hwnd, msg, wParam, lParam); }
+        catch (Exception ex)
+        {
+            Perf($"wndproc ex msg=0x{msg:X}: {ex.GetType().Name} {ex.Message}");
+            Journal.Value.Enqueue("GUI", ActivityLevel.Error, $"Window message 0x{msg:X} failed", ex.Message);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
     }
 
     private IntPtr WindowProcCore(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)

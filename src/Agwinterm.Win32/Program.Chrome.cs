@@ -1709,6 +1709,7 @@ internal partial class Program
         "flag" => "Flagged view",
         "unfocus" => "Unfocus workspace",
         "settings" => "Settings",
+        "activity log" => "Activity log",
         _ when a.StartsWith(MenuIdPrefix, StringComparison.Ordinal) && int.TryParse(a[MenuIdPrefix.Length..], out int mi) && mi < Agwinterm.Core.MenuModel.Menus.Count
             => Agwinterm.Core.MenuModel.Menus[mi].Title + " menu",
         _ => a,
@@ -1771,6 +1772,7 @@ internal partial class Program
             case "flag": ToggleFlaggedView(); break;   // footer flag button toggles the flagged working-set view
             case "unfocus": DisableWorkspaceFilter(); break;
             case "settings": OpenSettingsWindow(); break;
+            case "activity log": ToggleActivityLog(); break;
             case var m when m.StartsWith(MenuIdPrefix, StringComparison.Ordinal):
                 if (int.TryParse(m[MenuIdPrefix.Length..], out int mi) && MenuBarUsable) OpenMenuBar(mi);
                 break;
@@ -1888,8 +1890,15 @@ internal partial class Program
         RequestRedraw();
     }
 
-    private void ShowToast(string text, int durationMs = 1900)
+    private static readonly Lazy<ActivityJournal> Journal = new(() => new(Path.Combine(AppDir, "logs")));
+
+    private void ShowErrorToast(string text, string? detail = null, string source = "GUI")
+        => ShowToast(text, 8000, ActivityLevel.Error, detail, source);
+
+    private void ShowToast(string text, int durationMs = 4000, ActivityLevel level = ActivityLevel.Info,
+        string? detail = null, string source = "GUI")
     {
+        Journal.Value.Enqueue(source, level, text, detail);
         _toastText = text;
         _toastTarget = null;
         SetTimer(_hwnd, (IntPtr)2, (uint)Math.Max(200, durationMs), IntPtr.Zero);

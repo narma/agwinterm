@@ -30,7 +30,7 @@ internal partial class Program : IRecentHost
             var error = done.Exception?.GetBaseException().Message;
             try { LiveWindow().Post(() =>
             {
-                if (error is not null) { Recent.Warning = "Recent history not saved: " + error; LiveWindow().ShowToast(Recent.Warning); }
+                if (error is not null) { Recent.Warning = "Recent history not saved: " + error; LiveWindow().ShowErrorToast(Recent.Warning); }
                 else if (_recentRevision == revision)
                 {
                     _recent = done.Result; _recentBaseline = _recent.Copy();
@@ -91,7 +91,7 @@ internal partial class Program : IRecentHost
     {
         if (_isQuickWindow || s.PageParentId is not null) return;
         try { _closedSessions.Add(CaptureClosedSessionData(s)); SaveRecent(); }
-        catch (Exception e) { ShowToast("Recent capture failed: " + e.Message); }
+        catch (Exception e) { ShowErrorToast("Recent capture failed: " + e.Message); }
     }
     private void CaptureClosedWorkspace(Workspace ws, IReadOnlyList<Ses> sessions)
     {
@@ -102,7 +102,7 @@ internal partial class Program : IRecentHost
                 ws.Id, Id, Guid.NewGuid().ToString(), ws.Expanded, DefaultDir: ws.DefaultDir));
             SaveRecent();
         }
-        catch (Exception e) { ShowToast("Recent capture failed: " + e.Message); }
+        catch (Exception e) { ShowErrorToast("Recent capture failed: " + e.Message); }
     }
 
     public object RecentList()

@@ -529,7 +529,7 @@ internal partial class Program
         _ = Task.Run(() =>
         {
             try { RevealDirectory(context.cwd, context.profile, false); }
-            catch (Exception ex) { Post(() => ShowToast("reveal failed: " + ex.Message)); }
+            catch (Exception ex) { Post(() => ShowErrorToast("reveal failed: " + ex.Message)); }
         });
     }
 
@@ -542,7 +542,7 @@ internal partial class Program
             if (!File.Exists(path)) { if (path == KeymapPath) LoadKeymap(); else File.WriteAllText(path, TerminalConfig.DefaultText); }
             ShellExecuteW(_hwnd, "open", path, null, null, SW_SHOW);
         }
-        catch (Exception ex) { ShowToast("could not open " + Path.GetFileName(path) + ": " + ex.Message, 3000); }
+        catch (Exception ex) { ShowErrorToast("could not open " + Path.GetFileName(path), ex.Message); }
     }
 
     /// <summary>File ▸ Reload Config: re-read agwinterm.conf and apply every key it changed, exactly

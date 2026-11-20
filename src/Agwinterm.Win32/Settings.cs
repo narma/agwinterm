@@ -603,7 +603,7 @@ internal partial class Program
         else if (r.Key is "browser-links" or "browser-undo-close")
         {
             try { SaveWebPreferences(r.Key == "browser-links" ? BrowserPreferences with { LinkOpenMode = val } : BrowserPreferences with { UndoClose = val == "true" }); }
-            catch (Exception ex) { ShowToast("Could not save browser preferences: " + ex.Message); }
+            catch (Exception ex) { ShowErrorToast("Could not save browser preferences: " + ex.Message); }
         }
         else ConfigSetInternal(r.Key, val);
         _uia.Announce($"{r.Label}, {r.Opts[_ddFiltered[filteredIdx]]}");

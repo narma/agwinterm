@@ -31,11 +31,11 @@ internal partial class Program
                     if(path is not null) _=WriteSelectionFile(path,data);
                 }
                 catch(Exception ex) when(ex is IOException or InvalidOperationException)
-                { ShowToast("Could not export selection: "+ex.Message); }
+                { ShowErrorToast("Could not export selection: "+ex.Message); }
             });
         }
         catch(Exception ex) when(ex is IOException or OperationCanceledException or ObjectDisposedException)
-        { Post(()=>ShowToast("Could not export selection: "+ex.Message)); }
+        { Post(()=>ShowErrorToast("Could not export selection: "+ex.Message)); }
     }
 
     private string? ChooseSelectionFile(string extension)
@@ -74,7 +74,7 @@ internal partial class Program
             Post(()=>ShowToast("Selection exported",1200));
         }
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-        { Post(()=>ShowToast("Could not export selection: "+ex.Message)); }
+        { Post(()=>ShowErrorToast("Could not export selection: "+ex.Message)); }
         finally
         {
             if(temporary is not null)

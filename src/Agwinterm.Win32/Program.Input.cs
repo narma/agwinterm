@@ -704,7 +704,7 @@ internal partial class Program
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
                 else ShowToast("path not found: " + path);
             }
-            catch (Exception ex) { ShowToast("reveal failed: " + ex.Message); }
+            catch (Exception ex) { ShowErrorToast("reveal failed: " + ex.Message); }
             return;
         }
         ShowToast("blocked non-http(s) link");
@@ -727,7 +727,7 @@ internal partial class Program
                 psi.ArgumentList.Add(windowsPath);
                 System.Diagnostics.Process.Start(psi);
             }
-            catch (Exception ex) { Post(() => ShowToast("reveal failed: " + ex.Message)); }
+            catch (Exception ex) { Post(() => ShowErrorToast("reveal failed: " + ex.Message)); }
         });
     }
 
@@ -740,7 +740,7 @@ internal partial class Program
                 string text = WslIntegration.QuotedLinuxPaths(profile, paths);
                 Post(() => { if (FindControlPane(target.Id) is { } hit && ReferenceEquals(hit.pane, target)) PasteTextInto(target, text); });
             }
-            catch (Exception ex) { Post(() => ShowToast("drop failed: " + ex.Message)); }
+            catch (Exception ex) { Post(() => ShowErrorToast("drop failed: " + ex.Message)); }
         });
     }
 

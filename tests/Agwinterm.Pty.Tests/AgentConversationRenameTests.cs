@@ -38,5 +38,17 @@ public sealed class AgentConversationRenameTests : IDisposable
         return path;
     }
 
+    [Fact]
+    public void WslShellProgramUsesUnixLineEndingsAndSeparateArguments()
+    {
+        var profile = new ShellProfile { Command = "wsl.exe", Args = ["-d", "Ubuntu"] };
+        var info = AgentConversationRename.StartInfo("claude", ["--name=✳ foo bar"], profile, "/tmp");
+        var args = info.ArgumentList.ToList();
+        string script = args[args.IndexOf("-c") + 1];
+        Assert.Contains('\n', script);
+        Assert.DoesNotContain('\r', script);
+        Assert.Equal("--name=✳ foo bar", args[^1]);
+    }
+
     public void Dispose() => Directory.Delete(_root, recursive: true);
 }
