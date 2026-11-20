@@ -679,7 +679,7 @@ internal partial class Program
             string exe = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Agwinterm.Win32.exe");
             ShellExecuteW(_hwnd, "runas", exe, $"--profile \"{profileName}\" --no-restore --elevated-profile", null, SW_SHOW);
         }
-        catch (Exception ex) { ShowToast("elevated launch failed: " + ex.Message); }
+        catch (Exception ex) { ShowErrorToast("elevated launch failed: " + ex.Message); }
     }
 
     /// <summary>Resolve spawn cwd: explicit, then workspace default when the path exists, then profile directory and global new-session-dir mode.</summary>

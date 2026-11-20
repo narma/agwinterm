@@ -66,21 +66,22 @@ internal partial class Program
         _ = Task.Run(async () =>
         {
             void Toast(string m) => Post(() => ShowToast(m, 5000));
+            void Error(string m) => Post(() => ShowErrorToast(m));
             bool applying = false;
             try
             {
                 string cur = AppCurrentVersion();
                 var rel = await AppUpdate.FetchLatestAsync();
-                if (rel is null) { Toast("agwinterm update check failed (offline or rate-limited) — try again later"); return; }
+                if (rel is null) { Error("agwinterm update check failed (offline or rate-limited) — try again later"); return; }
                 if (!AppUpdate.IsNewer(rel.Version, cur))
                 { _appLatest = null; Toast($"agwinterm {cur} is already the latest"); return; }
                 var asset = AppUpdate.PickAsset(rel, channel);
-                if (asset is null) { Toast($"release {rel.Version} has no {(channel == UpdateChannel.Installed ? "setup" : "portable")} asset"); return; }
-                if (string.IsNullOrEmpty(asset.Sha256)) { Toast("release asset carries no SHA-256 digest — refusing an unverifiable update"); return; }
+                if (asset is null) { Error($"release {rel.Version} has no {(channel == UpdateChannel.Installed ? "setup" : "portable")} asset"); return; }
+                if (string.IsNullOrEmpty(asset.Sha256)) { Error("release asset carries no SHA-256 digest — refusing an unverifiable update"); return; }
                 Toast($"downloading agwinterm {rel.Version}…");
                 string payload = Path.Combine(UpdatesDir, asset.Name);
                 if (!await AppUpdate.DownloadVerifiedAsync(asset, payload))
-                { Toast("download failed SHA-256 verification — update aborted"); return; }
+                { Error("download failed SHA-256 verification — update aborted"); return; }
 
                 string helper = Path.Combine(UpdatesDir, "apply-update.ps1");
                 await File.WriteAllTextAsync(helper, AppUpdate.HelperScript);
@@ -93,7 +94,7 @@ internal partial class Program
                         $"-ProcId {Environment.ProcessId} -Channel {(channel == UpdateChannel.Installed ? "installed" : "portable")} " +
                         $"-Payload \"{payload}\" -Exe \"{AppExePath}\"")
                     { UseShellExecute = false, CreateNoWindow = true };
-                    try { Process.Start(psi); } catch (Exception ex) { ShowToast("failed to start the update helper: " + ex.Message, 6000); _appUpdating = false; return; }
+                    try { Process.Start(psi); } catch (Exception ex) { ShowErrorToast("Failed to start the update helper", ex.Message); _appUpdating = false; return; }
                     QuitAllWindowsForUpdate();
                 });
             }

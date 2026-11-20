@@ -83,9 +83,9 @@ internal partial class Program
             p.UnreadCategory = NotificationCategories.Highest(p.UnreadCategory, category);
         }
         string label = string.IsNullOrEmpty(title) ? body : $"{title}: {body}";
-        _toastText = label.Length == 0 ? "(notification)" : label;
+        ShowToast(label.Length == 0 ? "(notification)" : label,
+            level: category == NotificationCategory.Attention ? ActivityLevel.Warning : ActivityLevel.Info, source: "Session");
         _toastTarget = ses;                       // clicking the banner jumps to the raising session
-        SetTimer(_hwnd, (IntPtr)2, 4000, IntPtr.Zero);
         PlayNotificationSound();                  // opt-in sound on banner delivery (agterm #232)
         EmitEvent("notification", p.Id, _toastText);   // control-API event log (#273)
         if (_config.DesktopNotifications) TrayNotify(title, body);
@@ -343,13 +343,13 @@ internal partial class Program
             rt.DrawText(GlyphSidebar, _iconFont, new Rect(togX, 0, togW, TitleBarH), brush);
         }
 
-        // 6. Right group (pinned left of the caption buttons): scratch, split, | , dashboard,
-        // quick-terminal, gear — dashboard grouped with quick behind the separator (agterm #217).
+        // Right group: scratch, split, separator, dashboard, quick terminal, activity log and settings.
         // Right group, laid out right-to-left; hidden buttons (Interface toggles, #241) close their gap.
         float bw = 38f;
         float rgRight = cw - 3 * CaptionBtnW - 6f;   // right edge of the gear
         float x = rgRight;
         float gearX = (x -= bw);                     // gear always shown
+        float journalX = (x -= bw);
         float quickX = _config.ShowQuickButton ? (x -= bw) : float.NaN;
         float dashX = _config.ShowDashboardButton ? (x -= bw) : float.NaN;
         float divX = x - 5f;                         // hairline divider left of the dashboard/quick group
@@ -488,7 +488,10 @@ internal partial class Program
             brush.Color = c;
             rt.DrawText(GlyphTerminal, _iconFont, new Rect(quickX, 0, bw, TitleBarH), brush);
         }
-        // gear (settings) — kept per user's choice
+        {
+            brush.Color = ChromeBtnBg(rt, brush, journalX, 0, bw, TitleBarH, "activity log", _titleButtons, ChromeDim);
+            rt.DrawText("\uE81C", _iconFont, new Rect(journalX, 0, bw, TitleBarH), brush);
+        }
         {
             var c = ChromeBtnBg(rt, brush, gearX, 0, bw, TitleBarH, "settings", _titleButtons, ChromeDim);
             brush.Color = c;
@@ -859,7 +862,7 @@ internal partial class Program
     private void ApplyStarship(string preset, bool persist)
     {
         string? cfgPath = Agwinterm.Pty.StarshipPresets.ConfigFor(preset, AppDir);
-        if (preset.Length > 0 && cfgPath is null) { ShowToast("starship preset failed: " + preset); return; }
+        if (preset.Length > 0 && cfgPath is null) { ShowErrorToast("starship preset failed: " + preset); return; }
         if (ActiveSurface() is { } pane)
         {
             string setCfg = cfgPath is not null
@@ -953,7 +956,7 @@ internal partial class Program
             catch (Exception ex)
             {
                 var msg = ex.Message;
-                Post(() => ShowToast("themes download failed: " + msg));
+                Post(() => ShowErrorToast("themes download failed: " + msg));
             }
         });
     }
@@ -1711,7 +1714,7 @@ internal partial class Program
         {
             var panes = window.AllSessions().SelectMany(s => s.AllPanes).Where(p => RestoreState.HasLiveBinding(p.LiveBinding)).ToList();
             foreach (var pane in panes) pane.LiveSaveError = why;
-            if (panes.Count > 0) window.ShowToast("Live recovery checkpoint could not be saved: " + why, 10000);
+            if (panes.Count > 0) window.ShowErrorToast("Live recovery checkpoint could not be saved", why);
         });
     }
 

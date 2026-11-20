@@ -17,13 +17,13 @@ internal partial class Program
     private bool ClipboardSet(string text)
     {
         if(!TerminalClipboardGate.Wait(0)) { ShowToast("Clipboard is busy; try again"); return false; }
-        try { bool success=ClipboardSetCore(text); if(!success) ShowToast("Could not copy to clipboard"); return success; }
+        try { bool success=ClipboardSetCore(text); if(!success) ShowErrorToast("Could not copy to clipboard"); return success; }
         finally { TerminalClipboardGate.Release(); }
     }
     private void ClipboardSetHtml(string plain,string fragment)
     {
         if(!TerminalClipboardGate.Wait(0)) { ShowToast("Clipboard is busy; try again"); return; }
-        try { if(!ClipboardSetHtmlCore(plain,fragment)) ShowToast("Could not copy to clipboard"); } finally { TerminalClipboardGate.Release(); }
+        try { if(!ClipboardSetHtmlCore(plain,fragment)) ShowErrorToast("Could not copy to clipboard"); } finally { TerminalClipboardGate.Release(); }
     }
     private string ClipboardGet()
     {

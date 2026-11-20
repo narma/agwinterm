@@ -24,7 +24,7 @@ public static class AgentConversationRename
             ?? throw new IOException("Could not start the agent CLI");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var token = timeout.Token;
-        var stderr = process.StandardError.ReadToEndAsync(token);
+        var stderr = ReadErrorTailAsync(process.StandardError, token);
         try
         {
             if (codex)
@@ -35,16 +35,26 @@ public static class AgentConversationRename
                 bool confirmed = false;
                 while (await process.StandardOutput.ReadLineAsync(token).ConfigureAwait(false) is { } line)
                 {
-                    using var message = JsonDocument.Parse(line);
-                    var root = message.RootElement;
-                    confirmed |= StringProperty(root, "type") == "system"
-                        && StringProperty(root, "subtype") == "session_title_changed"
-                        && StringProperty(root, "title") == name
-                        && string.Equals(StringProperty(root, "session_id"), conversation.Id, StringComparison.OrdinalIgnoreCase);
+                    JsonDocument message;
+                    try { message = JsonDocument.Parse(line); }
+                    catch (JsonException) { continue; } // A launcher can print plain text before exiting.
+                    using (message)
+                    {
+                        var root = message.RootElement;
+                        confirmed |= StringProperty(root, "type") == "system"
+                            && StringProperty(root, "subtype") == "session_title_changed"
+                            && StringProperty(root, "title") == name
+                            && string.Equals(StringProperty(root, "session_id"), conversation.Id, StringComparison.OrdinalIgnoreCase);
+                    }
                 }
                 await process.WaitForExitAsync(token).ConfigureAwait(false);
                 if (!confirmed || process.ExitCode != 0)
-                    throw new IOException("Claude Code did not confirm the new title");
+                {
+                    string reason = process.ExitCode == 0 ? "Claude Code did not confirm the new title" : "Claude Code rename failed";
+                    string detail = (await stderr.ConfigureAwait(false)).Trim();
+                    throw new IOException($"{reason} ({process.StartInfo.FileName}, exit {process.ExitCode})"
+                        + (detail.Length == 0 ? "" : Environment.NewLine + detail));
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -62,6 +72,19 @@ public static class AgentConversationRename
             try { await stderr.ConfigureAwait(false); }
             catch (OperationCanceledException) { }
         }
+    }
+
+    private static async Task<string> ReadErrorTailAsync(StreamReader reader, CancellationToken token)
+    {
+        char[] buffer = new char[2048];
+        var tail = new StringBuilder(buffer.Length * 2);
+        int read;
+        while ((read = await reader.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false)) != 0)
+        {
+            tail.Append(buffer, 0, read);
+            if (tail.Length > buffer.Length) tail.Remove(0, tail.Length - buffer.Length);
+        }
+        return tail.ToString();
     }
 
     internal static ProcessStartInfo StartInfo(string agent, string[] args, ShellProfile? profile, string? cwd)
@@ -84,11 +107,9 @@ public static class AgentConversationRename
             info.FileName = profile!.Command;
             // Keep the actual arguments separate from the shell program. Prefer the profile's PATH
             // and the standard user bin directory before consulting the login shell.
-            const string lookup = """
-                if command -v "$1" >/dev/null 2>&1; then exec "$@"; fi
-                if [ -x "$HOME/.local/bin/$1" ]; then agent="$HOME/.local/bin/$1"; shift; exec "$agent" "$@"; fi
-                exec "${SHELL:-/bin/sh}" -lc 'exec "$@"' agwinterm-agent "$@"
-                """;
+            const string lookup = """if command -v "$1" >/dev/null 2>&1; then exec "$@"; fi""" + "\n"
+                + """if [ -x "$HOME/.local/bin/$1" ]; then agent="$HOME/.local/bin/$1"; shift; exec "$agent" "$@"; fi""" + "\n"
+                + "exec \"${SHELL:-/bin/sh}\" -lc 'exec \"$@\"' agwinterm-agent \"$@\"";
             string[] command = [.. WslIntegration.Selectors(profile.Args), "--exec", "/bin/sh", "-c",
                 lookup, "agwinterm-agent", agent, .. args];
             args = WslIntegration.LaunchArgs(command, cwd, profile.Env);

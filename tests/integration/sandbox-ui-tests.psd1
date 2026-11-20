@@ -27,7 +27,7 @@
     WebPageMeasurements = @{ Path='tools/web-page-measurements.ps1'; Exe=$true; Ctl=$true; Web=$true; Options=@(); Outputs=@('Output') }
     WslControl = @{ Path='tests/integration/wsl-control.ps1'; Wsl=$true; Options=@('Distro','NativeHooks','LinuxUser','NoPython','Portable') }
     AgentConversationRename = @{ Path='tests/integration/agent-conversation-rename.ps1'; Exe=$true; Ctl=$true; Inputs=@('Codex','Claude'); Options=@() }
-    WslAgentConversationRename = @{ Path='tests/integration/wsl-agent-conversation-rename.ps1'; Wsl=$true; Options=@('Distro') }
+    WslAgentConversationRename = @{ Path='tests/integration/wsl-agent-conversation-rename.ps1'; Wsl=$true; Options=@('Distro','PackageDirectory') }
     WslBenchmark = @{ Path='tests/integration/wsl-hook-bench.ps1'; Wsl=$true; Options=@() }
     WslTuiRendering = @{ Path='tests/integration/wsl-tui-rendering.ps1'; Wsl=$true; Options=@('Distro','AppDirectory','OutputDirectory','Core','Conpty','Scenario','Seconds') }
     WslZmxDependency = @{ Path='tests/integration/wsl-zmx-dependency.ps1'; Wsl=$true; Options=@('Distro','BuildDirectory') }

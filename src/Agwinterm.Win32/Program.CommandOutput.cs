@@ -36,7 +36,7 @@ internal partial class Program
                         if(!ReferenceEquals(pane.SelOwner,owner)) return;
                         if(owner.CreationError is { } error)
                         {
-                            pane.ClearSel(); ShowToast(error); RequestRedraw(); return;
+                            pane.ClearSel(); ShowErrorToast(error); RequestRedraw(); return;
                         }
                         Finish();
                     }),TaskScheduler.Default);
@@ -53,7 +53,7 @@ internal partial class Program
             if(finishNow) Finish();
         }
         catch(Exception ex) when(ex is InvalidDataException or InvalidOperationException or ObjectDisposedException)
-        { ShowToast("Could not select command output: "+ex.Message); }
+        { ShowErrorToast("Could not select command output: "+ex.Message); }
         RequestRedraw();
     }
 }

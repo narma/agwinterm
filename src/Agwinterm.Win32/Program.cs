@@ -803,9 +803,17 @@ internal partial class Program : ISessionHost, IWindowHost
         }
 
         _startupJournal.Mark("message-loop.ready");
+        Journal.Value.Write("GUI", ActivityLevel.Info, "Application started");
         while (GetMessageW(out MSG msg, IntPtr.Zero, 0, 0) > 0)
         {
             if (DispatchWebContinuation(msg)) continue;
+            if (msg.message == WM_KEYDOWN && _registry.Values.FirstOrDefault(window => window._logWindow != 0 &&
+                (msg.hwnd == window._logWindow || msg.hwnd == window._logList || msg.hwnd == window._logDetail ||
+                 msg.hwnd == window._logCopy)) is { } logOwner)
+            {
+                if ((int)msg.wParam == VK_ESCAPE) { DestroyWindow(logOwner._logWindow); continue; }
+                if ((int)msg.wParam == VK_TAB && IsDialogMessageW(logOwner._logWindow, ref msg)) continue;
+            }
             if (_registry.Values.Distinct().Any(window => window._webPages.Count != 0 && window.WebNavigationKey(msg))) continue;
             _registry.TryGetValue(msg.hwnd, out var inputWindow);
             if (inputWindow is not null && msg.message is WM_KEYDOWN or WM_SYSKEYDOWN

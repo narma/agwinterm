@@ -26,7 +26,7 @@ internal partial class Program
             });
         }
         catch(Exception ex) when(ex is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
-        { Post(()=>ShowToast("Could not export selection: "+ex.Message)); }
+        { Post(()=>ShowErrorToast("Could not export selection: "+ex.Message)); }
     }
 
     [DllImport("user32.dll",CharSet=CharSet.Unicode)]

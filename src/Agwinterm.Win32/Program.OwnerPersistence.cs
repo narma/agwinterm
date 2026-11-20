@@ -49,7 +49,7 @@ internal partial class Program
                     _closeSavePending = false;
                     _detachOnClose = null;
                     ShowWindow(_hwnd, SW_SHOW);
-                    ShowToast("Window could not save its history: " + ex.Message, 10000);
+                    ShowErrorToast("Window could not save its history", ex.Message);
                 });
             }
         });

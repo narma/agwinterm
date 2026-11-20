@@ -13,6 +13,30 @@ using System.Runtime.InteropServices;
 public static class AgentRenameWindow {
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string name);
     public static IntPtr Find(IntPtr parent, string cls) => FindWindowExW(parent, IntPtr.Zero, cls, null);
+    [StructLayout(LayoutKind.Sequential)] struct Rect { public int left, top, right, bottom; }
+    [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd, out Rect rect);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr w, System.Text.StringBuilder text);
+    public static string Text(IntPtr hwnd, uint msg, int index, int size) {
+        var text = new System.Text.StringBuilder(size);
+        SendMessageW(hwnd, msg, (IntPtr)index, text);
+        return text.ToString();
+    }
+    public static void OpenJournal(IntPtr hwnd) {
+        var previousDpi = SetThreadDpiAwarenessContext((IntPtr)(-4));
+        try {
+            GetClientRect(hwnd, out var client);
+            double scale = GetDpiForWindow(hwnd)/96.0;
+            // Centre of the log button, immediately left of settings and the three caption buttons.
+            int x = client.right - (int)Math.Round((3*46 + 6 + 38 + 19)*scale);
+            var point = (IntPtr)(((int)Math.Round(20*scale) << 16) | x);
+            SendMessageW(hwnd, 0x201, (IntPtr)1, point);
+            SendMessageW(hwnd, 0x202, IntPtr.Zero, point);
+        } finally { SetThreadDpiAwarenessContext(previousDpi); }
+    }
     [DllImport("user32.dll")] public static extern bool UpdateWindow(IntPtr h);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageW(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageW(IntPtr h, uint msg, IntPtr w, string text);
@@ -23,14 +47,14 @@ public static class AgentRenameWindow {
     [DllImport("user32.dll")] static extern IntPtr GetThreadDesktop(uint thread);
     [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] static extern bool EnumDesktopWindows(IntPtr desktop, Visit visit, IntPtr arg);
-    public static IntPtr MainWindow(uint pid) {
+    public static IntPtr MainWindow(uint pid, string cls = "AgwintermWin32") {
         IntPtr result = IntPtr.Zero;
         EnumDesktopWindows(GetThreadDesktop(GetCurrentThreadId()), (h, unused) => {
             GetWindowThreadProcessId(h, out var owner);
             if (owner != pid) return true;
             var name = new System.Text.StringBuilder(128);
             GetClassNameW(h, name, name.Capacity);
-            if (name.ToString() != "AgwintermWin32") return true;
+            if (name.ToString() != cls || !IsWindowVisible(h)) return true;
             result = h;
             return false;
         }, IntPtr.Zero);
@@ -105,7 +129,7 @@ function Read-Session([string]$pane) {
     } catch [IO.IOException] { }
 }
 
-function Rename-InSidebar([string]$pane, [string]$id, [string]$newName, [bool]$fromAgents) {
+function Rename-InSidebar([string]$pane, [string]$id, [string]$newName, [bool]$fromAgents, [string]$ExpectedError) {
     $null = Wait-For 'bound agent conversation' { (Read-Session $pane).Panes.Conversation.Id -contains $id }
     [void][AgentRenameWindow]::SendMessageW($hwnd, 0x100, [IntPtr]0x75, [IntPtr]1) # F6
     if ($fromAgents) {
@@ -134,6 +158,15 @@ function Rename-InSidebar([string]$pane, [string]$id, [string]$newName, [bool]$f
     }
     [void][AgentRenameWindow]::SendMessageW($edit, 0x0c, [IntPtr]::Zero, $newName)
     [void][AgentRenameWindow]::SendMessageW($edit, 0x100, [IntPtr]13, [IntPtr]1)
+    if ($ExpectedError) {
+        $null = Wait-For "one persisted rename error matching $ExpectedError" {
+            $errors = @(Get-Content "$state/logs/activity.jsonl" | ConvertFrom-Json |
+                Where-Object { $_.Source -eq 'WSL' -and $_.Message -eq 'Could not rename agent conversation' -and $_.Detail -match $ExpectedError })
+            $errors.Count -eq 1
+        }
+        [void][AgentRenameWindow]::SendMessageW($hwnd, 0x100, [IntPtr]27, [IntPtr]1)
+        return
+    }
     $null = Wait-For "confirmed sidebar and agent title $newName" {
         $renamed = Read-Session $pane
         $saved = $renamed.Panes.Conversation | Where-Object Id -eq $id
@@ -166,7 +199,7 @@ try {
         $profile = @{command='wsl.exe';args=@('-d',$Distro,'--exec','bash','--noprofile','-i')}
         $agentBin = (& wsl -d $Distro --exec /bin/bash -lc 'dirname "$(command -v codex)"').Trim()
         $claudeBin = (& wsl -d $Distro --exec /bin/bash -lc 'dirname "$(command -v claude)"').Trim()
-        $settings.PATH = "$($agentBin):$($claudeBin):/usr/local/bin:/usr/bin:/bin"
+        $settings.PATH = "$store/bin:$($agentBin):$($claudeBin):/usr/local/bin:/usr/bin:/bin"
     } else {
         New-Item -ItemType Directory -Path $project | Out-Null
         $project = [IO.Path]::GetFullPath($project)
@@ -271,6 +304,61 @@ try {
         Write-Host "PASS $agent resume found the new title after the original pane was closed"
         $null = Control @('session','close','--target',$probe)
     }
+    if ($Distro) {
+        Fixture "$store/bin/claude" @('#!/bin/sh', 'exit 0')
+        & wsl -d $Distro --exec chmod +x "$store/bin/claude"
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to prepare launcher failure fixture' }
+        $pane = [string](Control @('session','new','--name','Failure fixture'))
+        Wait-PaneShell $pane
+        $null = Control @('session','bind',"claude --resume $claudeId",'--target',$pane)
+        Rename-InSidebar $pane $claudeId 'Missing confirmation' $true -ExpectedError 'did not confirm.*wsl.exe, exit 0'
+        Fixture "$store/bin/claude" @('#!/bin/sh', 'echo "fixture stderr" >&2', 'exit 19')
+        Rename-InSidebar $pane $claudeId 'Rename should fail' $true -ExpectedError '(?s)wsl.exe, exit 19.*fixture stderr'
+    }
+    $process.Kill($true)
+    $process.WaitForExit()
+    $process = [Diagnostics.Process]::Start($app)
+    $hwnd = Wait-For 'restarted window' {
+        $h = [AgentRenameWindow]::MainWindow($process.Id)
+        if ($h -ne [IntPtr]::Zero) { $h }
+    }
+    $null = Wait-For 'restarted control pipe' { try { Control @('ping') } catch { $false } }
+    [void][AgentRenameWindow]::UpdateWindow($hwnd)
+    [AgentRenameWindow]::OpenJournal($hwnd)
+    $log = Wait-For 'activity log window' {
+        $h = [AgentRenameWindow]::MainWindow($process.Id, 'Agwinterm.ActivityLog')
+        if ($h -ne [IntPtr]::Zero) { $h }
+    }
+    $list = [AgentRenameWindow]::Find($log, 'ListBox')
+    $details = [AgentRenameWindow]::Find($log, 'Edit')
+    $count = [int][AgentRenameWindow]::SendMessageW($list, 0x18b, [IntPtr]::Zero, [IntPtr]::Zero)
+    $expectedMessage = if ($Distro) { 'Could not rename agent conversation' } else { 'Agent conversation renamed' }
+    $found = $false
+    for ($i = 0; $i -lt $count; $i++) {
+        $len = [int][AgentRenameWindow]::SendMessageW($list, 0x18a, [IntPtr]$i, [IntPtr]::Zero)
+        $row = [AgentRenameWindow]::Text($list, 0x189, $i, $len+1)
+        if ($i -eq 0) {
+            $latest = Get-Content "$state/logs/activity.jsonl" -Tail 1 | ConvertFrom-Json
+            if (!$row.Contains($latest.Message)) { throw "Newest entry was $row, expected $($latest.Message)" }
+        }
+        if (!$row.Contains($expectedMessage)) { continue }
+        [void][AgentRenameWindow]::SendMessageW($list, 0x186, [IntPtr]$i, [IntPtr]::Zero)
+        [void][AgentRenameWindow]::SendMessageW($log, 0x111, [IntPtr]0x10065, $list)
+        $detail = [AgentRenameWindow]::Text($details, 0x0d, 4096, 4096)
+        if ($Distro -and ($detail -notmatch 'wsl.exe, exit 19' -or $detail -notmatch 'fixture stderr')) { throw "Incomplete details: $detail" }
+        if (!$Distro) {
+            $copy = [AgentRenameWindow]::Find($log, 'Button')
+            [void][AgentRenameWindow]::SendMessageW($copy, 0xf5, [IntPtr]::Zero, [IntPtr]::Zero)
+            if ((Get-Clipboard -Raw) -cne $detail) { throw 'Copy entry did not copy the selected event' }
+            Write-Host 'PASS Copy entry matches displayed detail'
+        }
+        $found = $true
+        break
+    }
+    if (!$found) { throw 'Persisted rename error missing from journal window' }
+    [void][AgentRenameWindow]::PostMessageW($list, 0x100, [IntPtr]27, [IntPtr]1)
+    $null = Wait-For 'Escape closes journal' { [AgentRenameWindow]::MainWindow($process.Id, 'Agwinterm.ActivityLog') -eq [IntPtr]::Zero }
+    Write-Host 'PASS Retained details, newest-first journal and Escape after restart'
 } catch {
     if ($hwnd) { Write-Host ('Application windows: ' + ([AgentRenameWindow]::TopClasses($hwnd) -join ', ')) }
     if (Test-Path -LiteralPath "$state/ui.log") {
