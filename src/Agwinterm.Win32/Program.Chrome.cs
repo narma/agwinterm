@@ -1898,7 +1898,7 @@ internal partial class Program
     private void ShowToast(string text, int durationMs = 4000, ActivityLevel level = ActivityLevel.Info,
         string? detail = null, string source = "GUI")
     {
-        Journal.Value.Write(source, level, text, detail);
+        Journal.Value.Enqueue(source, level, text, detail);
         _toastText = text;
         _toastTarget = null;
         SetTimer(_hwnd, (IntPtr)2, (uint)Math.Max(200, durationMs), IntPtr.Zero);

@@ -803,7 +803,7 @@ internal partial class Program : ISessionHost, IWindowHost
         }
 
         _startupJournal.Mark("message-loop.ready");
-        Journal.Value.Write("GUI", ActivityLevel.Info, "Application started");
+        Journal.Value.Enqueue("GUI", ActivityLevel.Info, "Application started");
         while (GetMessageW(out MSG msg, IntPtr.Zero, 0, 0) > 0)
         {
             if (DispatchWebContinuation(msg)) continue;
@@ -826,6 +826,7 @@ internal partial class Program : ISessionHost, IWindowHost
             }
             finally { if (inputWindow is not null) inputWindow._ghosttyKeyText = null; }
         }
+        Journal.Value.CompleteWrites().Wait(TimeSpan.FromSeconds(2));
     }
 
     /// <summary>Clamp a restored window frame onto the nearest visible monitor work area, so a frame

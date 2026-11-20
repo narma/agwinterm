@@ -10,6 +10,8 @@ internal partial class Program
     private static readonly WndProc LogProcedure = ActivityWindowProc;
     private static bool _logClassRegistered;
     private IntPtr _logWindow, _logList, _logDetail, _logCopy;
+    private IntPtr _logFont;
+    private int _logDpi = 96;
     private IReadOnlyList<ActivityEntry> _logEntries = [];
     private (DateTime Modified, long Length) _logVersion;
 
@@ -37,10 +39,8 @@ internal partial class Program
 
         IntPtr Child(string cls, string name, uint style, int id)
         {
-            var control = CreateWindowExW(0, cls, name, WS_CHILD | WS_VISIBLE | WS_TABSTOP | style,
+            return CreateWindowExW(0, cls, name, WS_CHILD | WS_VISIBLE | WS_TABSTOP | style,
                 0, 0, 1, 1, _logWindow, (IntPtr)id, GetModuleHandleW(null), 0);
-            SendMessageW(control, WM_SETFONT, GetStockObject(17), (IntPtr)1);
-            return control;
         }
         _logList = Child("LISTBOX", "", WS_VSCROLL | 1 /* LBS_NOTIFY */ | 0x100 /* LBS_NOINTEGRALHEIGHT */, 101);
         _logDetail = Child("EDIT", "", WS_VSCROLL | 4 /* ES_MULTILINE */ | 0x800 /* ES_READONLY */, 102);
@@ -51,6 +51,7 @@ internal partial class Program
             ShowErrorToast("Could not create activity log controls");
             return;
         }
+        UpdateLogFont((int)GetDpiForWindow(_logWindow));
         LayoutActivityLog();
         RefreshActivityLog(force: true);
         SetTimer(_logWindow, 1, 1000, 0);
@@ -65,6 +66,13 @@ internal partial class Program
             switch (msg)
             {
                 case WM_SIZE: owner.LayoutActivityLog(); break;
+                case WM_DPICHANGED:
+                    owner.UpdateLogFont(HiWord(w));
+                    var bounds = Marshal.PtrToStructure<RECT>(l);
+                    SetWindowPos(hwnd, 0, bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top,
+                        SWP_NOZORDER | SWP_NOACTIVATE);
+                    owner.LayoutActivityLog();
+                    return 0;
                 case WM_TIMER: owner.RefreshActivityLog(force: false); return 0;
                 case WM_COMMAND:
                     if (l == owner._logList && HiWord(w) == 1) owner.ShowSelectedActivity();
@@ -75,23 +83,38 @@ internal partial class Program
                 case WM_DESTROY:
                     owner._logWindow = owner._logList = owner._logDetail = owner._logCopy = 0;
                     owner._logEntries = [];
+                    if (owner._logFont != 0) { DeleteObject(owner._logFont); owner._logFont = 0; }
                     break;
             }
         }
         return DefWindowProcW(hwnd, msg, w, l);
     }
 
+    private int LogPixels(int dip) => (int)Math.Round(dip * _logDpi / 96.0);
+
+    private void UpdateLogFont(int dpi)
+    {
+        _logDpi = dpi > 0 ? dpi : 96;
+        if (_logCopy == 0) return;
+        var font = CreateFontW(-LogPixels(14), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI");
+        if (font == 0) return;
+        foreach (var control in new[] { _logList, _logDetail, _logCopy })
+            SendMessageW(control, WM_SETFONT, font, (IntPtr)1);
+        if (_logFont != 0) DeleteObject(_logFont);
+        _logFont = font;
+    }
+
     private void LayoutActivityLog()
     {
         if (_logCopy == 0) return;
         GetClientRect(_logWindow, out var rect);
-        int pad = ToDevice(8), button = ToDevice(30), width = Math.Max(1, rect.right - 2 * pad);
+        int pad = LogPixels(8), button = LogPixels(30), width = Math.Max(1, rect.right - 2 * pad);
         int available = Math.Max(2, rect.bottom - 4 * pad - button), list = available * 3 / 5;
         void Place(IntPtr hwnd, int x, int y, int w, int h) =>
             SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
         Place(_logList, pad, pad, width, list);
         Place(_logDetail, pad, 2 * pad + list, width, available - list);
-        Place(_logCopy, pad, 3 * pad + available, ToDevice(110), button);
+        Place(_logCopy, pad, 3 * pad + available, LogPixels(110), button);
     }
 
     private ActivityEntry? SelectedActivity()

@@ -36,7 +36,7 @@ internal partial class Program
         catch (Exception ex)
         {
             Perf($"wndproc ex msg=0x{msg:X}: {ex.GetType().Name} {ex.Message}");
-            Journal.Value.Write("GUI", ActivityLevel.Error, $"Window message 0x{msg:X} failed", ex.Message);
+            Journal.Value.Enqueue("GUI", ActivityLevel.Error, $"Window message 0x{msg:X} failed", ex.Message);
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         }
     }

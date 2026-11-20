@@ -5,6 +5,23 @@ namespace Agwinterm.Pty.Tests;
 public sealed class ActivityJournalTests
 {
     [Fact]
+    public async Task QueuedWritesDrainInOrderAtShutdown()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            var journal = new ActivityJournal(dir.FullName);
+            for (int i = 0; i < 100; i++)
+                journal.Enqueue("GUI", ActivityLevel.Info, i.ToString());
+
+            await journal.CompleteWrites().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(Enumerable.Range(0, 100).Reverse().Select(i => i.ToString()),
+                new ActivityJournal(dir.FullName).Read().Select(entry => entry.Message));
+        }
+        finally { dir.Delete(true); }
+    }
+
+    [Fact]
     public void RotatedEntriesSurviveRestartInNewestFirstOrder()
     {
         var dir = Directory.CreateTempSubdirectory();

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace Agwinterm.Pty;
 
@@ -21,6 +22,10 @@ public sealed class ActivityJournal(string directory)
     private readonly string _mutexName = "Agwinterm.Activity." + Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())));
     private const int MaxBytes = 512 * 1024;
+    private readonly Channel<ActivityEntry> _pending = Channel.CreateBounded<ActivityEntry>(
+        new BoundedChannelOptions(1024) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
+    private readonly object _workerGate = new();
+    private Task? _worker;
 
     public (DateTime Modified, long Length) Version
     {
@@ -33,6 +38,35 @@ public sealed class ActivityJournal(string directory)
     }
 
     public void Write(string source, ActivityLevel level, string message, string? detail = null)
+        => Append(CreateEntry(source, level, message, detail));
+
+    // The GUI shares a thread between windows. Even waiting for the cross-process mutex
+    // must happen on the worker. Keep the most recent events if storage stalls indefinitely.
+    public void Enqueue(string source, ActivityLevel level, string message, string? detail = null)
+    {
+        lock (_workerGate)
+        {
+            if (!_pending.Writer.TryWrite(CreateEntry(source, level, message, detail))) return;
+            _worker ??= Task.Run(async () =>
+            {
+                await foreach (var entry in _pending.Reader.ReadAllAsync().ConfigureAwait(false)) Append(entry);
+            });
+        }
+    }
+
+    public Task CompleteWrites()
+    {
+        lock (_workerGate)
+        {
+            _pending.Writer.TryComplete();
+            return _worker ?? Task.CompletedTask;
+        }
+    }
+
+    private static ActivityEntry CreateEntry(string source, ActivityLevel level, string message, string? detail)
+        => new(DateTimeOffset.UtcNow, source, level, Clip(message), detail is null ? null : Clip(detail));
+
+    private void Append(ActivityEntry entry)
     {
         try
         {
@@ -44,7 +78,6 @@ public sealed class ActivityJournal(string directory)
                 Directory.CreateDirectory(directory);
                 if (new FileInfo(_path) is { Exists: true, Length: >= MaxBytes })
                     File.Move(_path, _path + ".1", true);
-                var entry = new ActivityEntry(DateTimeOffset.UtcNow, source, level, Clip(message), detail is null ? null : Clip(detail));
                 File.AppendAllText(_path, JsonSerializer.Serialize(entry, JsonOptions) + "\n");
             }
             finally { mutex.ReleaseMutex(); }
