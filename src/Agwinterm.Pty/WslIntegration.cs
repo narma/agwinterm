@@ -195,6 +195,7 @@ public static class WslIntegration
     {
         string payload = JsonSerializer.Serialize(new { version = 1, kind, action, release, portableRoot = PortableTools.CacheRoot,
             windowsCli = Path.Combine(CliInstaller.CliDir(), "agwintermctl.exe"), skill = AgentSkill.SkillMarkdown,
+            references = kind is "skill" or "installed" ? AgentSkill.References : null,
             shell = Resource("shell.sh"), windowsBridge = Path.Combine(CliInstaller.CliDir(), "agwinterm-hook.exe") });
         return RunBundled(profile, ["--install"], payload);
     }

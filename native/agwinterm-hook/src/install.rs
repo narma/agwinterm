@@ -326,11 +326,11 @@ impl Installation {
         label: &'static str,
         desired: impl FnOnce() -> Result<Vec<u8>>,
         legacy: impl FnOnce(&[u8]) -> bool,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         match fs::symlink_metadata(path) {
             Ok(m) if m.is_file() => (),
-            Ok(_) => return Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Ok(_) => return Ok(false),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e.into()),
         };
         self.found_files = true;
@@ -349,13 +349,46 @@ impl Installation {
             };
             if !owned {
                 self.preserved.push(path.to_owned());
-                return Ok(());
+                return Ok(false);
             }
             // write(false) preserves the current mode, including user changes to execute bits.
             write(path, &desired, false)?;
             self.updated.push(label);
         }
         self.files.insert(path.to_owned(), hash(&desired));
+        Ok(true)
+    }
+
+    fn skill_references(
+        &mut self,
+        dir: &Path,
+        references: &BTreeMap<String, String>,
+        refresh: bool,
+    ) -> Result<()> {
+        for (name, text) in references {
+            let path = dir.join("references").join(name);
+            if refresh {
+                match fs::symlink_metadata(&path) {
+                    Ok(_) => {
+                        self.refresh(
+                            &path,
+                            "reference",
+                            "skill reference",
+                            || Ok(text.as_bytes().to_vec()),
+                            |_| false,
+                        )?;
+                        continue;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                        if self.files.contains_key(&path) {
+                            continue; // Preserve a user's deletion on refresh.
+                        }
+                    }
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            self.install(&path, text.as_bytes(), false)?;
+        }
         Ok(())
     }
 }
@@ -403,6 +436,15 @@ pub(super) fn run() -> Result<()> {
         return Err("unsupported installer protocol".into());
     }
     let kind = field("kind")?;
+    let references: BTreeMap<String, String> =
+        serde_json::from_value::<Option<_>>(payload["references"].clone())?.unwrap_or_default();
+    for name in references.keys() {
+        if !name.strip_suffix(".md").is_some_and(|stem| {
+            !stem.is_empty() && stem.bytes().all(|b| b.is_ascii_lowercase() || b == b'-')
+        }) {
+            return Err("invalid skill reference filename".into());
+        }
+    }
     let action = field("action")?;
     if !matches!(
         (kind, action),
@@ -493,13 +535,16 @@ pub(super) fn run() -> Result<()> {
             |_| false,
         )?;
         for (base, label) in [(claude, "Claude skill"), (codex, "Codex skill")] {
-            state.refresh(
-                &base.join("skills/agwinterm/SKILL.md"),
+            let dir = base.join("skills/agwinterm");
+            if state.refresh(
+                &dir.join("SKILL.md"),
                 "skill",
                 label,
                 || Ok(skill(field("skill")?)),
                 |_| false,
-            )?;
+            )? {
+                state.skill_references(&dir, &references, true)?;
+            }
         }
         if state.found_files || manifest.exists() {
             // Other config roots in this HOME share the helper and wrapper.
@@ -578,7 +623,9 @@ pub(super) fn run() -> Result<()> {
         "skill" => {
             let text = skill(field("skill")?);
             for base in [claude, codex] {
-                state.install(&base.join("skills/agwinterm/SKILL.md"), &text, false)?;
+                let dir = base.join("skills/agwinterm");
+                state.skill_references(&dir, &references, false)?;
+                state.install(&dir.join("SKILL.md"), &text, false)?;
             }
         }
         "hooks" => {

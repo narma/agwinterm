@@ -87,6 +87,25 @@ class WslScripts(unittest.TestCase):
         self.assertFalse(claude.exists())
         self.assertEqual('personal skill', codex.read_text())
 
+    def test_skill_reference_migration_and_refresh(self):
+        self.install('skill')
+        codex = self.home / '.codex/skills/agwinterm'
+        claude = self.home / '.claude/skills/agwinterm'
+        (claude / 'SKILL.md').write_text('personal skill')
+        guides = {'sessions.md': 'sessions v1', 'io.md': 'io v1'}
+        self.install('installed', 'refresh', release='2', skill='short entry', references=guides)
+        self.assertEqual('sessions v1', (codex / 'references/sessions.md').read_text())
+        self.assertFalse((claude / 'references').exists())
+        (codex / 'references/io.md').write_text('personal guide')
+        guides = {'sessions.md': 'sessions v2', 'io.md': 'io v2'}
+        self.install('installed', 'refresh', release='3', skill='short entry', references=guides)
+        self.assertEqual('sessions v2', (codex / 'references/sessions.md').read_text())
+        self.assertEqual('personal guide', (codex / 'references/io.md').read_text())
+        self.install('skill', references=guides)
+        for root in (codex, claude):
+            for name, content in guides.items():
+                self.assertEqual(content, (root / 'references' / name).read_text())
+
     def test_legacy_portable_refresh_repoints_exact_wrapper_and_bridge(self):
         root = self.home/'portable tools'
         old = root/('a'*64)
