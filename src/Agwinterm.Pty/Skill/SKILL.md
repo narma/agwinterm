@@ -24,6 +24,17 @@ Use `agwintermctl` from an Agwinterm pane (`AGWINTERM_ENABLED=1`).
 - Change session names and context only at the user's request.
 - A timeout leaves the outcome uncertain. Check the terminal state before repeating an action.
 
+## Start work in the background
+
+Run `agwintermctl session new --cwd "DIR" --command "npm test" --no-select` with the
+project directory and command. It prints the new session ID and keeps the current pane
+selected. Use that ID with `session text` to read the output.
+
+When following an agent, use
+`agwintermctl session wait completed,blocked --scope pane --target ID --wait-timeout 30 --json`.
+Exit code 0 means the agent reported a matching status. Code 3 means the wait expired.
+For a shell command such as `npm test`, read its output to check the result.
+
 ## Command guides
 
 Open the guide for the operation you need.
