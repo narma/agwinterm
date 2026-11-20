@@ -5,44 +5,52 @@ description: Inspect or control Agwinterm terminal sessions and panes when a tas
 
 # Agwinterm terminal control
 
-Use `agwintermctl` from an Agwinterm pane (`AGWINTERM_ENABLED=1`).
+Inside an Agwinterm pane (`AGWINTERM_ENABLED=1`), use `agwintermctl`.
 
-## Find a pane and read its output
+## Find a pane and read output
 
-1. Run `agwintermctl tree --json` to list windows, workspaces, sessions and pane IDs.
-2. Choose the pane by ID. Several panes can share a working directory.
-   `AGWINTERM_SESSION_ID` identifies your own pane or overlay.
-3. Run `agwintermctl session text --lines 40 --target ID` for recent output.
-   Omit `--lines` for the visible screen. A main pane ID reads the shell underneath its overlay.
+Run `agwintermctl tree --json`. Choose the pane by ID; working directories can repeat.
+`AGWINTERM_SESSION_ID` identifies your own pane or overlay.
+Use `agwintermctl session text --lines 40 --target ID` for recent output.
+Omit `--lines` for the visible screen. A main pane ID reads the shell beneath its overlay.
 
-## Control a session
+## Run a command in a new WSL pane
 
-- Let installed hooks or native OSC reports handle agent status. When neither is available,
-  use `agwintermctl session status active|blocked|completed|idle` as appropriate.
-- For another pane, pass its ID explicitly. Before typing into an agent's composer,
-  check for a draft using the [input and output guide](references/io.md).
-- Change session names and context only at the user's request.
-- A timeout leaves the outcome uncertain. Check the terminal state before repeating an action.
+From the project's directory in Bash, open a background session in the same distribution:
 
-## Start work in the background
+```bash
+id=$(agwintermctl session new --profile "WSL: $WSL_DISTRO_NAME" --cwd "$PWD" --no-select) &&
+    id=${id%$'\r'} && agwintermctl session text --target "$id"
+```
 
-For Windows PowerShell, run `agwintermctl session new --cwd "C:\project" --command "npm test" --no-select`.
-For WSL, use the [WSL profile recipe](references/sessions.md). Read output with `session text` targeting the returned ID.
+For a custom profile, use its exact name from `agwintermctl profiles list`.
+Once the new pane shows a shell prompt, run this in the calling shell:
 
-When following an agent, use
-`agwintermctl session wait completed,blocked --scope pane --target ID --wait-timeout 30 --json`.
-Exit code 0 means the agent reported a matching status. Code 3 means the wait expired.
-For a shell command such as `npm test`, read its output to check the result.
+```bash
+printf '%s\n\n' 'npm test' | agwintermctl session type --stdin --target "$id"
+agwintermctl session text --lines 40 --target "$id"
+```
 
-## Command guides
+Replace `npm test` with the Linux command. The CLI strips one trailing newline;
+the second submits it. Read the output again if the command is still running.
+Before sending input to an existing agent pane, check its composer for an unsent draft.
 
-Open the guide for the operation you need.
+## Follow an agent
 
-- [Sessions and workspaces](references/sessions.md) — create, move, target, wait for status, watch events and manage WSL live panes.
-- [Pane input and output](references/io.md) — read scrollback, inspect the cursor, use the clipboard, type and send keys.
-- [Scratch terminals and overlays](references/overlays.md) — choose a slot, launch a program and retrieve its result.
-- [User interaction](references/interaction.md) — open a picker, ask questions and send notifications.
-- [Windows and layout](references/layout.md) — flag workspaces, split or resize panes, use custom commands and change appearance.
-- [Settings and restore](references/settings.md) — configure the terminal, recover sessions and install integrations.
-- [Images](references/images.md) — display image files or frames from shared memory.
-- [Environment and transport](references/transport.md) — resolve targets, report status manually and use the control pipe if the CLI is unavailable.
+`agwintermctl session wait completed,blocked --scope pane --target ID --wait-timeout 30 --json`
+waits for agent status. Exit 0 means a match, 3 means the wait expired.
+Hooks or native OSC reports normally set status. Without either, use
+`agwintermctl session status active|blocked|completed|idle`.
+After a mutation times out, inspect state before retrying. Change session names or context
+only at the user's request.
+
+## Further commands
+
+- [Sessions and workspaces](references/sessions.md) — Windows launches, moves, events, WSL live panes.
+- [Pane input and output](references/io.md) — composer checks, keys, selection, clipboard.
+- [Scratch and overlays](references/overlays.md) — open a slot and retrieve results.
+- [User interaction](references/interaction.md) — pickers, questions, notifications.
+- [Windows and layout](references/layout.md) — splits, sizing, appearance.
+- [Settings and restore](references/settings.md) — configuration, recovery, installation.
+- [Images](references/images.md) — files and shared-memory frames.
+- [Environment and transport](references/transport.md) — targeting, status, control pipe.

@@ -1,24 +1,10 @@
 ## Manage sessions & workspaces
 
-### Run a background command in WSL
+### Start a Windows PowerShell command
 
-From a WSL shell, run `agwintermctl profiles list` and copy the profile name for the
-intended distribution. Pass its Linux project directory to that profile. For example,
-with the project as your current directory:
-
-```sh
-id=$(agwintermctl session new --profile "PROFILE" --cwd "$PWD" --no-select) &&
-    agwintermctl session text --target "$id"
-```
-
-Replace `PROFILE` with the listed name. Once the new pane shows its shell prompt,
-run the following in the calling shell. The second newline submits the command after
-`--stdin` strips one trailing newline.
-
-```sh
-printf 'npm test\n\n' | agwintermctl session type --stdin --target "$id"
-agwintermctl session text --lines 40 --target "$id"
-```
+Run `agwintermctl session new --cwd "C:\project" --command "npm test" --no-select`
+and read the returned session's output with `session text --target ID`.
+For a Linux command, follow the WSL example in [the main skill](../SKILL.md).
 
 ### Session commands
 Automatic names follow the focused pane's OSC program title, then its cwd basename.
