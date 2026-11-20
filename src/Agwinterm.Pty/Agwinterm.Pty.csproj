@@ -16,6 +16,8 @@
     <InternalsVisibleTo Include="Agwinterm.GhosttyServerHarness" />
     <InternalsVisibleTo Include="Agwinterm.Win32" />
     <EmbeddedResource Include="Wsl/*" />
+    <EmbeddedResource Include="Skill/SKILL.md" LogicalName="Agwinterm.Skill.SKILL.md" />
+    <EmbeddedResource Include="Skill/references/*.md" LogicalName="Agwinterm.Skill.references.%(Filename)%(Extension)" />
     <None Include="../../artifacts/wsl-hook/agwinterm-hook-linux-*" Link="%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true">
       <CopyToPublishDirectory Condition="'$(PortableToolsArchive)' != ''">Never</CopyToPublishDirectory>

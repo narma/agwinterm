@@ -1,21 +1,48 @@
 using Agwinterm.Pty;
+using System.Text.RegularExpressions;
 
 namespace Agwinterm.Pty.Tests;
 
 public class AgentSkillTests
 {
     [Fact]
+    public void InstallingOverAnOldSkillMakesEveryLinkedGuideAvailable()
+    {
+        var dir = Directory.CreateTempSubdirectory();
+        try
+        {
+            string entry = Path.Combine(dir.FullName, "SKILL.md");
+            File.WriteAllText(entry, "previous installation");
+            AgentSkill.InstallTo(dir.FullName);
+            string markdown = File.ReadAllText(entry);
+            Assert.Equal(AgentSkill.SkillMarkdown, markdown);
+            var links = Regex.Matches(markdown, @"\]\((references/[^)]+)\)").Cast<Match>().ToArray();
+            Assert.NotEmpty(links);
+            foreach (var link in links)
+            {
+                string path = link.Groups[1].Value;
+                Assert.Equal(AgentSkill.References[Path.GetFileName(path)], File.ReadAllText(Path.Combine(dir.FullName, path)));
+            }
+            Assert.Equal(AgentSkill.References.Count, links.Select(link => link.Value).Distinct().Count());
+        }
+        finally
+        {
+            dir.Delete(true);
+        }
+    }
+
+    [Fact]
     public void ImageSectionAdvertisesTheSharedMemoryProducerContract()
     {
         Assert.Contains(
             @"agwintermctl image frameshm <Local\agwinterm-frame-NAME>",
-            AgentSkill.SkillMarkdown);
+            AgentSkill.References["images.md"]);
         Assert.Contains(
             "https://github.com/narma/agwinterm/blob/narma/docs/specs/image-frameshm.md",
-            AgentSkill.SkillMarkdown);
-        Assert.Contains("agwintermctl session metrics [<pane-id>] --json", AgentSkill.SkillMarkdown);
-        Assert.Contains("Ordinary", AgentSkill.SkillMarkdown);
-        Assert.Contains("image files should use `image show`.", AgentSkill.SkillMarkdown);
+            AgentSkill.References["images.md"]);
+        Assert.Contains("agwintermctl session metrics [<pane-id>] --json", AgentSkill.References["images.md"]);
+        Assert.Contains("Ordinary", AgentSkill.References["images.md"]);
+        Assert.Contains("image files should use `image show`.", AgentSkill.References["images.md"]);
     }
 
     /// <summary>P3: the two persistence verbs are advertised beside their neighbours (context beside
@@ -25,7 +52,7 @@ public class AgentSkillTests
     [Fact]
     public void PersistenceVerbsAreAdvertisedWithTheirRules()
     {
-        var md = AgentSkill.SkillMarkdown;
+        var md = AgentSkill.References["sessions.md"] + AgentSkill.References["settings.md"];
         Assert.Contains("agwintermctl session context <text> [--target ID]", md);
         Assert.Contains("agwintermctl restore capture [--target ID]", md);
         Assert.Contains("`tree --json` reads it back as `context`", md);
@@ -47,7 +74,7 @@ public class AgentSkillTests
     [Fact]
     public void SplitVerbsAreAdvertisedWithTheirRules()
     {
-        var md = AgentSkill.SkillMarkdown;
+        var md = AgentSkill.References["layout.md"];
         Assert.Contains("agwintermctl session split [on|off|toggle] [--axis vertical|horizontal] [--target <id>]", md);
         Assert.Contains("REPLIES WITH A PANE ID", md);
         Assert.Contains("ALSO when the session was already split", md);
@@ -79,7 +106,7 @@ public class AgentSkillTests
     [Fact]
     public void OverlayVerbsAreAdvertisedWithTheRuleAndTheirRefusals()
     {
-        var md = AgentSkill.SkillMarkdown;
+        var md = AgentSkill.References["overlays.md"] + AgentSkill.References["io.md"] + AgentSkill.References["layout.md"];
         Assert.Contains("A session has three overlay slots: one session-wide and one per pane. A session-wide overlay", md);
         Assert.Contains("session close, the window closing).", md);
         Assert.Contains("left is pane 0 and right is pane 1", md);
